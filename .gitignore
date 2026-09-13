@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# environment & secrets — never commit these
+.env
+.env.*
+!.env.example
+config/preset.local.yml
+*.pem
+*.key
+
+# runtime state
+uploads/
+storage/
+logs/
+*.log
+
+# local data volumes
+data/
+pgdata/
+
+# test & coverage
+coverage/
+.vitest/
+playwright-report/
+test-results/
+
+# editor / OS
+.DS_Store
+.idea/
+*.swp

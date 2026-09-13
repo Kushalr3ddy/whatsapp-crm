@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhatsApp CRM · Capacity Calculator</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#14181f; --muted:#5d6673; --line:#e2e6eb;
+  --accent:#0f766e; --accent-soft:#d7f0ec; --warn:#b45309; --warn-soft:#fdf0dc;
+  --danger:#b42318; --danger-soft:#fdeceb; --ok:#15803d;
+  --c1:#0f766e; --c2:#2563eb; --c3:#7c3aed; --c4:#c2410c; --c5:#0891b2;
+  --c6:#9333ea; --c7:#65a30d; --c8:#be123c; --c9:#475569; --c10:#a16207;
+  --radius:10px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#2a313a;
+    --accent:#2dd4bf; --accent-soft:#123330; --warn:#fbbf24; --warn-soft:#33270d;
+    --danger:#f87171; --danger-soft:#3a1a19; --ok:#4ade80;
+    --c1:#2dd4bf; --c2:#60a5fa; --c3:#a78bfa; --c4:#fb923c; --c5:#22d3ee;
+    --c6:#c084fc; --c7:#a3e635; --c8:#fb7185; --c9:#94a3b8; --c10:#fbbf24;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#2a313a;
+  --accent:#2dd4bf; --accent-soft:#123330; --warn:#fbbf24; --warn-soft:#33270d;
+  --danger:#f87171; --danger-soft:#3a1a19; --ok:#4ade80;
+  --c1:#2dd4bf; --c2:#60a5fa; --c3:#a78bfa; --c4:#fb923c; --c5:#22d3ee;
+  --c6:#c084fc; --c7:#a3e635; --c8:#fb7185; --c9:#94a3b8; --c10:#fbbf24;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 72px}
+header{margin-bottom:20px}
+h1{font-size:25px;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:14px;margin:0}
+.note{margin-top:14px;padding:11px 14px;border-radius:var(--radius);
+  background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);
+  font-size:13.5px;color:var(--ink)}
+.note b{color:var(--warn)}
+.grid{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:880px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+.panel + .panel{margin-top:16px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  margin:0 0 14px;font-weight:650}
+h3{font-size:14px;margin:20px 0 10px;font-weight:650}
+h3:first-of-type{margin-top:0}
+/* controls */
+.field{margin-bottom:15px}
+.field label{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:13.5px;margin-bottom:6px;gap:10px}
+.field .val{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:650;
+  white-space:nowrap}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:20px}
+.hint{font-size:11.5px;color:var(--muted);margin-top:3px}
+.toggles{display:flex;flex-direction:column;gap:2px}
+.tog{display:flex;align-items:flex-start;gap:9px;padding:7px 8px;border-radius:7px;
+  cursor:pointer;transition:background .12s}
+.tog:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.tog input{margin:3px 0 0;accent-color:var(--accent);flex:none;width:15px;height:15px}
+.tog .tl{font-size:13.5px}
+.tog .tc{font-size:11.5px;color:var(--muted);display:block;margin-top:1px}
+.swatch{width:9px;height:9px;border-radius:2px;flex:none;margin-top:6px}
+select{width:100%;padding:7px 9px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink);font-size:13.5px;font-family:inherit}
+.presets{display:flex;gap:6px;margin-bottom:4px}
+.presets button{flex:1;padding:7px 4px;font-size:12.5px;font-family:inherit;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:7px;
+  transition:all .12s}
+.presets button:hover{border-color:var(--accent)}
+.presets button.on{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
+/* results */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:12px;margin-bottom:18px}
+.stat{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:12px 13px}
+.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat .v{font-size:25px;font-weight:680;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
+.stat .u{font-size:13px;color:var(--muted);font-weight:400;margin-left:2px}
+.bar{display:flex;height:30px;border-radius:7px;overflow:hidden;background:var(--bg);
+  border:1px solid var(--line)}
+.bar div{transition:width .18s ease}
+.legend{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:11px;font-size:12.5px}
+.legend span{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.legend b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:650}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:650;
+  background:var(--accent-soft);color:var(--accent)}
+.flag{padding:11px 13px;border-radius:9px;margin-bottom:9px;font-size:13.5px;
+  border:1px solid transparent;line-height:1.5}
+.flag:last-child{margin-bottom:0}
+.flag.w{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 32%,transparent)}
+.flag.d{background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 32%,transparent)}
+.flag.i{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 28%,transparent)}
+.flag b{display:block;margin-bottom:2px}
+.flag.w b{color:var(--warn)} .flag.d b{color:var(--danger)} .flag.i b{color:var(--accent)}
+.spark{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:6px}
+.spark div{flex:1;background:var(--accent);border-radius:2px 2px 0 0;min-height:2px;opacity:.75}
+.spark div:last-child{opacity:1}
+.sparkx{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
+footer{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);
+  font-size:12.5px;color:var(--muted)}
+code{font-family:var(--mono);font-size:12.5px;
+  background:color-mix(in srgb,var(--muted) 14%,transparent);padding:1px 5px;border-radius:4px}
+details{margin-top:10px}
+summary{cursor:pointer;font-size:13px;color:var(--muted);padding:4px 0}
+summary:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>WhatsApp CRM · Capacity Calculator</h1>
+  <p class="sub">Toggle what you'll actually run, set your load, see what it needs.</p>
+  <div class="note">
+    <b>These are estimates, not measurements.</b> Coefficients come from typical footprints for
+    these components, not from this system — it isn't built yet. Phase&nbsp;P11 replaces every
+    number here with a real measurement. All coefficients live in the <code>ASSUMPTIONS</code>
+    object at the top of this file's script — correct them rather than trusting them.
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- ─────────── controls ─────────── -->
+  <div>
+    <div class="panel">
+      <h2>Preset</h2>
+      <div class="presets">
+        <button data-preset="lean">lean</button>
+        <button data-preset="standard">standard</button>
+        <button data-preset="scale">scale</button>
+      </div>
+      <p class="hint">Sets the toggles below. Change any one and you're on a custom config.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Load</h2>
+      <div class="field">
+        <label for="agents">Concurrent agents <span class="val" id="agents-v"></span></label>
+        <input type="range" id="agents" min="1" max="100" value="3">
+      </div>
+      <div class="field">
+        <label for="contacts">Contacts <span class="val" id="contacts-v"></span></label>
+        <input type="range" id="contacts" min="0" max="32" value="7">
+        <div class="hint">Rarely the constraint — a million rows is a few hundred MB.</div>
+      </div>
+      <div class="field">
+        <label for="msgs">Messages / day <span class="val" id="msgs-v"></span></label>
+        <input type="range" id="msgs" min="0" max="26" value="5">
+      </div>
+      <div class="field">
+        <label for="numbers">WhatsApp numbers <span class="val" id="numbers-v"></span></label>
+        <input type="range" id="numbers" min="1" max="50" value="2">
+        <div class="hint">The clearest RAM driver — each connected number holds a live socket.</div>
+      </div>
+      <div class="field">
+        <label for="media">Messages with media <span class="val" id="media-v"></span></label>
+        <input type="range" id="media" min="0" max="60" step="5" value="10">
+        <div class="hint">Media dominates disk growth if you retain it.</div>
+      </div>
+      <div class="field">
+        <label for="retain">Message retention <span class="val" id="retain-v"></span></label>
+        <input type="range" id="retain" min="1" max="60" value="24">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>What you'll run</h2>
+
+      <h3>Core — always on</h3>
+      <div class="toggles">
+        <label class="tog"><input type="checkbox" checked disabled>
+          <span class="swatch" style="background:var(--c1)"></span>
+          <span><span class="tl">App + gateway</span><span class="tc">API, workers, Baileys sockets</span></span></label>
+        <label class="tog"><input type="checkbox" checked disabled>
+          <span class="swatch" style="background:var(--c2)"></span>
+          <span><span class="tl">PostgreSQL</span><span class="tc">The only required datastore</span></span></label>
+        <label class="tog"><input type="checkbox" checked disabled>
+          <span class="swatch" style="background:var(--c9)"></span>
+          <span><span class="tl">Caddy</span><span class="tc">Reverse proxy, automatic TLS</span></span></label>
+      </div>
+
+      <h3>Optional</h3>
+      <div class="toggles">
+        <label class="tog"><input type="checkbox" id="t-split">
+          <span class="swatch" style="background:var(--c1)"></span>
+          <span><span class="tl">Split processes</span><span class="tc">Separate api / worker / gateway instead of one</span></span></label>
+        <label class="tog"><input type="checkbox" id="t-redis">
+          <span class="swatch" style="background:var(--c7)"></span>
+          <span><span class="tl">Redis + BullMQ</span><span class="tc">Otherwise pg-boss runs the queue inside Postgres</span></span></label>
+        <label class="tog"><input type="checkbox" id="t-minio">
+          <span class="swatch" style="background:var(--c4)"></span>
+          <span><span class="tl">MinIO</span><span class="tc">Otherwise the filesystem, or any external S3</span></span></label>
+        <label class="tog"><input type="checkbox" id="t-ssr">
+          <span class="swatch" style="background:var(--c6)"></span>
+          <span><span class="tl">Next.js SSR server</span><span class="tc">Otherwise a static export served by Caddy</span></span></label>
+        <label class="tog"><input type="checkbox" id="t-obs">
+          <span class="swatch" style="background:var(--c3)"></span>
+          <span><span class="tl">Telemetry stack</span><span class="tc">Prometheus, Grafana, Loki, Tempo, Alertmanager</span></span></label>
+        <label class="tog"><input type="checkbox" id="t-av">
+          <span class="swatch" style="background:var(--c8)"></span>
+          <span><span class="tl">ClamAV</span><span class="tc">Upload scanning — the signature DB is large</span></span></label>
+      </div>
+
+      <h3>LLM</h3>
+      <select id="llm">
+        <option value="none" selected>None — feature off (default)</option>
+        <option value="hosted">Hosted API — negligible local RAM</option>
+        <option value="small">Self-hosted 2B (Gemma 2 / Phi-3.5-mini)</option>
+        <option value="mid">Self-hosted 8B Q4 (Llama 3.1 / Qwen 2.5)</option>
+        <option value="large">Self-hosted 14B Q4</option>
+      </select>
+      <p class="hint">Self-hosting on a shared CPU VPS runs at single-digit tokens/sec and will
+        starve Postgres. It wants its own box with a GPU.</p>
+
+      <h3>Externalised</h3>
+      <div class="toggles">
+        <label class="tog"><input type="checkbox" id="x-db">
+          <span class="swatch" style="background:var(--line)"></span>
+          <span><span class="tl">Managed Postgres</span><span class="tc">Aiven / RDS / Neon — moves it off your box</span></span></label>
+        <label class="tog"><input type="checkbox" id="x-storage">
+          <span class="swatch" style="background:var(--line)"></span>
+          <span><span class="tl">External object storage</span><span class="tc">S3 / R2 / B2 — media disk leaves your box</span></span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── results ─────────── -->
+  <div>
+    <div class="panel">
+      <h2>What you need</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">RAM</div><div class="v" id="r-ram"></div></div>
+        <div class="stat"><div class="k">vCPU</div><div class="v" id="r-cpu"></div></div>
+        <div class="stat"><div class="k">Disk year 1</div><div class="v" id="r-disk"></div></div>
+        <div class="stat"><div class="k">Preset</div><div class="v" id="r-preset" style="font-size:19px"></div></div>
+      </div>
+      <div class="bar" id="bar"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="panel" id="flags-panel">
+      <h2>Reality checks</h2>
+      <div id="flags"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Server</h2>
+      <table>
+        <thead><tr><th>Provider</th><th>Plan</th><th class="n">Specs</th><th class="n">≈ / month</th></tr></thead>
+        <tbody id="vps"></tbody>
+      </table>
+      <p class="hint">Approximate 2026 list prices, shared/standard tiers. Verify before buying.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Disk growth</h2>
+      <div class="spark" id="spark"></div>
+      <div class="sparkx"><span>now</span><span>6 mo</span><span>12 mo</span><span>18 mo</span><span>24 mo</span></div>
+      <table style="margin-top:14px">
+        <tbody id="disk-break"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Running cost</h2>
+      <table>
+        <thead><tr><th>Line</th><th class="n">Self-hosted</th><th class="n">Managed equivalent</th></tr></thead>
+        <tbody id="cost"></tbody>
+      </table>
+      <details>
+        <summary>WhatsApp message spend (India rates)</summary>
+        <table style="margin-top:8px">
+          <thead><tr><th>Route</th><th class="n">Msgs / mo</th><th class="n">₹ / month</th></tr></thead>
+          <tbody id="meta-cost"></tbody>
+        </table>
+        <p class="hint">Meta charges per template message; replies inside the 24-hour service
+          window are free. Baileys traffic costs nothing but carries ban risk — which is the
+          entire reason both transports exist.</p>
+      </details>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Companion to <code>docs/19-capacity.md</code> · limits from <code>docs/08-antiban.md</code> ·
+  presets from <code>docs/13-deployment.md</code>. Self-contained: no network, no tracking,
+  nothing stored. Edit <code>ASSUMPTIONS</code> in the source to re-baseline.
+</footer>
+</div>
+
+<script>
+/**
+ * Every coefficient the calculator uses, in one place.
+ * These are ESTIMATES from typical component footprints, not measurements of this system.
+ * Phase P11 replaces them with real figures — edit here, nothing else needs to change.
+ */
+const ASSUMPTIONS = {
+  ram: {                       // megabytes
+    caddy:            30,
+    apiBase:         150,      // API process floor
+    perAgent:          4,      // per concurrent agent (connections, realtime)
+    workerBase:      220,      // one worker process
+    workerPer10kMsg:  60,      // extra worker RAM per 10k msgs/day
+    singleProcSaving:120,      // saved by running api+worker as one process
+    gatewayBase:     110,      // Baileys supervisor floor
+    gatewayPerNumber: 45,      // per connected WhatsApp number — the key scaling figure
+    pgBase:          256,
+    pgPer100kContacts:80,
+    pgPer10kMsgDay:  110,
+    pgQueueExtra:    120,      // pg-boss running the queue inside Postgres
+    redis:            70,
+    redisPerQueueDepth:0.003,  // per queued job
+    minio:           280,
+    ssr:             170,
+    clamav:         1150,
+    obs: { prometheus:520, grafana:190, loki:320, tempo:280, alertmanager:40 },
+    llm: { none:0, hosted:0, small:2100, mid:6000, large:10500 }
+  },
+  cpu: {                       // vCPU
+    base:            0.8,
+    perAgent:        0.02,
+    per10kMsgDay:    0.35,
+    perNumber:       0.03,
+    obs:             0.5,
+    clamav:          0.3,
+    llm: { none:0, hosted:0, small:2, mid:4, large:6 }
+  },
+  disk: {                      // megabytes unless noted
+    pgBase:          220,
+    kbPerMessage:    1.5,      // encrypted body + index overhead
+    kbPerContact:    0.6,
+    kbPerMediaAvg:   200,
+    obsPerMonth:     900,      // prometheus + loki + tempo retention
+    clamavDb:        320,
+    llmModelGB: { none:0, hosted:0, small:2, mid:5, large:9 },
+    overheadPct:     0.30      // WAL, backups, indexes, slack
+  },
+  limits: {
+    baileysPerNumberPerDay: 1500,   // docs/08-antiban.md steady-state cap
+    metaTiers: [250, 1000, 10000, 100000]
+  },
+  money: {
+    inrPerEur:       105,
+    metaMarketingInr:0.86,
+    metaUtilityInr:  0.145,
+    managedPgPerGbMonthEur: 2.2,
+    managedPgBaseEur:      18,
+    objectStoragePerGbEur:  0.02,
+    managedRedisEur:        10,
+    hostedTelemetryEur:     25
+  },
+  vps: [   // ram GB → candidate plans. Approximate 2026 list prices.
+    { ram:2,  plans:[["Hetzner","CPX11","2 vCPU · 2 GB · 40 GB",4.4],["Vultr","Regular 2 GB","1 vCPU · 2 GB · 55 GB",10],["DigitalOcean","Basic 2 GB","1 vCPU · 2 GB · 50 GB",12]] },
+    { ram:4,  plans:[["Hetzner","CX22","2 vCPU · 4 GB · 40 GB",3.8],["Vultr","Regular 4 GB","2 vCPU · 4 GB · 80 GB",20],["DigitalOcean","Basic 4 GB","2 vCPU · 4 GB · 80 GB",24]] },
+    { ram:8,  plans:[["Hetzner","CX32","4 vCPU · 8 GB · 80 GB",6.8],["Vultr","Regular 8 GB","4 vCPU · 8 GB · 160 GB",40],["DigitalOcean","Basic 8 GB","4 vCPU · 8 GB · 160 GB",48]] },
+    { ram:16, plans:[["Hetzner","CX42","8 vCPU · 16 GB · 160 GB",16.4],["Vultr","Regular 16 GB","6 vCPU · 16 GB · 320 GB",80],["DigitalOcean","General 16 GB","4 vCPU · 16 GB · 200 GB",84]] },
+    { ram:32, plans:[["Hetzner","CX52","16 vCPU · 32 GB · 320 GB",30.5],["Vultr","Regular 32 GB","8 vCPU · 32 GB · 640 GB",160],["DigitalOcean","General 32 GB","8 vCPU · 32 GB · 400 GB",168]] },
+    { ram:64, plans:[["Hetzner","CCX43","16 vCPU · 64 GB · 360 GB",101],["Vultr","Optimized 64 GB","16 vCPU · 64 GB",320],["DigitalOcean","General 64 GB","16 vCPU · 64 GB",336]] }
+  ]
+};
+
+/** Log-ish slider positions → real values, so one slider spans 100 to 5,000,000 usefully. */
+const SCALES = {
+  contacts: i => [0,100,250,500,1e3,2e3,3e3,5e3,7500,1e4,15e3,2e4,3e4,4e4,5e4,75e3,1e5,15e4,2e5,25e4,3e5,4e5,5e5,6e5,75e4,1e6,125e4,15e5,2e6,25e5,3e6,4e6,5e6][Math.min(i,32)] ?? 5e6,
+  msgs:     i => [0,50,100,200,350,500,750,1e3,1500,2e3,3e3,4e3,5e3,7500,1e4,15e3,2e4,3e4,4e4,5e4,75e3,1e5,15e4,2e5,3e5,4e5,5e5][Math.min(i,26)] ?? 5e5
+};
+
+/** Formats a byte count given in megabytes. */
+const fmtMB = mb => mb >= 1024 ? (mb/1024).toFixed(mb/1024 >= 10 ? 0 : 1) + ' GB' : Math.round(mb) + ' MB';
+/** Thousands separators for counts. */
+const fmtN  = n => n >= 1e6 ? (n/1e6).toFixed(n/1e6>=10?0:1)+'M' : n >= 1e3 ? (n/1e3).toFixed(n/1e3>=10?0:1)+'k' : String(n);
+
+/** Reads every control into one plain object. */
+function readInputs(){
+  const $ = id => document.getElementById(id);
+  return {
+    agents:   +$('agents').value,
+    contacts: SCALES.contacts(+$('contacts').value),
+    msgs:     SCALES.msgs(+$('msgs').value),
+    numbers:  +$('numbers').value,
+    mediaPct: +$('media').value,
+    retain:   +$('retain').value,
+    split:    $('t-split').checked,
+    redis:    $('t-redis').checked,
+    minio:    $('t-minio').checked,
+    ssr:      $('t-ssr').checked,
+    obs:      $('t-obs').checked,
+    av:       $('t-av').checked,
+    llm:      $('llm').value,
+    extDb:    $('x-db').checked,
+    extStore: $('x-storage').checked
+  };
+}
+
+/** Per-component RAM, in the order they should stack in the bar. */
+function computeRam(i){
+  const A = ASSUMPTIONS.ram, parts = [];
+  let app = A.apiBase + i.agents * A.perAgent
+          + A.workerBase + (i.msgs/10000) * A.workerPer10kMsg;
+  if (!i.split) app -= A.singleProcSaving;
+  parts.push(['App (api + workers)', Math.max(180, app), 'var(--c1)']);
+  parts.push(['Gateway (Baileys)', A.gatewayBase + i.numbers * A.gatewayPerNumber, 'var(--c5)']);
+
+  if (!i.extDb){
+    let pg = A.pgBase + (i.contacts/100000)*A.pgPer100kContacts + (i.msgs/10000)*A.pgPer10kMsgDay;
+    if (!i.redis) pg += A.pgQueueExtra;
+    parts.push(['PostgreSQL', Math.min(pg, 6000), 'var(--c2)']);
+  }
+  if (i.redis) parts.push(['Redis', A.redis + Math.min(400, i.msgs * A.redisPerQueueDepth * 10), 'var(--c7)']);
+  if (i.minio && !i.extStore) parts.push(['MinIO', A.minio, 'var(--c4)']);
+  if (i.ssr)   parts.push(['Next.js SSR', A.ssr, 'var(--c6)']);
+  if (i.obs){
+    const o = A.obs;
+    parts.push(['Telemetry stack', o.prometheus+o.grafana+o.loki+o.tempo+o.alertmanager, 'var(--c3)']);
+  }
+  if (i.av)    parts.push(['ClamAV', A.clamav, 'var(--c8)']);
+  const llm = A.llm[i.llm];
+  if (llm)     parts.push(['LLM (' + i.llm + ')', llm, 'var(--c10)']);
+  parts.push(['Caddy', A.caddy, 'var(--c9)']);
+
+  const total = parts.reduce((s,p)=>s+p[1], 0);
+  return { parts, total, headroom: total * 1.25 };   // 25% headroom before recommending a box
+}
+
+/** Total vCPU estimate. */
+function computeCpu(i){
+  const C = ASSUMPTIONS.cpu;
+  let c = C.base + i.agents*C.perAgent + (i.msgs/10000)*C.per10kMsgDay + i.numbers*C.perNumber;
+  if (i.obs) c += C.obs;
+  if (i.av)  c += C.clamav;
+  c += C.llm[i.llm];
+  return c;
+}
+
+/** Disk after `months`, broken down by contributor. */
+function computeDisk(i, months){
+  const D = ASSUMPTIONS.disk;
+  const kept = Math.min(months, i.retain);
+  const msgMB   = i.msgs * kept * 30 * D.kbPerMessage / 1024;
+  const mediaMB = i.extStore ? 0 : i.msgs * (i.mediaPct/100) * kept * 30 * D.kbPerMediaAvg / 1024;
+  const cMB     = i.contacts * D.kbPerContact / 1024;
+  const base    = i.extDb ? 0 : D.pgBase;
+  const obsMB   = i.obs ? D.obsPerMonth : 0;
+  const avMB    = i.av ? D.clamavDb : 0;
+  const llmMB   = D.llmModelGB[i.llm] * 1024;
+  const sub     = base + (i.extDb ? 0 : msgMB + cMB) + mediaMB + obsMB + avMB + llmMB;
+  return {
+    total: sub * (1 + D.overheadPct),
+    rows: [
+      ['Messages', i.extDb ? 0 : msgMB],
+      ['Media', mediaMB],
+      ['Contacts', i.extDb ? 0 : cMB],
+      ['Telemetry retention', obsMB],
+      ['LLM model weights', llmMB],
+      ['Antivirus signatures', avMB],
+      ['Postgres base', base],
+      ['WAL, backups, slack', sub * D.overheadPct]
+    ].filter(r => r[1] > 0.5)
+  };
+}
+
+/** The preset the user last clicked, or null once they've hand-edited a toggle. */
+let selectedPreset = null;
+
+/**
+ * The preset label to display. Honours an explicit click; otherwise infers the closest
+ * shipped preset from the toggle state, falling back to 'custom'.
+ */
+function presetName(i){
+  if (selectedPreset) return selectedPreset;
+  if (!i.split && !i.redis && !i.minio && !i.ssr && !i.obs && !i.av && i.llm==='none') return 'lean';
+  if (i.split && i.redis) return i.agents > 25 || i.msgs > 100000 ? 'scale' : 'standard';
+  return 'custom';
+}
+
+/** Warnings and facts the numbers alone don't convey. */
+function computeFlags(i, ram){
+  const L = ASSUMPTIONS.limits, out = [];
+
+  const capacity = i.numbers * L.baileysPerNumberPerDay;
+  if (i.msgs > capacity){
+    const need = Math.ceil(i.msgs / L.baileysPerNumberPerDay);
+    out.push(['d', 'Not enough numbers for this volume',
+      `The anti-ban engine caps Baileys at ${fmtN(L.baileysPerNumberPerDay)} messages/day per number by design.
+       ${i.numbers} number${i.numbers>1?'s':''} carries ${fmtN(capacity)}/day — you want ${fmtN(i.msgs)}.
+       You need about <b>${need} warmed numbers</b>, or you route the overflow through the paid Meta API.
+       This is bought with numbers and patience, not with a bigger server.`]);
+  } else if (i.msgs > capacity * 0.7 && i.msgs > 0){
+    out.push(['w', 'Close to the safe send ceiling',
+      `Using ${Math.round(i.msgs/capacity*100)}% of what ${i.numbers} number${i.numbers>1?'s':''} can safely carry.
+       Leave headroom — a number entering warmup or getting quarantined cuts capacity immediately.`]);
+  }
+
+  if (i.msgs > 0){
+    const tier = L.metaTiers.find(t => i.msgs <= t);
+    out.push(['i', 'Meta messaging tier',
+      tier ? `On the official API this volume needs the <b>${fmtN(tier)}/day tier</b>.
+              New unverified accounts start at 250/day and climb through 1k, 10k and 100k on
+              quality and unique-recipient volume. A bigger box does not move this.`
+           : `Above 100k/day this needs the <b>unlimited tier</b> — reached only after messaging
+              50,000 unique customers in a rolling 7 days with a good quality rating.`]);
+  }
+
+  if (i.numbers >= 8)
+    out.push(['i', 'Gateway is the RAM driver here',
+      `${i.numbers} connected numbers ≈ ${fmtMB(i.numbers * ASSUMPTIONS.ram.gatewayPerNumber)} of live socket state.
+       Past roughly 25 numbers, shard the gateway by number — sockets are stateful, so a single
+       number must hold exactly one connection and cannot be load-balanced.`]);
+
+  if (i.obs){
+    const o = ASSUMPTIONS.ram.obs;
+    const obsMb = o.prometheus+o.grafana+o.loki+o.tempo+o.alertmanager;
+    if (obsMb > ram.total - obsMb)
+      out.push(['w', 'Telemetry costs more than the application',
+        `The monitoring stack is ${fmtMB(obsMb)} against ${fmtMB(ram.total-obsMb)} for everything else.
+         That is why it ships off by default. On a small box, JSON logs to stdout plus the
+         <code>/metrics</code> endpoint cover most of it for free — add this when you actually need it.`]);
+  }
+
+  if (i.llm === 'mid' || i.llm === 'large'){
+    out.push(['w', 'Self-hosted LLM wants its own box',
+      `${fmtMB(ASSUMPTIONS.ram.llm[i.llm])} of model weights, and on shared CPU it runs at single-digit
+       tokens per second — too slow for a live reply, and it will starve Postgres. Put it on a GPU
+       machine, or use a hosted API and keep the local footprint at zero.`]);
+  }
+
+  if (!i.redis && i.split)
+    out.push(['w', 'pg-boss with split processes',
+      `The Postgres-backed queue is only a good idea single-instance. Once you split processes
+       you are scaling out, and BullMQ on Redis is the right call.`]);
+
+  if (i.contacts > 1e6 && i.msgs < 5000)
+    out.push(['i', 'Contacts aren\'t your constraint',
+      `${fmtN(i.contacts)} contacts is only about ${fmtMB(i.contacts*0.6/1024)} of rows. People size for
+       contact count and then get surprised by numbers and message history — those are what cost.`]);
+
+  if (!out.length)
+    out.push(['i', 'Nothing to flag', 'This configuration is internally consistent and within documented limits.']);
+  return out;
+}
+
+/** Cheapest plan at each provider with enough RAM. */
+function pickVps(ramGb){
+  const tier = ASSUMPTIONS.vps.find(v => v.ram >= ramGb) ?? ASSUMPTIONS.vps[ASSUMPTIONS.vps.length-1];
+  return tier;
+}
+
+/** Recomputes everything and repaints. */
+function render(){
+  const i = readInputs();
+
+  document.getElementById('agents-v').textContent   = i.agents;
+  document.getElementById('contacts-v').textContent = fmtN(i.contacts);
+  document.getElementById('msgs-v').textContent     = fmtN(i.msgs);
+  document.getElementById('numbers-v').textContent  = i.numbers;
+  document.getElementById('media-v').textContent    = i.mediaPct + '%';
+  document.getElementById('retain-v').textContent   =
+    i.retain >= 12 ? (i.retain/12).toFixed(i.retain%12?1:0) + ' yr' : i.retain + ' mo';
+
+  const ram  = computeRam(i);
+  const cpu  = computeCpu(i);
+  const disk = computeDisk(i, 12);
+
+  document.getElementById('r-ram').innerHTML =
+    fmtMB(ram.total).replace(/ (GB|MB)/, '<span class="u">$1</span>');
+  document.getElementById('r-cpu').textContent = cpu < 2 ? cpu.toFixed(1) : Math.ceil(cpu);
+  document.getElementById('r-disk').innerHTML =
+    fmtMB(disk.total).replace(/ (GB|MB)/, '<span class="u">$1</span>');
+  const pn = presetName(i);
+  document.getElementById('r-preset').innerHTML =
+    `<span class="tag" style="font-size:13px;padding:3px 11px">${pn}</span>`;
+
+  // stacked bar + legend
+  const bar = document.getElementById('bar'), leg = document.getElementById('legend');
+  bar.innerHTML = ''; leg.innerHTML = '';
+  ram.parts.sort((a,b)=>b[1]-a[1]).forEach(([name, mb, colour]) => {
+    const d = document.createElement('div');
+    d.style.width = (mb/ram.total*100) + '%';
+    d.style.background = colour;
+    d.title = `${name}: ${fmtMB(mb)}`;
+    bar.appendChild(d);
+    const s = document.createElement('span');
+    s.innerHTML = `<i style="background:${colour}"></i>${name} <b>${fmtMB(mb)}</b>`;
+    leg.appendChild(s);
+  });
+
+  // flags
+  document.getElementById('flags').innerHTML = computeFlags(i, ram)
+    .map(([k, title, body]) => `<div class="flag ${k}"><b>${title}</b>${body}</div>`).join('');
+
+  // vps
+  const needGb = Math.max(2, Math.ceil(ram.headroom/1024));
+  const tier   = pickVps(needGb);
+  document.getElementById('vps').innerHTML = tier.plans.map(([prov, plan, spec, eur]) =>
+    `<tr><td>${prov}</td><td>${plan}</td><td class="n">${spec}</td><td class="n">€${eur.toFixed(2)}</td></tr>`
+  ).join('') + `<tr><td colspan="4" class="hint" style="padding-top:9px">
+      Sized to <b>${tier.ram} GB</b> — your ${fmtMB(ram.total)} plus 25% headroom.
+      Disk beyond the plan's allowance is a cheap add-on volume.</td></tr>`;
+
+  // disk projection
+  const spark = document.getElementById('spark');
+  spark.innerHTML = '';
+  const months = [0,3,6,9,12,15,18,21,24];
+  const series = months.map(m => computeDisk(i, m).total);
+  const peak   = Math.max(...series, 1);
+  series.forEach(v => {
+    const d = document.createElement('div');
+    d.style.height = Math.max(2, v/peak*100) + '%';
+    d.title = fmtMB(v);
+    spark.appendChild(d);
+  });
+  document.getElementById('disk-break').innerHTML = disk.rows
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,v]) => `<tr><td>${k}</td><td class="n">${fmtMB(v)}</td></tr>`).join('')
+    + `<tr><td><b>Total, year 1</b></td><td class="n"><b>${fmtMB(disk.total)}</b></td></tr>`
+    + `<tr><td>At steady state (retention reached)</td><td class="n">${fmtMB(computeDisk(i, 240).total)}</td></tr>`;
+
+  // running cost
+  const M = ASSUMPTIONS.money;
+  const vpsEur   = tier.plans[0][3];
+  const diskGb   = disk.total/1024;
+  const selfRows = [
+    ['Server', vpsEur, tier.plans[2] ? tier.plans[2][3] : vpsEur*3],
+    ['Database', i.extDb ? 0 : 0, M.managedPgBaseEur + diskGb*M.managedPgPerGbMonthEur],
+    ['Object storage', 0, diskGb*M.objectStoragePerGbEur],
+    ['Queue / cache', 0, i.redis ? M.managedRedisEur : 0],
+    ['Telemetry', 0, i.obs ? M.hostedTelemetryEur : 0],
+    ['Software licence', 0, 0]
+  ];
+  const selfTot = selfRows.reduce((s,r)=>s+r[1],0);
+  const mgdTot  = selfRows.reduce((s,r)=>s+r[2],0);
+  document.getElementById('cost').innerHTML = selfRows.map(([k,a,b]) =>
+    `<tr><td>${k}</td><td class="n">${a ? '€'+a.toFixed(2) : '—'}</td><td class="n">${b ? '€'+b.toFixed(2) : '—'}</td></tr>`
+  ).join('') + `<tr><td><b>Total / month</b></td><td class="n"><b>€${selfTot.toFixed(2)}</b></td>
+      <td class="n"><b>€${mgdTot.toFixed(2)}</b></td></tr>`;
+
+  // meta spend
+  const perMonth  = i.msgs * 30;
+  const freeCap   = Math.min(perMonth, i.numbers * ASSUMPTIONS.limits.baileysPerNumberPerDay * 30);
+  const paid      = Math.max(0, perMonth - freeCap);
+  document.getElementById('meta-cost').innerHTML = `
+    <tr><td>Baileys (free, unofficial)</td><td class="n">${fmtN(Math.round(freeCap))}</td><td class="n">₹0</td></tr>
+    <tr><td>Meta · marketing template</td><td class="n">${fmtN(Math.round(paid))}</td>
+        <td class="n">₹${Math.round(paid*M.metaMarketingInr).toLocaleString('en-IN')}</td></tr>
+    <tr><td>Meta · utility / auth template</td><td class="n">${fmtN(Math.round(paid))}</td>
+        <td class="n">₹${Math.round(paid*M.metaUtilityInr).toLocaleString('en-IN')}</td></tr>
+    <tr><td>Everything on Meta marketing</td><td class="n">${fmtN(Math.round(perMonth))}</td>
+        <td class="n"><b>₹${Math.round(perMonth*M.metaMarketingInr).toLocaleString('en-IN')}</b></td></tr>`;
+}
+
+/** Applies a shipped preset to the toggles. */
+function applyPreset(name){
+  const set = (id, v) => document.getElementById(id).checked = v;
+  if (name === 'lean'){
+    set('t-split',false); set('t-redis',false); set('t-minio',false);
+    set('t-ssr',false); set('t-obs',false); set('t-av',false);
+    document.getElementById('llm').value = 'none';
+  } else if (name === 'standard'){
+    set('t-split',true); set('t-redis',true); set('t-minio',true);
+    set('t-ssr',true); set('t-obs',true); set('t-av',false);
+    document.getElementById('llm').value = 'none';
+  } else {
+    set('t-split',true); set('t-redis',true); set('t-minio',true);
+    set('t-ssr',true); set('t-obs',true); set('t-av',true);
+    document.getElementById('llm').value = 'hosted';
+  }
+  selectedPreset = name;
+  document.querySelectorAll('.presets button')
+    .forEach(b => b.classList.toggle('on', b.dataset.preset === name));
+  render();
+}
+
+document.querySelectorAll('.presets button')
+  .forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+document.querySelectorAll('input, select').forEach(el => {
+  if (el.disabled) return;
+  el.addEventListener('input', () => {
+    if (el.type === 'checkbox' || el.tagName === 'SELECT'){
+      selectedPreset = null;
+      document.querySelectorAll('.presets button').forEach(b => b.classList.remove('on'));
+    }
+    render();
+  });
+});
+
+applyPreset('lean');
+</script>
+</body>
+</html>

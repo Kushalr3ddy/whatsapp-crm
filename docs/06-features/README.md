@@ -1,0 +1,20 @@
+# 06 · Features
+
+One file per module. Each carries: purpose, user stories, acceptance criteria (`AC-*`),
+API surface, test cases (`TC-*`), and open questions. Requirement ids (`FR-*`) refer to
+`../02-requirements.md`; defect ids (`M*`) to `../00-prior-art.md`.
+
+| | Module | V1 |
+|---|---|---|
+| [F1](F1-channels.md) | Channels & sessions | ✅ |
+| [F2](F2-contacts.md) | Contacts & identity | ✅ |
+| [F3](F3-inbox.md) | Shared inbox | ✅ |
+| [F4](F4-templates.md) | Templates | ✅ |
+| [F5](F5-campaigns.md) | Campaigns | ✅ |
+| [F6](F6-antiban.md) | Anti-ban engine → `../08-antiban.md` | ✅ |
+| [F7](F7-ingestion.md) | Ingestion → `../07-ingestion.md` | ✅ |
+| [F8](F8-api.md) | Public API & webhooks → `../15-api.md` | ✅ |
+| [F9](F9-automation.md) | Automation | partial |
+| [F10](F10-analytics.md) | Analytics | partial |
+| [F11](F11-admin.md) | Admin & settings | ✅ |
+| [F12](F12-ai-agent.md) | AI agent | seam only |
