@@ -616,8 +616,8 @@ Beyond the obvious foreign keys:
 | Index | Why |
 |---|---|
 | `pg_trgm` on `contact.display_name` | Fuzzy name search. |
-| GIN on `contact.custom_fields` | Filter by user-defined fields without a column per field. |
-| GIN on `contact.external_ref` | The lookup the job portal integration depends on. |
+| GIN on `contact.custom_fields` | Filter by user-defined fields without a column per field. GIN is right **here specifically** because users invent their own fields — we cannot know in advance which key will be filtered on. |
+| **B-tree on `(external_ref->>'id')`**, not GIN | The lookup the job portal integration depends on. Measured on 200k rows: seq scan 116 ms · GIN `jsonb_ops` 2.0 ms · GIN `jsonb_path_ops` 0.48 ms · **B-tree expression 0.09 ms**, in an index half the size (6 MB vs 11 MB). A B-tree indexes exactly the one expression we always query; GIN indexes every key in the document, and that generality is pure cost when the access pattern is fixed. Use `jsonb_path_ops` over the default `jsonb_ops` for any GIN index that only serves `@>` — it is smaller and faster. |
 | `(conversation_id, created_at DESC)` | Thread paging — the inbox's hottest query. |
 | Partial: `conversation (status, assignee_user_id) WHERE status IN ('open','pending')` | The inbox only ever looks at live threads; indexing closed ones wastes space. |
 | Partial: `campaign_recipient (campaign_id) WHERE status = 'pending'` | The sender only asks "who is left?". |
