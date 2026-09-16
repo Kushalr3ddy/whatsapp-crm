@@ -2,21 +2,28 @@
 
 PostgreSQL 16. Drizzle ORM with versioned SQL migrations (drizzle-kit). No DDL at runtime (M5).
 
+Every table below carries a column-by-column explanation. Where a column exists to prevent a
+specific past failure, the defect id (`M*`) points at [`00-prior-art.md`](00-prior-art.md).
+
+**Status legend** — ✅ built and migrated · 🔜 next phase · ⬜ planned, see
+[`17-roadmap.md`](17-roadmap.md) for which phase.
+
 ## Conventions
 
-- `snake_case` everywhere; plural never used for table names.
-- **UUID v7** primary keys — time-sortable, so they cluster well and double as a creation order.
-- `created_at` / `updated_at` `timestamptz`, **UTC** (M25).
+- `snake_case` everywhere; table names are singular.
+- **UUID** primary keys. (UUIDv7 was the intent for time-sortability, but Postgres 16 has no
+  native `uuidv7()` — that arrives in PG18 — so `gen_random_uuid()` is used for now.)
+- `created_at` / `updated_at` are `timestamptz`, always **UTC** (M25).
 - **`org_id uuid NOT NULL` on every tenant table**, with RLS enabled:
   `USING (org_id = current_setting('app.org_id')::uuid)`. The app sets it per transaction via
   `SET LOCAL`. Single-tenant just means one `org` row — the isolation path is identical and
   therefore actually exercised.
 - Soft delete (`deleted_at`) only where recovery genuinely matters: contacts, conversations,
   templates. Everything else hard-deletes.
-- `jsonb` for user-defined data, with GIN indexes. Never for data the system itself queries on.
-- Money as integer **micros** plus a currency code.
-- Encrypted columns are `_enc bytea`, always paired with `_hmac text` (keyed blind index) so
-  lookup and dedup never require decrypting a table (M25's performance lesson).
+- `jsonb` for user-defined data, GIN-indexed. Never for data the system itself filters on.
+- Money as integer **micros** plus a currency code. Never floats.
+- Encrypted columns are `_enc bytea`, always paired with `_hmac text` (a keyed blind index) so
+  lookup and dedup never require decrypting a whole table.
 
 ## Map
 
@@ -57,194 +64,574 @@ org ─┬─ user ── org_membership            identity & tenancy
         org_setting, feature_flag
 ```
 
-## Identity & tenancy
+---
 
-| Table | Key columns | Notes |
+# Identity & tenancy
+
+## `org` ✅
+
+A tenant. Single-tenant deployments have exactly one row.
+
+| Column | Type | What it is |
 |---|---|---|
-| `org` | `id`, `name`, `slug`, `created_at` | One row in single-tenant mode |
-| `user` | `id`, `email` (citext, unique), `password_hash?`, `display_name`, `avatar_url`, `status`, `mfa_secret_enc?`, `last_login_at` | `password_hash` null when an external IdP authenticates (`AUTH_DRIVER=oidc`) |
-| `org_membership` | `org_id`, `user_id`, `role`, `scopes[]`, `invited_by`, `joined_at` | Roles attach to memberships, not users — so one user can belong to several orgs later |
-| `api_key` | `id`, `org_id`, `name`, `key_hash`, `prefix`, `scopes[]`, `rate_limit_per_min`, `last_used_at`, `expires_at`, `revoked_at` | Only the hash is stored; `prefix` is for display |
-| `audit_log` | `id`, `org_id`, `actor_type`(user/system/api/agent), `actor_id`, `action`, `target_type`, `target_id`, `before jsonb`, `after jsonb`, `ip`, `request_id`, `at` | Append-only. Partitioned monthly once volume warrants. |
+| `id` | uuid PK | The tenant's identity. Referenced by `org_id` on every other table and by the RLS policies. |
+| `name` | text | Human-readable organisation name. Shown in the UI; safe to change at any time. |
+| `slug` | text UNIQUE | URL-safe short name, for subdomains and API paths. Unique because it is addressable. |
+| `created_at` | timestamptz | When the tenant was provisioned. |
+| `updated_at` | timestamptz | Last modification, for cache invalidation and debugging. |
 
-There is **one reserved `system` actor row** so every automated action has a non-null actor
-(NFR-17). Nothing may write `actor_id = NULL`.
+## `app_user` ✅
 
-## Contacts
+Someone who signs in. Deliberately **not** tenant-scoped — one person may belong to several
+orgs, and authentication has to find them before any org context exists.
 
-### `contact`
-`id`, `org_id`, `display_name`, `primary_identity_id?`, `owner_user_id?`, `lifecycle_stage?`,
-`custom_fields jsonb`, `source`, `external_ref jsonb` (`{system, id}`), `do_not_contact bool`,
-`dnc_reason?`, `dnc_at?`, `last_inbound_at?`, `last_outbound_at?`, `engagement_score?`,
-`created_at`, `updated_at`, `deleted_at?`.
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK | The person's identity across every org they belong to. |
+| `email` | text UNIQUE | Login identifier and contact address. Unique globally, not per org. |
+| `password_hash` | text NULL | Argon2id hash. **Null when an external identity provider authenticates them** — with `AUTH_DRIVER=oidc` no password ever exists here. |
+| `display_name` | text | What other agents see in the inbox: assignment, @mentions, audit entries. |
+| `status` | text | `active` / `disabled`. Disabling keeps history intact instead of deleting the row and orphaning every audit reference. |
+| `last_login_at` | timestamptz NULL | Supports "dormant account" alerts and answers "was this account in use when it was abused?". |
+| `created_at` / `updated_at` | timestamptz | Standard audit timestamps. |
 
-- `external_ref` is what lets a host app stay the system of record. GIN-indexed.
-- `custom_fields` holds everything domain-specific. **There is no `candidate` table and never
-  will be** — that is the difference between this and `00-prior-art.md`'s system.
+## `org_membership` ✅
 
-### `contact_identity` — the fix for M7/M8
-`id`, `org_id`, `contact_id`, `kind` (`phone` | `email` | `wa_jid` | `wa_lid` | `telegram` |
-`external`), `value_enc bytea`, `value_hmac text`, `value_normalized text`, `is_primary bool`,
-`verified_at?`.
+Binds a user to an org **with a role**. The role lives here rather than on the user so the
+same person can be an admin in one org and an agent in another, with no schema change.
 
-- **Unique on `(org_id, kind, value_normalized)`** — the database, not application code,
-  guarantees one identity maps to one contact.
-- `value_normalized` is E.164 for phones (generated at write via `libphonenumber-js`),
-  lowercased for email. Empty values are rejected by a `CHECK`, so the empty-string match
-  bug (M7) is structurally impossible.
-- Inbound resolution is always `identity → contact`, never a scan of `contact`.
-- A contact having *many* identities is what makes `@lid` privacy ids (M26) a non-event: the
-  `wa_lid` is just another identity row pointing at the same person.
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK | Row identity. |
+| `org_id` | uuid FK → org | Which tenant this membership grants access to. |
+| `user_id` | uuid FK → app_user | Which person. Cascade-deletes with the user. |
+| `role` | text | `admin` / `agent` today. Drives the central authorisation layer; never checked ad-hoc per route. |
+| `joined_at` | timestamptz | When access was granted. Part of the access-review trail. |
+| — | UNIQUE (org_id, user_id) | One membership per person per org, enforced by the database rather than by a check-then-insert race. |
 
-### Supporting
-| Table | Purpose |
+## `api_key` ⬜
+
+Machine access. Sessions are for the first-party UI only; integrations always use a key.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK | Row identity. |
+| `org_id` | uuid FK | The tenant this key acts as. A key can never reach another org's data. |
+| `name` | text | Human label — "job portal", "zapier". So a key can be revoked without guessing what it was for. |
+| `key_hash` | text | Hash of the secret. **The secret itself is shown once at creation and never stored**, so a database leak does not hand over working credentials. |
+| `prefix` | text | First few characters (`crm_live_a1b2…`), stored in clear purely so the UI can show which key is which. |
+| `scopes` | text[] | `contacts:read`, `messages:send`, … Least privilege: a key that only reads contacts cannot send a message. |
+| `rate_limit_per_min` | int | Per-key throttle, so one runaway integration cannot starve the others. |
+| `last_used_at` | timestamptz NULL | Identifies dormant keys worth revoking, and helps date a compromise. |
+| `expires_at` | timestamptz NULL | Optional automatic expiry for temporary integrations. |
+| `revoked_at` | timestamptz NULL | Soft revocation — the row stays so audit entries referencing it still resolve. |
+
+## `audit_log` ⬜
+
+Append-only record of every state change. **No row may have a null actor** — that is what
+makes "who did this?" always answerable (NFR-17).
+
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK | Row identity. |
+| `org_id` | uuid FK | Tenant scope. |
+| `actor_type` | text | `user` / `system` / `api` / `agent`. Distinguishes a person from an automation without two nullable columns. |
+| `actor_id` | uuid | Who or what did it. A reserved `system` actor row exists precisely so automated changes still have a non-null actor. |
+| `action` | text | `contact.merged`, `campaign.launched`, `sender.quarantined`. Verb-shaped and stable enough to filter on. |
+| `target_type` / `target_id` | text / uuid | What was acted on. Not a foreign key, because the target may later be deleted and the audit entry must survive. |
+| `before` / `after` | jsonb NULL | State either side of the change. Answers "what actually changed?" rather than just "something changed". |
+| `ip` | inet NULL | Source address where one applies. Absent for system actions. |
+| `request_id` | text | Correlates the audit row with the log lines from the same request. |
+| `at` | timestamptz | When. BRIN-indexed once the table is partitioned by month. |
+
+---
+
+# Contacts
+
+## `contact` ✅
+
+A person the org talks to. **Deliberately carries no domain fields** — no candidate, no
+customer, no patient. That absence is what stops this becoming an ATS.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK | The person's identity within this org. |
+| `org_id` | uuid FK | Tenant scope. RLS-enforced. |
+| `display_name` | text NULL | What to call them. Nullable because an inbound message can arrive from a number with no name attached — a contact exists before you know who it is. |
+| `owner_user_id` | uuid FK NULL | The agent who "owns" this relationship, if any. `SET NULL` on user deletion so contacts survive staff leaving. |
+| `custom_fields` | jsonb | **Everything business-specific.** Job title, order number, policy id — whatever this deployment cares about. Shaped by `contact_field_def`, GIN-indexed for filtering. This column is why the schema stays generic. |
+| `external_ref` | jsonb NULL | `{system, id}` pointing at whoever owns this person as a domain object — e.g. the job portal's candidate id. GIN-indexed, and the first identity-resolution rule during import. |
+| `source` | text NULL | Where they came from: `import`, `inbound_message`, `api`, `webhook`. Useful for both attribution and debugging a bad import. |
+| `do_not_contact` | bool | **Gate zero on every send path.** Overridable by nobody, including an admin — it protects a phone number's reputation as much as a legal position. |
+| `dnc_reason` | text NULL | Why: `replied_stop`, `manual`, `complaint`. Distinguishes a customer's choice from an operator's decision. |
+| `dnc_at` | timestamptz NULL | When they opted out. Consent withdrawal has to be provable, not just applied. |
+| `last_inbound_at` | timestamptz NULL | Last message **from** them. Feeds the reply-ratio calculation, which is the strongest ban-risk signal (`08-antiban.md`). |
+| `last_outbound_at` | timestamptz NULL | Last message **to** them. Drives the cooldown gate — "have we contacted this person too recently?". |
+| `created_at` / `updated_at` | timestamptz | Standard audit timestamps. |
+| `deleted_at` | timestamptz NULL | Soft delete. Conversations and messages reference contacts, so a hard delete would orphan history. |
+
+## `contact_identity` ✅
+
+**The most important table in the schema.** One way of reaching a contact. A contact has many;
+inbound resolution always goes identity → contact, never a scan of `contact`.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK | Row identity. |
+| `org_id` | uuid FK | Tenant scope. |
+| `contact_id` | uuid FK | Which person this identity belongs to. Cascade-deletes with them. |
+| `kind` | text | `phone` / `email` / `wa_jid` / `wa_lid` / `telegram` / `external`. CHECK-constrained, because a typo'd kind would create a silent second namespace nothing ever matches against. |
+| `value_normalized` | text | **The canonical form** — E.164 for phones, lowercased for email. This is what matching compares. A `CHECK (btrim(...) <> '')` makes a blank value unstorable, which is the M7 fix: the old dedup passed `''` for missing values, so every blank-email contact matched every other one and silently merged unrelated people. |
+| `is_primary` | bool | Which identity to prefer when several exist for one kind. |
+| `verified_at` | timestamptz NULL | When ownership was confirmed (an inbound message, a clicked link). Unverified identities are weaker evidence for merging. |
+| `created_at` | timestamptz | When first seen. |
+| — | UNIQUE (org_id, kind, value_normalized) | **The database guarantees one identity maps to one person.** Also why `@lid` WhatsApp privacy ids are a non-event: a `wa_lid` is just another row pointing at the same contact, rather than the crash-loop it caused before (M26). |
+
+## `contact_field_def` ⬜
+
+The user-defined field schema. Turns "add a column" into "add a row", and generates the UI.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK / `org_id` | Row identity and tenant scope. |
+| `key` | text | The key inside `contact.custom_fields`. Stable; renaming the label never breaks stored data. |
+| `label` | text | What the user sees on the form. |
+| `type` | text | `text` / `number` / `date` / `select` / `multiselect` / `bool`. Drives both the input widget and the import validator. |
+| `options` | jsonb NULL | Allowed values for select types. |
+| `required` | bool | Whether a contact can be saved without it. |
+| **`merge_policy`** | text | `overwrite` / `fill_if_empty` / `never` / `append`. **The M9 fix.** The old importer overwrote every mapped field unconditionally, so re-importing a sparser file silently destroyed richer data. Default is `fill_if_empty`. |
+
+## `tag` / `contact_tag` ⬜
+
+| Table | Columns | What it is |
+|---|---|---|
+| `tag` | `id`, `org_id`, `name`, `colour` | A label. Deliberately flat — no hierarchy, no nesting. |
+| `contact_tag` | `contact_id`, `tag_id` | The join. Two columns, composite PK, no surrogate id. |
+
+## `contact_note` ⬜
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `contact_id` | uuid | Row identity, tenant, subject. |
+| `body` | text | Freeform note. **Never sent to the contact** — a test asserts notes cannot reach a provider. |
+| `author_user_id` | uuid FK | Who wrote it. |
+| `created_at` | timestamptz | When. |
+
+## `consent_record` ⬜
+
+Proof of permission, per purpose. India's DPDP requires affirmative, purpose-separated,
+timestamped consent, and withdrawal to be as easy as granting.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `contact_id` | uuid | Row identity, tenant, subject. |
+| `purpose` | text | `marketing` / `transactional` / `otp`. **Separate purposes, never one blanket flag** — agreeing to order updates is not agreeing to promotions. |
+| `status` | text | `granted` / `revoked`. |
+| `source` | text | Where consent came from: `web_form`, `import`, `inbound_message`, `verbal`. |
+| `evidence` | jsonb | The proof itself — form snapshot, message id, the exact wording shown. What makes an audit survivable. |
+| `ip` | inet NULL | Source address at the moment of granting. |
+| `granted_at` / `revoked_at` | timestamptz | The timeline. Rows are immutable; a withdrawal writes a new row rather than editing the old one. |
+
+## `segment` ⬜
+
+A saved audience. What a campaign targets.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `name` | — | Row identity, tenant, label. |
+| `kind` | text | `static` (a fixed list) or `dynamic` (a filter re-evaluated on read). |
+| `definition` | jsonb | The filter itself for dynamic segments; the contact id list for static ones. |
+| `cached_count` | int | Last known size, so the UI can show a number without re-running the query. |
+| `cached_at` | timestamptz | When that count was computed, so the UI can say how stale it is. |
+
+---
+
+# Pipelines — generic by construction
+
+This group replaces the old system's hardcoded funnel, where the stage list was a `CHECK`
+constraint duplicated across five files (M23). Here stages are **rows a user can edit**, which
+is what lets one product serve recruitment, sales and support without a fork.
+
+## `pipeline` ⬜
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `name` | — | Row identity, tenant, label. |
+| `is_default` | bool | Which pipeline a new contact enters when none is specified. |
+
+## `pipeline_stage` ⬜
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `pipeline_id` | uuid | Row identity and parent. |
+| `key` | text | Stable machine name, so automation rules keep working when the label is reworded. |
+| `label` | text | What the user sees. |
+| `sequence` | int | Order. **Incremented by 10** (10, 20, 30…) so a stage can be inserted between two others without renumbering every row. |
+| `colour` | text | UI only. |
+| `is_terminal` | bool | Whether reaching this stage ends the journey (`won`, `lost`). Terminal stages stop sequences and exclude the contact from re-entry. |
+
+## `contact_pipeline_entry` ⬜
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `contact_id`, `pipeline_id` | uuid | Row identity, tenant, who, which funnel. |
+| `current_stage_id` | uuid FK | **An explicitly documented cache.** `stage_event` is the truth. Kept because "show me everyone at stage X" should not require aggregating an event log on every page load. |
+| `entered_at` | timestamptz | When they joined this pipeline. |
+
+## `stage_event` ⬜
+
+Append-only. **This is the source of truth for where someone is**, and how they got there.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `entry_id` | uuid | Row identity and parent. |
+| `from_stage_id` | uuid NULL | Previous stage. Null for the first entry. |
+| `to_stage_id` | uuid FK | New stage. |
+| `actor_id` | uuid | Who moved them — a person, or the reserved system actor. Never null. |
+| `reason` | text NULL | Free text, for moves that need explaining. |
+| `at` | timestamptz | When. The whole history is reconstructable from these rows. |
+
+---
+
+# Channels
+
+## `sender_identity` ⬜
+
+**The unit the anti-ban engine protects.** Note it is not called "session": a sender identity
+is the number and its accumulated reputation; a session is one connection to it. The old
+system conflated the two, which is why its caps counted the wrong thing (M11) and why
+re-linking a number silently broke sending.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id` | uuid | Row identity, tenant. |
+| `provider` | text | `baileys` / `meta` / `fake`. Which adapter drives this sender. |
+| `label` | text | Human name — "Priya's number", "main WABA". |
+| `phone_e164` | text | The number itself, canonical form. |
+| `owner_user_id` | uuid FK NULL | Which agent it belongs to. Admins can reassign; the change is audited. |
+| `status` | text | `linking` / `active` / `degraded` / `quarantined` / `retired`. `quarantined` is the engine's emergency brake; `retired` is a dead number kept for history. |
+| `capabilities_snapshot` | jsonb | What this provider could do when last checked — template requirements, window length, media support. The dispatcher reads it to refuse illegal sends *before* calling the provider. |
+| `health` | jsonb | Rolling counters: delivery ratio, reply ratio, recent failures. |
+| `warmup_started_at` | timestamptz NULL | When the ramp began. Drives the day-N ceiling (20 → 36 → 65 → …). Reset after 72 hours of inactivity. |
+| `last_inbound_at` | timestamptz NULL | A number that has never received a message is capped harder — outbound-only is exactly what the graph heuristics punish. |
+| `risk_score` | int | 0–100, computed from `send_risk_event`. ≥60 auto-pauses campaigns; ≥85 quarantines. |
+| `daily_cap_override` | int NULL | Lets an admin lower the cap. **Cannot raise it above the safety ceiling** — no code path exists. |
+| `meta_waba_id` / `meta_phone_number_id` | text NULL | Meta Cloud API identifiers, for official senders only. |
+| `meta_quality_rating` | text NULL | `high` / `medium` / `low` from Meta. Marketing sends **hard-stop at low**. |
+| `meta_messaging_tier` | text NULL | 250 / 1k / 10k / 100k / unlimited. The dispatcher will not exceed the known tier. |
+
+## `channel_session` ⬜
+
+One connection to a sender. Runtime state, not reputation.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `sender_identity_id` | uuid | Row identity and parent. |
+| `connection_state` | text | `connecting` / `open` / `closed`. |
+| `last_connected_at` | timestamptz NULL | For the "down more than 5 minutes" alert. |
+| `disconnect_reason` / `disconnect_code` | text / int NULL | Typed classification — 401 logged out, 429 rate limited, 463 timelock, 515 restart. Each carries its own backoff and risk weight; the old system treated all failures alike. |
+| `reconnect_attempts` | int | Drives exponential backoff. A reconnect storm is worse than a slow recovery. |
+| `qr_expires_at` | timestamptz NULL | When the current linking QR goes stale. |
+
+## `channel_auth_state` ⬜
+
+Baileys' credentials, one row per key. **The reason sessions survive a restart.**
+
+| Column | Type | What it is |
+|---|---|---|
+| `sender_identity_id` + `key` | composite PK | Baileys' own key namespace, stored as rows rather than files. |
+| `value_enc` | bytea | The encrypted credential material. |
+| `updated_at` | timestamptz | Last write. |
+
+Why a table and not the filesystem: Baileys' own `useMultiFileAuthState` carries an explicit
+*"DO NOT USE IN PROD"* warning, disk state is lost on any ephemeral filesystem (M30), and
+sessions had to be reconnected by hand after every restart (M29). Keeping it here means a
+**database restore brings the WhatsApp numbers back with it**.
+
+---
+
+# Conversations
+
+## `conversation` ⬜
+
+A thread with one contact on one sender. **Conversation is always the scope** — message
+history is fetched per conversation, never per contact. The old system's `listMessages()`
+returned every message a contact had ever sent, mixing contexts when the same person was
+worked for two campaigns at once (M31).
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `contact_id` | uuid | Row identity, tenant, who. |
+| `sender_identity_id` | uuid FK | Which of our numbers this thread runs on. The same contact on two numbers is two threads. |
+| `channel` | text | `whatsapp` / `sms` / `email`. Denormalised from the sender for cheap filtering. |
+| `status` | text | `open` / `pending` / `snoozed` / `closed`. `pending` means waiting on the contact; `snoozed` means waiting on time. |
+| `assignee_user_id` | uuid FK NULL | Which agent owns it. Null means unassigned — the shared queue. |
+| `last_inbound_at` | timestamptz NULL | Last message from them. |
+| `last_outbound_at` | timestamptz NULL | Last message to them. |
+| **`window_expires_at`** | timestamptz NULL | **Meta's 24-hour service window.** Recomputed on every inbound. After it passes only approved templates are legal, so the dispatcher reads it to decide template-vs-freeform, and the composer switches mode. Null for Baileys, which has no window. |
+| `unread_count` | int | Badge count. Denormalised because counting unread messages on every inbox render does not scale. |
+| `priority` | int | Manual bump for threads that need attention. |
+| `sla_due_at` | timestamptz NULL | When a response becomes late. Drives the breach report. |
+| `snoozed_until` | timestamptz NULL | When a snoozed thread reopens. |
+| `closed_at` / `closed_by` | timestamptz / uuid NULL | Resolution trail. |
+
+## `message` ⬜
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `conversation_id` | uuid | Row identity, tenant, thread. |
+| `direction` | text | `inbound` / `outbound`. |
+| **`provider_message_id`** | text | Meta's `wamid` or Baileys' key id. **`UNIQUE (org_id, provider_message_id)` is the idempotency key** — Meta retries webhooks for up to 7 days, and this makes a duplicate delivery a no-op at the database level, which is the only place that guarantee survives a race. |
+| `content_type` | text | `text` / `image` / `document` / `audio` / `template` / `interactive`. |
+| `body_enc` | bytea | The message text, encrypted at rest. |
+| `body_hmac` | text | Keyed hash of the body. Lets dedup and search work **without decrypting** — the old system decrypted every recent row just to compare bodies, which cannot use an index (M25). |
+| `media_id` | uuid FK NULL | Attachment, if any. |
+| `template_id` | uuid FK NULL | Which template version produced this, so reports stay truthful after a template is edited. |
+| `template_variables` | jsonb NULL | The values substituted in. Reproduces exactly what was sent. |
+| `status` | text | `queued` / `sent` / `delivered` / `read` / `failed`. |
+| `error_code` / `error_detail` | text NULL | Why a send failed, typed so the retry policy can branch on it — transient, permanent, or poison. |
+| `cost_micros` / `currency` | int / text | What this message cost. Meta charges per template message; Baileys costs nothing. Sums into the cost report. |
+| `campaign_id` | uuid FK NULL | Which campaign sent it, if any. |
+| `sequence_step_id` | uuid FK NULL | Which drip step sent it, if any. |
+| `sent_by` | text | `user` / `system` / `agent` / `api`. Distinguishes a human reply from an automation from the AI agent — present from day one so agent messages are separable in every report later. |
+| `sent_by_id` | uuid NULL | Which specific user or key. |
+| `created_at` / `sent_at` / `delivered_at` / `read_at` | timestamptz | The delivery timeline. The gaps between them are the funnel. |
+
+## `conversation_participant` · `internal_note` · `canned_reply` · `media_asset` ⬜
+
+| Table | Key columns | What it is |
+|---|---|---|
+| `conversation_participant` | `conversation_id`, `user_id`, `role`, `last_read_at` | Who is watching a thread. Powers collision detection — knowing another agent is already in here. |
+| `internal_note` | `conversation_id`, `author_user_id`, `body`, `mentions uuid[]` | Team-only commentary inside a thread. **Never transmitted.** `mentions` drives notifications. |
+| `canned_reply` | `org_id`, `shortcut`, `body`, `locale` | Saved responses with variable substitution. `shortcut` is what the agent types to insert it. |
+| `media_asset` | `org_id`, `storage_key`, `content_type`, `size_bytes`, `sha256`, `scanned_at` | An attachment. `storage_key` is a provider-neutral path so migrating buckets is a copy, not a rewrite. `sha256` deduplicates identical files; `scanned_at` records an antivirus pass where one is configured. |
+
+---
+
+# Templates & campaigns
+
+## `message_template` ⬜
+
+The old system had **no template table at all** — bulk-send bodies were freeform text typed
+into a browser and never persisted, so nothing was reusable, auditable or A/B-testable.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id` | uuid | Row identity, tenant. |
+| `key` | text | Stable machine name (`order_shipped`). What the API sends; survives rewording. |
+| `version` | int | **Templates are immutable.** Editing creates a new version, so a message sent last month still reports against the text that was actually sent. |
+| `locale` | text | Language variant. Resolved against the contact's language with a documented fallback. |
+| `category` | text | `marketing` / `utility` / `auth` / `service`. **Determines what Meta charges** — marketing is ~6× utility in India — and whether approval is required. |
+| `channel_intent` | text | Drives routing: OTP and client-facing traffic go to the paid official channel, bulk sourcing to Baileys (`04-architecture.md`). |
+| `body` | text | The text, with `{{variables}}` and optional spintax for body variation. |
+| `variables` | jsonb | **Typed** variable declarations with defaults and required flags. Rendering fails loudly on a missing required variable rather than sending `{{first_name}}` to a customer. |
+| `provider_meta` | jsonb | Deliberately open-ended — carousels, buttons, lists and WhatsApp Flows land here **without a migration**. |
+| `meta_template_name` | text NULL | The corresponding approved template on Meta's side, if one exists. |
+| `meta_approval_status` | text NULL | `pending` / `approved` / `rejected`, polled from Meta. An unapproved template cannot be used outside the service window. |
+| `is_active` | bool | Retire a template without deleting it and orphaning message history. |
+
+## `template_variant` ⬜
+
+| Column | What it is |
 |---|---|
-| `contact_field_def` | User-defined field schema: `key`, `label`, `type`, `options jsonb`, `required`, **`merge_policy`** (`overwrite`/`fill_if_empty`/`never`/`append`) — M9's fix, declared per field |
-| `tag` / `contact_tag` | `tag(name, colour)`; join table |
-| `segment` | Saved filter: `name`, `definition jsonb`, `kind` (`static`/`dynamic`), `cached_count`, `cached_at` |
-| `contact_note` | Freeform notes with author and timestamp |
-| `consent_record` | `contact_id`, `purpose` (`marketing`/`transactional`/`otp`), `status` (`granted`/`revoked`), `source`, `evidence jsonb`, `ip`, `granted_at`, `revoked_at` — DPDP requires purpose separation and proof (CON-5) |
+| `template_id`, `label`, `weight`, `body` | An A/B arm. `weight` sets the split; results roll up per variant. |
 
-## Pipelines — generic by construction
+## `campaign` ⬜
 
-`pipeline` (`name`, `is_default`) and `pipeline_stage` (`pipeline_id`, `key`, `label`,
-`sequence`, `colour`, `is_terminal`). **`sequence` increments by 10** so a stage can be
-inserted between two others without renumbering.
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `name` | — | Row identity, tenant, label. |
+| `status` | text | `draft` / `scheduled` / `running` / `paused` / `completed` / `cancelled`. |
+| `segment_id` | uuid FK NULL | The audience, if targeting a saved segment. |
+| `explicit_contact_ids` | uuid[] NULL | An ad-hoc list instead. **Never "everyone" implicitly** — the audience is always stated. |
+| `template_id` | uuid FK | What to send. |
+| `sender_pool` | jsonb | Which numbers may send, and their weights. Spreading load across numbers is how volume scales safely. |
+| `scheduled_at` | timestamptz NULL | When to start. |
+| `throttle_profile` | jsonb | Per-campaign pacing overrides, within the engine's hard limits. |
+| `quiet_hours` / `timezone` | jsonb / text | Don't message people at 3am. Respects the recipient's timezone where known. |
+| `created_by` | uuid FK | Who launched it. |
+| `estimated_cost_micros` | int | What the dry run predicted. |
+| `actual_cost_micros` | int | What it really cost. The two are reconciled after completion. |
 
-`contact_pipeline_entry` (`contact_id`, `pipeline_id`, `current_stage_id`, `entered_at`) and
-`stage_event` (append-only: `entry_id`, `from_stage_id?`, `to_stage_id`, `actor_id`, `reason?`,
-`at`).
+## `campaign_recipient` ⬜
 
-`current_stage_id` is an **explicitly documented cache**; `stage_event` is the truth. This
-replaces the old system's `CHECK` constraint duplicated in five files (M23) — stages are now
-rows a user can edit, which is what makes the product generic.
+One row per person per campaign. **Snapshotted at launch**, so a dynamic segment changing
+mid-run cannot change who is being messaged.
 
-## Channels
+| Column | Type | What it is |
+|---|---|---|
+| `campaign_id`, `contact_id` | uuid | The pairing. |
+| `status` | text | `pending` → `queued` → `sent` → `delivered` → `read` → `replied`, or `failed` / `skipped`. |
+| **`skip_reason`** | text NULL | `dnc`, `consent_missing`, `cooldown`, `engagement_lock`, `invalid_number`. **Blocked recipients are reported, never silently dropped** — silent dropping is how an operator stops trusting the whole system. |
+| `message_id` | uuid FK NULL | The message that was actually sent. |
+| `attempted_at` | timestamptz NULL | When it was tried. |
 
-### `sender_identity` — the unit the anti-ban engine protects
-`id`, `org_id`, `provider` (`baileys`/`meta`/…), `label`, `phone_e164`, `owner_user_id?`,
-`status` (`linking`/`active`/`degraded`/`quarantined`/`retired`), `capabilities_snapshot jsonb`,
-`health jsonb`, `warmup_started_at?`, `last_inbound_at?`, `risk_score int`,
-`daily_cap_override?`, `meta_waba_id?`, `meta_phone_number_id?`, `meta_quality_rating?`,
-`meta_messaging_tier?`.
+## `campaign_metric` ⬜
 
-Note this is *not* called "session". A sender identity is the number and its reputation; a
-session is one connection to it. Conflating them is why the old system's caps counted the
-wrong thing (M11) and why re-linking a number broke sends (`resolveLiveSendSession`).
-
-### `channel_session` — Baileys runtime
-`id`, `sender_identity_id`, `connection_state`, `last_connected_at?`, `disconnect_reason?`,
-`disconnect_code?`, `reconnect_attempts`, `qr_expires_at?`.
-
-### `channel_auth_state` — the M29/M30 fix
-`sender_identity_id`, `key` (Baileys' key namespace), `value_enc bytea`, `updated_at`,
-primary key `(sender_identity_id, key)`.
-
-Baileys' own `useMultiFileAuthState` carries an explicit **"DO NOT USE IN PROD"** warning, and
-writing auth state to local disk loses every number on an ephemeral filesystem. One row per
-key means the gateway is restartable, sessions auto-restore on boot, and a database restore
-brings the numbers back with it.
-
-## Conversations & messages
-
-### `conversation`
-`id`, `org_id`, `contact_id`, `sender_identity_id`, `channel`, `status`
-(`open`/`pending`/`snoozed`/`closed`), `assignee_user_id?`, `last_inbound_at?`,
-`last_outbound_at?`, **`window_expires_at?`**, `unread_count`, `priority`, `sla_due_at?`,
-`snoozed_until?`, `closed_at?`, `closed_by?`.
-
-`window_expires_at` is the Meta 24-hour service clock, maintained on every inbound. The
-dispatcher reads it to decide template vs freeform. Conversation being a first-class scope is
-M31's fix — history is always fetched per conversation, never per contact.
-
-### `message`
-`id`, `org_id`, `conversation_id`, `direction`, **`provider_message_id`**, `content_type`,
-`body_enc bytea`, `body_hmac text`, `media_id?`, `template_id?`, `template_variables jsonb?`,
-`status` (`queued`/`sent`/`delivered`/`read`/`failed`), `error_code?`, `error_detail?`,
-`cost_micros`, `currency`, `campaign_id?`, `sequence_step_id?`, `sent_by`
-(`user`/`system`/`agent`/`api`), `sent_by_id?`, `created_at`, `sent_at?`, `delivered_at?`,
-`read_at?`.
-
-- **`UNIQUE (org_id, provider_message_id)` is the idempotency key** — Meta's `wamid` or
-  Baileys' key id. Webhook retries (CON-4) become no-ops at the database level, which is the
-  only place that guarantee survives a race.
-- `body_hmac` lets dedup and search happen without decrypting rows — the old system decrypted
-  every recent row to compare bodies (M25).
-- Indexes: `(conversation_id, created_at DESC)` for thread paging, partial on `status` for the
-  retry sweeper, `(campaign_id)` for reporting.
-
-`conversation_participant`, `internal_note` (with `mentions uuid[]`), `canned_reply`,
-`media_asset` (`storage_key`, `content_type`, `size_bytes`, `sha256`, `scanned_at?`) round it out.
-
-## Templates & campaigns
-
-| Table | Key columns |
+| Column | What it is |
 |---|---|
-| `message_template` | `key`, `version`, `locale`, `category` (`marketing`/`utility`/`auth`/`service`), `channel_intent`, `body`, `variables jsonb` (typed), `provider_meta jsonb`, `meta_template_name?`, `meta_approval_status?`, `is_active` |
-| `template_variant` | `template_id`, `label`, `weight`, `body` — A/B |
-| `campaign` | `name`, `status` (`draft`/`scheduled`/`running`/`paused`/`completed`/`cancelled`), `segment_id?`, `explicit_contact_ids?`, `template_id`, `sender_pool jsonb`, `scheduled_at?`, `throttle_profile jsonb`, `quiet_hours jsonb`, `timezone`, `created_by`, `estimated_cost_micros`, `actual_cost_micros` |
-| `campaign_recipient` | `campaign_id`, `contact_id`, `status` (`pending`/`queued`/`sent`/`delivered`/`read`/`replied`/`failed`/`skipped`), **`skip_reason?`**, `message_id?`, `attempted_at?` |
-| `campaign_metric` | Rollups, refreshed incrementally |
+| `campaign_id`, `metric`, `value`, `computed_at` | Incremental rollups so dashboards read summaries instead of scanning `message`. A test asserts these reconcile exactly with the raw rows — a reporting layer that quietly disagrees with reality is worse than none. |
 
-`skip_reason` exists because blocked recipients must be **reported, never silently dropped**
-(FR-45). `provider_meta jsonb` is where carousels, buttons and Flows land without a migration.
+---
 
-## Automation
+# Automation
 
-`sequence` · `sequence_step` (`delay_minutes`, `condition jsonb`, `template_id`, `exit_on jsonb`)
-· `sequence_enrollment` (`contact_id`, `current_step`, `status`, `next_run_at`) ·
-`automation_rule` (`trigger jsonb`, `conditions jsonb`, `actions jsonb`, `enabled`, `priority`)
-· `scheduled_message`.
+## `sequence` · `sequence_step` · `sequence_enrollment` ⬜
 
-Reply classification rules live in `automation_rule` with locale packs, and every match records
-**which rule fired** so "classified confidently" is distinguishable from "defaulted" (M32).
+A drip: a series of messages sent over days unless the contact does something that should stop it.
 
-## Ingestion
+| Table | Column | What it is |
+|---|---|---|
+| `sequence` | `id`, `org_id`, `name`, `is_active` | The series itself. |
+| `sequence_step` | `sequence_id` | Parent. |
+| | `order` | Position in the series. |
+| | `delay_minutes` | Wait after the previous step. What makes it a drip rather than a blast. |
+| | `condition` | jsonb — only send this step if it still applies (they haven't replied, haven't converted). |
+| | `template_id` | What to send at this step. |
+| | `exit_on` | jsonb — events that end enrolment early: a reply, a stage change, an opt-out. **Without this, someone who already answered keeps getting nagged**, which is both rude and a ban signal. |
+| `sequence_enrollment` | `contact_id`, `sequence_id` | Who is in it. |
+| | `current_step` | How far along. |
+| | `status` | `active` / `completed` / `exited` / `paused`. |
+| | `next_run_at` | When the next step is due. Indexed — this is the column the scheduler polls. |
 
-| Table | Key columns |
+## `automation_rule` ⬜
+
+Trigger → condition → action. Where keyword auto-replies and reply classification live.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `name` | — | Row identity, tenant, label. |
+| `trigger` | jsonb | What starts it: inbound keyword, stage change, tag added, webhook, schedule. |
+| `conditions` | jsonb | Extra filters that must hold. |
+| `actions` | jsonb | What to do: reply, tag, assign, move stage, call a webhook. |
+| `enabled` | bool | Off switch that preserves the rule. |
+| `priority` | int | **First match wins, deterministically.** Ambiguous ordering is how automations become unpredictable. |
+
+Every match records **which rule fired**, so the UI can distinguish "classified confidently"
+from "nothing matched, defaulted to replied" — the old system gave no such signal, and users
+stop trusting a classifier they cannot inspect (M32).
+
+## `scheduled_message` ⬜
+
+| Column | What it is |
 |---|---|
-| `data_source` | `type`, `name`, `config jsonb`, `credentials_ref`, `schedule_cron?`, `enabled`, `last_run_at?`, `cursor?` |
-| `field_mapping` | `source_id?`, `name`, `version`, `mapping jsonb`, `identity_rules jsonb`, `is_preset` |
-| `import_run` | `source_id?`, `mapping_id`, `status`, `mode` (`dry_run`/`commit`), `counts jsonb`, `started_at`, `finished_at?`, `actor_id`, `file_ref?` |
-| `import_row` | `import_run_id`, `row_number`, `raw jsonb`, `status` (`imported`/`updated`/`skipped`/`failed`), `error jsonb?`, `contact_id?` |
+| `conversation_id`, `template_id`, `send_at`, `status`, `created_by` | A one-off message queued for later. Separate from campaigns because "remind this one person on Tuesday" is not a campaign. |
 
-`import_row` is the entire answer to M4: every row's outcome is queryable, a failed run is
-downloadable as a corrections file, and `UNIQUE (import_run_id, row_number)` makes a killed
-worker resumable rather than restartable.
+---
 
-## Ops
+# Ingestion
 
-`webhook_endpoint` · `webhook_delivery` (attempts, response, `next_retry_at`) ·
-`inbound_event_raw` (signature-verified raw payload, retained N days, replayable — NFR-8) ·
-`send_risk_event` (`sender_identity_id`, `kind`, `weight`, `detail jsonb`, `at` — every
-ban-relevant signal, so the health dashboard is evidence rather than a number) ·
-`rate_limit_state` · `org_setting` (branding, quiet hours, caps, locale, currency, retention) ·
-`feature_flag`.
+## `data_source` ⬜
 
-## Encryption
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id`, `name` | — | Row identity, tenant, label. |
+| `type` | text | `excel` / `csv` / `gsheets` / `rest` / `webhook`. Selects the connector. |
+| `config` | jsonb | Connector-specific settings, validated by that connector's own Zod schema — which also generates its settings form. |
+| `credentials_ref` | text NULL | **A pointer into the secrets driver, never the secret itself.** |
+| `schedule_cron` | text NULL | For recurring syncs. Null means manual only. |
+| `enabled` | bool | Pause a sync without deleting its configuration. |
+| `last_run_at` | timestamptz NULL | When it last ran. |
+| `cursor` | text NULL | Where incremental reads resume from, so a sync fetches only what changed. |
 
-Envelope encryption, fixing M24's unrecoverable single key:
+## `field_mapping` ⬜
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `source_id` | uuid | Row identity, optional parent source. |
+| `name`, `version` | text, int | Mappings are versioned, so an import always records exactly how it interpreted the file. |
+| `mapping` | jsonb | Source column → target field, with transforms (trim, phone_e164, date_parse). |
+| `identity_rules` | jsonb | **Ordered** matching rules — external_ref, then phone, then email. Replaces the old `email OR phone` that merged strangers (M7). |
+| `is_preset` | bool | Ships as a starting point (e.g. a job-board export layout) rather than hardcoded in the importer, which is where the old system put it. |
+
+## `import_run` ⬜
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id` | uuid | Row identity, tenant. |
+| `source_id` / `mapping_id` | uuid FK | Where from, interpreted how. |
+| `status` | text | `pending` / `running` / `completed` / `failed`. |
+| `mode` | text | `dry_run` or `commit`. **A dry run is mandatory before committing** — it shows what would be created, updated, skipped, and what a merge would overwrite. |
+| `counts` | jsonb | Rows created / updated / skipped / failed. |
+| `started_at` / `finished_at` | timestamptz | Duration, and whether it is still going. |
+| `actor_id` | uuid | Who ran it. |
+| `file_ref` | text NULL | The stored upload. **The file never round-trips through the browser** (M3). |
+
+## `import_row` ⬜
+
+**The whole answer to M4**, where one bad row rolled back an entire 5,000-row import.
+
+| Column | Type | What it is |
+|---|---|---|
+| `import_run_id`, `row_number` | uuid, int | UNIQUE together — makes a killed worker **resumable from the last committed batch** rather than restartable from zero. |
+| `raw` | jsonb | The original row, exactly as read. Lets a failure be diagnosed without re-opening the file. |
+| `status` | text | `imported` / `updated` / `skipped` / `failed`. |
+| `error` | jsonb NULL | Why it failed, per row. Downloadable as a corrections spreadsheet with an `_error` column — fix those rows and re-import just them. |
+| `contact_id` | uuid FK NULL | What it produced, when it succeeded. |
+
+---
+
+# Ops
+
+| Table | Key columns | What it is |
+|---|---|---|
+| `webhook_endpoint` ⬜ | `org_id`, `url`, `secret`, `event_types[]`, `status` | Where to send outbound events. `url` is SSRF-guarded — private ranges and cloud metadata addresses are refused. |
+| `webhook_delivery` ⬜ | `endpoint_id`, `event`, `payload`, `attempts`, `response_status`, `next_retry_at` | One attempt log per event. Gives at-least-once delivery, exponential backoff, manual replay and a dead-letter queue. |
+| `inbound_event_raw` ⬜ | `provider`, `payload`, `signature_verified`, `received_at`, `processed_at` | **The raw provider payload, stored before processing.** Meta expects a 200 within ~3 seconds, so the handler verifies the signature, writes this row, and returns — all real work happens afterwards. Also makes a bad deploy replayable instead of a data-loss event (NFR-8). |
+| `send_risk_event` ⬜ | `sender_identity_id`, `kind`, `weight`, `detail`, `at` | Every ban-relevant signal, itemised: 401 logged out (+60), 403 (+40), 463 timelock (+25), failed send (+20). `sender_identity.risk_score` is their sum, so **the health dashboard shows evidence rather than a bare number**. |
+| `rate_limit_state` ⬜ | `key`, `window_start`, `count` | Durable token-bucket state. Lives here (or in Redis) rather than in process memory, so limits hold across worker replicas — the old system's counters were per-process (M13). |
+| `org_setting` ⬜ | `org_id`, `key`, `value` | Branding, quiet hours, caps, locale, currency, retention. **Branding is configuration**; the old system hardcoded a client's name into every page title and the AI prompt. |
+| `feature_flag` ⬜ | `org_id`, `key`, `enabled` | Ship code dark, enable per tenant. |
+
+---
+
+# Encryption
+
+Envelope encryption, fixing the old single-key-with-no-rotation design where losing the key
+made all data permanently unrecoverable (M24):
 
 ```
-KEK (KmsDriver: local | aws-kms | gcp-kms | openbao)
-  └─ wraps DEK per org, stored in org_encryption_key(org_id, key_version, wrapped_dek, created_at)
-       └─ encrypts message.body_enc, contact_identity.value_enc, channel_auth_state.value_enc
+KEK   (KmsDriver: local | aws-kms | gcp-kms | openbao)
+ └─ wraps a per-org DEK  →  org_encryption_key(org_id, key_version, wrapped_dek, created_at)
+      └─ encrypts  message.body_enc
+                   contact_identity.value_enc
+                   channel_auth_state.value_enc
+                   app_user.mfa_secret_enc
 ```
 
-Every ciphertext column is paired with a `key_version`. Rotation is an online job: new DEK,
-re-encrypt in batches, retire the old version. `*_hmac` columns use a separate long-lived
-index key that is **not** rotated, because rotating it would invalidate every lookup index.
+| Column | What it is |
+|---|---|
+| `org_id`, `key_version` | Which tenant, which generation. Every ciphertext column stores its `key_version` so old and new can coexist during rotation. |
+| `wrapped_dek` | The data key, encrypted by the KEK. The database alone is useless without the KEK — which is also why a backup and its key must not live in one place. |
+| `created_at` | When this generation began. |
 
-## Indexing notes
+Rotation is an online batch job: new DEK, re-encrypt in batches, retire the old version.
+The `*_hmac` blind-index key is **separate and not rotated** — rotating it would invalidate
+every lookup index, which is a different and much larger operation.
 
-Beyond the obvious FKs: `pg_trgm` on `contact.display_name` and decrypted-search surfaces ·
-GIN on `contact.custom_fields` and `contact.external_ref` · partial index on
-`conversation (status, assignee_user_id) WHERE status IN ('open','pending')` for the inbox ·
-partial on `campaign_recipient (campaign_id) WHERE status = 'pending'` for the sender ·
-BRIN on `audit_log.at` and `message.created_at` once partitioned.
+# Indexing
 
-## Retention
+Beyond the obvious foreign keys:
 
-Configurable per org: raw inbound events (default 30 d), audit log (default 1 y),
-media (default 1 y), messages (default indefinite). A nightly job hard-deletes past the
-window, writing a summary audit row. DSAR erasure is a separate, immediate path.
+| Index | Why |
+|---|---|
+| `pg_trgm` on `contact.display_name` | Fuzzy name search. |
+| GIN on `contact.custom_fields` | Filter by user-defined fields without a column per field. |
+| GIN on `contact.external_ref` | The lookup the job portal integration depends on. |
+| `(conversation_id, created_at DESC)` | Thread paging — the inbox's hottest query. |
+| Partial: `conversation (status, assignee_user_id) WHERE status IN ('open','pending')` | The inbox only ever looks at live threads; indexing closed ones wastes space. |
+| Partial: `campaign_recipient (campaign_id) WHERE status = 'pending'` | The sender only asks "who is left?". |
+| BRIN on `audit_log.at`, `message.created_at` | Append-only, time-ordered tables — BRIN is a fraction of the size of a B-tree here. |
+
+# Retention
+
+Configurable per org, enforced by a nightly job that writes a summary audit row:
+
+| Data | Default |
+|---|---|
+| `inbound_event_raw` | 30 days |
+| `audit_log` | 1 year |
+| `media_asset` | 1 year |
+| `message` | indefinite |
+
+DSAR erasure is a separate, immediate path — a subject's request is not a retention policy.

@@ -210,3 +210,35 @@ soak — none of which exist yet.
 **Files:** `apps/api/src/app.ts`, `apps/api/src/server.ts`, `apps/api/src/app.test.ts`,
 `package.json`, `docs/adr/ADR-0004*`, `docs/adr/README.md`, `docs/10-stack.md`,
 `docs/04-architecture.md`, `STRUCTURE.md`
+
+---
+
+## 2026-09-16 · Session 005 · Every column explained
+
+**Built:** rewrote `docs/05-data-model.md` (150 → 637 lines) so **every table has a
+column-by-column explanation**, 1–2 lines each, saying what the column is and why it exists —
+not restating its type. Where a column exists to prevent a specific past failure, it cites the
+defect id from `00-prior-art.md`.
+
+Added a status marker per table: ✅ built · 🔜 next · ⬜ planned. Five tables exist; the map
+lists 44.
+
+Also added migration `0002_column_comments.sql` — `COMMENT ON TABLE/COLUMN` for the five
+tables that exist. `\d+ contact_identity` in psql now prints the reasoning, as does any GUI
+tool. The point is that someone inspecting the database directly gets the explanation without
+finding the repo, and that it cannot drift out of the database the way a separate file can.
+
+**Corrected:** the table count. Earlier I said "~35 tables"; the map actually lists **44**
+(~46 counting ones mentioned only in prose). Also clarified a real confusion: all 44 are the
+**WhatsApp CRM**. The job portal has its own separate ~25 entities in its own database. Two
+systems, two databases, talking over an API.
+
+**Still open from session 004:** `contact.custom_fields` and `contact.external_ref` are
+`text` in the Drizzle schema where the docs specify `jsonb`. Consequence: custom fields cannot
+be queried or filtered, and `external_ref` cannot be GIN-indexed — which is the lookup the job
+portal integration depends on. Two-line fix plus one migration **while the tables are empty**;
+after P2 populates contacts it becomes a data migration.
+
+**Next:** fix the jsonb defect, then P2 — contacts and identity resolution.
+
+**Files:** `docs/05-data-model.md`, `packages/db/migrations/0002_column_comments.sql`, `CONTEXT.md`

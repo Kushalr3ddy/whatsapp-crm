@@ -15,6 +15,13 @@
       "when": 1789558009757,
       "tag": "0001_rls_and_identity_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789569835372,
+      "tag": "0002_column_comments",
+      "breakpoints": true
     }
   ]
 }
