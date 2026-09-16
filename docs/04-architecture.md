@@ -18,7 +18,7 @@ redeploys.
           ┌───────────────────┼────────────────────┐
           │                   │                    │
         web              core-api            webhook edge
-      Next.js             Fastify           POST /wh/{provider}
+      Next.js             Express           POST /wh/{provider}
                               │                    │
                               └─────────┬──────────┘
                                         │

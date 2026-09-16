@@ -30,21 +30,25 @@ polyrepo (version skew between API and UI for no gain). See ADR-0003.
 
 ## API framework
 
-**Fastify + Zod.** See [ADR-0003](adr/ADR-0003-fastify-over-nestjs.md), which supersedes an
-earlier choice of NestJS.
+**Express 5 + Zod.** See [ADR-0004](adr/ADR-0004-express-over-fastify.md) (which supersedes
+[ADR-0003](adr/ADR-0003-fastify-over-nestjs.md), which had superseded an earlier choice of NestJS).
+
+Express 5 specifically, because it forwards rejected promises from async handlers to the error
+middleware — in Express 4 an async handler that throws hangs the request instead of answering it.
 
 The framework is not on the critical path — the gateway, workers, dispatcher and anti-ban engine
 sit below the HTTP layer and are framework-agnostic. So the choice optimises for the smallest
 concept count while the author is also learning TypeScript, and for matching JobPortal's Express
-so patterns transfer between the two codebases. Fastify's native schema validation pairs with
-Zod, which recovers OpenAPI generation — the one thing NestJS would genuinely have been missed for.
+so patterns transfer between the two codebases — and because Express is what essentially every
+Node tutorial teaches, which matters more than engineering elegance for someone learning the
+language while shipping.
 
 The structure NestJS would have enforced is instead enforced by `no-restricted-imports` and an
 explicit composition root. Arguably that makes the dependency graph easier to read.
 
 *Rejected:* NestJS (validation pipes, guards, interceptors and OpenAPI for free, but a large
-upfront concept load and divergence from the sibling repo) · Express (maximum transfer from
-JobPortal, but weaker TypeScript support and no built-in validation) · tRPC (excellent for a
+upfront concept load and divergence from the sibling repos) · Fastify (better typed and faster,
+but a fourth similar-sounding name for a layer that is not the bottleneck) · tRPC (excellent for a
 TS-only client, wrong for an API-first product with third-party consumers) · Hono (promising,
 younger ecosystem).
 
@@ -140,8 +144,8 @@ all three means the config validated at boot is the same shape as the config doc
 
 - **Drizzle vs Prisma** — if the team turns out to prefer Prisma's ergonomics and RLS is
   handled another way.
-- **Fastify vs NestJS** — revisit if the API surface outgrows legible manual wiring, or a team
-  forms and enforced structure becomes worth its learning cost (ADR-0003).
+- **Express vs NestJS** — revisit if the API surface outgrows legible manual wiring, or a team
+  forms and enforced structure becomes worth its learning cost (ADR-0003, ADR-0004).
 - **pg-boss in `lean`** — if maintaining two queue drivers turns out to cost more than the
   ~80 MB it saves.
 

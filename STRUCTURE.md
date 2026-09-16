@@ -5,7 +5,7 @@ the rest are scaffolded and empty, waiting for their phase (`docs/17-roadmap.md`
 
 ```
 apps/
-  api/        Fastify HTTP layer. Auth, validation, OpenAPI. THIN — no business logic.
+  api/        Express HTTP layer. Auth, validation, OpenAPI. THIN — no business logic.
   worker/     Queue consumers. THIN — orchestration only.
   gateway/    Baileys socket supervisor. Owns sockets and auth state, nothing else.
   web/        Next.js UI. A client of the public API, nothing more.

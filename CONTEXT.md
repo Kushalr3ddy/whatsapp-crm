@@ -160,3 +160,53 @@ use `gen_random_uuid()` for now. Licence (ADR-0001) and Baileys version (ADR-000
 `.env.example`, `packages/shared/**`, `packages/db/**`, `apps/api/**`,
 `.github/workflows/ci.yml`, `docs/adr/ADR-0003*`, `docs/10-stack.md`, `docs/11-conventions.md`,
 `docs/13-deployment.md`, `README.md`, `STRUCTURE.md`
+
+---
+
+## 2026-09-16 · Session 004 · Express, and why the framework churn stopped here
+
+**Decided:** **Express 5 replaces Fastify** (ADR-0004, superseding ADR-0003's framework pick;
+its rejection of NestJS stands). ADR-0003's reasoning — the HTTP framework is not on the
+critical path, so minimise learning cost — was right but under-applied. Express is what every
+Node tutorial teaches, what JobPortal runs, and what the previous CRM ran. Choosing Fastify
+made this repo the odd one out of three, for an engineering gain that is irrelevant at a
+volume the anti-ban engine caps at ~8 messages/minute/number.
+
+Express **5**, not 4, for one concrete reason: it forwards rejected promises from async
+handlers to the error middleware. In Express 4 an async handler that throws hangs the request
+instead of answering it.
+
+**The cost of the change was ~15 lines**, which is itself the evidence for ADR-0003's central
+claim. The framework surface in this codebase is `app.get(path, handler)` plus one error
+middleware.
+
+**Built:** converted `apps/api` to Express + `pino-http`; added a real error boundary and a
+404 that matches the problem+json error shape; added 6 API tests with supertest, replacing
+manual curl checks. 15 tests total.
+
+**Verified:** `/health` 200 without touching the database, `/ready` 200 when it answers and
+**503** when it does not, caller-supplied `x-request-id` echoed, one generated when absent,
+unknown routes answered as problem+json with a correlation id.
+
+**Caught during verification:** the first Express check appeared to pass while actually hitting
+a **stale Fastify process** still holding port 3000 — `tsx` spawns a child, and killing the
+shell's job left the child alive. The 404 body was Fastify-shaped, which is what gave it away.
+Worth remembering when verifying a server locally: confirm the port is free first, and check a
+response that differs between old and new code.
+
+**Data sources confirmed** for the ingestion framework: Excel/CSV, Google Sheets, the job
+portal API, and a job-board API — all four eventually, **Excel/CSV first** for the beta. Four
+readers, one pipeline (`docs/07-ingestion.md`).
+
+**Process:** commits go straight to `main`. No branches.
+
+**Not done, deliberately:** no stress or load tests yet. There are two health endpoints; load
+testing them would measure Express, not this product. Stress testing is P11, and the targets
+that matter are a 10k-recipient campaign, 100 msg/s inbound, a 50k-row import and a 24-hour
+soak — none of which exist yet.
+
+**Next:** P2 — contacts and identity resolution.
+
+**Files:** `apps/api/src/app.ts`, `apps/api/src/server.ts`, `apps/api/src/app.test.ts`,
+`package.json`, `docs/adr/ADR-0004*`, `docs/adr/README.md`, `docs/10-stack.md`,
+`docs/04-architecture.md`, `STRUCTURE.md`

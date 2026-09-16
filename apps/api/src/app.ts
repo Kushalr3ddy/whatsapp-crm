@@ -1,4 +1,6 @@
-import Fastify from 'fastify';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import pinoHttp from 'pino-http';
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Config, Logger } from '@crm/shared';
 import type { Database } from '@crm/db';
@@ -18,34 +20,44 @@ export interface AppDependencies {
  * Route handlers stay thin: validate, delegate, respond. Nothing that talks to a third
  * party runs here — it goes on a queue (docs/00-prior-art.md, M2 and M27).
  */
-export function buildApp(deps: AppDependencies) {
-  const app = Fastify({
-    // `loggerInstance`, not `logger`: Fastify v5 takes a pre-built pino instance here,
-    // while `logger` expects options it would construct one from.
-    loggerInstance: deps.logger,
-    // Trust the reverse proxy for client IPs; Caddy sits in front (docs/13-deployment.md).
-    trustProxy: true,
-    // Echo a correlation id on every request so one request's trail can be grepped out of
-    // concurrent traffic, and so it can later be propagated into queue jobs.
-    genReqId: (req) => (req.headers['x-request-id'] as string | undefined) ?? crypto.randomUUID()
-  });
+export function buildApp(deps: AppDependencies): Express {
+  const app = express();
 
-  app.addHook('onSend', async (req, reply) => {
-    void reply.header('x-request-id', req.id);
-  });
+  // Trust the reverse proxy for client IPs; Caddy sits in front (docs/13-deployment.md).
+  app.set('trust proxy', true);
+  // Don't advertise the framework. Free, and one less thing for a scanner to fingerprint.
+  app.disable('x-powered-by');
+
+  // Correlation id on every request, so one request's trail can be grepped out of
+  // concurrent traffic and later propagated into queue jobs.
+  app.use(
+    pinoHttp({
+      logger: deps.logger,
+      genReqId: (req, res) => {
+        const existing = req.headers['x-request-id'];
+        const id = typeof existing === 'string' && existing !== '' ? existing : randomUUID();
+        res.setHeader('x-request-id', id);
+        return id;
+      }
+    })
+  );
+
+  app.use(express.json({ limit: '1mb' }));
 
   /**
    * Liveness. Answers "is this process running?" and nothing more — it must not touch the
    * database, or a database blip would cause an orchestrator to kill a healthy process.
    */
-  app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok' });
+  });
 
   /**
    * Readiness. Answers "can this process serve traffic?", which means every dependency is
    * reachable. Startup is gated on this: the previous system listened and accepted traffic
    * even when its bootstrap had failed (docs/00-prior-art.md, M6).
    */
-  app.get('/ready', async (_req, reply) => {
+  app.get('/ready', async (_req: Request, res: Response) => {
     const checks: Record<string, 'ok' | 'failed'> = {};
     try {
       await deps.db.execute(sql`select 1`);
@@ -55,7 +67,7 @@ export function buildApp(deps: AppDependencies) {
     }
 
     const ready = Object.values(checks).every((c) => c === 'ok');
-    return reply.code(ready ? 200 : 503).send({
+    res.status(ready ? 200 : 503).json({
       status: ready ? 'ready' : 'not_ready',
       checks,
       preset: deps.config.PRESET,
@@ -63,8 +75,37 @@ export function buildApp(deps: AppDependencies) {
     });
   });
 
+  /** Anything unrouted. Kept in the same problem+json shape as a real error. */
+  app.use((req: Request, res: Response) => {
+    res.status(404).json({
+      type: 'about:blank',
+      title: 'Not Found',
+      status: 404,
+      code: 'NOT_FOUND',
+      detail: `No route for ${req.method} ${req.path}.`,
+      request_id: req.id
+    });
+  });
+
+  /**
+   * The single error boundary. Express 5 forwards rejected promises from async handlers
+   * here automatically, which is the main reason for choosing 5 over 4 — in Express 4 an
+   * async handler that throws hangs the request instead of answering it.
+   *
+   * Errors are logged once, here, rather than at every layer (docs/11-conventions.md).
+   */
+  app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
+    req.log.error({ err: error }, 'unhandled error');
+    res.status(500).json({
+      type: 'about:blank',
+      title: 'Internal Server Error',
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      // Never leak an internal message to a caller; it is in the logs, correlated by id.
+      detail: 'The request could not be completed.',
+      request_id: req.id
+    });
+  });
+
   return app;
 }
-
-/** The built application's type, inferred so the pino logger's typing flows through it. */
-export type App = ReturnType<typeof buildApp>;
