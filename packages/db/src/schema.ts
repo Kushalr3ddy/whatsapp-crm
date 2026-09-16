@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 /**
  * A tenant. Single-tenant deployments have exactly one row — the isolation code path is
@@ -51,8 +51,11 @@ export const contact = pgTable('contact', {
   orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
   displayName: text('display_name'),
   ownerUserId: uuid('owner_user_id').references(() => appUser.id, { onDelete: 'set null' }),
-  customFields: text('custom_fields').notNull().default('{}'),
-  externalRef: text('external_ref'),
+  // jsonb, not text: these are queried, not just stored. `custom_fields` is filtered on by
+  // arbitrary user-defined keys (GIN-indexed), and `external_ref` is the lookup every host-app
+  // sync performs. Stored as text, neither is indexable and neither can be filtered at all.
+  customFields: jsonb('custom_fields').notNull().default({}),
+  externalRef: jsonb('external_ref'),
   source: text('source'),
 
   // Gate zero on every send path. Not overridable by anyone, including an admin —

@@ -242,3 +242,48 @@ after P2 populates contacts it becomes a data migration.
 **Next:** fix the jsonb defect, then P2 — contacts and identity resolution.
 
 **Files:** `docs/05-data-model.md`, `packages/db/migrations/0002_column_comments.sql`, `CONTEXT.md`
+
+---
+
+## 2026-09-16 · Session 006 · jsonb, and index choices made by measurement
+
+**Fixed:** `contact.custom_fields` and `contact.external_ref` were `text` in the Drizzle schema
+where the docs specified `jsonb` — a defect introduced in P1. Consequences while wrong: custom
+fields could not be filtered at all, `external_ref` could not be indexed, and malformed JSON
+was storable. Migration `0003` changes both, **while the tables are empty**; after P2 populates
+contacts this would have been a data migration.
+
+**Index choices, measured rather than assumed.** Finding one contact by external id across
+200k rows:
+
+| approach | time | index size |
+|---|---|---|
+| seq scan | 116 ms | — |
+| GIN `jsonb_ops` (the default) | 2.0 ms | — |
+| GIN `jsonb_path_ops` | 0.48 ms | 11 MB |
+| **B-tree on `(external_ref->>'id')`** | **0.09 ms** | **6 MB** |
+
+So `external_ref` gets a **B-tree expression index, not GIN** — every host-app sync looks it up
+the same way, and GIN's generality is pure cost against a fixed access pattern. `custom_fields`
+keeps GIN, because there users invent their own keys and we cannot know which will be filtered;
+but with `jsonb_path_ops` rather than the default, since only `@>` is ever queried. `docs/05`
+updated with the numbers.
+
+**Two Postgres gotchas hit on the way, both now commented in the migration:**
+1. `text → jsonb` has no automatic cast; `USING` is required. drizzle-kit does not generate it.
+2. The column's **DEFAULT** cannot be cast either, so it must be dropped first and re-set after.
+   The error names the column, not the default, which sends you looking in the wrong place.
+
+**Process note:** the first failed migration looked like a silent no-op because I truncated the
+output with `tail -3`. It had actually failed loudly and rolled back — only 3 of 4 migrations
+were recorded. The tooling behaved correctly; the verification did not. Check the exit code,
+not the last three lines.
+
+**Verified:** filtering by an arbitrary custom field, the host-app `external_ref` lookup,
+numeric comparison inside jsonb, malformed JSON now rejected by the column type, and migrations
+re-running clean.
+
+**Next:** P2 — contacts and identity resolution.
+
+**Files:** `packages/db/src/schema.ts`,
+`packages/db/migrations/0003_contact_jsonb_and_indexes.sql`, `docs/05-data-model.md`
