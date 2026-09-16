@@ -1,0 +1,52 @@
+{
+  "name": "whatsapp-crm",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Generic, self-hostable WhatsApp CRM. See docs/ for the design.",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "packages/channels/*",
+    "packages/providers/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "//": "--- everyday ---",
+    "dev": "tsx watch --env-file-if-exists=.env apps/api/src/server.ts",
+    "start": "node apps/api/dist/server.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "//db": "--- database ---",
+    "db:generate": "drizzle-kit generate --config=packages/db/drizzle.config.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env packages/db/src/migrate.ts",
+    "db:studio": "drizzle-kit studio --config=packages/db/drizzle.config.ts",
+    "db:dev:up": "docker run --rm -d --name whatsapp-crm-dev-db -e POSTGRES_PASSWORD=dev -e POSTGRES_USER=dev -e POSTGRES_DB=whatsapp_crm_dev -p 5434:5432 postgres:16-alpine",
+    "db:dev:down": "docker stop whatsapp-crm-dev-db"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.36.4",
+    "fastify": "^5.1.0",
+    "libphonenumber-js": "^1.11.15",
+    "pino": "^9.5.0",
+    "postgres": "^3.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "drizzle-kit": "^0.28.1",
+    "eslint": "^9.16.0",
+    "eslint-plugin-jsdoc": "^50.6.0",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.17.0",
+    "vitest": "^2.1.8"
+  }
+}

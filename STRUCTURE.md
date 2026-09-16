@@ -1,11 +1,11 @@
 # Repository structure
 
-Directories are scaffolded but **empty** — no code has been written yet (P0 is docs only).
-This file records what belongs where, so the first commit of code lands in the right place.
+What belongs where. As of P1, `packages/shared`, `packages/db` and `apps/api` carry code;
+the rest are scaffolded and empty, waiting for their phase (`docs/17-roadmap.md`).
 
 ```
 apps/
-  api/        NestJS HTTP layer. Auth, validation, OpenAPI. THIN — no business logic.
+  api/        Fastify HTTP layer. Auth, validation, OpenAPI. THIN — no business logic.
   worker/     Queue consumers. THIN — orchestration only.
   gateway/    Baileys socket supervisor. Owns sockets and auth state, nothing else.
   web/        Next.js UI. A client of the public API, nothing more.

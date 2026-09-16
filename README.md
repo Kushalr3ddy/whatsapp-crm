@@ -4,9 +4,10 @@ A generic, self-hostable conversation and outreach platform for WhatsApp — sha
 contacts, campaigns, automation, and a real API — that runs on one small VPS and costs
 nothing to operate.
 
-> **Status: planning complete, code not started.** This repository currently contains the
-> full design (`docs/`). Build phases are tracked in [`docs/17-roadmap.md`](docs/17-roadmap.md);
-> the running log of decisions is [`CONTEXT.md`](CONTEXT.md).
+> **Status: P1 (skeleton) complete.** The design lives in `docs/`; the skeleton boots, the
+> database migrates with tenant isolation enforced, and CI is green. No WhatsApp yet — that
+> is P3. Build phases are tracked in [`docs/17-roadmap.md`](docs/17-roadmap.md); the running
+> log of decisions is [`CONTEXT.md`](CONTEXT.md).
 
 ## What it is
 

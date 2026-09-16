@@ -22,26 +22,31 @@ problem is thinner) · Rust (wrong cost/benefit here).
 
 ## Monorepo
 
-**pnpm workspaces + Turborepo.** Strict node_modules layout catches phantom dependencies;
-Turborepo's caching keeps CI fast. *Rejected:* Nx (more power than needed, steeper learning
-curve) · npm workspaces (no caching) · polyrepo (version skew between API and UI for no gain).
+**npm workspaces.** Already installed, and the sibling JobPortal repo uses npm — one toolchain
+across both codebases. The part that is load-bearing, package boundaries, is enforced by lint
+rather than by the package manager. *Rejected:* pnpm + Turborepo (better caching, but another
+tool to install and learn — revisit if build times hurt) · Nx (more power than needed) ·
+polyrepo (version skew between API and UI for no gain). See ADR-0003.
 
 ## API framework
 
-**NestJS with the Fastify adapter.**
+**Fastify + Zod.** See [ADR-0003](adr/ADR-0003-fastify-over-nestjs.md), which supersedes an
+earlier choice of NestJS.
 
-The highest "new developer is productive on day two" score of the realistic options: opinionated,
-exhaustively documented, and its module system *is* the modular monolith we want. Dependency
-injection makes the port/adapter design fall out naturally rather than being a convention people
-forget. Fastify underneath for throughput.
+The framework is not on the critical path — the gateway, workers, dispatcher and anti-ban engine
+sit below the HTTP layer and are framework-agnostic. So the choice optimises for the smallest
+concept count while the author is also learning TypeScript, and for matching JobPortal's Express
+so patterns transfer between the two codebases. Fastify's native schema validation pairs with
+Zod, which recovers OpenAPI generation — the one thing NestJS would genuinely have been missed for.
 
-The cost is honest: more ceremony than Express, and decorators are unfashionable. Worth it when
-the priority is "someone else can pick this up".
+The structure NestJS would have enforced is instead enforced by `no-restricted-imports` and an
+explicit composition root. Arguably that makes the dependency graph easier to read.
 
-*Rejected:* Express (what the old system used; no structure, so the structure has to be
-re-invented and re-enforced by hand) · bare Fastify (fast and clean, but every architectural
-boundary becomes convention rather than framework) · tRPC (excellent for a TS-only client,
-wrong for an API-first product with third-party consumers) · Hono (promising, younger ecosystem).
+*Rejected:* NestJS (validation pipes, guards, interceptors and OpenAPI for free, but a large
+upfront concept load and divergence from the sibling repo) · Express (maximum transfer from
+JobPortal, but weaker TypeScript support and no built-in validation) · tRPC (excellent for a
+TS-only client, wrong for an API-first product with third-party consumers) · Hono (promising,
+younger ecosystem).
 
 ## Database & ORM
 
@@ -135,7 +140,8 @@ all three means the config validated at boot is the same shape as the config doc
 
 - **Drizzle vs Prisma** — if the team turns out to prefer Prisma's ergonomics and RLS is
   handled another way.
-- **NestJS vs Fastify** — if the ceremony proves to cost more than the structure buys.
+- **Fastify vs NestJS** — revisit if the API surface outgrows legible manual wiring, or a team
+  forms and enforced structure becomes worth its learning cost (ADR-0003).
 - **pg-boss in `lean`** — if maintaining two queue drivers turns out to cost more than the
   ~80 MB it saves.
 

@@ -102,3 +102,61 @@ build first.
 
 **Files:** `docs/capacity-calculator.html`, `docs/19-capacity.md`, `README.md`, `CONTEXT.md`
 
+
+---
+
+## 2026-09-16 · Session 003 · ADR-0003 and the P1 skeleton
+
+**Decided:**
+- **Fastify + Zod instead of NestJS** (ADR-0003). The HTTP framework is not on the critical
+  path — the gateway, workers, dispatcher and anti-ban engine all sit below it. So optimise
+  for the smallest concept count while learning TypeScript, and for matching JobPortal, which
+  began building the same day on TypeScript + Express + Zod + Vitest.
+- **npm workspaces, not pnpm + Turborepo.** npm is installed, pnpm is not, and JobPortal uses
+  npm. Package boundaries — the load-bearing part — are enforced by lint, not by the package
+  manager.
+- **Local Docker Postgres for development, not Docker Compose.** The compose plugin is not
+  installed on this machine; the compose file still ships for deployment.
+- **Scope is in-house beta.** India data residency, DPDP consent enforcement and DLT
+  registration are parked. `do_not_contact` stays, because it feeds the anti-ban engine
+  rather than a legal position.
+
+**Built:** npm workspace root, `tsconfig`, ESLint flat config, Vitest.
+`packages/shared` — config (Zod, hard-crash on missing), logger (pino, UTC), `Result`, and
+the E.164 normaliser with 9 tests. `packages/db` — drizzle schema (`org`, `app_user`,
+`org_membership`, `contact`, `contact_identity`), client, migration runner, two migrations.
+`apps/api` — Fastify app with gated startup, `/health`, `/ready`, request-id propagation.
+CI with typecheck, lint, tests, migration idempotency and a gitleaks scan.
+
+**Verified, not assumed:**
+- `/health` 200 and `/ready` 200 with the database up; `/ready` **503** with it stopped while
+  `/health` stays 200 — liveness and readiness are genuinely different.
+- Config gate refuses to start and names the missing variables (M17).
+- Blank identity values, unknown identity kinds and duplicate identities are all rejected **by
+  the database**, so M7 is structurally unwritable rather than merely discouraged.
+- RLS actually isolates: no org context → **0 rows**; each org sees only its own; a cross-org
+  insert errors. A forgotten `WHERE org_id` fails closed.
+- The comment-rule lint fires on an undocumented function, exported const and type, and passes
+  clean code — checked both directions, because a rule that never fails is not a rule.
+
+**Found while building:**
+- **Postgres superusers bypass RLS entirely**, even with `FORCE`. The policies look enabled in
+  `pg_tables` while doing nothing. Migration `0001` creates a `crm_app` role for the app to
+  connect as; documented in `docs/13-deployment.md`.
+- **libphonenumber's default metadata accepts junk** — `1111111111` and `5555555555` both pass
+  as valid Indian numbers. Switched to the `max` bundle, which rejects them *and* distinguishes
+  `MOBILE` from `FIXED_LINE`. That earned a feature: a landline is flagged unreachable on
+  WhatsApp at import, saving a doomed send and the delivery-ratio penalty it would cost.
+- The JSDoc rule as written in `docs/11-conventions.md` demanded a docblock on every inline
+  callback. Relaxed to named declarations only, and the doc corrected to match the working
+  config.
+
+**Open:** UUIDv7 deferred — Postgres 16 has no native `uuidv7()` (PG18 does), so primary keys
+use `gen_random_uuid()` for now. Licence (ADR-0001) and Baileys version (ADR-0002) still open.
+
+**Next:** P2 — contacts and identity resolution over the schema now in place, then P3 Baileys.
+
+**Files:** `package.json`, `tsconfig.json`, `eslint.config.js`, `vitest.config.ts`,
+`.env.example`, `packages/shared/**`, `packages/db/**`, `apps/api/**`,
+`.github/workflows/ci.yml`, `docs/adr/ADR-0003*`, `docs/10-stack.md`, `docs/11-conventions.md`,
+`docs/13-deployment.md`, `README.md`, `STRUCTURE.md`

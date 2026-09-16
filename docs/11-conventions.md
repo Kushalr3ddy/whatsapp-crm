@@ -41,12 +41,24 @@ const STEADY_STATE_DAILY_CAP = 1500;
 Mechanical, because discipline decays:
 
 ```jsonc
-// .eslintrc
+// eslint.config.js — the working configuration, verified to fire on an undocumented
+// function, exported const and type, and to pass clean code.
 "jsdoc/require-jsdoc": ["error", {
-  "require": { "FunctionDeclaration": true, "MethodDefinition": true,
-               "ClassDeclaration": true, "ArrowFunctionExpression": true },
-  "contexts": ["TSInterfaceDeclaration", "TSTypeAliasDeclaration", "TSEnumDeclaration",
-               "VariableDeclaration > VariableDeclarator[init.type=/Function|Arrow/]"]
+  "require": {
+    "FunctionDeclaration": true, "MethodDefinition": true, "ClassDeclaration": true,
+    // Inline callbacks are deliberately exempt. Demanding a docblock on every
+    // `(t) => [...]` produces noise that trains people to write "/** Callback. */" —
+    // the exact failure this rule exists to prevent. Named function-valued consts are
+    // still covered by the export context below.
+    "ArrowFunctionExpression": false, "FunctionExpression": false
+  },
+  "contexts": [
+    "TSInterfaceDeclaration", "TSTypeAliasDeclaration", "TSEnumDeclaration",
+    // Targets the `export` statement, not the declaration inside it — a leading docblock
+    // attaches to the ExportNamedDeclaration node, so selecting the inner
+    // VariableDeclaration reports a missing comment that is plainly there.
+    "ExportNamedDeclaration[declaration.type=\"VariableDeclaration\"]"
+  ]
 }],
 "jsdoc/require-description": "error"
 ```

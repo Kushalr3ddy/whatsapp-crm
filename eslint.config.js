@@ -1,0 +1,97 @@
+// @ts-check
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import jsdoc from 'eslint-plugin-jsdoc';
+
+/**
+ * Lint configuration. Two rule groups here are architectural rather than stylistic,
+ * and are documented as such in docs/11-conventions.md:
+ *   1. the comment rule  — every class, function, type and exported const is documented
+ *   2. the layering rule — core may depend on ports, never on a concrete adapter
+ * Both exist because the previous system lost them: see docs/00-prior-art.md, M1 and M22.
+ */
+export default tseslint.config(
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**', '*.config.js'] },
+
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  jsdoc.configs['flat/recommended-typescript'],
+
+  {
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname }
+    },
+    rules: {
+      // ---- the comment rule (docs/11-conventions.md) -------------------------------
+      // Every meaningful declaration says what it is and why it exists. The linter
+      // cannot judge whether a comment is USEFUL — that is what review is for — but it
+      // can guarantee one exists to review.
+      'jsdoc/require-jsdoc': ['error', {
+        require: {
+          FunctionDeclaration: true,
+          MethodDefinition: true,
+          ClassDeclaration: true,
+          // Inline callbacks are deliberately NOT required. A `(t) => [...]` passed to a
+          // table definition or a `() => ...` in an options object is an expression, not a
+          // declaration, and demanding a docblock on each one produces noise that trains
+          // people to write "/** Callback. */" — the exact failure the rule exists to prevent.
+          // Named function-valued consts are still covered, by the contexts below.
+          ArrowFunctionExpression: false,
+          FunctionExpression: false
+        },
+        contexts: [
+          'TSInterfaceDeclaration',
+          'TSTypeAliasDeclaration',
+          'TSEnumDeclaration',
+          // Targets the `export` statement, not the declaration inside it: a leading
+          // docblock attaches to the ExportNamedDeclaration node, so selecting the inner
+          // VariableDeclaration reports a missing comment that is plainly there.
+          'ExportNamedDeclaration[declaration.type="VariableDeclaration"]'
+        ]
+      }],
+      'jsdoc/require-description': 'error',
+      // Types come from TypeScript, not from the comment. Restating them is noise.
+      'jsdoc/require-param-type': 'off',
+      'jsdoc/require-returns-type': 'off',
+      'jsdoc/require-param': 'off',
+      'jsdoc/require-returns': 'off',
+
+      // ---- general -----------------------------------------------------------------
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/consistent-type-imports': 'error',
+      'no-console': 'error',          // use the logger; docs/13-deployment.md
+      eqeqeq: ['error', 'always']
+    }
+  },
+
+  {
+    // ---- the layering rule (docs/04-architecture.md) --------------------------------
+    // core owns domain logic and may know about PORTS. It may never import a concrete
+    // adapter — that is what makes every adapter swappable and every test possible
+    // without a real WhatsApp account. M1 in docs/00-prior-art.md is what happens without it.
+    files: ['packages/core/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['**/channels/baileys*', '**/channels/meta*', 'baileys', '@whiskeysockets/*'],
+            message: 'core must not import a transport adapter — depend on the ChannelProvider port instead (docs/04-architecture.md).' },
+          { group: ['**/providers/*/!(index)*'],
+            message: 'core must not import a concrete driver — depend on the port instead (docs/18-providers.md).' }
+        ]
+      }]
+    }
+  },
+
+  {
+    // Tests describe themselves through their titles and may reach past the layering rule.
+    files: ['**/*.test.ts', 'tests/**/*.ts'],
+    rules: { 'jsdoc/require-jsdoc': 'off', 'no-restricted-imports': 'off' }
+  },
+
+  {
+    // Config files are declarative and self-evident.
+    files: ['*.config.ts', '*.config.js', 'eslint.config.js'],
+    rules: { 'jsdoc/require-jsdoc': 'off' }
+  }
+);

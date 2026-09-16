@@ -164,6 +164,25 @@ verified before it matters.
 In `lean`, the `alerts=cron` driver runs the same rules as a scheduled query posting to a
 webhook, email or Telegram — no Alertmanager required.
 
+## The application's database role
+
+**Connect the application as a non-superuser.** Postgres superusers bypass row-level
+security entirely — `FORCE ROW LEVEL SECURITY` constrains a table's *owner*, but not a
+superuser, so an app connected as one has every tenant policy silently disabled while the
+policies still look enabled in `pg_tables`.
+
+Migration `0001` creates a `crm_app` role for this. Verified behaviour once connected as it:
+
+| Context | Result |
+|---|---|
+| No `app.org_id` set | **0 rows** — a forgotten org filter fails closed |
+| `app.org_id` = org A | Only org A's rows |
+| `app.org_id` = org B | Only org B's rows |
+| Org A inserting a row owned by org B | `ERROR: new row violates row-level security policy` |
+
+Grant `crm_app` a password and point `DATABASE_URL` at it in any deployment where the
+migrating role and the application role can be separated. Migrations still run as the owner.
+
 ## Health
 
 `/health` liveness · `/ready` dependencies checked · `/metrics`.

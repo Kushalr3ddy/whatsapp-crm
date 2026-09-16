@@ -1,0 +1,82 @@
+# Runs on every push and pull request. The previous system had no test or lint CI at all —
+# its only two workflows were a deploy and a backup, neither of which validated anything
+# (docs/00-prior-art.md, M21).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch rather than queueing them.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      # Integration tests run against a real Postgres, never a mock — the boundary is
+      # exactly where mocks lie (docs/12-testing.md).
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: whatsapp_crm_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/whatsapp_crm_test
+      APP_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+      PUBLIC_URL: http://localhost:3000
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Typecheck before lint: a type error usually explains any lint noise downstream.
+      - name: typecheck
+        run: npm run typecheck
+
+      # Includes the comment rule and the layering rule, both of which are architectural
+      # rather than stylistic (docs/11-conventions.md).
+      - name: lint
+        run: npm run lint
+
+      - name: test
+        run: npm test
+
+      - name: migrations apply from empty
+        run: npm run db:migrate
+
+      # A migration that only works once is not a migration. Re-running must be a no-op.
+      - name: migrations are idempotent
+        run: npm run db:migrate
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The previous repo committed a real-looking candidate record with name, mobile, DOB,
+      # street address and salary (docs/00-prior-art.md, M19).
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

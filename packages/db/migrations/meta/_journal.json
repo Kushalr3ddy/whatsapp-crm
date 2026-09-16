@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789558000274,
+      "tag": "0000_peaceful_mysterio",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789558009757,
+      "tag": "0001_rls_and_identity_constraints",
+      "breakpoints": true
+    }
+  ]
+}

@@ -103,7 +103,7 @@ by default rather than leaked by default.
 
 ## Supply chain
 
-pnpm lockfile committed · `npm audit` and Renovate/Dependabot · CycloneDX SBOM per release ·
+Lockfile committed · `npm audit` and Renovate/Dependabot · CycloneDX SBOM per release ·
 base images pinned by digest · non-root container user · read-only root filesystem · dropped
 capabilities · Trivy image scan in CI.
 
