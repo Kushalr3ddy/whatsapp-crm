@@ -791,3 +791,32 @@ Fixed with `fileParallelism: false`, with the reasoning recorded in `vitest.conf
 are all integration tests against one shared database, so they should not race. The cleaner
 answer — a database per file — is worth doing when the suite is slow enough to care; serial
 takes 7 seconds today. 115 tests green, `npm run check` exit code 0.
+
+---
+
+## 2026-09-18 · Session 018 · Handoff
+
+**Built:** `HANDOFF.md` — a point-in-time snapshot for continuing in a new chat, as distinct
+from this file, which is the append-only history. Covers: what the project is, where the build
+is (P3 complete, 115 tests, 20 commits), what works and what explicitly does not, the pending
+live test with the exact numbers and message id, how to run everything, the decisions that
+would be expensive to re-litigate, the working preferences, and a list of **gotchas already
+paid for** so they are not rediscovered — `SET LOCAL` not taking bind parameters, both tenant
+settings being transaction-scoped, superusers silently bypassing RLS, Drizzle refusing to bind
+a `Date`, `text → jsonb` needing `USING` with the default dropped first, Vitest file
+parallelism corrupting shared-database fixtures, libphonenumber's default metadata accepting
+junk, `pkill -f` killing its own shell, and Postgres roles being cluster-wide.
+
+**Clarified:** the live test is a genuine two-phone test — **9035524447** is the number being
+linked (Kushal's own), **+919380727007** is an unrelated recipient. Not self-messaging, which
+would have been a weaker test since Baileys sending to its own JID can behave oddly. He is also
+exercising the API through Insomnia.
+
+**State left clean:** one message queued and waiting in `whatsapp_crm_dev`, one sender row, no
+processes running, ports free. The queued message is deliberate — the moment a number is linked,
+the gateway's boot sweep sends it, so that single test covers the send path and restart
+durability together.
+
+**Next:** P4, a minimal inbox UI.
+
+**Files:** `HANDOFF.md`, `README.md`

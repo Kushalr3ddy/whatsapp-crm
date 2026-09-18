@@ -79,6 +79,9 @@ storage, auth, queue, email, SMS, LLM, KMS, secrets, telemetry. See
 
 ## Documentation
 
+**Picking this up in a new session? → [HANDOFF.md](HANDOFF.md)** — current state, the pending
+live test, decisions already made, and the gotchas already paid for.
+
 **New to the project or the stack? → [docs/20-orientation.md](docs/20-orientation.md)** explains
 everything from zero: the technology, the jargon, and what all the `M`/`P`/`F` codes mean.
 [docs/README.md](docs/README.md) is the full index with a suggested reading order.
