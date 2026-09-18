@@ -27,41 +27,50 @@ specific past failure, the defect id (`M*`) points at [`00-prior-art.md`](00-pri
 
 ## Map
 
+**Every name below is a table.** Indentation shows what belongs to what; a `──` links two
+tables that always travel together. Each is explained column by column further down.
+
 ```
-org ─┬─ user ── org_membership            identity & tenancy
-     ├─ api_key, audit_log
+org ─┬─ user ── org_membership          who can log in, and their role in this org
+     ├─ api_key, audit_log              machine access · a record of every change
      │
-     ├─ contact ─┬─ contact_identity       people (generic, no domain)
-     │           ├─ contact_tag ── tag
-     │           ├─ contact_note
-     │           ├─ consent_record
+     ├─ contact ─┬─ contact_identity     a person · one phone/email/whatsapp-id of theirs
+     │           ├─ contact_tag ── tag   which labels they have · the labels themselves
+     │           ├─ contact_note         private notes your team writes, never sent
+     │           ├─ consent_record       proof they agreed to be messaged, per purpose
      │           └─ contact_pipeline_entry ── stage_event
+     │             where they are in a funnel  ·  the history of how they got there
      │
-     ├─ pipeline ── pipeline_stage         user-defined funnels
-     ├─ contact_field_def                  user-defined fields
-     ├─ segment
+     ├─ pipeline ── pipeline_stage       a funnel you define · its ordered stages
+     ├─ contact_field_def                the custom fields YOU invent for contacts
+     ├─ segment                          a saved audience ("everyone in Pune who replied")
      │
-     ├─ sender_identity ─── channel_session   channels
+     ├─ sender_identity ─── channel_session
+     │      one of your WhatsApp numbers  ·  one live connection to it
      │
-     ├─ conversation ─┬─ message              conversations
-     │                ├─ conversation_participant
-     │                └─ internal_note
+     ├─ conversation ─┬─ message                 a thread with someone · one message in it
+     │                ├─ conversation_participant who is watching the thread
+     │                └─ internal_note            team-only comment inside a thread
      │
-     ├─ message_template ── template_variant   content
-     ├─ canned_reply, media_asset
+     ├─ message_template ── template_variant   reusable message · an A/B version of it
+     ├─ canned_reply, media_asset              quick replies · files sent or received
      │
-     ├─ campaign ─┬─ campaign_recipient        outreach
-     │            └─ campaign_metric
-     ├─ sequence ─┬─ sequence_step
-     │            └─ sequence_enrollment
-     ├─ automation_rule, scheduled_message
+     ├─ campaign ─┬─ campaign_recipient   a bulk send · one person in it, and their outcome
+     │            └─ campaign_metric      rolled-up numbers for reporting
+     ├─ sequence ─┬─ sequence_step        a drip series · one message in the series
+     │            └─ sequence_enrollment  who is currently working through it
+     ├─ automation_rule, scheduled_message   if-this-then-that · a message queued for later
      │
-     ├─ data_source ─┬─ field_mapping          ingestion
+     ├─ data_source ─┬─ field_mapping     where data comes from · how its columns map to ours
      │               └─ import_run ── import_row
+     │                  one import       ·  one row of it, and whether it worked
      │
-     └─ webhook_endpoint ── webhook_delivery   ops
-        inbound_event_raw, send_risk_event, rate_limit_state,
-        org_setting, feature_flag
+     └─ webhook_endpoint ── webhook_delivery   where we notify · each attempt to notify
+        inbound_event_raw      every raw provider payload, kept so it can be replayed
+        send_risk_event        every ban-relevant signal, itemised
+        rate_limit_state       send budgets, shared across processes
+        org_setting            branding, quiet hours, caps, retention
+        feature_flag           turn features on per tenant
 ```
 
 ---

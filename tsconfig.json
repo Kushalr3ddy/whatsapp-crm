@@ -22,7 +22,9 @@
     "baseUrl": ".",
     "paths": {
       "@crm/shared": ["packages/shared/src/index.ts"],
-      "@crm/db": ["packages/db/src/index.ts"]
+      "@crm/db": ["packages/db/src/index.ts"],
+      "@crm/channels": ["packages/channels/src/index.ts"],
+      "@crm/channel-fake": ["packages/channels/fake/src/index.ts"]
     }
   },
   "include": ["packages/**/*.ts", "apps/**/*.ts", "tests/**/*.ts", "*.ts"],

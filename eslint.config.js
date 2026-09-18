@@ -55,10 +55,17 @@ export default tseslint.config(
       'jsdoc/require-returns-type': 'off',
       'jsdoc/require-param': 'off',
       'jsdoc/require-returns': 'off',
+      // What a generator yields is in its return type. Restating it in the docblock is the
+      // kind of noise the comment rule exists to prevent.
+      'jsdoc/require-yields': 'off',
 
       // ---- general -----------------------------------------------------------------
       '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // `argsIgnorePattern` covers parameters only; loop bindings and destructured values
+      // need the other two. A leading underscore means "deliberately unused".
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_'
+      }],
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-console': 'error',          // use the logger; docs/13-deployment.md
       eqeqeq: ['error', 'always']

@@ -1,0 +1,225 @@
+import type {
+  AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
+  NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent, ProviderHealth,
+  Recipient, SenderRef, SendResult
+} from '@crm/channels';
+
+/**
+ * A sent message, kept in memory so tests can assert on what would have gone out.
+ */
+export interface FakeSentMessage {
+  readonly senderId: string;
+  readonly to: Recipient;
+  readonly content: OutboundContent;
+  readonly providerMessageId: string;
+  readonly at: Date;
+}
+
+/** Knobs for making the fake misbehave on purpose. */
+export interface FakeOptions {
+  /** Capability overrides, for testing a Meta-shaped transport without Meta. */
+  readonly capabilities?: Partial<ChannelCapabilities>;
+  /** Recipients whose sends always throw, for testing per-recipient failure isolation. */
+  readonly failFor?: readonly string[];
+  /** Make every send throw, for testing outage handling. */
+  readonly failAll?: boolean;
+}
+
+/** Baileys-like defaults: free, unofficial, no window, no template requirement. */
+const DEFAULT_CAPABILITIES: ChannelCapabilities = {
+  freeformOutsideWindow: true,
+  sessionWindowHours: null,
+  requiresApprovedTemplate: false,
+  supportsDeliveryReceipts: true,
+  supportsMedia: true,
+  supportsInteractive: false,
+  perSenderDailyCap: null,
+  costPerMessage: false
+};
+
+/**
+ * An in-memory ChannelProvider. Sends nothing; records everything.
+ *
+ * This is the single most useful object in the test suite. With it, the dispatcher, the
+ * anti-ban engine, campaigns, the inbox and the whole inbound pipeline are testable with no
+ * WhatsApp account, no phone and no ban risk. The previous system had no such thing, which is
+ * why its own docs describe changes as "verified live against the real OpenWA session" —
+ * i.e. by messaging real people (docs/00-prior-art.md, M20).
+ *
+ * It also proves the port is implementable by something that is not Baileys, which is the
+ * cheapest possible check that the abstraction has not quietly leaked.
+ */
+export class FakeChannelProvider implements ChannelProvider {
+  readonly name = 'fake';
+  readonly capabilities: ChannelCapabilities;
+
+  /** Everything "sent", in order. Assert against this instead of a real account. */
+  readonly sent: FakeSentMessage[] = [];
+
+  private readonly connections = new Map<string, ProviderHealth>();
+  private readonly inboundQueue: NormalisedInboundEvent[] = [];
+  private readonly statusQueue: NormalisedStatusEvent[] = [];
+  private readonly waiters: Array<() => void> = [];
+  private readonly options: FakeOptions;
+  private counter = 0;
+  private closed = false;
+
+  /** Builds a fake provider, optionally with an auth store and misbehaviour configured. */
+  constructor(options: FakeOptions = {}, private readonly authStore?: AuthStateStore) {
+    this.options = options;
+    this.capabilities = { ...DEFAULT_CAPABILITIES, ...options.capabilities };
+  }
+
+  /** Returns a QR or pairing code immediately, as a real provider would after a round trip. */
+  async link(senderId: string, mode: 'qr' | 'pairing_code'): Promise<LinkChallenge> {
+    const expiresAt = new Date(Date.now() + 60_000);
+    // Record that linking started, so health() is meaningful before the link completes.
+    this.connections.set(senderId, {
+      senderId, state: 'connecting', lastConnectedAt: null, disconnectReason: null
+    });
+    return mode === 'qr'
+      ? { mode: 'qr', qr: `fake-qr-${senderId}-${++this.counter}`, expiresAt }
+      : { mode: 'pairing_code', code: `FAKE-${String(++this.counter).padStart(4, '0')}`, expiresAt };
+  }
+
+  /** Marks a sender connected. Touches the auth store if one was supplied, as a real one would. */
+  async connect(sender: SenderRef): Promise<void> {
+    if (this.authStore) await this.authStore.set(sender.id, 'creds', new TextEncoder().encode('fake'));
+    this.connections.set(sender.id, {
+      senderId: sender.id, state: 'open', lastConnectedAt: new Date(), disconnectReason: null
+    });
+  }
+
+  /** Closes a connection without discarding credentials. */
+  async disconnect(senderId: string): Promise<void> {
+    this.connections.set(senderId, {
+      senderId, state: 'closed', lastConnectedAt: null, disconnectReason: 'connection_closed'
+    });
+  }
+
+  /** Unlinks and discards stored credentials, as a real logout does. */
+  async logout(senderId: string): Promise<void> {
+    if (this.authStore) await this.authStore.clear(senderId);
+    this.connections.set(senderId, {
+      senderId, state: 'logged_out', lastConnectedAt: null, disconnectReason: 'logged_out'
+    });
+  }
+
+  /**
+   * Records a send, or throws if configured to fail for this recipient. Failure is per
+   * recipient by design: the connection stays open, which is the behaviour a real adapter
+   * must also guarantee (M26).
+   */
+  async send(sender: SenderRef, to: Recipient, content: OutboundContent): Promise<SendResult> {
+    if (this.connections.get(sender.id)?.state !== 'open') {
+      throw new Error(`sender ${sender.id} is not connected`);
+    }
+    if (this.options.failAll || this.options.failFor?.includes(to.phoneE164)) {
+      throw new Error(`fake send failure for ${to.phoneE164}`);
+    }
+    const providerMessageId = `fake-msg-${++this.counter}`;
+    this.sent.push({ senderId: sender.id, to, content, providerMessageId, at: new Date() });
+    this.emitStatus({
+      providerMessageId, senderId: sender.id, status: 'sent', errorCode: null, at: new Date()
+    });
+    return { providerMessageId, acceptedAt: new Date() };
+  }
+
+  /** Streams inbound events until shutdown. */
+  async *inbound(): AsyncIterable<NormalisedInboundEvent> {
+    yield* this.drain(this.inboundQueue);
+  }
+
+  /** Streams delivery-state events until shutdown. */
+  async *status(): AsyncIterable<NormalisedStatusEvent> {
+    yield* this.drain(this.statusQueue);
+  }
+
+  /** Reports connection state, defaulting to closed for a sender never seen. */
+  async health(senderId: string): Promise<ProviderHealth> {
+    return this.connections.get(senderId) ?? {
+      senderId, state: 'closed', lastConnectedAt: null, disconnectReason: null
+    };
+  }
+
+  /** Stops the event streams and releases waiters so consumers can exit. */
+  async shutdown(): Promise<void> {
+    this.closed = true;
+    this.release();
+  }
+
+  // ---- test controls, not part of the port -------------------------------------------
+
+  /** Simulates an inbound message arriving. */
+  receiveMessage(event: Partial<NormalisedInboundEvent> & { senderId: string; fromProviderAddress: string }): void {
+    this.inboundQueue.push({
+      providerMessageId: `fake-in-${++this.counter}`,
+      fromPhoneE164: null, body: '', contentType: 'text', mediaRef: null,
+      receivedAt: new Date(), raw: {}, ...event
+    });
+    this.release();
+  }
+
+  /** Simulates a delivery-state change from the provider. */
+  emitStatus(event: NormalisedStatusEvent): void {
+    this.statusQueue.push(event);
+    this.release();
+  }
+
+  /** Simulates the connection dropping for a typed reason, so recovery paths are testable. */
+  simulateDisconnect(senderId: string, reason: DisconnectReason): void {
+    this.connections.set(senderId, {
+      senderId,
+      state: reason === 'logged_out' ? 'logged_out' : 'closed',
+      lastConnectedAt: null,
+      disconnectReason: reason
+    });
+  }
+
+  // ---- internals ---------------------------------------------------------------------
+
+  /** Yields queued items, waiting for more until shutdown. */
+  private async *drain<T>(queue: T[]): AsyncIterable<T> {
+    while (!this.closed) {
+      while (queue.length > 0) yield queue.shift() as T;
+      if (this.closed) return;
+      await new Promise<void>((resolve) => this.waiters.push(resolve));
+    }
+  }
+
+  /** Wakes every stream consumer currently waiting for an event. */
+  private release(): void {
+    while (this.waiters.length > 0) this.waiters.shift()?.();
+  }
+}
+
+/** An AuthStateStore backed by a Map. For tests that need one without a database. */
+export class InMemoryAuthStateStore implements AuthStateStore {
+  private readonly data = new Map<string, Map<string, Uint8Array>>();
+
+  /** Reads one credential blob. */
+  async get(senderId: string, key: string): Promise<Uint8Array | null> {
+    return this.data.get(senderId)?.get(key) ?? null;
+  }
+
+  /** Writes one credential blob. */
+  async set(senderId: string, key: string, value: Uint8Array): Promise<void> {
+    if (!this.data.has(senderId)) this.data.set(senderId, new Map());
+    this.data.get(senderId)?.set(key, value);
+  }
+
+  /** Removes one key. */
+  async remove(senderId: string, key: string): Promise<void> {
+    this.data.get(senderId)?.delete(key);
+  }
+
+  /** Removes every key for a sender. */
+  async clear(senderId: string): Promise<void> {
+    this.data.delete(senderId);
+  }
+
+  /** Lists stored keys for a sender. */
+  async keys(senderId: string): Promise<string[]> {
+    return [...(this.data.get(senderId)?.keys() ?? [])];
+  }
+}
