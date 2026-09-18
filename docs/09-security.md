@@ -53,6 +53,19 @@ transaction, exactly like `LOCAL`.
 
 Use the `setTenant()` helper in `@crm/db` rather than writing either by hand.
 
+**Both are transaction-scoped, and that catches people out.** `set_config(..., true)` and
+`SET LOCAL` last only for the current transaction, so pasting them into psql one statement at a
+time does nothing — the setting is gone by the next statement, `SET LOCAL ROLE` merely warns
+*"can only be used in transaction blocks"*, and you get the superuser answer while believing
+you tested the application role. To see isolation for yourself, run the whole thing as one unit:
+
+```bash
+npm run db:psql -- -f infra/scripts/rls-demo.sql
+```
+
+It writes a row as one org, reads it as another, and asserts all four cases — including that
+RLS blocks **writes** as well as reads. Everything rolls back.
+
 ## Verifying isolation actually works, at startup
 
 Three different things defeat row-level security, and they are easy to confuse: being a

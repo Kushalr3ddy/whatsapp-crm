@@ -708,3 +708,19 @@ suite.
 **Next:** the HTTP endpoints, then a minimal UI.
 
 **Files:** `apps/gateway/**`, `package.json`, `tests/integration/gateway-work.test.ts`
+
+**Follow-up, same session.** A hand-written RLS snippet handed over for verification was a trap:
+`set_config(..., true)` and `SET LOCAL` are **transaction-scoped**, so running the statements
+one at a time silently does nothing — the setting expires before the next statement, `SET LOCAL
+ROLE` only warns *"can only be used in transaction blocks"*, and the answer comes back as the
+superuser with no tenant set. It looks exactly like isolation being broken.
+
+Replaced with `infra/scripts/rls-demo.sql`, which must be run as one unit and says so at the
+top. It asserts four cases: superuser sees another tenant's row (1), `crm_app` does not (0),
+`crm_app` sees its own (1), and `crm_app` writing into another tenant **errors** — RLS blocks
+writes, not just reads. Everything rolls back.
+
+Evidence the snippet had gone wrong, rather than isolation: the leftover row was named
+`x`/`x-test`/`visible?` — from the snippet — and it had **committed**, so the `ROLLBACK` never
+ran. Reproducing the statements outside a transaction yields exactly the `1` that was reported.
+Cleaned up.
