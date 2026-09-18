@@ -29,6 +29,6 @@
       "@crm/channel-baileys": ["packages/channels/baileys/src/index.ts"]
     }
   },
-  "include": ["packages/**/*.ts", "apps/**/*.ts", "tests/**/*.ts", "*.ts"],
+  "include": ["packages/**/*.ts", "apps/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "*.ts"],
   "exclude": ["node_modules", "**/dist"]
 }

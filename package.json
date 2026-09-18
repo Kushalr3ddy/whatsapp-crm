@@ -28,7 +28,10 @@
     "db:migrate": "tsx --env-file-if-exists=.env packages/db/src/migrate.ts",
     "db:studio": "drizzle-kit studio --config=packages/db/drizzle.config.ts",
     "db:dev:up": "docker run --rm -d --name whatsapp-crm-dev-db -e POSTGRES_PASSWORD=dev -e POSTGRES_USER=dev -e POSTGRES_DB=whatsapp_crm_dev -p 5434:5432 postgres:16-alpine",
-    "db:dev:down": "docker stop whatsapp-crm-dev-db"
+    "db:dev:down": "docker stop whatsapp-crm-dev-db",
+    "//wa": "--- dev tool: link and test a real whatsapp number (see docs/20-orientation.md) ---",
+    "wa:link": "tsx --env-file-if-exists=.env scripts/wa-link.ts",
+    "wa:send": "tsx --env-file-if-exists=.env scripts/wa-link.ts send"
   },
   "dependencies": {
     "baileys": "6.7.24",
@@ -44,6 +47,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^22.10.1",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/supertest": "^7.2.1",
     "drizzle-kit": "^0.28.1",
     "eslint": "^9.16.0",

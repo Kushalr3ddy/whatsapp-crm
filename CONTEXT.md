@@ -420,3 +420,32 @@ and unknown future types that must return `other` rather than throw.
 
 **Files:** `packages/channels/baileys/**`, `packages/db/src/schema.ts`,
 `packages/db/migrations/0005_conversations.sql`, `package.json`
+
+---
+
+## 2026-09-18 · Session 010 · A real QR, from a real connection
+
+**Built:** `scripts/wa-link.ts` plus `npm run wa:link` / `npm run wa:send` — a hand-run harness
+that links one real number and stores what arrives. Not the product: the gateway process and
+the HTTP API still do not exist. This is the end-to-end proof that the adapter, the encrypted
+credential store and the database work together, run by a person watching the output.
+
+**Verified against the real WhatsApp servers:** `npm run wa:link` reached WhatsApp, received a
+linking challenge, and rendered a scannable QR in the terminal. Nothing was linked — the run
+was killed after 25 seconds — but the connection, the protocol handshake and the QR issuance
+are real.
+
+**Inbound persistence** resolves identity → contact (creating both if unknown), upserts the
+conversation, and inserts the message with the body encrypted. `ON CONFLICT (org_id,
+provider_message_id) DO NOTHING` is the idempotency guarantee: WhatsApp redelivers
+notifications for up to seven days, and a duplicate has to become a no-op in the database
+rather than in application code where it can race. A `@lid` privacy address is stored as a
+`wa_lid` identity — simply another way of reaching the same person.
+
+**Safety note carried in the file itself:** there is no rate limiting anywhere in this path.
+That is P6. The harness is for a handful of messages to people who will reply, which is also
+the pattern WhatsApp's heuristics reward. It must not be pointed at a list.
+
+**Next:** the gateway process and the link/send API, so this stops being a hand-run script.
+
+**Files:** `scripts/wa-link.ts`, `package.json`, `tsconfig.json`
