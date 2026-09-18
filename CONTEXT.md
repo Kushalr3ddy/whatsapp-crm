@@ -571,3 +571,53 @@ same number in two orgs is two different people.
 **Files:** `packages/core/**`, `packages/db/src/schema.ts`,
 `packages/db/migrations/0006_link_handshake.sql`, `tests/integration/inbound-messages.test.ts`,
 `package.json`
+
+---
+
+## 2026-09-18 · Session 014 · A startup check that measures isolation instead of assuming it
+
+**Built:** `inspectDatabaseSecurity()`, run during the gated startup sequence before the server
+accepts traffic, plus a `setTenant()` helper. Warns rather than refuses, because single-tenant
+and local development are legitimately fine without isolation.
+
+**Why it measures rather than reads role attributes.** Three different things defeat row-level
+security and they are easy to confuse: being a superuser, holding `BYPASSRLS`, or owning the
+table (owners bypass unless the table is `FORCE`). In all three cases `pg_tables.rowsecurity`
+still reports `true` — **the policies look enabled while enforcing nothing.** So the probe
+writes a row under one org inside a transaction, switches the session to a different org, tries
+to read it back, and always rolls back. Confirmed in psql first: as superuser `dev` the other
+tenant's row is visible (`t`); as `crm_app` it is not (`f`).
+
+**Two bugs in my own security check, found by not trusting it.** Both produced a *false pass*,
+which is the worst possible failure mode for a check like this:
+
+1. The first version just read from `contact` with no context. On an empty table "no rows"
+   is indistinguishable from "isolation working". Fixed by having the probe create its own row.
+2. **`SET LOCAL` cannot take a bind parameter.** `SET LOCAL app.org_id = $1` is a syntax error,
+   so the probe threw, and the error handling treated that as "stricter than isolation" and
+   reported a pass. This one matters well beyond the probe — it is how the application must set
+   tenant context on *every* transaction. The answer is `SELECT set_config('app.org_id', $1,
+   true)`, which binds safely; interpolating into `SET` instead would make the one setting that
+   decides which tenant's data is visible an injection point. Documented in `09-security.md`
+   and wrapped in `setTenant()` so nobody has to remember it.
+
+**Verified both directions**, because a check that only ever fails is as useless as one that
+only ever passes: superuser → `isolationEffective=false`, 2 warnings; `crm_app` →
+`isolationEffective=true`, 0 warnings. 85 tests.
+
+**Pinned D-1b** in `21-deferred.md`, separating three things that all get called "Drizzle":
+schema definitions and drizzle-kit migrations are **in use and load-bearing** (migrations are
+generated from them); the **query builder** is parked, since every query so far is raw SQL
+through the `sql` tag; **Studio** is parked as D-1. The honest cost of parking the builder is
+typed results — hence all the hand-written `(rows as unknown as Array<...>)` assertions — and
+what brings it back is one of those assertions being wrong and letting a bug through.
+
+**On the existing Supabase project:** flagged not to delete it yet. JobPortal's `.env.example`
+documents it as *"your Supabase Postgres"*, its shared dev database. This CRM needs nothing
+from it.
+
+**Next:** the gateway process, then the HTTP endpoints.
+
+**Files:** `packages/db/src/security-check.ts`, `packages/db/src/index.ts`,
+`apps/api/src/server.ts`, `tests/integration/security-check.test.ts`, `docs/09-security.md`,
+`docs/21-deferred.md`

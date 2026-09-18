@@ -42,6 +42,34 @@ application. `psql` and DBeaver cover the day-to-day case now.
 
 ---
 
+## D-1b · Drizzle's query builder (as opposed to Drizzle itself)
+
+**Worth separating three things that all get called "Drizzle":**
+
+| | Status |
+|---|---|
+| **Drizzle schema definitions** (`pgTable(...)`) | **In use, and load-bearing.** This is what migrations are generated from. Cannot be removed without giving up generated migrations. |
+| **drizzle-kit migrations** | **In use.** `db:generate`, `db:migrate`. |
+| **Drizzle's query builder** (`db.select().from().where()`) | **Parked.** Every query written so far uses raw SQL through the `sql` tag. |
+| **Drizzle Studio** (the browser UI) | **Parked** — see D-1 above. |
+
+**Why the query builder is parked:** raw SQL is faster to write for someone who already knows
+SQL well, and several of the queries written so far — the single-statement inbound upsert, the
+status-rank guard — are clearer as SQL than they would be assembled from method calls. The `sql`
+tag parameterises properly, so this is not the injection risk that string-building would be.
+
+**What it costs:** typed results. `db.execute(sql...)` returns an unknown shape that the
+caller asserts by hand, which is why the code is full of
+`(rows as unknown as Array<{ id: string }>)[0]!`. The query builder would type those
+automatically. That is the actual trade, and it is a real one.
+
+**What brings it back:** enough hand-written row assertions that one of them is wrong and a bug
+gets through. At that point adopt the builder for simple reads and keep raw SQL for the complex
+statements — both work on the same connection and in the same transaction, so this is not an
+either/or.
+
+---
+
 ## D-2 · Data residency, DPDP consent enforcement, DLT registration
 
 **What:** hosting, database, storage and any inference inside India; enforced purpose-separated

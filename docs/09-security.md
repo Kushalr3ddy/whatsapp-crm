@@ -35,6 +35,39 @@ encryption keys. The session credentials are the crown jewels — they *are* the
 5. **Mass export.** Report and contact exports are the easiest bulk-exfiltration path. Rate
    limited, audited, and alerted above a volume threshold.
 
+## Setting the tenant: use `set_config`, never `SET LOCAL`
+
+Every row-level security policy reads `current_setting('app.org_id')`, so the application must
+set it at the start of each transaction. There is exactly one correct way to do that:
+
+```sql
+SELECT set_config('app.org_id', $1, true)   -- correct: binds safely, transaction-scoped
+SET LOCAL app.org_id = $1                   -- SYNTAX ERROR: SET cannot take a parameter
+```
+
+This is not a style preference. `SET` does not accept bind parameters, so the only way to use
+it is to interpolate the value into the statement — which would make the one setting that
+decides *which tenant's data you can see* an injection point. `set_config` is an ordinary
+function call and parameterises like any other; its third argument scopes it to the
+transaction, exactly like `LOCAL`.
+
+Use the `setTenant()` helper in `@crm/db` rather than writing either by hand.
+
+## Verifying isolation actually works, at startup
+
+Three different things defeat row-level security, and they are easy to confuse: being a
+**superuser**, holding **BYPASSRLS**, or **owning the table** (owners bypass unless the table is
+set `FORCE`). In all three cases `pg_tables.rowsecurity` still reports `true` — **the policies
+look enabled while enforcing nothing.**
+
+So `inspectDatabaseSecurity()` runs at startup and *measures* rather than infers: inside a
+transaction it writes a row under one org, switches the session to a different org, and tries to
+read it back. Seeing the row means isolation is not in effect. The transaction always rolls back.
+
+It warns rather than refuses to start, because a single-tenant deployment and local development
+are both legitimately fine without isolation. The warning names the role and includes the SQL to
+create a proper one.
+
 ## Authentication & authorisation
 
 - **Built-in driver**: Argon2id (not bcrypt — M16), login rate limiting with progressive
