@@ -364,3 +364,59 @@ and leaves the day free for P3.
 **Next:** P3 — the Baileys adapter. That is the checkpoint a working prototype means.
 
 **Files:** `docs/20-orientation.md`, `docs/README.md`, `README.md`, `CONTEXT.md`
+
+---
+
+## 2026-09-18 · Session 009 · The Baileys adapter
+
+**Checkpoint 1 — Baileys installed and proven.** Pinned `baileys@6.7.24` **exactly**, no caret,
+as ADR-0002 requires. Smoke-tested before building anything on it: `makeWASocket` loads,
+protobuf decodes, `initAuthCreds()` produces key material, and `fetchLatestBaileysVersion()`
+reached WhatsApp's servers and returned `2.3000.1043857760 (latest)`. So the library works and
+the protobuf postinstall npm skipped was not needed.
+
+**Checkpoint 2 — somewhere for messages to land.** `conversation` and `message` tables, RLS
+forced. `message.provider_message_id` is UNIQUE per org: that is what makes delivery
+idempotent, since WhatsApp retries notifications for up to seven days and a duplicate has to
+become a no-op at the database level, not in application code where it can race. A unique index
+on `(contact_id, sender_identity_id)` stops two simultaneous inbound messages creating
+duplicate threads.
+
+**Checkpoint 3 — the adapter.** `packages/channels/baileys`, implementing `ChannelProvider`:
+
+- `auth-adapter.ts` bridges our encrypted Postgres store into Baileys' `AuthenticationState`.
+  Uses Baileys' own `BufferJSON`, because plain `JSON.stringify` silently corrupts the binary
+  key material into `{"type":"Buffer"}` objects. A null value in a key write means *delete*,
+  not *store null* — Baileys expires pre-keys that way.
+- `event-stream.ts` turns Baileys' EventEmitter into the async iterables the port exposes.
+  Buffers when nothing is reading yet, so events arriving during startup are not dropped.
+- `index.ts` — link by QR **or pairing code**, connect, send, disconnect, logout, health,
+  shutdown, plus normalisation of inbound messages and delivery receipts.
+
+**Decisions worth recording:**
+- **Pairing-code linking matters more than usual here.** The phones belong to the recruiter and
+  the other dev, not to us, so linking a number nobody is holding is the normal case rather than
+  the exotic one.
+- **Send prefers the address WhatsApp itself supplied.** Synthesising `<number>@s.whatsapp.net`
+  for a privacy-mode contact addresses a chat that does not exist, and in the previous system
+  that took down the entire engine rather than one send — a permanent crash loop (M26).
+- **Group traffic and `status@broadcast` are dropped on inbound.** A group jid is not a person.
+- **Our own echoed messages are ignored** (`key.fromMe`), or every outbound send would be
+  recorded twice.
+- **No rate limiting lives here.** Pacing, warmup and the safety gates belong in the dispatcher
+  above, so every producer passes through them and none can bypass by reaching the provider
+  directly (M12). This adapter will happily send as fast as it is asked to — which is why it
+  must not be pointed at a list yet.
+
+**Verified:** 70 tests. The adapter cannot run the contract suite without a real number, so the
+pure functions inside it are tested directly: disconnect-code mapping (401 terminal, 429 back
+off, 463 pause — each implies a different response, and the previous system treated them all
+alike and retried into a ban), delivery-tick mapping, and `extractBody` across WhatsApp's nested
+message union — plain text, replies (a completely different shape on the wire, and missing it is
+how a CRM silently drops every reply to a quoted message), media captions, document filenames,
+and unknown future types that must return `other` rather than throw.
+
+**Next:** the gateway process and the link/send API, so someone else can link a real number.
+
+**Files:** `packages/channels/baileys/**`, `packages/db/src/schema.ts`,
+`packages/db/migrations/0005_conversations.sql`, `package.json`

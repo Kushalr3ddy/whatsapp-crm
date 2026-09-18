@@ -31,12 +31,14 @@
     "db:dev:down": "docker stop whatsapp-crm-dev-db"
   },
   "dependencies": {
+    "baileys": "6.7.24",
     "drizzle-orm": "^0.36.4",
     "express": "^5.2.1",
     "libphonenumber-js": "^1.11.15",
     "pino": "^9.5.0",
     "pino-http": "^11.0.0",
     "postgres": "^3.4.5",
+    "qrcode-terminal": "^0.12.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

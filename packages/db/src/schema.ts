@@ -177,3 +177,66 @@ export const channelAuthState = pgTable('channel_auth_state', {
 }, (t) => [
   primaryKey({ columns: [t.senderIdentityId, t.key] })
 ]);
+
+/**
+ * A thread with one contact on one of our numbers. Conversation is ALWAYS the scope for
+ * message history — the previous system fetched every message a contact had ever sent, which
+ * mixed contexts when the same person was worked for two campaigns at once (M31).
+ */
+export const conversation = pgTable('conversation', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  contactId: uuid('contact_id').notNull().references(() => contact.id, { onDelete: 'cascade' }),
+  senderIdentityId: uuid('sender_identity_id').notNull()
+    .references(() => senderIdentity.id, { onDelete: 'restrict' }),
+  channel: text('channel').notNull().default('whatsapp'),
+  status: text('status').notNull().default('open'),
+  assigneeUserId: uuid('assignee_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+  lastOutboundAt: timestamp('last_outbound_at', { withTimezone: true }),
+
+  // Meta's 24-hour service window, recomputed on every inbound message. After it closes only
+  // approved templates may be sent. Null for Baileys, which has no such window.
+  windowExpiresAt: timestamp('window_expires_at', { withTimezone: true }),
+
+  unreadCount: integer('unread_count').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  // One open thread per contact per number. Without this, two inbound messages arriving at
+  // once would race and create duplicate threads.
+  uniqueIndex('conversation_contact_sender_uidx').on(t.contactId, t.senderIdentityId),
+  index('conversation_org_status_idx').on(t.orgId, t.status)
+]);
+
+/**
+ * One message, in or out. Bodies are encrypted at rest; `bodyHmac` lets duplicates be detected
+ * without decrypting a whole table, which the previous system had to do (M25).
+ */
+export const message = pgTable('message', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').notNull()
+    .references(() => conversation.id, { onDelete: 'cascade' }),
+  direction: text('direction').notNull(),
+
+  // WhatsApp's own id for this message. UNIQUE per org, which is what makes delivery
+  // idempotent: WhatsApp retries notifications for up to 7 days, and this turns a duplicate
+  // into a no-op at the database level — the only place that guarantee survives a race.
+  providerMessageId: text('provider_message_id'),
+
+  contentType: text('content_type').notNull().default('text'),
+  bodyEnc: bytea('body_enc'),
+  bodyHmac: text('body_hmac'),
+  status: text('status').notNull().default('queued'),
+  errorCode: text('error_code'),
+  sentBy: text('sent_by').notNull().default('system'),
+  sentByUserId: uuid('sent_by_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  readAt: timestamp('read_at', { withTimezone: true })
+}, (t) => [
+  uniqueIndex('message_provider_id_uidx').on(t.orgId, t.providerMessageId),
+  index('message_conversation_idx').on(t.conversationId, t.createdAt)
+]);
