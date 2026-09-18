@@ -249,6 +249,50 @@ npm run db:dev:down         # stop it (data kept)
 npm run db:dev:reset        # DELETE everything, including linked numbers (asks first)
 ```
 
+### How `npm run` works
+
+`npm run X` looks up `X` in the `"scripts"` object in `package.json` and runs its value as a
+shell command. That is the entire mechanism — there is no magic.
+
+**The colon means nothing.** `db:dev:up` is just a name. npm does not parse it, split it, or
+treat it specially; the colons are a convention for grouping so related commands sort together.
+`dbDevUp` would work identically.
+
+```jsonc
+"scripts": {
+  "db:query":    "bash infra/scripts/dev-db.sh query",
+  "db:setup":    "npm run db:dev:up && npm run db:migrate:all"
+}
+```
+
+So `npm run db:query "SELECT 1"` runs `bash infra/scripts/dev-db.sh query "SELECT 1"` — **extra
+arguments you type are appended to the command.** `npm run db:query -- "SELECT 1"` does the same
+thing; the `--` is only needed when an argument could be mistaken for one of npm's own flags,
+so it is a harmless habit either way.
+
+**Scripts can call other scripts**, which is how `db:setup` works:
+
+```
+npm run db:setup
+  ├─ npm run db:dev:up          start the container, create both databases
+  └─ npm run db:migrate:all
+       ├─ npm run db:migrate         migrate whatsapp_crm_dev
+       └─ npm run db:migrate:test    migrate whatsapp_crm_test
+```
+
+The `&&` means *only continue if the previous step succeeded*, so a failed container start never
+leads to migrating a database that is not there.
+
+**One convenience worth knowing:** inside a script, `node_modules/.bin` is on the PATH. That is
+why `tsx` and `eslint` work in a script but need `npx` when you type them directly in a shell.
+
+To see every script and what it expands to:
+
+```bash
+npm run                     # lists them all
+cat package.json            # or just read it
+```
+
 ### Two commands people confuse
 
 | | What it does |
