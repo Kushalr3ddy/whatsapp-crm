@@ -16,7 +16,8 @@ export default defineConfig({
       '@crm/shared': fileURLToPath(new URL('./packages/shared/src/index.ts', import.meta.url)),
       '@crm/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
       '@crm/channels': fileURLToPath(new URL('./packages/channels/src/index.ts', import.meta.url)),
-      '@crm/channel-fake': fileURLToPath(new URL('./packages/channels/fake/src/index.ts', import.meta.url))
+      '@crm/channel-fake': fileURLToPath(new URL('./packages/channels/fake/src/index.ts', import.meta.url)),
+      '@crm/kms-local': fileURLToPath(new URL('./packages/providers/kms/local/src/index.ts', import.meta.url))
     }
   }
 });

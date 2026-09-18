@@ -287,3 +287,52 @@ re-running clean.
 
 **Files:** `packages/db/src/schema.ts`,
 `packages/db/migrations/0003_contact_jsonb_and_indexes.sql`, `docs/05-data-model.md`
+
+---
+
+## 2026-09-18 · Session 007 · Encryption, and credentials that survive a restart
+
+**Context:** P3a (the `ChannelProvider` port, the fake adapter, the contract suite) had already
+landed in `98d9fda` from an earlier session today, along with ADR-0002 pinning
+`baileys@6.7.24`. Pulled before starting and discarded a duplicate edit to the data-model map
+rather than clobbering that work. This session builds the layer beneath the Baileys adapter.
+
+**Corrected a claim from the previous session.** I had argued against Baileys 7.x partly
+because it pulls in `whatsapp-rust-bridge`, calling it a native module that would complicate
+Docker builds. That was wrong: it is Rust compiled to **WebAssembly**, base64-inlined into a
+2 MB `index.js`, with no `.node` files, no install scripts and no os/cpu restrictions. It
+installs like any pure-JS package. ADR-0002's conclusion still holds, but on the honest
+grounds — a stable API versus a release candidate that has sat in RC across twelve iterations.
+
+**Built:**
+- `packages/providers/kms/local` — AES-256-GCM with a key from configuration. GCM rather than
+  CBC because it authenticates: a tampered ciphertext fails loudly instead of returning
+  plausible garbage. Every envelope carries its key version, so a rotation can run online and
+  a mismatch names the version rather than reporting a generic failure. A **separate**
+  non-rotated key does blind indexing, and the constructor refuses to let one key serve both —
+  deterministic indexing under the encryption key would leak which plaintexts are equal.
+- `sender_identity`, `channel_session`, `channel_auth_state` tables, with RLS forced. The two
+  child tables reach their tenant through `sender_identity` via `EXISTS` rather than carrying
+  their own `org_id`, since neither has meaning apart from its parent. Anti-ban columns
+  (`warmup_started_at`, `risk_score`, `daily_cap_override`) exist from this first migration so
+  P6 needs no migration against a live table.
+- A `bytea` custom column type for Drizzle, which has no first-class one.
+- `PostgresAuthStateStore` — the port's `AuthStateStore` backed by Postgres, encrypting every
+  value. Upsert rather than delete-then-insert, because Baileys rewrites keys constantly and
+  the gap between a delete and an insert is a window where the session is unrecoverable.
+
+**Verified:** 49 tests. The decisive one asserts credentials **survive a restart** — a new
+store on a new connection reads what the old one wrote, which is the whole reason the table
+exists (M29/M30). Others assert the stored bytes do not contain the plaintext, senders are
+isolated, deleting a sender cascades its credentials away, and the config gate refuses to boot
+on a missing or malformed key rather than accepting it.
+
+**Note for deployment:** losing `ENCRYPTION_KEY` means losing every linked number and every
+stored message. It must be backed up separately from the database — a dump and its key in one
+place is a single point of compromise. Documented in `.env.example`.
+
+**Next:** the Baileys adapter itself, against the port and the contract suite.
+
+**Files:** `packages/providers/kms/local/**`, `packages/db/src/schema.ts`,
+`packages/db/src/auth-state-store.ts`, `packages/db/migrations/0004_channels.sql`,
+`packages/shared/src/config.ts`, `.env.example`, `tests/integration/auth-state-store.test.ts`

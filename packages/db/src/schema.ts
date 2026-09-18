@@ -1,4 +1,18 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean, customType, index, integer, jsonb, pgTable, primaryKey,
+  text, timestamp, uniqueIndex, uuid
+} from 'drizzle-orm/pg-core';
+
+/**
+ * Postgres `bytea`, which Drizzle has no first-class column type for. Used for every
+ * encrypted column, since ciphertext is binary and storing it as text would mean base64
+ * padding on every row for no benefit.
+ */
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType: () => 'bytea',
+  toDriver: (value) => Buffer.from(value),
+  fromDriver: (value) => new Uint8Array(value)
+});
 
 /**
  * A tenant. Single-tenant deployments have exactly one row — the isolation code path is
@@ -96,4 +110,70 @@ export const contactIdentity = pgTable('contact_identity', {
 }, (t) => [
   uniqueIndex('contact_identity_lookup_uidx').on(t.orgId, t.kind, t.valueNormalized),
   index('contact_identity_contact_idx').on(t.contactId)
+]);
+
+/**
+ * One of OUR numbers, and its accumulated reputation. Deliberately not called "session":
+ * a sender identity is the number, a channel_session is one connection to it. The previous
+ * system conflated the two, which is why its send caps counted the wrong thing and why
+ * re-linking a number silently broke sending (docs/00-prior-art.md, M11).
+ */
+export const senderIdentity = pgTable('sender_identity', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  label: text('label').notNull(),
+  phoneE164: text('phone_e164'),
+  ownerUserId: uuid('owner_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  status: text('status').notNull().default('linking'),
+  capabilitiesSnapshot: jsonb('capabilities_snapshot'),
+  health: jsonb('health').notNull().default({}),
+
+  // Anti-ban state (docs/08-antiban.md). Present from the first migration so the engine has
+  // somewhere to write when P6 lands, rather than needing a migration on a live table.
+  warmupStartedAt: timestamp('warmup_started_at', { withTimezone: true }),
+  lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+  riskScore: integer('risk_score').notNull().default(0),
+  dailyCapOverride: integer('daily_cap_override'),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('sender_identity_org_idx').on(t.orgId),
+  uniqueIndex('sender_identity_phone_uidx').on(t.orgId, t.provider, t.phoneE164)
+]);
+
+/** One connection to a sender. Runtime state that is expected to churn, not reputation. */
+export const channelSession = pgTable('channel_session', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  senderIdentityId: uuid('sender_identity_id').notNull()
+    .references(() => senderIdentity.id, { onDelete: 'cascade' }),
+  connectionState: text('connection_state').notNull().default('closed'),
+  lastConnectedAt: timestamp('last_connected_at', { withTimezone: true }),
+  disconnectReason: text('disconnect_reason'),
+  disconnectCode: integer('disconnect_code'),
+  reconnectAttempts: integer('reconnect_attempts').notNull().default(0),
+  qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  uniqueIndex('channel_session_sender_uidx').on(t.senderIdentityId)
+]);
+
+/**
+ * The WhatsApp credentials, one row per key, encrypted at rest.
+ *
+ * This table is the reason a restart does not cost you every linked number. Baileys' own
+ * `useMultiFileAuthState` carries an explicit "DO NOT USE IN PROD" warning; disk state is
+ * lost on any ephemeral filesystem (M30); and the previous system needed every session
+ * reconnected by hand after each restart (M29). Keeping credentials here means a database
+ * restore brings the numbers back with it.
+ */
+export const channelAuthState = pgTable('channel_auth_state', {
+  senderIdentityId: uuid('sender_identity_id').notNull()
+    .references(() => senderIdentity.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(),
+  valueEnc: bytea('value_enc').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  primaryKey({ columns: [t.senderIdentityId, t.key] })
 ]);

@@ -14,6 +14,11 @@ const configSchema = z.object({
   APP_SECRET: z.string().min(32, 'must be at least 32 characters — generate with `openssl rand -hex 32`'),
   PUBLIC_URL: z.string().url(),
 
+  // Encryption at rest. Two separate keys, both 32 bytes of hex. Validated here so a
+  // deployment with a malformed key fails at boot rather than at the first message.
+  ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes of hex (64 chars) — generate with `openssl rand -hex 32`'),
+  ENCRYPTION_INDEX_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes of hex (64 chars) — generate with `openssl rand -hex 32`'),
+
   // ---- runtime ---------------------------------------------------------------------
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
