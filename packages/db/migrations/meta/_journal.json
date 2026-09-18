@@ -43,6 +43,13 @@
       "when": 1789735032018,
       "tag": "0005_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789738046320,
+      "tag": "0006_link_handshake",
+      "breakpoints": true
     }
   ]
 }

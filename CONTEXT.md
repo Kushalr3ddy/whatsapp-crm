@@ -528,3 +528,46 @@ Fixed by adding `npm run db:setup` (brings the container up and migrates **both*
 `npm run db:migrate:all`, so the two can no longer drift apart by hand. Confirmed inline env
 vars do take precedence over Node's `--env-file-if-exists`, which is what makes the per-database
 migrate scripts work. 70 tests green, both databases at 10 tables.
+
+---
+
+## 2026-09-18 · Session 013 · Inbound persistence, race-free
+
+**Built:** `packages/core` with `storeInboundMessage`, `markMessageSent`, `markMessageFailed`
+and `applyDeliveryStatus`. Also `channel_session` columns for the link handshake, and a Postgres
+`NOTIFY` trigger channel so the API can hand work to the gateway.
+
+**The command channel between API and gateway is a durable table plus `NOTIFY`**, not a message
+broker. Durable because a send has to survive the gateway being down — the row stays `queued`
+and is swept on boot. `NOTIFY` on top so the normal case is instant rather than waiting for a
+poll. No extra service, which is what a Postgres-only deployment should look like.
+
+**`storeInboundMessage` is a single statement**, deliberately. Resolving identity → contact,
+upserting the conversation and inserting the message all happen in one round trip, so two
+messages arriving at the same instant cannot produce two contacts or two conversations. The
+previous system did this as a sequence of reads and writes and needed an in-process lock to
+paper over the race — which stopped working the moment there was more than one process (M13).
+The test fires eight concurrent messages from the same unknown number and asserts **1 contact,
+1 conversation, 8 messages**.
+
+**`applyDeliveryStatus` refuses to move a message backwards.** Receipts arrive late and out of
+order; a stale `sent` must not undo a `read`. Enforced in the `WHERE` clause with a status rank,
+and tested by applying them in reverse.
+
+**Two gotchas found, both now commented in the code:**
+- **Drizzle's `sql` tag cannot bind a `Date` through `db.execute`** on the postgres.js driver —
+  it throws *"the string argument must be of type string … received an instance of Date"*.
+  Isolated with a two-line repro; the fix is `.toISOString()` and letting Postgres cast.
+- A test counted rows across the whole test database rather than its own orgs, so it passed
+  alone and failed in suite. Scoped to the orgs it creates.
+
+**Verified:** 81 tests. Including that the body is encrypted (the plaintext is not in the row),
+a redelivered message is a no-op that *reports* itself as such, a `@lid` privacy address becomes
+its own identity kind rather than a phone, a closed conversation reopens on new inbound, and the
+same number in two orgs is two different people.
+
+**Next:** the gateway process itself, then the HTTP endpoints.
+
+**Files:** `packages/core/**`, `packages/db/src/schema.ts`,
+`packages/db/migrations/0006_link_handshake.sql`, `tests/integration/inbound-messages.test.ts`,
+`package.json`

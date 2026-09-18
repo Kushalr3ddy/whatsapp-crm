@@ -18,7 +18,8 @@ export default defineConfig({
       '@crm/channels': fileURLToPath(new URL('./packages/channels/src/index.ts', import.meta.url)),
       '@crm/channel-fake': fileURLToPath(new URL('./packages/channels/fake/src/index.ts', import.meta.url)),
       '@crm/kms-local': fileURLToPath(new URL('./packages/providers/kms/local/src/index.ts', import.meta.url)),
-      '@crm/channel-baileys': fileURLToPath(new URL('./packages/channels/baileys/src/index.ts', import.meta.url))
+      '@crm/channel-baileys': fileURLToPath(new URL('./packages/channels/baileys/src/index.ts', import.meta.url)),
+      '@crm/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url))
     }
   }
 });

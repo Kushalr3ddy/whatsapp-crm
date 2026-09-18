@@ -26,7 +26,8 @@
       "@crm/channels": ["packages/channels/src/index.ts"],
       "@crm/channel-fake": ["packages/channels/fake/src/index.ts"],
       "@crm/kms-local": ["packages/providers/kms/local/src/index.ts"],
-      "@crm/channel-baileys": ["packages/channels/baileys/src/index.ts"]
+      "@crm/channel-baileys": ["packages/channels/baileys/src/index.ts"],
+      "@crm/core": ["packages/core/src/index.ts"]
     }
   },
   "include": ["packages/**/*.ts", "apps/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "*.ts"],

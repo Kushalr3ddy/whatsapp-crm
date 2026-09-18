@@ -153,6 +153,15 @@ export const channelSession = pgTable('channel_session', {
   disconnectReason: text('disconnect_reason'),
   disconnectCode: integer('disconnect_code'),
   reconnectAttempts: integer('reconnect_attempts').notNull().default(0),
+
+  // The linking handshake. The API cannot call the provider directly — the gateway owns the
+  // socket in a separate process — so a link request is left here and the challenge WhatsApp
+  // issues is written back for the API to serve.
+  linkRequestedMode: text('link_requested_mode'),
+  linkRequestedPhone: text('link_requested_phone'),
+  linkRequestedAt: timestamp('link_requested_at', { withTimezone: true }),
+  linkChallenge: jsonb('link_challenge'),
+  linkError: text('link_error'),
   qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
