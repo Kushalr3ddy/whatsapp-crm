@@ -513,3 +513,18 @@ it back, and the row was still there. Both databases migrated.
 
 **Files:** `infra/scripts/dev-db.sh`, `package.json`,
 `tests/integration/auth-state-store.test.ts`, `docs/20-orientation.md`
+
+**Correction, same session.** The commit above went out with the integration suite failing —
+`relation "org" does not exist`. Two mistakes:
+
+1. Splitting dev and test into separate databases meant the test one also needed migrating, and
+   I only migrated dev.
+2. **My verification was broken, which is why I did not notice.** I checked with
+   `grep -c "migrations applied" | xargs -I{} echo "test: applied"` — `xargs` runs the echo
+   whether the count is 1 or 0, so it printed success unconditionally. Then I committed on the
+   strength of it. `grep -c` needs its value inspected, not piped into an unconditional echo.
+
+Fixed by adding `npm run db:setup` (brings the container up and migrates **both** databases) and
+`npm run db:migrate:all`, so the two can no longer drift apart by hand. Confirmed inline env
+vars do take precedence over Node's `--env-file-if-exists`, which is what makes the per-database
+migrate scripts work. 70 tests green, both databases at 10 tables.

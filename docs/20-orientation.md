@@ -222,8 +222,7 @@ afford to lose.
 ```bash
 npm install                 # download dependencies
 cp .env.example .env        # then fill in the required values
-npm run db:dev:up           # start Postgres in Docker (data persists in a volume)
-npm run db:migrate          # create the tables
+npm run db:setup            # start Postgres in Docker and migrate BOTH databases
 npm run dev                 # start the API server on :3000
 ```
 
@@ -236,6 +235,9 @@ restart, a reboot, and even deleting the container. Two databases live inside it
 |---|---|
 | `whatsapp_crm_dev` | Your data. **Linked WhatsApp numbers and their credentials live here** — wiping it means re-linking every number. |
 | `whatsapp_crm_test` | For `npm test`, which truncates tables freely. Deliberately separate so tests can never destroy the above. |
+
+There are two databases, so use `db:setup` rather than migrating by hand — migrating only one
+of them leaves the test suite failing with `relation "org" does not exist`.
 
 ```bash
 npm run db:dev:status       # is it running, and what is in it

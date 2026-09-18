@@ -35,7 +35,9 @@
     "db:dev:reset": "bash infra/scripts/dev-db.sh reset",
     "db:dev:status": "bash infra/scripts/dev-db.sh status",
     "db:psql": "bash infra/scripts/dev-db.sh psql",
-    "db:migrate:test": "DATABASE_URL=postgresql://dev:dev@localhost:5434/whatsapp_crm_test tsx --env-file-if-exists=.env packages/db/src/migrate.ts"
+    "db:migrate:test": "DATABASE_URL=postgresql://dev:dev@localhost:5434/whatsapp_crm_test tsx --env-file-if-exists=.env packages/db/src/migrate.ts",
+    "db:migrate:all": "npm run db:migrate && npm run db:migrate:test",
+    "db:setup": "npm run db:dev:up && npm run db:migrate:all"
   },
   "dependencies": {
     "baileys": "6.7.24",
