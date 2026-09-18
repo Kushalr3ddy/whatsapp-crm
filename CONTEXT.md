@@ -336,3 +336,31 @@ place is a single point of compromise. Documented in `.env.example`.
 **Files:** `packages/providers/kms/local/**`, `packages/db/src/schema.ts`,
 `packages/db/src/auth-state-store.ts`, `packages/db/migrations/0004_channels.sql`,
 `packages/shared/src/config.ts`, `.env.example`, `tests/integration/auth-state-store.test.ts`
+
+---
+
+## 2026-09-18 · Session 008 · Docs a newcomer can actually read
+
+**Problem:** the docs were written for someone who already knew the stack. `M7`, `P3`, `FR-12`,
+"port", "RLS", "blind index", "E.164" all appeared without ever being defined, and `docs/` had
+no entry point — a reader landed in a directory of twenty numbered files with no starting point.
+
+**Built:** `docs/20-orientation.md` (254 lines) and `docs/README.md`.
+
+The orientation doc assumes no knowledge of TypeScript, Node, Postgres or WhatsApp's API. It
+covers: what the product is in plain words; **every numbering scheme decoded** (M = a mistake
+from the old system, P = build phase, F = feature module, FR/NFR/CON = requirements, ADR =
+decision record, AC/TC = acceptance criteria and tests); what each technology is and why it
+was chosen; a glossary of the terms used constantly (migration, port/adapter, fake, contract
+test, queue/worker, RLS, jsonb, GIN, blind index, E.164, idempotent, envelope encryption, WASM,
+dist-tag); the one rule that explains most decisions — *this tool knows nothing about your
+business*; the ban risk stated plainly; and how to run it.
+
+**Deliberately not done:** rewriting all twenty documents. The gap was orientation, not
+content — the existing docs are accurate and detailed, they simply assumed context the reader
+does not have. One good entry point plus a glossary fixes that far more cheaply than a rewrite,
+and leaves the day free for P3.
+
+**Next:** P3 — the Baileys adapter. That is the checkpoint a working prototype means.
+
+**Files:** `docs/20-orientation.md`, `docs/README.md`, `README.md`, `CONTEXT.md`

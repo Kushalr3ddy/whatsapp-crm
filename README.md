@@ -79,8 +79,13 @@ storage, auth, queue, email, SMS, LLM, KMS, secrets, telemetry. See
 
 ## Documentation
 
+**New to the project or the stack? → [docs/20-orientation.md](docs/20-orientation.md)** explains
+everything from zero: the technology, the jargon, and what all the `M`/`P`/`F` codes mean.
+[docs/README.md](docs/README.md) is the full index with a suggested reading order.
+
 | | |
 |---|---|
+| [20 Orientation](docs/20-orientation.md) | **Start here** — the project and the stack, assuming no prior knowledge |
 | [00 Prior art](docs/00-prior-art.md) | What the previous system got wrong, and the rule each defect became |
 | [01 Vision & scope](docs/01-vision-scope.md) | What this is, who it is for, explicit non-goals |
 | [02 Requirements](docs/02-requirements.md) | Numbered functional and non-functional requirements |
