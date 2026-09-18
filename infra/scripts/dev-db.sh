@@ -67,7 +67,22 @@ case "${1:-up}" in
     ;;
 
   psql)
+    # Interactive prompt. An optional second argument picks the database.
     docker exec -it "${CONTAINER}" psql -U "${PGUSER}" -d "${2:-whatsapp_crm_dev}"
+    ;;
+
+  sql)
+    # Runs a SQL FILE FROM THIS MACHINE. Piped over stdin rather than passed as `psql -f`,
+    # because psql runs inside the container and cannot see paths on the host.
+    [ -n "${2:-}" ] || { echo "usage: dev-db.sh sql <file.sql> [database]"; exit 1; }
+    [ -f "$2" ] || { echo "no such file: $2"; exit 1; }
+    docker exec -i "${CONTAINER}" psql -U "${PGUSER}" -d "${3:-whatsapp_crm_dev}" -f - < "$2"
+    ;;
+
+  query)
+    # One-off query, for scripting: dev-db.sh query "SELECT count(*) FROM contact;"
+    [ -n "${2:-}" ] || { echo 'usage: dev-db.sh query "SELECT ..." [database]'; exit 1; }
+    docker exec -i "${CONTAINER}" psql -U "${PGUSER}" -d "${3:-whatsapp_crm_dev}" -c "$2"
     ;;
 
   status)
@@ -83,5 +98,5 @@ case "${1:-up}" in
     fi
     ;;
 
-  *) echo "usage: dev-db.sh up|down|reset|psql|status"; exit 1 ;;
+  *) echo "usage: dev-db.sh up|down|reset|status|psql [db]|sql <file> [db]|query \"SQL\" [db]"; exit 1 ;;
 esac

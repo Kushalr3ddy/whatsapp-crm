@@ -242,6 +242,9 @@ of them leaves the test suite failing with `relation "org" does not exist`.
 ```bash
 npm run db:dev:status       # is it running, and what is in it
 npm run db:psql             # open a SQL prompt
+npm run db:query "SELECT count(*) FROM contact;"    # one-off query
+npm run db:sql path/to/file.sql                     # run a .sql file from this machine
+npm run db:rls-demo         # prove tenant isolation works (see docs/09-security.md)
 npm run db:dev:down         # stop it (data kept)
 npm run db:dev:reset        # DELETE everything, including linked numbers (asks first)
 ```

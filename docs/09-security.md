@@ -60,7 +60,7 @@ time does nothing — the setting is gone by the next statement, `SET LOCAL ROLE
 you tested the application role. To see isolation for yourself, run the whole thing as one unit:
 
 ```bash
-npm run db:psql -- -f infra/scripts/rls-demo.sql
+npm run db:rls-demo          # from inside the repo
 ```
 
 It writes a row as one org, reads it as another, and asserts all four cases — including that
