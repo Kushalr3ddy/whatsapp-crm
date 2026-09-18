@@ -659,3 +659,52 @@ commands again.
 
 **Files:** `packages/db/src/schema-check.ts`, `packages/db/src/index.ts`,
 `apps/api/src/server.ts`, `tests/integration/schema-check.test.ts`
+
+---
+
+## 2026-09-18 · Session 016 · The gateway
+
+**Built:** `apps/gateway` — `main.ts` (the process) and `work.ts` (the handlers), plus
+`npm run gateway`.
+
+**Why its own process, concretely:** it owns long-lived authenticated sockets, one per number,
+which must not die when the API restarts. `npm run dev` uses `tsx watch`, so sharing a process
+would drop every WhatsApp connection on each file save. It is also deliberately dumb — it owns
+sockets and knows nothing about campaigns, consent, pacing or policy. Work arrives as database
+rows and results go back the same way, so every safety gate stays above it and nothing can
+bypass them by reaching a provider directly (M12).
+
+**What it does:** on boot, verifies the schema (same gate as the API), reconnects every
+`active` sender from stored credentials, then sweeps for work left behind. Then it listens on
+the Postgres `gateway` channel for link and send commands, consumes inbound messages and
+delivery receipts, and sweeps again every 60 s as a safety net in case a `NOTIFY` is missed.
+
+**Design decisions worth recording:**
+- **A send to a disconnected sender stays `queued`, it does not fail.** A message is not wrong
+  because the socket is briefly down; the sweep picks it up when the number reconnects.
+- **No retries here, deliberately.** Retrying into WhatsApp is precisely how a number gets
+  banned, so retry belongs in the dispatcher with the rest of the pacing (P6), not in a loop
+  with no idea how fast it is going. For now a genuine send failure is recorded and left.
+- **A link failure is written to `channel_session.link_error`** rather than only logged, so the
+  API can tell the caller instead of leaving them polling an endpoint that never resolves.
+
+**Verified end to end, with no phone involved.** 99 tests, 12 of them driving the gateway
+handlers against the real database through the fake provider: a queued message is sent and
+records its provider id; a disconnected sender leaves it queued; **one failing recipient is
+recorded as failed while the next send still works** (M26); a duplicate `NOTIFY` does not send
+twice; the sweep picks up work queued while the gateway was down; sessions restore.
+
+Then the real process, against real Postgres: started it, inserted a queued message directly as
+the API will, and **the trigger fired, the `NOTIFY` woke the gateway, the handler ran and
+correctly left the message queued** because nothing is linked.
+
+**Contract divergence found and recorded as a test rather than a comment:** the real Baileys
+adapter rejects a pairing-code link with no phone number; the fake accepts it. The contract
+suite does not assert this, so an adapter could diverge here unnoticed. Worth adding to the
+suite.
+
+**Cleanup:** all child processes killed, ports 3000 and 4983 free, test fixtures deleted.
+
+**Next:** the HTTP endpoints, then a minimal UI.
+
+**Files:** `apps/gateway/**`, `package.json`, `tests/integration/gateway-work.test.ts`

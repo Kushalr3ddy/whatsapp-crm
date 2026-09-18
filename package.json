@@ -16,6 +16,7 @@
   "scripts": {
     "//1": "\u2500\u2500\u2500 everyday \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
     "dev": "tsx watch --env-file-if-exists=.env apps/api/src/server.ts",
+    "gateway": "tsx watch --env-file-if-exists=.env apps/gateway/src/main.ts",
     "start": "node apps/api/dist/server.js",
     "check": "npm run typecheck && npm run lint && npm run test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
