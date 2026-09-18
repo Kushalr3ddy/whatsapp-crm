@@ -774,3 +774,20 @@ link, send and receive all reachable over the API.
 **Files:** `apps/api/src/auth.ts`, `apps/api/src/routes/**`, `apps/api/src/app.ts`,
 `apps/api/src/server.ts`, `packages/shared/src/config.ts`, `.env.example`,
 `tests/integration/api.test.ts`
+
+**Correction, same session.** The commit above was pushed with **4 failing tests** — the second
+time in this project I have committed on an unverified check. Both times the cause was the
+same: running `npm run check` and `git commit` in one command, where the check's result does
+not gate the commit. From here the check runs as its own step and its **exit code** is
+inspected before anything is committed.
+
+The failures themselves were a **parallelism race, not a real defect**. Vitest runs test files
+in parallel by default; `api.test.ts` truncates `org` in `beforeEach`, which destroyed fixtures
+other files were holding (foreign key violations) while their orgs made the API see multiple
+tenants and correctly refuse with 409. Every affected test **passed alone and failed in suite**,
+which is the most confusing failure mode available.
+
+Fixed with `fileParallelism: false`, with the reasoning recorded in `vitest.config.ts`. These
+are all integration tests against one shared database, so they should not race. The cleaner
+answer — a database per file — is worth doing when the suite is slow enough to care; serial
+takes 7 seconds today. 115 tests green, `npm run check` exit code 0.

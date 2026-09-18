@@ -9,6 +9,19 @@ export default defineConfig({
   test: {
     include: ['packages/**/*.test.ts', 'apps/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'node',
+
+    // Test FILES run one at a time, not in parallel.
+    //
+    // The integration tests share one database, so concurrent files corrupt each other's
+    // fixtures: one truncating `org` while another holds rows referencing it produces foreign
+    // key violations, and the API tests — which require exactly one org, because a
+    // config-level key cannot say which tenant it means — see orgs another file created and
+    // correctly refuse with 409. Every one of those passes alone and fails in suite, which is
+    // the most confusing failure mode there is.
+    //
+    // The honest alternative is a separate database per file. That is worth doing when the
+    // suite gets slow enough to care; at this size serial takes about two seconds.
+    fileParallelism: false,
     coverage: { provider: 'v8', reporter: ['text', 'html'], include: ['packages/**/src/**'] }
   },
   resolve: {
