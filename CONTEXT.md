@@ -621,3 +621,41 @@ from it.
 **Files:** `packages/db/src/security-check.ts`, `packages/db/src/index.ts`,
 `apps/api/src/server.ts`, `tests/integration/security-check.test.ts`, `docs/09-security.md`,
 `docs/21-deferred.md`
+
+---
+
+## 2026-09-18 · Session 015 · Refuse to start against the wrong database
+
+**Gap found by a good question:** nothing verified the database matched the code. Forget to
+migrate and the server booted happily, then failed on the first query with an error naming a
+missing column rather than the cause. That contradicted the gated-startup rule (M6).
+
+**Built:** `verifySchema()`, run before the server listens. **Fatal**, unlike the isolation
+warning — if migrations are outstanding, queries *will* fail, so failing at boot with an
+actionable message is strictly better. Four situations, all verified against purpose-built
+databases rather than only the happy path:
+
+| Situation | Message |
+|---|---|
+| Never migrated | `this database has never been migrated … Run: npm run db:migrate` |
+| Migrations outstanding | `1 migration(s) have not been applied (6 of 7) …` |
+| A required table missing | `missing 1 required table(s): message …` |
+| **Database ahead of the code** | `the database is AHEAD of this code: 7 applied but only 6 exist in this checkout` |
+
+The fourth is the one worth having. It happens when you check out an older commit without
+rolling the database back, and the failure it otherwise causes — a column the code does not know
+about — looks completely unrelated to the cause.
+
+Required tables are checked **by name** rather than by diffing the whole schema. A full diff is
+stricter but fails on harmless differences (an index added by hand, a column another tool
+created), and a check that cries wolf gets ignored.
+
+**Process note:** `pkill -f "apps/api/src/server.ts"` inside a compound command kills the shell
+running it, because the pattern matches that shell's own command string. It silently ate the
+back half of a command — the test file and the commit never ran. Not using it in compound
+commands again.
+
+**Next:** the gateway process.
+
+**Files:** `packages/db/src/schema-check.ts`, `packages/db/src/index.ts`,
+`apps/api/src/server.ts`, `tests/integration/schema-check.test.ts`

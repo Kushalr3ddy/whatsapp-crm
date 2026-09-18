@@ -1,16 +1,34 @@
 import { createLogger, loadConfig, ConfigError } from '@crm/shared';
-import { createDatabase, inspectDatabaseSecurity } from '@crm/db';
+import { createDatabase, inspectDatabaseSecurity, verifySchema } from '@crm/db';
 import { buildApp } from './app.js';
 
+/** Thrown when the database does not match this build of the code. Always fatal. */
+class SchemaMismatchError extends Error {
+  /** Names the error so a crash log says what kind of failure this was. */
+  constructor(message: string) {
+    super(message);
+    this.name = 'SchemaMismatchError';
+  }
+}
+
 /**
- * Process entry point. Startup is a gated sequence — configuration validated, dependencies
- * reached, and only then does the server listen. Failing loudly here is the whole point
- * (docs/00-prior-art.md, M6 and M17).
+ * Process entry point. Startup is a gated sequence — configuration validated, schema verified,
+ * dependencies reached, and only then does the server listen. Failing loudly here is the whole
+ * point (docs/00-prior-art.md, M6 and M17).
  */
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config);
   const db = createDatabase(config.DATABASE_URL);
+
+  // Refuse to start against a database that does not match this code. Fatal, unlike the
+  // security warning below: if migrations are outstanding, queries WILL fail, and failing here
+  // with an actionable message beats failing on a user's first request (M6).
+  const schema = await verifySchema(db);
+  if (!schema.ok) {
+    throw new SchemaMismatchError(schema.problem ?? 'the database schema does not match this code');
+  }
+  logger.info({ migrations: schema.applied }, 'database schema verified');
 
   // Part of the gated startup sequence: check that tenant isolation genuinely works for the
   // role we connect as, BEFORE accepting traffic. Warns rather than refuses, because a
@@ -47,8 +65,8 @@ async function main(): Promise<void> {
 main().catch((error: unknown) => {
   // Configuration problems get a readable message; anything else gets a stack trace.
   // Either way the process exits non-zero so an orchestrator does not route traffic here.
-  if (error instanceof ConfigError) {
-    process.stderr.write(`\n${error.message}\n\n`);
+  if (error instanceof ConfigError || error instanceof SchemaMismatchError) {
+    process.stderr.write(`\n${error.name}: ${error.message}\n\n`);
   } else {
     process.stderr.write(`startup failed: ${error instanceof Error ? error.stack : String(error)}\n`);
   }
