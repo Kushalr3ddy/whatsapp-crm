@@ -90,7 +90,13 @@ CREATE POLICY "channel_auth_state_tenant_isolation" ON "channel_auth_state"
                    AND s.org_id = current_setting('app.org_id', true)::uuid));
 --> statement-breakpoint
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON "sender_identity", "channel_session", "channel_auth_state" TO "crm_app";
+DO $$
+BEGIN
+  GRANT SELECT, INSERT, UPDATE, DELETE ON "sender_identity", "channel_session", "channel_auth_state" TO "crm_app";
+EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+  RAISE WARNING 'crm_app role absent or not grantable; skipping grant (see migration 0001)';
+END
+$$;
 --> statement-breakpoint
 
 COMMENT ON TABLE sender_identity IS 'One of OUR numbers and its accumulated reputation. Not a "session" — a session is one connection to it. Conflating the two is why the previous system''s send caps counted the wrong thing.';

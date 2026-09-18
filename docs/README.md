@@ -43,6 +43,7 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes 
 | [18 Providers](18-providers.md) | Swappable drivers — free self-hosted or managed/paid |
 | [19 Capacity](19-capacity.md) | What it costs to run; sizing tiers |
 | [20 Orientation](20-orientation.md) | **Start here.** Everything explained from zero |
+| [21 Deferred decisions](21-deferred.md) | What we deliberately have not decided, and what brings each back |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 | [ADRs](adr/) | Decisions that would be expensive to reverse, and why |
 

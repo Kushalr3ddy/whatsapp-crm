@@ -91,5 +91,11 @@ CREATE POLICY "message_tenant_isolation" ON "message"
   USING ("org_id" = current_setting('app.org_id', true)::uuid)
   WITH CHECK ("org_id" = current_setting('app.org_id', true)::uuid);
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON "conversation", "message" TO "crm_app";--> statement-breakpoint
+DO $$
+BEGIN
+  GRANT SELECT, INSERT, UPDATE, DELETE ON "conversation", "message" TO "crm_app";
+EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+  RAISE WARNING 'crm_app role absent or not grantable; skipping grant (see migration 0001)';
+END
+$$;--> statement-breakpoint
 COMMENT ON COLUMN message.provider_message_id IS 'WhatsApp''s own id. UNIQUE per org — this is what makes delivery idempotent, since WhatsApp retries notifications for up to 7 days and a duplicate must become a no-op at the database level.';

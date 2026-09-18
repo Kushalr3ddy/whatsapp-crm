@@ -449,3 +449,37 @@ the pattern WhatsApp's heuristics reward. It must not be pointed at a list.
 **Next:** the gateway process and the link/send API, so this stops being a hand-run script.
 
 **Files:** `scripts/wa-link.ts`, `package.json`, `tsconfig.json`
+
+---
+
+## 2026-09-18 · Session 011 · Portable migrations, and a home for parked decisions
+
+**Fixed: migrations would have aborted on a managed Postgres.** Migration `0001` runs
+`CREATE ROLE crm_app`, and `0004`/`0005` grant to it. Managed providers (Supabase, Neon, Aiven,
+RDS) do not always permit role creation — and because the grants follow, a single permission
+error would abort the whole migration and leave no schema at all. All three now catch
+`insufficient_privilege` and raise a warning instead.
+
+The warning says what is actually lost, rather than being reassuring: without the role the app
+connects as the table **owner**, and an owner bypasses row-level security. The policies still
+look enabled in `pg_tables` while enforcing nothing. Acceptable for dev or single-tenant;
+not for multi-tenant.
+
+**Verified properly, after a first attempt that proved nothing.** The first simulation reported
+`crm_app` as "present" even for a user that could not create roles — because **Postgres roles
+are cluster-wide, not per-database**, so it already existed from an earlier run. Redone in a
+separate container with a genuinely clean cluster and a `NOCREATEROLE` user: role creation fails
+with `permission denied`, three warnings are raised, and the migration still completes with
+**10 tables, 9 with RLS forced**. Local database also rebuilt from scratch to confirm the edited
+migrations still apply cleanly from empty.
+
+**Added `docs/21-deferred.md`** — parked decisions, each with the condition that brings it back.
+Seven so far: the database browser (D-1), data residency (D-2), licence (D-3), the AI agent
+(D-4), Baileys 7.x (D-5), UUIDv7 (D-6), Turborepo and the queue driver (D-7). Each records what
+it would cost to defer, which is the part usually lost — D-2 notes that consent *records* cannot
+be backfilled, since you cannot invent evidence of an agreement that was never captured, which
+is why that table exists now even though enforcement does not.
+
+**Next:** the gateway process and the link/send API.
+
+**Files:** `packages/db/migrations/0001,0004,0005`, `docs/21-deferred.md`, `docs/README.md`

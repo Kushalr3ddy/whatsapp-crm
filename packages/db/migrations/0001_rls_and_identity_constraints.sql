@@ -78,9 +78,18 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'crm_app') THEN
     CREATE ROLE "crm_app" NOLOGIN;
   END IF;
+
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "crm_app";
+  EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "crm_app"';
+
+EXCEPTION WHEN insufficient_privilege THEN
+  -- Managed Postgres providers (Supabase, Neon, Aiven, RDS) do not always let you create
+  -- roles. That must not abort the migration — the schema is still correct without it.
+  --
+  -- What is lost: the app then connects as the table owner, and a SUPERUSER OR TABLE OWNER
+  -- BYPASSES ROW-LEVEL SECURITY. Tenant isolation silently stops being enforced while the
+  -- policies still look enabled in pg_tables. Fine for a single-tenant deployment or a dev
+  -- database; not fine for multi-tenant production. See docs/13-deployment.md.
+  RAISE WARNING 'could not create the crm_app role (insufficient privilege). The schema is fine, but the application will connect as the table owner, which BYPASSES row-level security. Acceptable for dev or single-tenant; create the role manually before running multi-tenant.';
 END
 $$;
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "crm_app";
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "crm_app";
