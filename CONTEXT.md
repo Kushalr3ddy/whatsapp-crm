@@ -483,3 +483,33 @@ is why that table exists now even though enforcement does not.
 **Next:** the gateway process and the link/send API.
 
 **Files:** `packages/db/migrations/0001,0004,0005`, `docs/21-deferred.md`, `docs/README.md`
+
+---
+
+## 2026-09-18 · Session 012 · A database that survives a restart
+
+**Decided:** stay on local Docker with a **persistent named volume**, rather than a hosted dev
+database. A managed provider needs payment details and another account to juggle, for a benefit
+(querying from any device) that is pinned as D-1 in `21-deferred.md` anyway. The portability fix
+from the previous session stands regardless — migrations now work on a managed Postgres whenever
+that becomes worth doing.
+
+**Built:** `infra/scripts/dev-db.sh` with `up` / `down` / `reset` / `psql` / `status`, wired to
+npm scripts. The container now mounts a named volume and restarts unless stopped.
+
+**Two databases in one container**, which matters more than it sounds: `whatsapp_crm_dev` holds
+real data **including WhatsApp session credentials**, and `whatsapp_crm_test` is where the suite
+truncates freely. The integration test now reads `TEST_DATABASE_URL` and defaults to the test
+database — previously it pointed at `DATABASE_URL`, so once numbers were linked, a routine
+`npm test` would have destroyed their credentials and required re-linking every one. That was a
+live footgun and it is now closed by construction.
+
+`db:dev:reset` prompts for confirmation and says plainly that it deletes linked numbers.
+
+**Verified:** wrote a marker row, **destroyed the container entirely** (`docker rm -f`), brought
+it back, and the row was still there. Both databases migrated.
+
+**Next:** the gateway process and the link/send API.
+
+**Files:** `infra/scripts/dev-db.sh`, `package.json`,
+`tests/integration/auth-state-store.test.ts`, `docs/20-orientation.md`

@@ -27,11 +27,15 @@
     "db:generate": "drizzle-kit generate --config=packages/db/drizzle.config.ts",
     "db:migrate": "tsx --env-file-if-exists=.env packages/db/src/migrate.ts",
     "db:studio": "drizzle-kit studio --config=packages/db/drizzle.config.ts",
-    "db:dev:up": "docker run --rm -d --name whatsapp-crm-dev-db -e POSTGRES_PASSWORD=dev -e POSTGRES_USER=dev -e POSTGRES_DB=whatsapp_crm_dev -p 5434:5432 postgres:16-alpine",
-    "db:dev:down": "docker stop whatsapp-crm-dev-db",
+    "db:dev:up": "bash infra/scripts/dev-db.sh up",
+    "db:dev:down": "bash infra/scripts/dev-db.sh down",
     "//wa": "--- dev tool: link and test a real whatsapp number (see docs/20-orientation.md) ---",
     "wa:link": "tsx --env-file-if-exists=.env scripts/wa-link.ts",
-    "wa:send": "tsx --env-file-if-exists=.env scripts/wa-link.ts send"
+    "wa:send": "tsx --env-file-if-exists=.env scripts/wa-link.ts send",
+    "db:dev:reset": "bash infra/scripts/dev-db.sh reset",
+    "db:dev:status": "bash infra/scripts/dev-db.sh status",
+    "db:psql": "bash infra/scripts/dev-db.sh psql",
+    "db:migrate:test": "DATABASE_URL=postgresql://dev:dev@localhost:5434/whatsapp_crm_test tsx --env-file-if-exists=.env packages/db/src/migrate.ts"
   },
   "dependencies": {
     "baileys": "6.7.24",

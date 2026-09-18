@@ -221,11 +221,35 @@ afford to lose.
 
 ```bash
 npm install                 # download dependencies
-npm run db:dev:up           # start a throwaway Postgres in Docker
 cp .env.example .env        # then fill in the required values
+npm run db:dev:up           # start Postgres in Docker (data persists in a volume)
 npm run db:migrate          # create the tables
-npm run dev                 # start the server
+npm run dev                 # start the API server on :3000
 ```
+
+### The database
+
+`npm run db:dev:up` runs Postgres in Docker with a **named volume**, so your data survives a
+restart, a reboot, and even deleting the container. Two databases live inside it:
+
+| | |
+|---|---|
+| `whatsapp_crm_dev` | Your data. **Linked WhatsApp numbers and their credentials live here** — wiping it means re-linking every number. |
+| `whatsapp_crm_test` | For `npm test`, which truncates tables freely. Deliberately separate so tests can never destroy the above. |
+
+```bash
+npm run db:dev:status       # is it running, and what is in it
+npm run db:psql             # open a SQL prompt
+npm run db:dev:down         # stop it (data kept)
+npm run db:dev:reset        # DELETE everything, including linked numbers (asks first)
+```
+
+### Two commands people confuse
+
+| | What it does |
+|---|---|
+| `npm run dev` | Starts the **API server** on port 3000. Currently only `/health` and `/ready`. |
+| `npm run wa:link` | Starts the **WhatsApp linking tool** and shows a QR code. This is the WhatsApp part. |
 
 Then open `http://localhost:3000/ready` — it should report the database as `ok`.
 

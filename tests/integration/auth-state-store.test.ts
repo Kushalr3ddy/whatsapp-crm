@@ -4,7 +4,9 @@ import { sql } from 'drizzle-orm';
 import { createDatabase, PostgresAuthStateStore, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 
-const url = process.env.DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_dev';
+// Deliberately the TEST database, never DATABASE_URL. These tests create and delete rows;
+// pointing them at the dev database would destroy linked WhatsApp numbers on every `npm test`.
+const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const kms = new LocalKms({
   keyHex: randomBytes(32).toString('hex'),
   indexKeyHex: randomBytes(32).toString('hex')
