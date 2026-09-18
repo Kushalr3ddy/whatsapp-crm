@@ -1,5 +1,6 @@
 import { createLogger, loadConfig, ConfigError } from '@crm/shared';
 import { createDatabase, inspectDatabaseSecurity, verifySchema } from '@crm/db';
+import { LocalKms } from '@crm/kms-local';
 import { buildApp } from './app.js';
 
 /** Thrown when the database does not match this build of the code. Always fatal. */
@@ -41,7 +42,12 @@ async function main(): Promise<void> {
     logger.info({ role: security.role }, 'tenant isolation verified for this database role');
   }
 
-  const app = buildApp({ config, logger, db });
+  const kms = new LocalKms({
+    keyHex: config.ENCRYPTION_KEY,
+    indexKeyHex: config.ENCRYPTION_INDEX_KEY
+  });
+
+  const app = buildApp({ config, logger, db, kms });
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info(
       { port: config.PORT, preset: config.PRESET, role: config.PROCESS_ROLE, env: config.NODE_ENV },

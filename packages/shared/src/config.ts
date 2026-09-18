@@ -19,6 +19,11 @@ const configSchema = z.object({
   ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes of hex (64 chars) — generate with `openssl rand -hex 32`'),
   ENCRYPTION_INDEX_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes of hex (64 chars) — generate with `openssl rand -hex 32`'),
 
+  // Required, not optional. Scoped keys in a database table are P2; until then this single
+  // key guards the whole API. Making it optional with a warning is how software reaches
+  // production with no authentication at all (docs/00-prior-art.md, M16).
+  API_KEY: z.string().min(32, 'must be at least 32 characters — generate with `openssl rand -hex 32`'),
+
   // ---- runtime ---------------------------------------------------------------------
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),

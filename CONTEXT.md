@@ -724,3 +724,53 @@ Evidence the snippet had gone wrong, rather than isolation: the leftover row was
 `x`/`x-test`/`visible?` — from the snippet — and it had **committed**, so the `ROLLBACK` never
 ran. Reproducing the statements outside a transaction yields exactly the `1` that was reported.
 Cleaned up.
+
+---
+
+## 2026-09-18 · Session 017 · The HTTP API — P3 complete
+
+**Built:** `apps/api/src/auth.ts` plus `routes/senders.ts` and `routes/messages.ts`.
+
+**Auth first, not last.** `API_KEY` is **required** config, not optional-with-a-warning —
+optional auth is how software reaches production with none (M16). Compared with
+`timingSafeEqual`, because `===` returns sooner the earlier two strings differ and over enough
+attempts leaks the key. A wrong key and a missing key get byte-identical responses: telling them
+apart tells an attacker their key format is right.
+
+Mounted as **one guard over the whole `/api/v1` router** rather than per route, so a new
+endpoint cannot be added unprotected by omission.
+
+**Tenant resolution fails closed.** With more than one org the request is refused (409
+`MULTIPLE_ORGS`) rather than guessing — a config-level key cannot say which tenant it speaks
+for, and choosing one would be a cross-tenant leak waiting to happen. Per-org keys are P2.
+
+**Endpoints:** `GET/POST /senders`, `POST /senders/:id/link`, `GET /senders/:id/link`,
+`POST /messages`, `GET /conversations`, `GET /conversations/:id/messages`.
+
+**Design decisions worth recording:**
+- **`POST /messages` returns 202, not 201.** It *queues*; the gateway sends. A route that could
+  reach a provider directly would be a way around the pacing and policy gates, which is exactly
+  the hole the previous system had (M12).
+- **Linking returns 202 and a URL to poll**, not the QR. The socket lives in the gateway
+  process, so the challenge arrives a moment later on the same row.
+- **A landline is refused at the API boundary**, with the line type named. A doomed send costs
+  the sender's delivery ratio, which feeds its health score.
+- **404, not 403, for a resource in another tenant.** Confirming something exists elsewhere is
+  itself a leak.
+- **An undecryptable body is reported, not hidden.** It usually means the encryption key
+  changed; showing an empty message would make that look like data loss.
+
+**Verified end to end against the real gateway and real WhatsApp servers:**
+401 with no key and with a wrong key, 200 with a valid one · created a sender · a landline
+refused with *"looks like a fixed_line number"* · junk refused · `NO_ACTIVE_SENDER` with the
+next step spelled out · then `POST /senders/:id/link` → 202 → polled twice → **a genuine
+WhatsApp QR string (237 chars, `2@CNOPVOBB…`) delivered through HTTP.** That is P3 complete:
+link, send and receive all reachable over the API.
+
+**115 tests.** All processes killed afterwards, ports free, fixtures deleted.
+
+**Next:** a minimal UI — the first thing worth opening in a browser.
+
+**Files:** `apps/api/src/auth.ts`, `apps/api/src/routes/**`, `apps/api/src/app.ts`,
+`apps/api/src/server.ts`, `packages/shared/src/config.ts`, `.env.example`,
+`tests/integration/api.test.ts`

@@ -4,12 +4,17 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { Config, Logger } from '@crm/shared';
 import type { Database } from '@crm/db';
+import type { KmsDriver } from '@crm/kms-local';
+import { requireApiKey } from './auth.js';
+import { sendersRouter } from './routes/senders.js';
+import { messagesRouter } from './routes/messages.js';
 
 /** Everything the HTTP layer needs, passed in rather than imported. */
 export interface AppDependencies {
   readonly config: Config;
   readonly logger: Logger;
   readonly db: Database;
+  readonly kms: KmsDriver;
 }
 
 /**
@@ -74,6 +79,14 @@ export function buildApp(deps: AppDependencies): Express {
       role: deps.config.PROCESS_ROLE
     });
   });
+
+  // Everything under /api/v1 requires an API key and resolves a tenant. Mounted as one
+  // guard rather than per-route, so a new route cannot be added unprotected by omission.
+  const api = express.Router();
+  api.use(requireApiKey(deps.config, deps.db));
+  api.use('/senders', sendersRouter(deps.db));
+  api.use('/', messagesRouter(deps.db, deps.kms, deps.config.DEFAULT_COUNTRY));
+  app.use('/api/v1', api);
 
   /** Anything unrouted. Kept in the same problem+json shape as a real error. */
   app.use((req: Request, res: Response) => {
