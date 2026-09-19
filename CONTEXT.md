@@ -960,3 +960,51 @@ real exit criterion — two agents on one inbox — which needs login, sessions 
 
 **Files:** `apps/web/**`, `apps/api/src/routes/messages.ts`, `tests/integration/api.test.ts`,
 `package.json`, `tsconfig.json`, `eslint.config.js`, `.gitignore`, `.env.example`
+
+---
+
+## 2026-09-19 · Session 019c · API exercised through Insomnia, and three corrections
+
+Built a set of Insomnia requests by **running every one of them against a live API first**,
+which is how all three findings below surfaced.
+
+**Correction to 019b.** That entry, and the commit message of `8487e6c`, say the sidebar read
+"linked" off a `status` that is `'active'` **from the moment a sender row is created**. That is
+wrong: `sender_identity.status` defaults to `'linking'`, and `POST /senders` inserts `'linking'`
+explicitly. A freshly created sender reads `linking`, not `active`.
+
+The fix was still right and still necessary — but for a different and more interesting reason.
+`kushal test number` is `active` while its `connection_state` is **null**. So status is not
+*premature*, it is **stale**: something set it active during an earlier link attempt and nothing
+reverted it when the socket closed. A sender therefore reads `active` indefinitely after its
+connection is gone, which is worse than the behaviour originally described, and makes
+`connection_state` the only trustworthy signal for "can this actually send". Worth remembering
+when sender health is built in P6 — a health score reading `status` would be reading a value
+that never goes back down.
+
+**Two defects found by exercising the API:**
+
+1. **A malformed UUID returns 500.** `GET /api/v1/conversations/not-a-uuid/messages` reaches
+   Postgres, the cast throws, and it lands in the generic error handler as `INTERNAL_ERROR`.
+   User input must never produce a 500 — it should be a 422, or a 404 to match the "404 not 403
+   on foreign ids" rule in `docs/09-security.md`. A valid-but-unknown UUID correctly returns
+   `{"data":[]}` with 200.
+2. **Problem responses carry `"status": 0`.** The `problem()` helper in `routes/messages.ts`
+   and `routes/senders.ts` hardcodes `status: 0` while the real code goes in the HTTP status
+   line. RFC 7807 says that member is the HTTP status code. `auth.ts` builds its own problem
+   objects correctly with `401`, so the two disagree — a client reading `body.status` gets `0`
+   from one route and `401` from another. Neither is fixed yet; both are small.
+
+**Verified working:** health and ready without auth · 401 with no key and with a wrong key,
+identical bodies so neither reveals which part was wrong · senders list · conversations list
+now carrying `contactPhone` · a thread with its body decrypted · junk number refused as
+`PHONE_INVALID_FOR_COUNTRY` · an Indian landline refused as `NOT_REACHABLE` with *"looks like a
+fixed_line number"* · empty body refused by the schema · unknown route 404 · sender creation
+refused on an empty label, accepted otherwise at 201 with status `linking` · link handshake
+returning 202 with a poll URL, and the poll reporting `pending` / `connecting` with the gateway
+down.
+
+**Cleaned up:** the scratch sender and its `channel_session` row were deleted by id. The
+database is back to one sender and the single original queued message `a90a2922`.
+
+**Files:** `CONTEXT.md`, `docs/15-api.md`

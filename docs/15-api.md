@@ -151,3 +151,90 @@ handles auth, retries, idempotency keys and pagination.
 `/api/v1` is stable. Breaking changes go to `/api/v2`; the previous version is supported for
 12 months after a successor ships. Additive changes — new fields, new endpoints, new enum
 values — are **not** breaking, so clients must ignore unknown fields.
+
+---
+
+## Trying it by hand (Insomnia, Postman, curl)
+
+A walk through everything that is actually implemented today, in an order that builds on
+itself. Every request below was run against a live server before being written down, and the
+responses are the real ones.
+
+**Setup.** Start the API with `npm run dev`. In Insomnia create an environment with:
+
+```json
+{
+  "base": "http://localhost:3000",
+  "key": "<the API_KEY value from your .env>"
+}
+```
+
+Then set a **folder-level** Bearer auth of `{{ key }}` so every request inherits it, rather
+than pasting the header into each one. Requests 1–2 and 3 deliberately need it absent.
+
+### Liveness — no authentication
+
+| # | Request | Expect |
+|---|---|---|
+| 1 | `GET {{base}}/health` | `200` · `{"status":"ok"}` |
+| 2 | `GET {{base}}/ready` | `200` · `{"status":"ready","checks":{"database":"ok"},...}` — this one touches Postgres, so it fails if the database is down while `/health` still passes |
+
+### Authentication
+
+| # | Request | Expect |
+|---|---|---|
+| 3 | `GET {{base}}/api/v1/senders` with **no** Authorization header | `401` · code `UNAUTHORIZED` |
+| 4 | Same, with `Authorization: Bearer wrong-key` | `401` · the same `code` and `detail` as #3 — only `request_id` differs |
+| 5 | Same, with the real key | `200` · `{"data":[...]}` |
+
+#3 and #4 being indistinguishable is deliberate — an error that distinguished "no key" from
+"wrong key" would confirm to an attacker that their key *format* was right.
+
+### Reading
+
+| # | Request | Expect |
+|---|---|---|
+| 6 | `GET {{base}}/api/v1/conversations` | `200` · each row carries `contactPhone`, which is what a reply is addressed to |
+| 7 | `GET {{base}}/api/v1/conversations/{{id}}/messages` | `200` · `body` is **decrypted for display**; `undecryptable: true` would mean the encryption key changed |
+| 8 | Same with an unknown but well-formed UUID | `200` · `{"data":[]}` |
+
+### Validation — none of these write anything
+
+| # | Body to `POST {{base}}/api/v1/messages` | Expect |
+|---|---|---|
+| 9 | `{"to":"1111111111","body":"hi"}` | `422` · `PHONE_INVALID_FOR_COUNTRY`. Junk that the default libphonenumber metadata would have **accepted** — this is the `max` bundle earning its size |
+| 10 | `{"to":"+911123456789","body":"hi"}` | `422` · `NOT_REACHABLE` — *"looks like a fixed_line number"*. A landline cannot receive WhatsApp, and a doomed send would cost the sender's delivery ratio |
+| 11 | `{"to":"+919380727007","body":""}` | `422` · `VALIDATION_FAILED` · `body: String must contain at least 1 character(s)` |
+| 12 | `GET {{base}}/api/v1/nope` | `404` · `NOT_FOUND` naming the method and path |
+
+### Senders and linking
+
+| # | Request | Expect |
+|---|---|---|
+| 13 | `POST {{base}}/api/v1/senders` · `{"label":""}` | `422` · `VALIDATION_FAILED` |
+| 14 | `POST {{base}}/api/v1/senders` · `{"label":"my number"}` | `201` · status is **`linking`**, not active — a sender exists before it is connected |
+| 15 | `POST {{base}}/api/v1/senders/{{senderId}}/link` · `{"mode":"qr"}` | `202` with a `poll` URL. **Asynchronous by necessity** — the socket lives in the gateway process, not here |
+| 16 | `GET {{base}}/api/v1/senders/{{senderId}}/link` | With the gateway **down**: `state: "pending"`, `challenge: null`. With `npm run gateway` running: the real QR string, starting `2@…`, which you render and scan |
+
+Delete any sender you create this way — there is no `DELETE` endpoint yet, so it is a row in
+`sender_identity` plus one in `channel_session`.
+
+### Sending, for real
+
+`POST {{base}}/api/v1/messages` with `{"to":"+91…","body":"hello"}` returns **`202`, not `201`** —
+accepted for sending, not sent. The gateway decides when it actually goes. Poll request #7 and
+watch `status` move `queued → sent → delivered → read`.
+
+With no number linked it returns `409 NO_ACTIVE_SENDER`, and the message is **not** queued.
+
+### Known rough edges
+
+Both are recorded rather than fixed:
+
+- **A malformed UUID returns `500`.** `GET /api/v1/conversations/not-a-uuid/messages` reaches
+  Postgres, the cast throws, and it surfaces as `INTERNAL_ERROR`. User input should never
+  produce a 500 — this belongs as a `422`, or a `404` to match the "404 not 403 on foreign ids"
+  rule in [09 · Security](09-security.md).
+- **Problem bodies carry `"status": 0`.** The `problem()` helper hardcodes it while the real
+  code goes in the HTTP status line; `auth.ts` builds its own objects correctly with `401`. So
+  `body.status` disagrees between routes. RFC 7807 says that member is the HTTP status code.
