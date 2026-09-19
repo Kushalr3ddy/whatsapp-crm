@@ -15,13 +15,13 @@ apps/web/next-env.d.ts
 .env
 .env.*
 !.env.example
-# Backups people actually make. `.env.*` does not match a name like `.og_env`, and one
-# `git add -A` would publish ENCRYPTION_KEY — which is the one secret with no recovery.
-.og_env
-*env.bak
-*.env.backup
-.env.local
-.env.orig
+# The two rules above only cover `.env` and `.env.<something>`. They do NOT match a name
+# like `.og_env` or `prod.env`, which is exactly what a hand-made backup gets called — and
+# one `git add -A` would publish ENCRYPTION_KEY, the one secret with no recovery.
+# These two cover both shapes and match no source file: `env.ts`, `environment.ts` and
+# `docs/env.md` all stay tracked.
+.*env
+*.env
 config/preset.local.yml
 *.pem
 *.key
