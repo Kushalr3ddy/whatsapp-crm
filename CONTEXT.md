@@ -1061,3 +1061,63 @@ ports free.
 
 **Files:** `apps/web/app/globals.css`, `apps/web/app/theme-toggle.tsx`,
 `apps/web/app/layout.tsx`, `apps/web/app/inbox/layout.tsx`, `eslint.config.js`
+
+---
+
+## 2026-09-19 · Session 019e · Where the `active` sender came from, and a link screen
+
+**Question:** did running `wa:link` and *not* scanning the QR leave the sender marked `active`?
+**Answer: no**, and the evidence is conclusive:
+
+| Evidence | Rules out |
+|---|---|
+| `SENDER_LABEL` in `scripts/wa-link.ts:24` is `'dev-test-number'`; the row is `"kushal test number"` | wa-link never created it |
+| `wa-link.ts:170` sets `status='active'` **and** `warmup_started_at` in one statement; `warmup_started_at` is **NULL** | that line never ran |
+| `created_at` = `updated_at` to the microsecond | the row has never been updated — it was *created* active |
+
+Nothing in the repo inserts a sender as active: the DDL default is `'linking'`, `POST /senders`
+passes `'linking'`, `wa-link` passes `'linking'`, and the string `"kushal test number"` appears
+nowhere in the codebase. **The row was created by hand, already active.** The unscanned QR left
+no trace, which is correct behaviour.
+
+That hand-set value is also the only reason the test message exists: `POST /messages` selects a
+sender `WHERE status IN ('active','degraded')`, so a row saying `linking` would have produced
+`409 NO_ACTIVE_SENDER` and nothing would have queued.
+
+**The consequence that mattered.** `HANDOFF.md` promises the boot sweep sends the queued message
+the moment a number is linked. **Via `npm run wa:link` it would not have.** wa-link looks up
+label `dev-test-number`, would not find it, and would create and link a *second* sender — while
+`handleSend` joins message → conversation → `sender_identity` and reaches
+`kushal test number`, which has no credentials. The message would have stayed queued with no
+obvious reason. Linking *that specific row* through the API avoids this entirely, which is the
+route chosen.
+
+**Built the link screen** at `/link`, since that route needs a **live** QR — WhatsApp rotates it
+in seconds, so a static image or a file would be stale before it could be scanned. Lists every
+sender with its real status and socket state, starts a link, polls every two seconds, and
+renders the QR. The challenge is turned into an SVG **server-side**, so the QR string — a
+credential while it lives — is never handed to client JavaScript. Expiry is shown and the QR
+dims rather than silently going dead.
+
+**Verified end to end against real WhatsApp servers**: clicking through produced
+`link challenge issued` in the gateway and a genuine scannable QR rendered in the browser.
+
+**Also confirmed by watching the gateway boot:** it logs `could not restore session` for the
+credential-less `active` sender and then `sender not connected — leaving message queued`,
+`pendingSends: 1` — degrading exactly as intended rather than crashing.
+
+**One more gap found, not fixed:** nothing on the API link path ever promotes a sender to
+`active`. `handleLinkRequest` writes the challenge back and stops; only `wa-link.ts:170` sets
+`active`. A sender created and linked purely through the API would stay `linking` forever, and
+`POST /messages` would keep answering `409 NO_ACTIVE_SENDER`. It does not bite this particular
+row only because it was hand-set. The send path itself is unaffected — `handleSend` checks the
+gateway's in-memory `provider.health()`, not the database column.
+
+**117 tests, exit code 0.**
+
+**Next:** scan the QR from `/link`. The 60-second safety sweep in `apps/gateway/src/main.ts`
+picks the queued message up once the socket is open, so `queued → sent → delivered → read`
+should follow without restarting anything.
+
+**Files:** `apps/web/app/link/**`, `apps/web/app/actions.ts`, `apps/web/lib/crm.ts`,
+`apps/web/app/inbox/layout.tsx`, `apps/web/package.json`

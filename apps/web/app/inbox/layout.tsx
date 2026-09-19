@@ -69,7 +69,15 @@ export default async function InboxLayout({ children }: { children: ReactNode })
                   : 'Not connected'}
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1.5">
+            <Link
+              href="/link"
+              className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:bg-accent-soft"
+            >
+              Link
+            </Link>
+            <ThemeToggle />
+          </div>
         </header>
 
         {failure !== null && (

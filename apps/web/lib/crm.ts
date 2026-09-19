@@ -149,3 +149,36 @@ export async function queueMessage(to: string, body: string): Promise<{ id: stri
     body: JSON.stringify({ to, body })
   });
 }
+
+/** The challenge a person acts on to link a number: a QR to scan, or a code to type. */
+export type LinkChallenge =
+  | { mode: 'qr'; qr: string; expiresAt: string }
+  | { mode: 'pairing_code'; code: string; expiresAt: string };
+
+/** The state of a linking attempt. Mirrors `GET /api/v1/senders/:id/link`. */
+export interface LinkState {
+  /** `pending` means the gateway has not produced a challenge yet — usually it is not running. */
+  state: 'pending' | 'challenge_ready';
+  challenge: LinkChallenge | null;
+  expiresAt: string | null;
+  connectionState: 'open' | 'connecting' | 'closed' | null;
+  senderStatus: string;
+}
+
+/**
+ * Asks the gateway to begin linking a number.
+ *
+ * Returns as soon as the request is recorded, not when a QR exists — the socket lives in the
+ * gateway process, so the challenge arrives asynchronously and has to be polled for.
+ */
+export async function startLink(senderId: string): Promise<{ sessionId: string }> {
+  return request<{ sessionId: string }>(`/senders/${encodeURIComponent(senderId)}/link`, {
+    method: 'POST',
+    body: JSON.stringify({ mode: 'qr' })
+  });
+}
+
+/** Reads the current state of a linking attempt. */
+export async function getLinkState(senderId: string): Promise<LinkState> {
+  return request<LinkState>(`/senders/${encodeURIComponent(senderId)}/link`);
+}
