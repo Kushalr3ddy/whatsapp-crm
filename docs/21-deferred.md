@@ -157,3 +157,63 @@ all in the lean preset.
 horizontally, at which point `pg-boss` stops being appropriate and BullMQ on Redis is correct.
 
 **Cost of deferring:** none. Both sit behind interfaces already.
+
+---
+
+## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling
+
+**What:** a first-run wizard that provisions an org and its first admin in the browser, a guided
+walkthrough for someone new, and the branding layer that makes the product not visibly one
+company's.
+
+**Why parked:** it is a coherent phase of its own rather than a feature, and none of it blocks
+the in-house beta, where the two developers can provision by hand. It is also mostly **already
+anticipated** elsewhere: P12's exit criterion is *"a stranger self-hosts it in under 10 minutes
+from the README alone"*, and F11's Branding section already specifies product name, logo,
+colours, favicon and sender display name as configuration rather than code.
+
+**What brings it back:**
+1. **A second deployment that neither developer runs** — the recruiter, another team, or a
+   whitelabelled instance. The moment setup cannot be a phone call, it has to be a wizard.
+2. Or: P12 proper, where the 10-minute self-host criterion has to actually be met.
+
+**Cost of deferring:** low but not zero. The longer provisioning stays manual, the more
+hand-created rows exist that no code path can reproduce — `sender_identity` already carries one
+created by hand, and that single row caused two separate misdiagnoses before anyone worked out
+where it came from. Keeping provisioning behind one `createOrgWithAdmin()` service, as decided,
+is what keeps this cheap.
+
+---
+
+## D-9 · Generating `.env`, and a secrets driver
+
+**What:** an idempotent `npm run setup:env` that generates the required secrets, and eventually
+a `SecretsDriver` (Infisical, OpenBao, AWS Secrets Manager) plus a non-local `KmsDriver` so the
+master key stops living in a file at all.
+
+**Why parked:** two developers on laptops with a password manager is a genuinely adequate answer
+today, and a secrets manager does **not** solve the thing that actually hurts — losing a key. It
+moves where the key lives and adds rotation, audit and access control, none of which is pressing
+at this size.
+
+Note the asymmetry that makes this worth care rather than speed: `APP_SECRET`, `API_KEY` and the
+database password are all regenerable, and losing them costs one inconvenient afternoon.
+**`ENCRYPTION_KEY` is not regenerable** — losing it makes every stored message and every linked
+number permanently unreadable ([22 · Encryption](22-encryption.md)).
+
+That asymmetry is exactly why a naive generator would be **worse than no generator**: run over a
+working install it would mint a fresh `ENCRYPTION_KEY` and silently destroy the data it was
+meant to protect. When this is built it must fill in only absent values, never touch a key that
+already has content, and exit non-zero rather than guess.
+
+**What brings it back:**
+1. **Deployment** — the key has to exist on a server that nobody should be hand-editing, which
+   is the point `KMS_DRIVER` stops being decorative. `docs/18-providers.md` already specs it;
+   `config.ts` does not yet read it.
+2. Or: a third person needing to set the project up, where "ask one of the two devs" stops
+   scaling.
+
+**Cost of deferring:** none technically, but it carries a **standing manual obligation** in the
+meantime — `ENCRYPTION_KEY` and `ENCRYPTION_INDEX_KEY` must be kept in a password manager, and
+never in the same place as a database dump. A backup holding both the ciphertext and its key is
+a backup of plaintext.

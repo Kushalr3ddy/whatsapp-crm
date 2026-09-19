@@ -1269,3 +1269,49 @@ guard written into the command itself, not left to the reader.
 **122 tests, exit code 0.**
 
 **Files:** `.gitignore`, `README.md`
+
+---
+
+## 2026-09-19 · Session 019i · Two decisions parked properly
+
+**Clarified what actually happened with `.env`:** Kushal had moved the working file to `.og_env`
+and written a new one with throwaway keys **deliberately**, reading the README's unguarded
+`cp .env.example .env` as an instruction to keep his testing separate. Nothing was destroyed and
+nothing was careless — but the command was still capable of destroying an install, which is why
+it is now guarded. Worth recording that the ambiguity, not the user, was the fault.
+
+**The gitignore fix got better.** My first pass hand-listed backup filenames (`*env.bak`,
+`.env.orig`, …) — guessing at names. Kushal's suggestion of `.*env` is the right level: a shape
+rather than a list. Added `*.env` alongside it, since `.*env` alone still misses `prod.env`.
+Verified in a scratch repo **by exit code**, not by reading the patterns: `.og_env`, `.my_env`,
+`.venv`, `prod.env` and `local.env` all ignored; `.env.example` still tracked through the
+negation; `env.ts`, `environment.ts` and `docs/env.md` all still tracked — no false positives on
+source, which is what a broader pattern like `*env*` would have broken.
+
+**Why the database auth failed, precisely:** there is a **second Postgres on `127.0.0.1:5432`**
+on this machine, separate from the project's container on 5434. The placeholder
+`postgresql://user:password@localhost:5432/whatsapp_crm` therefore reached a real server and was
+rejected on credentials — `password authentication failed for user "user"` — rather than failing
+to connect at all. An empty 5432 would have given `ECONNREFUSED`, which would have been a
+clearer signal. This is exactly why the project runs on **5434**, and it is worth remembering
+that a half-edited `DATABASE_URL` can land migrations in the *other* database.
+
+**Two decisions parked in `docs/21-deferred.md`**, both at Kushal's call:
+
+- **D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling.** Brought back by a second
+  deployment neither developer runs, or by P12 proper. Noted that the cost of deferring is not
+  zero: every hand-provisioned row is one no code path can reproduce, and the single hand-made
+  `sender_identity` row already caused two separate misdiagnoses today.
+- **D-9 · Generating `.env`, and a secrets driver.** Brought back by deployment, or a third
+  person setting up. Records the asymmetry that makes it worth care rather than speed:
+  `APP_SECRET`, `API_KEY` and the database password are all regenerable; **`ENCRYPTION_KEY` is
+  not**. A naive generator would therefore be *worse than none* — run over a working install it
+  would mint a fresh key and destroy the data it was meant to protect. When built, it must fill
+  only absent values and never touch a key that already has content.
+
+**Standing obligation while D-9 is parked**, now stated in the README too: both encryption keys
+live in a password manager, never beside a database dump.
+
+**122 tests, exit code 0.**
+
+**Files:** `docs/21-deferred.md`, `README.md`, `.gitignore`

@@ -87,8 +87,12 @@ postgresql://dev:dev@localhost:5434/whatsapp_crm_dev
 
 `PUBLIC_URL=http://localhost:3000` is fine locally.
 
-> **Back up `ENCRYPTION_KEY` somewhere other than the database.** Losing it means losing every
-> linked number and every stored message, permanently. See [22 · Encryption](docs/22-encryption.md).
+> **Back up `ENCRYPTION_KEY` and `ENCRYPTION_INDEX_KEY` in a password manager, now.** Losing
+> `ENCRYPTION_KEY` means losing every linked number and every stored message, permanently — it
+> is the only secret here that cannot be regenerated. Never store it alongside a database dump:
+> a backup holding both the ciphertext and its key is a backup of plaintext.
+> See [22 · Encryption](docs/22-encryption.md), and [D-9](docs/21-deferred.md) for why there is
+> deliberately no generator script yet.
 
 Start Postgres and create the schema — this does both databases, app and test:
 
