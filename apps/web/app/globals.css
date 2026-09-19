@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/*
+ * Theme tokens. Defined here rather than in a config file because Tailwind v4 is CSS-first:
+ * every `--color-*` below becomes a utility (`bg-surface`, `text-muted`, and so on).
+ */
+@theme {
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-border: #e3e6ea;
+  --color-ink: #16191d;
+  --color-muted: #6b7280;
+  --color-accent: #1f7a5a;
+  --color-accent-soft: #e7f4ef;
+  --color-danger: #b42318;
+}
+
+/* Dark is driven by the OS setting alone; there is no in-app toggle yet. */
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-canvas: #101316;
+    --color-surface: #171b1f;
+    --color-border: #272d33;
+    --color-ink: #e8eaed;
+    --color-muted: #9aa3ad;
+    --color-accent: #3fb489;
+    --color-accent-soft: #14312a;
+    --color-danger: #f97066;
+  }
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}

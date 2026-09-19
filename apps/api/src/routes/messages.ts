@@ -29,6 +29,13 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
       SELECT v.id, v.status, v.unread_count AS "unreadCount",
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
              c.id AS "contactId", c.display_name AS "contactName",
+             -- A subquery rather than a join: a contact may hold more than one phone
+             -- identity, and joining would silently duplicate the conversation row.
+             -- Prefers the primary, falls back to the oldest, always yields exactly one.
+             (SELECT ci.value_normalized FROM contact_identity ci
+               WHERE ci.contact_id = c.id AND ci.kind = 'phone'
+               ORDER BY ci.is_primary DESC, ci.created_at ASC
+               LIMIT 1) AS "contactPhone",
              si.label AS "senderLabel",
              (SELECT count(*)::int FROM message m WHERE m.conversation_id = v.id) AS "messageCount"
       FROM conversation v

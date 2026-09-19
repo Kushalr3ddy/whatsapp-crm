@@ -31,5 +31,12 @@
     }
   },
   "include": ["packages/**/*.ts", "apps/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "*.ts"],
-  "exclude": ["node_modules", "**/dist"]
+  "exclude": [
+    "node_modules",
+    "**/dist",
+    // apps/web is a Next.js app: it needs the DOM lib, JSX and React types, none of
+    // which belong in the Node-only server config. It typechecks against its own
+    // tsconfig via `npm run typecheck:web`, which `npm run check` also runs.
+    "apps/web"
+  ]
 }

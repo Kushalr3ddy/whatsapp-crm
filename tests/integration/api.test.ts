@@ -186,4 +186,31 @@ describe('sending', () => {
     expect(r.body.data).toHaveLength(1);
     expect(r.body.data[0].messageCount).toBe(1);
   });
+
+  it('includes the contact phone, without which a reply has no address', async () => {
+    await activeSender();
+    await request(app).post('/api/v1/messages').set(...auth())
+      .send({ to: '+919876543210', body: 'one' });
+    const r = await request(app).get('/api/v1/conversations').set(...auth());
+    expect(r.body.data[0].contactPhone).toBe('+919876543210');
+  });
+
+  it('does not duplicate a conversation when a contact has several phone identities', async () => {
+    await activeSender();
+    await request(app).post('/api/v1/messages').set(...auth())
+      .send({ to: '+919876543210', body: 'one' });
+
+    // A second, non-primary phone for the same person — exactly what a merge leaves behind.
+    // Joining contact_identity rather than sub-selecting would return the conversation twice,
+    // which is why the query uses a correlated subquery.
+    await db.execute(sql`
+      INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
+      SELECT org_id, contact_id, 'phone', '+919876543211', false
+      FROM contact_identity WHERE value_normalized = '+919876543210'`);
+
+    const r = await request(app).get('/api/v1/conversations').set(...auth());
+    expect(r.body.data).toHaveLength(1);
+    // The primary wins, so the reply address does not drift to a secondary number.
+    expect(r.body.data[0].contactPhone).toBe('+919876543210');
+  });
 });

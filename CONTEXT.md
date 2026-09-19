@@ -890,3 +890,73 @@ whether the DEK refactor rides along with `api_key` + login, since it is much ch
 once there is real message history to re-encrypt.
 
 **Files:** `docs/22-encryption.md`, `docs/README.md`, `docs/09-security.md`, `CONTEXT.md`
+
+---
+
+## 2026-09-19 · Session 019b · P4.1 — the inbox UI
+
+**Built the first thing worth opening in a browser.** `apps/web`, a Next.js 15 App Router app,
+per the decision already recorded in `docs/04-architecture.md:92`. Kushal's call was explicit:
+stick to the documented stack, and *"better to be steady"* than to hit today's deadline with a
+throwaway static page.
+
+**What it does.** Conversation list, thread view with decrypted bodies and per-message delivery
+status, and a composer. Polls every five seconds via `router.refresh()` — real-time over SSE is
+a later P4 slice, and polling keeps connection state off the server entirely.
+
+**The key never reaches the browser.** Every call goes through `lib/crm.ts`, which runs server
+side only, and sending is a server action. Nothing is prefixed `NEXT_PUBLIC_`.
+
+**Vulnerability triage, asked for first.** Nine advisories, **none reachable**. The only
+production dependency affected is `drizzle-orm` (HIGH, SQL injection via unescaped identifiers)
+and its attack surface — `sql.raw` / `sql.identifier` — appears nowhere in the codebase; every
+`${}` inside a `sql` tag is a bind parameter. The CRITICAL is `vitest`, a devDependency whose
+advisory needs the Vitest **UI server**, which `vitest run` never starts. The rest is dev
+tooling, some of it Windows-only. Both real fixes are breaking major bumps, so they were
+deliberately **not** applied hours before a demo. Adding Next pulled in one more — a transitive
+PostCSS path traversal via `sourceMappingURL`, in CSS we author ourselves. Also not reachable.
+
+**Two defects caught by checking rather than assuming:**
+
+1. The sidebar first read "1 number linked" off `sender_identity.status`, which is `'active'`
+   from the moment a row is created. **No number has ever been linked.** The honest signal is
+   `channel_session.connection_state = 'open'`, which is null until a QR is actually scanned —
+   the senders route's own comment says a sender "is not connected until it has been linked".
+   It now reads "Not connected" and says what to run.
+2. `/inbox` came out of the production build marked **○ Static**. The build reached a running
+   API, succeeded, and baked the conversation list in — so production would have served the
+   inbox as it looked at deploy time. Fixed with `export const dynamic = 'force-dynamic'` and
+   verified it flips to ƒ.
+
+**One API change:** the conversations endpoint now returns `contactPhone`. Without it a reply
+has no address, because `POST /messages` addresses by phone, not conversation id. Deliberately a
+correlated subquery rather than a join — a contact can hold several phone identities, and a join
+would silently duplicate the conversation row. Two tests cover it, including that case.
+
+**Verified in a real browser**, not just by typecheck: list renders, thread renders with the
+queued message decrypted, composer queues a message that appears in the thread and updates the
+sidebar count. Enter-to-send needed a properly-formed keydown to prove out — the automation's
+synthetic key event does not reach React, the handler is fine.
+
+**Two test messages created and deleted by id.** The database is back to exactly the one
+original queued message, `a90a2922`, so the pending live test is untouched.
+
+**Housekeeping:** `next build <dir>` breaks on Next's internal `/_not-found`, so `web:build`
+runs through the workspace instead. `NEXT_TELEMETRY_DISABLED=1` on both web scripts, because
+`docs/19-capacity.md` says telemetry is off by default and Next phones home otherwise.
+`apps/web` is excluded from the root tsconfig — it needs DOM, JSX and React types that do not
+belong in the Node server config — and `npm run check` now runs `typecheck:web` as its own step.
+`next-env.d.ts` is gitignored: it references a file inside `.next/`, so committing it would
+break a fresh clone's typecheck. Verified typecheck passes with both generated files absent.
+
+**117 tests, exit code 0.** Servers killed, ports 3000 and 3001 free.
+
+**Still true and still the blocker:** no number is linked, so nothing can actually send. The
+live test needs a human with a phone. And there is still **no rate limiting, warmup or pacing** —
+P6 — so this is safe for a handful of messages to people who reply, and unsafe pointed at a list.
+
+**Next:** link a number and watch `queued → sent → delivered → read` through the UI. Then P4's
+real exit criterion — two agents on one inbox — which needs login, sessions and `api_key`.
+
+**Files:** `apps/web/**`, `apps/api/src/routes/messages.ts`, `tests/integration/api.test.ts`,
+`package.json`, `tsconfig.json`, `eslint.config.js`, `.gitignore`, `.env.example`

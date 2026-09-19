@@ -11,7 +11,10 @@ import jsdoc from 'eslint-plugin-jsdoc';
  * Both exist because the previous system lost them: see docs/00-prior-art.md, M1 and M22.
  */
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**', '*.config.js'] },
+  // `.next` is generated, and `*.config.mjs` files sit outside every tsconfig, so the
+  // type-aware parser cannot resolve them.
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**',
+              '*.config.js', '**/*.config.mjs', '**/.next/**'] },
 
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
