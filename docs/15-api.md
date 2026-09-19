@@ -46,7 +46,47 @@ Scopes: `contacts:read|write` · `conversations:read|write` · `messages:send` �
 
 Branch on `code`, never on `detail`.
 
-## Resources
+## What exists today
+
+**Eight endpoints, plus two unauthenticated health checks.** Everything else in this document
+is design, not implementation — the `Resources` list below is the intended surface, and the
+`Sending a message` example shows the shape it will take once the dispatcher exists, **not**
+what the endpoint accepts now.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/health` | No auth. Process is up |
+| `GET` | `/ready` | No auth. Also checks Postgres |
+| `GET` | `/api/v1/senders` | With live connection state |
+| `POST` | `/api/v1/senders` | `{label, provider?, phoneE164?}` → 201, status `linking` |
+| `POST` | `/api/v1/senders/:id/link` | `{mode: 'qr' \| 'pairing_code', phoneE164?}` → 202 + poll URL |
+| `GET` | `/api/v1/senders/:id/link` | The challenge, once the gateway has produced it |
+| `GET` | `/api/v1/conversations` | Includes `contactPhone` and `queuedCount` |
+| `GET` | `/api/v1/conversations/:id/messages` | Bodies decrypted for display |
+| `POST` | `/api/v1/messages` | **`{to, body, senderId?}`** → 202. See the note below |
+
+**The send body today is flat**, not the nested form further down this page:
+
+```http
+POST /api/v1/messages
+Authorization: Bearer <API_KEY>
+
+{ "to": "+919876543210", "body": "hello" }
+```
+
+It returns **202**, not 201 — accepted for sending, not sent. There is no `Idempotency-Key`
+support, no `intent`, no template rendering and no dispatcher yet; the caller's message is
+queued and the gateway sends it.
+
+Worked examples with real responses, including every failure case, are in
+[Trying it by hand](#trying-it-by-hand-insomnia-postman-curl) at the end of this document.
+
+---
+
+## Resources — the intended surface
+
+⬜ **Almost none of this is built.** Kept as the target shape so the pieces that do land fit
+together. Compare against the table above before writing a client.
 
 ```
 /contacts            /contacts/{id}/identities   /contacts/merge
@@ -61,7 +101,11 @@ Branch on `code`, never on `detail`.
 /events              /admin/providers
 ```
 
-## Sending a message
+## Sending a message — the intended shape
+
+⬜ **Not what the endpoint accepts today.** The current body is `{to, body, senderId?}`; see
+[What exists today](#what-exists-today). This section describes where it is going, and
+specifically what the caller will *not* be allowed to choose.
 
 ```http
 POST /api/v1/messages
@@ -88,6 +132,8 @@ reported, never silently dropped:
 ```
 
 ## Webhooks
+
+⬜ **Not built.** No webhook tables, routes or delivery worker exist yet (P9).
 
 Subscribe to: `message.received` · `message.status_changed` · `conversation.assigned` ·
 `contact.created` · `contact.updated` · `campaign.completed` · `import.completed` ·
@@ -118,6 +164,8 @@ Failures land in a DLQ and are replayable from the delivery log.
 
 ## Policy delegation
 
+⬜ **Not built.** Requires the per-key scopes in `api_key`, which is also unbuilt (P2).
+
 A host application that owns consent and contactability registers a policy endpoint. The CRM
 calls it before sends and caches the **negative** result:
 
@@ -133,6 +181,11 @@ See [`16-integration-jobportal.md`](16-integration-jobportal.md).
 
 ## Rate limits
 
+⬜ **Not built — and this is the one to be careful about.** There is no rate limiting
+anywhere: not per key, not per org, and **not in the send path**. The pacing that keeps a
+number alive is the anti-ban engine in P6. Until it exists, this API will send as fast as it
+is asked to (`docs/08-antiban.md`).
+
 Per key, returned on every response:
 ```
 X-RateLimit-Limit / -Remaining / -Reset
@@ -142,6 +195,8 @@ X-RateLimit-Limit / -Remaining / -Reset
 than the system will send, by design.
 
 ## SDK
+
+⬜ **Not built** (P9).
 
 A typed TypeScript client is generated from the OpenAPI spec and published per release. It
 handles auth, retries, idempotency keys and pagination.

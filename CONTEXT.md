@@ -1368,3 +1368,47 @@ encryption keys and points at port 5432, so it cannot boot. This session's serve
 `apps/web/app/inbox/layout.tsx`, `apps/web/app/inbox/[id]/page.tsx`,
 `apps/api/src/routes/messages.ts`, `apps/gateway/src/work.ts`, `apps/gateway/src/main.ts`,
 `tests/integration/*.test.ts`
+
+---
+
+## 2026-09-19 · Session 019k · Making the API doc say what is actually built
+
+**D-1 was already pinned** — the database browser question (Drizzle Studio vs pgweb vs Adminer,
+and the note that Starburst-style query UIs are a distributed-query answer to a single-Postgres
+problem) has been `docs/21-deferred.md` D-1 since an earlier session. Nothing to add; it sits
+above the two pinned today.
+
+**`.env` restored** and verified identical to `.og_env` — port 5434, encryption keys differing.
+It boots.
+
+**`docs/15-api.md` was describing a product that does not exist.** Asked whether the endpoints
+were documented: they were, but the document was the *intended* API rather than the built one,
+and would have actively misled anyone writing a client.
+
+Two specific traps:
+
+- The `Resources` block lists about 25 paths. **Eight exist.**
+- `Sending a message` showed `{to: {kind, value}, intent, content: {template}}` with an
+  `Idempotency-Key` header. The real endpoint takes **`{to, body, senderId?}`** and supports
+  none of that. Someone following the page would have written the wrong request body and had no
+  way to tell why.
+
+Fixed by separating built from designed rather than deleting the design:
+
+- A new **What exists today** table at the top — every one of the eight endpoints plus the two
+  unauthenticated health checks, with the real send body shown inline.
+- `Resources` and `Sending a message` renamed to *"the intended surface"* / *"the intended
+  shape"*, each carrying a ⬜ marker pointing back at the table.
+- `Webhooks`, `Policy delegation`, `Rate limits` and `SDK` each marked ⬜ unbuilt, with the
+  phase that owns them.
+
+The rate-limit marker is deliberately the bluntest: **there is no rate limiting anywhere, not
+per key, not per org, and not in the send path.** A document that describes rate limits in the
+present tense next to an API that has none is the kind of thing that gets a number banned.
+
+This is the same treatment `docs/22-encryption.md` already gets — the intent plus the gap — and
+it is worth applying wherever a doc was written ahead of the code.
+
+**125 tests, exit code 0.**
+
+**Files:** `docs/15-api.md`
