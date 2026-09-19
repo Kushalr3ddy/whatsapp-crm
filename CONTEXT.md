@@ -1315,3 +1315,56 @@ live in a password manager, never beside a database dump.
 **122 tests, exit code 0.**
 
 **Files:** `docs/21-deferred.md`, `README.md`, `.gitignore`
+
+---
+
+## 2026-09-19 · Session 019j · The rest of the link UI, and one more staleness bug
+
+**Built the four outstanding items.**
+
+**Pairing-code linking.** The adapter and API already supported `mode: 'pairing_code'` — only
+the UI did not. `/link` now offers **Scan a QR** or **Type a code**, with a phone field for the
+latter, validated against E.164 in the browser before the request is made. This is the mode that
+matters for numbers nobody here is holding: WhatsApp shows the code on *that* phone.
+
+**Countdown.** The challenge's own `expiresAt` drives a m:ss timer above the QR. It recomputes
+from the deadline each tick rather than decrementing, so a backgrounded tab cannot drift.
+
+**Expiry is now stated, not implied.** When the countdown reaches zero the panel says plainly
+*"Not linked — the challenge expired before it was used"*, and **polling stops**: continuing
+would be asking the API about an attempt that cannot succeed. Previously the QR just dimmed.
+
+**Queued warning.** The conversations endpoint gained `queuedCount`, and the inbox now shows ⚠
+beside a conversation holding unsent messages, with each such message reading
+**"⚠ queued — not sent yet"** in red rather than a bare `queued`. That word is the one people
+misread as done — it means the API accepted it and nothing has left.
+
+**Then a third staleness bug, found by looking at the screen.** `/link` said *"Connected.
+Nothing to do."* while no gateway was running at all. `connection_state` describes a socket held
+by a **process**, so it is meaningless once that process is gone — but nothing ever cleared it.
+A stopped gateway, or a crashed one, left the UI insisting a number was connected.
+
+Fixed with `markAllSessionsClosed()`, run **at boot and at shutdown**. Boot matters more than
+shutdown: it is the only one that covers a `kill -9`, where no handler gets to tidy up. Anything
+genuinely reachable is set back to `open` seconds later as `restoreSessions()` reconnects it.
+
+That is the third instance of the same mistake in this project — **a column describing live
+state that only ever gets written in one direction**. `sender_identity.status` went `active` and
+never came back; `channel_session.connection_state` went `open` and never came back. Worth
+naming as a pattern before P6 builds sender-health scoring on top of exactly these columns.
+
+**Verified in the browser, not just by tests:** ⚠ renders in the list and on the message, the
+mode toggle switches, the phone field appears for pairing code, and an invalid number is
+refused client-side with *"Enter the number in full international form"*.
+
+**125 tests, exit code 0.** Servers stopped, ports free. The test message was deleted and the
+database is back to the single delivered message.
+
+**Note on `.env`:** the working config is still `.og_env`; the current `.env` has identical
+encryption keys and points at port 5432, so it cannot boot. This session's servers were run with
+`--env-file=.og_env` directly rather than touching `.env`. Restore with `cp .og_env .env`.
+
+**Files:** `apps/web/app/link/link-panel.tsx`, `apps/web/lib/crm.ts`, `apps/web/app/actions.ts`,
+`apps/web/app/inbox/layout.tsx`, `apps/web/app/inbox/[id]/page.tsx`,
+`apps/api/src/routes/messages.ts`, `apps/gateway/src/work.ts`, `apps/gateway/src/main.ts`,
+`tests/integration/*.test.ts`

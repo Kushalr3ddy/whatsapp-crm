@@ -241,3 +241,22 @@ export async function applyConnectionEvent(
     'connection state changed'
   );
 }
+
+/**
+ * Marks every session closed. Run at boot and at shutdown.
+ *
+ * `connection_state` describes a socket held by *this* process, so it is meaningless the
+ * moment the process is not running — yet it would sit at `'open'` forever, and the UI would
+ * cheerfully report a number as connected with no gateway alive. Running it at boot also
+ * covers the case a graceful shutdown cannot: a crash or a `kill -9`, where nothing gets the
+ * chance to tidy up. Anything genuinely reachable is set back to `'open'` seconds later as
+ * `restoreSessions()` reconnects it.
+ */
+export async function markAllSessionsClosed(ctx: WorkContext): Promise<number> {
+  const rows = await ctx.db.execute(sql`
+    UPDATE channel_session
+    SET connection_state = 'closed', updated_at = now()
+    WHERE connection_state <> 'closed'
+    RETURNING sender_identity_id`);
+  return (rows as unknown as unknown[]).length;
+}

@@ -37,7 +37,12 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
                ORDER BY ci.is_primary DESC, ci.created_at ASC
                LIMIT 1) AS "contactPhone",
              si.label AS "senderLabel",
-             (SELECT count(*)::int FROM message m WHERE m.conversation_id = v.id) AS "messageCount"
+             (SELECT count(*)::int FROM message m WHERE m.conversation_id = v.id) AS "messageCount",
+             -- Outbound messages accepted but not yet sent. Surfaced so the inbox can warn
+             -- rather than leave someone believing a reply has gone out when it has not.
+             (SELECT count(*)::int FROM message m
+               WHERE m.conversation_id = v.id
+                 AND m.direction = 'outbound' AND m.status = 'queued') AS "queuedCount"
       FROM conversation v
       JOIN contact c ON c.id = v.contact_id
       JOIN sender_identity si ON si.id = v.sender_identity_id

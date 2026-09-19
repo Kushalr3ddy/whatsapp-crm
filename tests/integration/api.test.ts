@@ -187,6 +187,29 @@ describe('sending', () => {
     expect(r.body.data[0].messageCount).toBe(1);
   });
 
+  it('counts queued messages, so the inbox can warn that nothing has been sent', async () => {
+    await activeSender();
+    await request(app).post('/api/v1/messages').set(...auth())
+      .send({ to: '+919876543210', body: 'one' });
+
+    const r = await request(app).get('/api/v1/conversations').set(...auth());
+    // Nothing is linked in a test, so the message can only be queued — which is exactly the
+    // state a person misreads as sent.
+    expect(r.body.data[0].queuedCount).toBe(1);
+    expect(r.body.data[0].messageCount).toBe(1);
+  });
+
+  it('stops counting a message as queued once it has been sent', async () => {
+    await activeSender();
+    await request(app).post('/api/v1/messages').set(...auth())
+      .send({ to: '+919876543210', body: 'one' });
+    await db.execute(sql`UPDATE message SET status = 'sent', sent_at = now()`);
+
+    const r = await request(app).get('/api/v1/conversations').set(...auth());
+    expect(r.body.data[0].queuedCount).toBe(0);
+    expect(r.body.data[0].messageCount).toBe(1);
+  });
+
   it('includes the contact phone, without which a reply has no address', async () => {
     await activeSender();
     await request(app).post('/api/v1/messages').set(...auth())

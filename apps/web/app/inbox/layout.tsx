@@ -113,6 +113,14 @@ export default async function InboxLayout({ children }: { children: ReactNode })
                 </div>
                 <div className="mt-0.5 flex items-center justify-between gap-2">
                   <span className="truncate text-xs text-muted">
+                    {c.queuedCount > 0 && (
+                      <span
+                        className="mr-1 text-danger"
+                        title={`${String(c.queuedCount)} message${c.queuedCount === 1 ? '' : 's'} queued — not sent yet`}
+                      >
+                        ⚠
+                      </span>
+                    )}
                     {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
                     {c.senderLabel !== null && ` · ${c.senderLabel}`}
                   </span>

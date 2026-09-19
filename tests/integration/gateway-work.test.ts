@@ -7,7 +7,8 @@ import { FakeChannelProvider } from '@crm/channel-fake';
 import { createLogger } from '@crm/shared';
 import { storeInboundMessage } from '@crm/core';
 import {
-  applyConnectionEvent, handleLinkRequest, handleSend, restoreSessions, sweepPendingWork
+  applyConnectionEvent, handleLinkRequest, handleSend, markAllSessionsClosed, restoreSessions,
+  sweepPendingWork
 } from '../../apps/gateway/src/work.js';
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
@@ -274,6 +275,19 @@ describe('connection state', () => {
     expect(row.state).toBe('logged_out');
     // It must not keep saying 'active', or the dispatcher queues sends that can never leave.
     expect(row.status).toBe('linking');
+  });
+
+  it('clears a stale open socket, which no running process is actually holding', async () => {
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
+    expect((await sessionRow()).state).toBe('open');
+
+    // What a gateway does at boot: whatever the last run left behind, nothing is connected
+    // until this process connects it. Covers a crash, where no shutdown handler ever ran.
+    const cleared = await markAllSessionsClosed(ctx);
+
+    expect(cleared).toBeGreaterThan(0);
+    expect((await sessionRow()).state).toBe('closed');
   });
 
   it('keeps the last successful connection time across a later disconnect', async () => {

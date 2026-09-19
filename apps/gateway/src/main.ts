@@ -5,7 +5,8 @@ import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { storeInboundMessage, applyDeliveryStatus } from '@crm/core';
 import {
-  applyConnectionEvent, handleLinkRequest, handleSend, restoreSessions, sweepPendingWork,
+  applyConnectionEvent, handleLinkRequest, handleSend, markAllSessionsClosed, restoreSessions,
+  sweepPendingWork,
   type WorkContext
 } from './work.js';
 
@@ -122,6 +123,11 @@ async function main(): Promise<void> {
   })();
 
   // ── startup: reconnect, then pick up anything left behind ───────────────────────────
+  // Nothing is connected until this process connects it, whatever the last run left behind —
+  // including a run that was killed and never got to tidy up.
+  const stale = await markAllSessionsClosed(ctx);
+  if (stale > 0) logger.info({ sessions: stale }, 'cleared stale connection state from a previous run');
+
   const restored = await restoreSessions(ctx);
   const swept = await sweepPendingWork(ctx);
   logger.info(
@@ -159,6 +165,8 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'gateway shutting down');
     clearInterval(sweepTimer);
     await provider.shutdown();
+    // Say so in the database too, or the UI keeps claiming these numbers are connected.
+    await markAllSessionsClosed(ctx).catch(() => { /* shutting down; nothing left to do */ });
     await db.$client.end({ timeout: 5 });
     process.exit(0);
   };

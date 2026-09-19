@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import { queueMessage, startLink, getLinkState, CrmApiError } from '@/lib/crm';
+import type { LinkMode } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
 export interface SendResult {
@@ -42,10 +43,12 @@ export interface LinkStatus {
   detail: string | null;
 }
 
-/** Asks the gateway to start linking. The QR arrives on a later poll, not from this call. */
-export async function beginLink(senderId: string): Promise<{ ok: boolean; error?: string }> {
+/** Asks the gateway to start linking. The challenge arrives on a later poll, not from this call. */
+export async function beginLink(
+  senderId: string, mode: LinkMode = 'qr', phoneE164?: string
+): Promise<{ ok: boolean; error?: string }> {
   try {
-    await startLink(senderId);
+    await startLink(senderId, mode, phoneE164);
   } catch (error) {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     return { ok: false, error: 'Could not reach the API.' };

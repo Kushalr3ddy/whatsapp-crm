@@ -19,6 +19,8 @@ export interface Conversation {
   contactPhone: string | null;
   senderLabel: string | null;
   messageCount: number;
+  /** Outbound messages accepted but not yet sent — nothing has left for these yet. */
+  queuedCount: number;
 }
 
 /** One message in a thread. Mirrors `GET /api/v1/conversations/:id/messages`. */
@@ -165,16 +167,24 @@ export interface LinkState {
   senderStatus: string;
 }
 
+/** How the person links: scan a QR, or type a code into the phone. */
+export type LinkMode = 'qr' | 'pairing_code';
+
 /**
  * Asks the gateway to begin linking a number.
  *
- * Returns as soon as the request is recorded, not when a QR exists — the socket lives in the
- * gateway process, so the challenge arrives asynchronously and has to be polled for.
+ * Returns as soon as the request is recorded, not when a challenge exists — the socket lives in
+ * the gateway process, so the QR or code arrives asynchronously and has to be polled for.
+ *
+ * `pairing_code` needs the number being linked, because WhatsApp sends the code to that phone.
+ * It is the mode that matters for numbers nobody here is holding — a recruiter's, say.
  */
-export async function startLink(senderId: string): Promise<{ sessionId: string }> {
+export async function startLink(
+  senderId: string, mode: LinkMode = 'qr', phoneE164?: string
+): Promise<{ sessionId: string }> {
   return request<{ sessionId: string }>(`/senders/${encodeURIComponent(senderId)}/link`, {
     method: 'POST',
-    body: JSON.stringify({ mode: 'qr' })
+    body: JSON.stringify(phoneE164 === undefined ? { mode } : { mode, phoneE164 })
   });
 }
 

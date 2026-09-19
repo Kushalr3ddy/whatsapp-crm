@@ -18,10 +18,13 @@ function stamp(iso: string): string {
 function DeliveryState({ message }: { message: Message }) {
   if (message.direction === 'inbound') return null;
   const failed = message.status === 'failed';
+  // 'queued' is the one status people misread as done. It means the API accepted the message
+  // and nothing has left yet — so it is spelled out rather than shown as a bare word.
+  const queued = message.status === 'queued';
   return (
-    <span className={failed ? 'text-danger' : 'text-muted'}>
+    <span className={failed || queued ? 'font-medium text-danger' : 'text-muted'}>
       {' · '}
-      {message.status}
+      {queued ? '⚠ queued — not sent yet' : message.status}
       {message.errorCode !== null && ` (${message.errorCode})`}
     </span>
   );
