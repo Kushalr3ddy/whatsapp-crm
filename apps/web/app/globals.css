@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
 /*
- * Theme tokens. Defined here rather than in a config file because Tailwind v4 is CSS-first:
- * every `--color-*` below becomes a utility (`bg-surface`, `text-muted`, and so on).
+ * Theme tokens.
+ *
+ * Tailwind v4 is CSS-first: every `--color-*` in `@theme` becomes a utility, so `bg-surface`
+ * compiles to `background-color: var(--color-surface)`. Because the utility reads the variable
+ * rather than a baked value, redefining the variable on a selector re-themes the whole page at
+ * runtime — which is what makes a toggle possible without a rebuild.
+ *
+ * Light is the base. Dark is applied twice, deliberately:
+ *   1. when the viewer has explicitly chosen it   (:root[data-theme="dark"])
+ *   2. when the OS asks for it AND they have not explicitly chosen light
+ * Without the `:not([data-theme="light"])` guard, choosing light on a dark-set OS would do
+ * nothing, because the media query would keep winning.
  */
 @theme {
   --color-canvas: #f6f7f9;
@@ -15,9 +25,14 @@
   --color-danger: #b42318;
 }
 
-/* Dark is driven by the OS setting alone; there is no in-app toggle yet. */
-@media (prefers-color-scheme: dark) {
-  @theme {
+@layer base {
+  /* Light unless something below says otherwise. `color-scheme` is what themes the
+     scrollbars and form controls the browser draws itself. */
+  :root {
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
     --color-canvas: #101316;
     --color-surface: #171b1f;
     --color-border: #272d33;
@@ -26,6 +41,21 @@
     --color-accent: #3fb489;
     --color-accent-soft: #14312a;
     --color-danger: #f97066;
+    color-scheme: dark;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --color-canvas: #101316;
+      --color-surface: #171b1f;
+      --color-border: #272d33;
+      --color-ink: #e8eaed;
+      --color-muted: #9aa3ad;
+      --color-accent: #3fb489;
+      --color-accent-soft: #14312a;
+      --color-danger: #f97066;
+      color-scheme: dark;
+    }
   }
 }
 

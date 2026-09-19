@@ -1008,3 +1008,56 @@ down.
 database is back to one sender and the single original queued message `a90a2922`.
 
 **Files:** `CONTEXT.md`, `docs/15-api.md`
+
+---
+
+## 2026-09-19 · Session 019d · Light/dark, and what mass messaging is not
+
+**Built the theme toggle.** Three settings cycling Auto → Light → Dark, in the inbox header.
+Auto follows the OS and is the default.
+
+The mechanism, since it is easy to get subtly wrong: Tailwind v4 utilities compile to
+`var(--color-*)` rather than a baked value, so redefining those variables on a selector
+re-themes the page at runtime with no rebuild. Light is the base in `@theme`; dark is applied
+twice — once for an explicit `:root[data-theme="dark"]`, once for
+`@media (prefers-color-scheme: dark)` **guarded by `:not([data-theme="light"])`**. Without that
+guard, choosing Light on a dark-set OS would silently do nothing, because the media query would
+keep winning.
+
+A blocking inline script in the root layout applies the saved choice **before first paint**.
+The preference lives in `localStorage`, which the server cannot read, so without it every load
+would paint the default and then snap — the flash that makes a toggle feel broken. The button
+renders a blank placeholder until mounted, for the same reason: the server cannot know the
+choice, and rendering the real label immediately would be a hydration mismatch. Every
+`localStorage` access is wrapped, because blocked site data throws rather than returning null.
+
+**Verified by driving the real button**: the full cycle keeps the stored key and the DOM
+attribute in sync, including Dark → Auto removing both, and the choice survives a reload with
+the attribute already applied. An earlier reading that it "did not persist" was the browser
+automation's `navigate` resetting context — the same class of false alarm as the Enter key in
+019b. Checking twice was right both times.
+
+**Mass messaging does not exist, and its absence is deliberate.** Asked whether it was in the
+UI. It is not in the UI, the API, or the database — there is no `campaign`, `campaign_recipient`
+or `segment` table, and `POST /messages` takes exactly one recipient. That is **P7**, and P7 sits
+behind **P6, the anti-ban engine**. Building a bulk sender before the pacing, warmup and
+rate-limiting engine exists would be the single most effective way to lose the number, which is
+the one asset here with no recovery path. Recorded rather than started.
+
+**Two gotchas paid for:**
+
+- **`npm run web:build` fails while `npm run web` is running.** Both write `apps/web/.next` and
+  the build dies on Next's internal `/_not-found` with an ENOENT. Stop dev, then build.
+- **`pgrep -f "<pattern>"` self-matches exactly like `pkill -f` does** when the pattern appears
+  in the compound command running it — killing the shell, exit 144. The HANDOFF gotcha was
+  written for `pkill`; it applies to `pgrep` too. `pgrep -f "next[ ]dev"` avoids it, since the
+  bracketed regex does not match its own literal text.
+- **A Next build regenerates `next-env.d.ts`, and eslint lints it** even though git ignores it.
+  It uses triple-slash references the rules forbid, so `npm run check` failed after every build
+  until it was added to the eslint ignores.
+
+**117 tests, exit code 0.** Production build clean, `/inbox` still dynamic. Servers killed,
+ports free.
+
+**Files:** `apps/web/app/globals.css`, `apps/web/app/theme-toggle.tsx`,
+`apps/web/app/layout.tsx`, `apps/web/app/inbox/layout.tsx`, `eslint.config.js`

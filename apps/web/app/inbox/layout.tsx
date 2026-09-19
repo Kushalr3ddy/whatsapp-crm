@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { listConversations, listSenders, CrmApiError } from '@/lib/crm';
 import type { Conversation, Sender } from '@/lib/crm';
 import { AutoRefresh } from './auto-refresh';
+import { ThemeToggle } from '../theme-toggle';
 
 /**
  * Rendered on every request, never prerendered.
@@ -57,15 +58,18 @@ export default async function InboxLayout({ children }: { children: ReactNode })
       <AutoRefresh seconds={5} />
 
       <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-surface">
-        <header className="border-b border-border px-4 py-3">
-          <h1 className="text-sm font-semibold tracking-tight">Inbox</h1>
-          <p className="mt-0.5 text-xs text-muted">
-            {connected.length > 0
-              ? `${String(connected.length)} number${connected.length === 1 ? '' : 's'} connected`
-              : senders.length === 0
-                ? 'No number added'
-                : 'Not connected'}
-          </p>
+        <header className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
+          <div>
+            <h1 className="text-sm font-semibold tracking-tight">Inbox</h1>
+            <p className="mt-0.5 text-xs text-muted">
+              {connected.length > 0
+                ? `${String(connected.length)} number${connected.length === 1 ? '' : 's'} connected`
+                : senders.length === 0
+                  ? 'No number added'
+                  : 'Not connected'}
+            </p>
+          </div>
+          <ThemeToggle />
         </header>
 
         {failure !== null && (
