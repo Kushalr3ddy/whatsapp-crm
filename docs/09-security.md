@@ -97,6 +97,11 @@ create a proper one.
 ## Data protection
 
 ### Encryption at rest
+
+**[22 · Encryption](22-encryption.md) explains all of this end to end** — the byte layout, the
+write and read paths, how rotation actually works, and **which parts of the design below are
+not yet implemented**. This section is the intent; that document is the intent plus the gap.
+
 Envelope encryption, fixing the old single-key-with-no-rotation design (M24):
 
 ```

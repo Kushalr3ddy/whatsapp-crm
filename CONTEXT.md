@@ -820,3 +820,73 @@ durability together.
 **Next:** P4, a minimal inbox UI.
 
 **Files:** `HANDOFF.md`, `README.md`
+
+---
+
+## 2026-09-19 · Session 019 · Encryption, explained and audited
+
+**No code changed.** This session was planning and documentation, prompted by picking P4 back
+up and immediately hitting the API-key question.
+
+**Where it started.** Flagged that `requireApiKey` resolves the tenant by *guessing* — `SELECT
+id FROM org LIMIT 2`, 409 if more than one — so a second org is a hard block, not a feature
+gap. Kushal's response reframed it correctly: keys need to be **auto-issued**, because nobody
+outside the two developers knows how to mint one.
+
+**The reframe that mattered.** `docs/05-data-model.md:123` already settles the human half —
+*"Sessions are for the first-party UI only; integrations always use a key."* The recruiter never
+needs an API key; they need a **login**. The only thing needing a key is JobPortal, a machine.
+Three credentials, not one: session cookies for people, `api_key` rows for integrations, and the
+bootstrap problem for the very first admin.
+
+**Findings while reading.** `app_user` and `org_membership` exist and are marked ✅ but hold
+**zero rows** — there is no signup, login, session or invite anywhere, so "auto-issue a key at
+signup" currently rests on a flow that does not exist. The one org is named `Dev`, created as a
+side effect of `scripts/wa-link.ts:37`. Noted that `docs/06-features/F11-admin.md:21` calls out
+hardcoding "Hiring Studios" as the exact anti-pattern that made the old system un-reusable — so
+Hiring Studios is **a row, not a constant**, and the `Dev` row should simply be renamed.
+
+**Decided:** invite-only now, with provisioning factored as one `createOrgWithAdmin()` service so
+a future self-serve `/signup` is a thin caller. Not built yet.
+
+**Parked (Kushal's call):** the self-serve setup wizard, guided walkthrough and whitelabelling
+are their own phase — roughly P12 plus F11's branding slice. Not yet written into
+`docs/21-deferred.md`.
+
+**Then the encryption questions**, which turned out to be the substance of the session: what a
+DEK is, what an "envelope" is, what kind of keys these are, and why rotation needs two keys at
+once. One genuine misunderstanding surfaced and was worth resolving in writing — *"how can v1
+decrypt v2 data?"*. It cannot. The driver holds a **keyring**, each row names its own key
+through the `keyVersion` byte, nothing crosses over, and the mixed state self-liquidates when
+the backfill finishes.
+
+**Built:** `docs/22-encryption.md` — the byte layout, the write path, the read path, the blind
+index and why its key is frozen, rotation as three phases, hygiene-vs-compromise rotation, and
+DEK/KEK. Linked from `docs/README.md` and from `09-security.md`, whose encryption section is
+intent only and now says so.
+
+**Four gaps recorded, found by reading the code against the docs:**
+
+1. `LocalKms` holds exactly one key version and throws on any other — **rotation is impossible
+   in practice.** The `keyVersion` byte exists with nothing to point at.
+2. No per-org DEK. One global key encrypts directly, while `09-security.md` describes an
+   `org_encryption_key(org_id, key_version, wrapped_dek)` table that **does not exist**.
+3. No backfill job, so even with (1) fixed, phase 2 of a rotation has no implementation.
+4. `09-security.md` lists `contact_identity.value_enc` among encrypted columns. **There is no
+   such column** — identities sit in clear in `value_normalized`, which carries the UNIQUE
+   lookup index. Encrypting it needs the encrypt-plus-blind-index pattern already used for
+   message bodies, with uniqueness moved onto the digest.
+
+Two claims in the first draft of the doc were wrong — a `contact.phone_e164` column and a
+populated `contact_identity.value_enc`. Neither exists; both were caught by checking the schema
+before committing rather than after.
+
+**Also corrected:** an earlier statement this session that message-body encryption was deferred
+P4 work. It is already built, on both the send and receive paths — which means the blast radius
+of a lost `ENCRYPTION_KEY` is at full size **today**, not later.
+
+**Next:** unchanged — P4.1, a minimal inbox UI. The open question before key work starts is
+whether the DEK refactor rides along with `api_key` + login, since it is much cheaper now than
+once there is real message history to re-encrypt.
+
+**Files:** `docs/22-encryption.md`, `docs/README.md`, `docs/09-security.md`, `CONTEXT.md`

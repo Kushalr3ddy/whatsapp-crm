@@ -16,7 +16,7 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes 
 
 **To deploy or operate it** — [13 Deployment](13-deployment.md) →
 [19 Capacity](19-capacity.md) → [14 Runbooks](14-runbooks.md) →
-[09 Security](09-security.md)
+[09 Security](09-security.md) → [22 Encryption](22-encryption.md)
 
 ## Everything
 
@@ -44,6 +44,7 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes 
 | [19 Capacity](19-capacity.md) | What it costs to run; sizing tiers |
 | [20 Orientation](20-orientation.md) | **Start here.** Everything explained from zero |
 | [21 Deferred decisions](21-deferred.md) | What we deliberately have not decided, and what brings each back |
+| [22 Encryption](22-encryption.md) | How data is encrypted before it reaches the database and decrypted on the way back; keys, rotation, DEK/KEK, and what survives losing a key |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 | [ADRs](adr/) | Decisions that would be expensive to reverse, and why |
 
