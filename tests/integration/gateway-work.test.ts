@@ -6,7 +6,9 @@ import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { createLogger } from '@crm/shared';
 import { storeInboundMessage } from '@crm/core';
-import { handleLinkRequest, handleSend, restoreSessions, sweepPendingWork } from '../../apps/gateway/src/work.js';
+import {
+  applyConnectionEvent, handleLinkRequest, handleSend, restoreSessions, sweepPendingWork
+} from '../../apps/gateway/src/work.js';
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const kms = new LocalKms({
@@ -207,5 +209,86 @@ describe('restoreSessions', () => {
     const provider = new FakeChannelProvider({ failAll: true });
     // failAll affects sends, not connects — so assert this does not throw and reports a count.
     await expect(restoreSessions(ctxWith(provider))).resolves.toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('connection state', () => {
+  /** Reads back what the UI would see for this sender. */
+  async function sessionRow() {
+    const rows = await db.execute(sql`
+      SELECT cs.connection_state AS state, cs.disconnect_reason AS reason,
+             cs.last_connected_at AS "lastConnectedAt", cs.link_challenge AS challenge,
+             si.status
+      FROM sender_identity si
+      LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
+      WHERE si.id = ${senderId}`);
+    return (rows as unknown as Array<{
+      state: string | null; reason: string | null; lastConnectedAt: string | null;
+      challenge: unknown; status: string;
+    }>)[0]!;
+  }
+
+  it('records an open socket, which is the only way to know a number is linked', async () => {
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    await applyConnectionEvent(ctx, {
+      senderId, state: 'open', reason: null, at: new Date()
+    });
+
+    const row = await sessionRow();
+    expect(row.state).toBe('open');
+    expect(row.lastConnectedAt).not.toBeNull();
+  });
+
+  it('promotes a sender that is still linking, so it becomes usable for sending', async () => {
+    await db.execute(sql`UPDATE sender_identity SET status = 'linking' WHERE id = ${senderId}`);
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
+
+    const row = await sessionRow();
+    // Without this, a number linked through the API stays 'linking' forever and every send
+    // is refused with NO_ACTIVE_SENDER even though the socket is open.
+    expect(row.status).toBe('active');
+  });
+
+  it('clears the challenge once connected, so the UI stops offering a stale QR', async () => {
+    await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, connection_state, link_challenge)
+      VALUES (${senderId}, 'connecting', ${'{"mode":"qr","qr":"x"}'}::jsonb)
+      ON CONFLICT (sender_identity_id) DO UPDATE
+        SET link_challenge = ${'{"mode":"qr","qr":"x"}'}::jsonb`);
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
+
+    expect((await sessionRow()).challenge).toBeNull();
+  });
+
+  it('demotes a logged-out number rather than leaving it looking active', async () => {
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    await applyConnectionEvent(ctx, {
+      senderId, state: 'logged_out', reason: 'logged_out', at: new Date()
+    });
+
+    const row = await sessionRow();
+    expect(row.state).toBe('logged_out');
+    // It must not keep saying 'active', or the dispatcher queues sends that can never leave.
+    expect(row.status).toBe('linking');
+  });
+
+  it('keeps the last successful connection time across a later disconnect', async () => {
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
+    const connectedAt = (await sessionRow()).lastConnectedAt;
+
+    await applyConnectionEvent(ctx, {
+      senderId, state: 'closed', reason: 'connection_closed', at: new Date()
+    });
+
+    const row = await sessionRow();
+    expect(row.state).toBe('closed');
+    expect(row.reason).toBe('connection_closed');
+    // Answering "when did this number last work?" needs the timestamp to survive the drop.
+    expect(row.lastConnectedAt).toEqual(connectedAt);
   });
 });

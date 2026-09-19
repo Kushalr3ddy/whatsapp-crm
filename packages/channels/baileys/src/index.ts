@@ -4,7 +4,8 @@ import makeWASocket, {
 } from 'baileys';
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
-  NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent, ProviderHealth, Recipient,
+  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent,
+  ProviderHealth, Recipient,
   SenderRef, SendResult
 } from '@crm/channels';
 import { loadAuthState, hasStoredSession } from './auth-adapter.js';
@@ -28,6 +29,20 @@ export interface BaileysProviderOptions {
   /** How long a QR stays valid before the caller should request a fresh one. */
   readonly qrTtlMs?: number;
 }
+
+/**
+ * Reconnection budget.
+ *
+ * WhatsApp closes the socket with 515 `restart_required` immediately after a QR pairing and
+ * expects the client straight back with the credentials it has just issued — so that case
+ * reconnects at once and is not counted as a failure. Everything else backs off, because a
+ * reconnect storm is one of the behaviours that gets a number banned (docs/08-antiban.md).
+ */
+const RECONNECT_MAX_ATTEMPTS = 5;
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_CAP_MS = 60_000;
+/** 429 means we are already going too fast; retrying soon would make it worse. */
+const RECONNECT_RATE_LIMITED_MS = 5 * 60_000;
 
 /**
  * What this transport can and cannot do, declared up front.
@@ -75,6 +90,11 @@ export class BaileysChannelProvider implements ChannelProvider {
   readonly #connections = new Map<string, Connection>();
   readonly #inbound = new EventStream<NormalisedInboundEvent>();
   readonly #status = new EventStream<NormalisedStatusEvent>();
+  readonly #connectionEvents = new EventStream<NormalisedConnectionEvent>();
+  /** Consecutive failed reconnects per sender, so backoff grows and eventually gives up. */
+  readonly #reconnectAttempts = new Map<string, number>();
+  /** Scheduled reconnects, kept so shutdown can cancel them instead of firing into a closed pool. */
+  readonly #reconnectTimers = new Map<string, NodeJS.Timeout>();
   readonly #options: BaileysProviderOptions;
   #shuttingDown = false;
 
@@ -177,6 +197,11 @@ export class BaileysChannelProvider implements ChannelProvider {
     return this.#status;
   }
 
+  /** Connection state changes, so the gateway can persist them as they happen. */
+  connections(): AsyncIterable<NormalisedConnectionEvent> {
+    return this.#connectionEvents;
+  }
+
   /** Current connection state for one sender. */
   async health(senderId: string): Promise<ProviderHealth> {
     const conn = this.#connections.get(senderId);
@@ -191,6 +216,8 @@ export class BaileysChannelProvider implements ChannelProvider {
   /** Closes every connection and ends both streams, so a process can exit cleanly. */
   async shutdown(): Promise<void> {
     this.#shuttingDown = true;
+    for (const timer of this.#reconnectTimers.values()) clearTimeout(timer);
+    this.#reconnectTimers.clear();
     for (const senderId of [...this.#connections.keys()]) {
       await this.disconnect(senderId);
     }
@@ -250,7 +277,10 @@ export class BaileysChannelProvider implements ChannelProvider {
       conn.state = 'open';
       conn.lastConnectedAt = new Date();
       conn.disconnectReason = null;
+      // A successful open clears the budget: the next failure starts backing off from scratch.
+      this.#reconnectAttempts.delete(senderId);
       this.#options.logger.info({ senderId }, 'whatsapp connection open');
+      this.#connectionEvents.push({ senderId, state: 'open', reason: null, at: new Date() });
     }
 
     if (update.connection === 'close') {
@@ -262,7 +292,63 @@ export class BaileysChannelProvider implements ChannelProvider {
       conn.state = reason === 'logged_out' ? 'logged_out' : 'closed';
       this.#connections.delete(senderId);
       this.#options.logger.warn({ senderId, statusCode, reason }, 'whatsapp connection closed');
+      this.#connectionEvents.push({ senderId, state: conn.state, reason, at: new Date() });
+      this.#scheduleReconnect(senderId, reason);
     }
+  }
+
+  /**
+   * Brings a dropped connection back, unless doing so would be pointless or harmful.
+   *
+   * This is the step whose absence made linking impossible: WhatsApp *always* closes the
+   * socket with 515 `restart_required` straight after a QR is scanned, and the credentials it
+   * just issued are only usable by reconnecting with them. Without this the scan succeeds, the
+   * credentials are stored, and the number still never comes online.
+   *
+   * `restart_required` therefore reconnects immediately and does not spend the retry budget —
+   * it is a handshake step, not a failure. Everything else backs off exponentially, and
+   * `logged_out` never retries at all because the number is gone from the phone's side.
+   */
+  #scheduleReconnect(senderId: string, reason: DisconnectReason): void {
+    if (this.#shuttingDown) return;
+    if (reason === 'logged_out') return;
+
+    const handshake = reason === 'restart_required';
+    const attempts = handshake ? 0 : (this.#reconnectAttempts.get(senderId) ?? 0) + 1;
+    if (!handshake) this.#reconnectAttempts.set(senderId, attempts);
+
+    if (attempts > RECONNECT_MAX_ATTEMPTS) {
+      this.#options.logger.error(
+        { senderId, reason, attempts },
+        'giving up reconnecting — the number needs attention'
+      );
+      return;
+    }
+
+    const delay = handshake
+      ? 0
+      : reason === 'rate_limited'
+        ? RECONNECT_RATE_LIMITED_MS
+        : Math.min(RECONNECT_BASE_MS * 2 ** (attempts - 1), RECONNECT_CAP_MS);
+
+    const existing = this.#reconnectTimers.get(senderId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.#reconnectTimers.delete(senderId);
+      if (this.#shuttingDown) return;
+      this.#options.logger.info({ senderId, reason, attempts, delay }, 'reconnecting');
+      void this.#openSocket(senderId, { expectQr: false }).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.#options.logger.warn({ senderId, err: message }, 'reconnect attempt failed');
+        // A throw here means the socket never opened, so no close event will arrive to
+        // schedule the next try. Drive the backoff from here instead.
+        this.#scheduleReconnect(senderId, 'unknown');
+      });
+    }, delay);
+    // Never hold the process open purely to retry a connection.
+    timer.unref();
+    this.#reconnectTimers.set(senderId, timer);
   }
 
   /** Converts one Baileys message into the normalised inbound shape. */

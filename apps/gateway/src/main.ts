@@ -4,7 +4,10 @@ import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { storeInboundMessage, applyDeliveryStatus } from '@crm/core';
-import { handleLinkRequest, handleSend, restoreSessions, sweepPendingWork, type WorkContext } from './work.js';
+import {
+  applyConnectionEvent, handleLinkRequest, handleSend, restoreSessions, sweepPendingWork,
+  type WorkContext
+} from './work.js';
 
 /** A command arriving on the Postgres NOTIFY channel. */
 interface GatewayCommand {
@@ -97,6 +100,22 @@ async function main(): Promise<void> {
         logger.error(
           { err: error instanceof Error ? error.message : String(error) },
           'failed to apply a delivery receipt'
+        );
+      }
+    }
+  })();
+
+  // ── connection state ────────────────────────────────────────────────────────────────
+  // Nothing else can see a socket open or close, so this stream is the only way the database —
+  // and therefore the UI — learns whether a number is actually linked.
+  void (async () => {
+    for await (const event of provider.connections()) {
+      try {
+        await applyConnectionEvent(ctx, event);
+      } catch (error) {
+        logger.error(
+          { err: error instanceof Error ? error.message : String(error) },
+          'failed to record a connection state change'
         );
       }
     }

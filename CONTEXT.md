@@ -1121,3 +1121,62 @@ should follow without restarting anything.
 
 **Files:** `apps/web/app/link/**`, `apps/web/app/actions.ts`, `apps/web/lib/crm.ts`,
 `apps/web/app/inbox/layout.tsx`, `apps/web/package.json`
+
+---
+
+## 2026-09-19 · Session 019f · The reason linking could never work
+
+**The scan succeeded.** It looked like a failure, and it was not: the QR was accepted,
+credentials were written to `channel_auth_state`, and WhatsApp then closed the socket with
+status **515 `restart_required`** — which is the normal final step of a QR pairing. The client
+is expected to reconnect immediately with the credentials it has just been issued.
+
+**Nothing reconnected.** `#onConnectionUpdate` recorded the reason, deleted the connection and
+stopped. The comment beside it said *"Everything else stays reconnectable"* — but no reconnect
+existed anywhere in the adapter or the gateway. So every QR scan stored credentials and left the
+number offline forever. **This is why the live test has never worked**, in any session.
+
+Worse, an unfinished pairing does not stay valid: on the next connect attempt WhatsApp answered
+**401 `logged_out`** and the stored credentials became dead. That is what the "it failed" looked
+like from outside.
+
+**Fixed, in `packages/channels/baileys/src/index.ts`:**
+
+- `restart_required` now reconnects **immediately** and does **not** spend the retry budget — it
+  is a handshake step, not a failure.
+- Everything else backs off exponentially (1s doubling, capped at 60s, 5 attempts), with
+  `rate_limited` held for five minutes, because a reconnect storm is itself a ban signal.
+- `logged_out` never retries: the number is gone from the phone's side.
+- A successful open resets the budget; shutdown cancels pending timers; timers are `unref`'d so
+  they never hold the process open.
+
+**Second bug, found while fixing the first: nothing ever wrote `connection_state = 'open'`.**
+The column existed, the API read it, the UI displayed it — and the only writers set
+`'connecting'`. So nothing in the system could answer *"is this number actually linked?"*.
+
+Fixed by adding `connections()` to the `ChannelProvider` port, beside `inbound()` and
+`status()`. The adapter emits on every open and close; the gateway persists it through the new
+`applyConnectionEvent()` in `work.ts`, which also:
+
+- **promotes a sender from `linking` to `active` on first open** — previously only
+  `wa-link.ts:170` ever did this, so a number linked through the API stayed `linking` forever
+  and every send was refused with `NO_ACTIVE_SENDER`;
+- **demotes a `logged_out` sender** rather than leaving it looking active;
+- **clears the stored challenge** on connect, so the UI stops offering a QR for a live number;
+- keeps `last_connected_at` across a later disconnect, so "when did this last work?" stays
+  answerable.
+
+Five integration tests cover exactly those behaviours. **122 tests, exit code 0.**
+
+**Confirmed while diagnosing:** delivery ticks are already fully implemented — `messages.update`
+→ `mapStatus()` maps Baileys codes 1–5 onto `sent` / `delivered` / `read`, consumed by the
+gateway and written to the message row. One grey tick is `sent`, two grey `delivered`, two blue
+`read`. Nothing to build there.
+
+**State left:** the dead credentials were deleted and the session row reset, so the sender is
+back to `linking` / `closed` with no stored session. **A fresh scan is needed** — and this time
+the 515 will be handled and the link will complete.
+
+**Files:** `packages/channels/src/port.ts`, `packages/channels/src/index.ts`,
+`packages/channels/baileys/src/index.ts`, `packages/channels/fake/src/index.ts`,
+`apps/gateway/src/work.ts`, `apps/gateway/src/main.ts`, `tests/integration/gateway-work.test.ts`

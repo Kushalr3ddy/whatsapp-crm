@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
-import type { ChannelProvider } from '@crm/channels';
+import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import { markMessageFailed, markMessageSent } from '@crm/core';
 import type { Logger } from '@crm/shared';
 
@@ -189,4 +189,55 @@ export async function restoreSessions(ctx: WorkContext): Promise<number> {
     }
   }
   return restored;
+}
+
+/**
+ * Records a connection state change, and promotes or demotes the sender to match.
+ *
+ * This is the only writer of `channel_session.connection_state`, which is what the UI reads to
+ * answer "is this number actually linked?". `sender_identity.status` cannot answer that: it is
+ * a business state that says nothing about whether a socket is open.
+ */
+export async function applyConnectionEvent(
+  ctx: WorkContext, event: NormalisedConnectionEvent
+): Promise<void> {
+  const openedAt = event.state === 'open' ? event.at.toISOString() : null;
+
+  await ctx.db.execute(sql`
+    INSERT INTO channel_session (sender_identity_id, connection_state, disconnect_reason,
+                                 last_connected_at)
+    VALUES (${event.senderId}, ${event.state}, ${event.reason}, ${openedAt})
+    ON CONFLICT (sender_identity_id) DO UPDATE
+      SET connection_state = ${event.state},
+          disconnect_reason = ${event.reason},
+          last_connected_at = COALESCE(${openedAt}, channel_session.last_connected_at),
+          -- A completed link has no further use for the challenge, and leaving it behind would
+          -- let the UI keep offering a QR for a number that is already connected.
+          link_challenge = CASE WHEN ${event.state} = 'open'
+            THEN NULL ELSE channel_session.link_challenge END,
+          updated_at = now()`);
+
+  if (event.state === 'open') {
+    // Promote on first successful connection. Until this existed only the wa:link script set
+    // 'active', so a number linked through the API stayed 'linking' forever and POST /messages
+    // kept answering NO_ACTIVE_SENDER.
+    await ctx.db.execute(sql`
+      UPDATE sender_identity
+      SET status = 'active', warmup_started_at = COALESCE(warmup_started_at, now()),
+          updated_at = now()
+      WHERE id = ${event.senderId} AND status IN ('linking', 'degraded')`);
+  }
+
+  if (event.state === 'logged_out') {
+    // Terminal: the number was unlinked from the phone. Say so rather than leaving it looking
+    // active, which would keep the dispatcher queueing sends that can never leave.
+    await ctx.db.execute(sql`
+      UPDATE sender_identity SET status = 'linking', updated_at = now()
+      WHERE id = ${event.senderId}`);
+  }
+
+  ctx.logger.info(
+    { senderId: event.senderId, state: event.state, reason: event.reason },
+    'connection state changed'
+  );
 }

@@ -106,6 +106,21 @@ export type DisconnectReason =
   | 'restart_required'   // 515 — routine.
   | 'unknown';
 
+/**
+ * A change in one sender's connection to the provider.
+ *
+ * Emitted rather than polled because the moment a socket opens is exactly when a queued
+ * message becomes sendable, and when the UI can finally say a number is linked. Nothing
+ * outside the adapter can observe that transition — the socket lives inside it.
+ */
+export interface NormalisedConnectionEvent {
+  readonly senderId: string;
+  readonly state: ProviderHealth['state'];
+  /** Why it closed, when it closed. Null on a successful open. */
+  readonly reason: DisconnectReason | null;
+  readonly at: Date;
+}
+
 /** How a linking attempt is presented to the person holding the phone. */
 export type LinkChallenge =
   | { readonly mode: 'qr'; readonly qr: string; readonly expiresAt: Date }
@@ -147,6 +162,12 @@ export interface ChannelProvider {
 
   /** Delivery-state changes, normalised. */
   status(): AsyncIterable<NormalisedStatusEvent>;
+
+  /**
+   * Connection state changes, so a caller can persist them and react the instant a socket
+   * opens. Same streaming shape as `inbound()` and `status()`.
+   */
+  connections(): AsyncIterable<NormalisedConnectionEvent>;
 
   /** Current connection state for one sender. */
   health(senderId: string): Promise<ProviderHealth>;

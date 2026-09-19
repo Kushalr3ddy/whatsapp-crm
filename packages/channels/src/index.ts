@@ -5,6 +5,6 @@
 export type {
   ChannelProvider, ChannelCapabilities, AuthStateStore,
   OutboundContent, Recipient, SenderRef, SendResult,
-  NormalisedInboundEvent, NormalisedStatusEvent,
+  NormalisedInboundEvent, NormalisedStatusEvent, NormalisedConnectionEvent,
   ProviderHealth, DisconnectReason, LinkChallenge
 } from './port.js';

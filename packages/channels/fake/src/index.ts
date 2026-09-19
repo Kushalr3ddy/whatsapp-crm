@@ -1,6 +1,7 @@
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
-  NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent, ProviderHealth,
+  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent,
+  ProviderHealth,
   Recipient, SenderRef, SendResult
 } from '@crm/channels';
 
@@ -56,9 +57,10 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Everything "sent", in order. Assert against this instead of a real account. */
   readonly sent: FakeSentMessage[] = [];
 
-  private readonly connections = new Map<string, ProviderHealth>();
+  private readonly health_ = new Map<string, ProviderHealth>();
   private readonly inboundQueue: NormalisedInboundEvent[] = [];
   private readonly statusQueue: NormalisedStatusEvent[] = [];
+  private readonly connectionQueue: NormalisedConnectionEvent[] = [];
   private readonly waiters: Array<() => void> = [];
   private readonly options: FakeOptions;
   private counter = 0;
@@ -74,7 +76,7 @@ export class FakeChannelProvider implements ChannelProvider {
   async link(senderId: string, mode: 'qr' | 'pairing_code'): Promise<LinkChallenge> {
     const expiresAt = new Date(Date.now() + 60_000);
     // Record that linking started, so health() is meaningful before the link completes.
-    this.connections.set(senderId, {
+    this.health_.set(senderId, {
       senderId, state: 'connecting', lastConnectedAt: null, disconnectReason: null
     });
     return mode === 'qr'
@@ -85,24 +87,27 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Marks a sender connected. Touches the auth store if one was supplied, as a real one would. */
   async connect(sender: SenderRef): Promise<void> {
     if (this.authStore) await this.authStore.set(sender.id, 'creds', new TextEncoder().encode('fake'));
-    this.connections.set(sender.id, {
+    this.health_.set(sender.id, {
       senderId: sender.id, state: 'open', lastConnectedAt: new Date(), disconnectReason: null
     });
+    this.emitConnection(sender.id, 'open', null);
   }
 
   /** Closes a connection without discarding credentials. */
   async disconnect(senderId: string): Promise<void> {
-    this.connections.set(senderId, {
+    this.health_.set(senderId, {
       senderId, state: 'closed', lastConnectedAt: null, disconnectReason: 'connection_closed'
     });
+    this.emitConnection(senderId, 'closed', 'connection_closed');
   }
 
   /** Unlinks and discards stored credentials, as a real logout does. */
   async logout(senderId: string): Promise<void> {
     if (this.authStore) await this.authStore.clear(senderId);
-    this.connections.set(senderId, {
+    this.health_.set(senderId, {
       senderId, state: 'logged_out', lastConnectedAt: null, disconnectReason: 'logged_out'
     });
+    this.emitConnection(senderId, 'logged_out', 'logged_out');
   }
 
   /**
@@ -111,7 +116,7 @@ export class FakeChannelProvider implements ChannelProvider {
    * must also guarantee (M26).
    */
   async send(sender: SenderRef, to: Recipient, content: OutboundContent): Promise<SendResult> {
-    if (this.connections.get(sender.id)?.state !== 'open') {
+    if (this.health_.get(sender.id)?.state !== 'open') {
       throw new Error(`sender ${sender.id} is not connected`);
     }
     if (this.options.failAll || this.options.failFor?.includes(to.phoneE164)) {
@@ -135,9 +140,22 @@ export class FakeChannelProvider implements ChannelProvider {
     yield* this.drain(this.statusQueue);
   }
 
+  /** Streams connection state changes until shutdown. */
+  async *connections(): AsyncIterable<NormalisedConnectionEvent> {
+    yield* this.drain(this.connectionQueue);
+  }
+
+  /** Queues a connection event and wakes anyone waiting on the stream. */
+  private emitConnection(
+    senderId: string, state: ProviderHealth['state'], reason: DisconnectReason | null
+  ): void {
+    this.connectionQueue.push({ senderId, state, reason, at: new Date() });
+    this.release();
+  }
+
   /** Reports connection state, defaulting to closed for a sender never seen. */
   async health(senderId: string): Promise<ProviderHealth> {
-    return this.connections.get(senderId) ?? {
+    return this.health_.get(senderId) ?? {
       senderId, state: 'closed', lastConnectedAt: null, disconnectReason: null
     };
   }
@@ -168,7 +186,7 @@ export class FakeChannelProvider implements ChannelProvider {
 
   /** Simulates the connection dropping for a typed reason, so recovery paths are testable. */
   simulateDisconnect(senderId: string, reason: DisconnectReason): void {
-    this.connections.set(senderId, {
+    this.health_.set(senderId, {
       senderId,
       state: reason === 'logged_out' ? 'logged_out' : 'closed',
       lastConnectedAt: null,
