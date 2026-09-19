@@ -61,8 +61,13 @@ Verified end to end on 2026-09-19: a real number linked, a real message sent and
 ```bash
 git clone https://github.com/Kushalr3ddy/whatsapp-crm.git && cd whatsapp-crm
 npm install
-cp .env.example .env
+[ -f .env ] || cp .env.example .env     # never clobber an existing one
 ```
+
+> The guard matters. A plain `cp .env.example .env` over a working install overwrites
+> `ENCRYPTION_KEY`, and **that is the one secret with no recovery** — every stored message and
+> every linked number becomes unreadable. Back it up somewhere that is not the repo and not the
+> database, and name the backup something `.gitignore` already covers.
 
 Then fill in the five required secrets in `.env`. Every one is a hard crash at boot if
 missing — never a silent fallback:

@@ -1227,3 +1227,45 @@ API already support it; only the UI does not), the QR countdown, an explicit lin
 marks the attempt failed, and a queued-message warning in the inbox.
 
 **Files:** `README.md`, `CONTEXT.md`
+
+---
+
+## 2026-09-19 · Session 019h · A near miss with ENCRYPTION_KEY
+
+**`npm run db:setup` failed with `password authentication failed for user "user"`.** The cause
+was `.env` holding the template's placeholder `DATABASE_URL`, because the README I had just
+written said, unconditionally:
+
+```bash
+cp .env.example .env
+```
+
+**That instruction is capable of destroying an installation.** Run over a working `.env` it
+overwrites `ENCRYPTION_KEY`, and losing that key means every stored message and every linked
+number becomes permanently unreadable — the one failure in this system with no recovery path,
+documented at length in `docs/22-encryption.md` and then handed over in a footgun.
+
+**Nothing was lost.** Kushal had preserved the original as `.og_env`. Verified by decrypting
+with it: both the stored message body **and** the WhatsApp credentials came back cleanly.
+
+**Two real protections came out of it:**
+
+1. **`.og_env` was not gitignored.** `.env.*` does not match a name like `.og_env`, so the file
+   sat untracked with `ENCRYPTION_KEY` in it, one `git add -A` away from being published to a
+   repository. Now ignored, along with `*env.bak`, `*.env.backup`, `.env.local`, `.env.orig` —
+   the names people actually reach for when taking a backup.
+2. **The README's copy is now guarded**: `[ -f .env ] || cp .env.example .env`, with an explicit
+   note about why. Run as written afterwards to confirm it no-ops against an existing file.
+
+**The config guard did its job.** The replacement `.env` had `ENCRYPTION_KEY` and
+`ENCRYPTION_INDEX_KEY` set to the same value, and `LocalKms` refused to construct — *"reusing
+one key for both encryption and deterministic indexing leaks equality of plaintexts"*. A hard
+crash with a readable reason, exactly as M17 intends, rather than a silent weakening.
+
+**Lesson for the docs, not just this file:** a setup instruction that is correct for a fresh
+clone can be destructive on an existing install. Anything that writes over state needs the
+guard written into the command itself, not left to the reader.
+
+**122 tests, exit code 0.**
+
+**Files:** `.gitignore`, `README.md`
