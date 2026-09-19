@@ -7,22 +7,26 @@ import { sendReply } from '@/app/actions';
 /**
  * The reply box.
  *
+ * Addressed by conversation, not by number. A contact reaching us from a WhatsApp privacy
+ * address has no phone at all, and this thread is still perfectly repliable — the gateway
+ * resolves whichever identity the conversation holds.
+ *
  * Optimism is deliberately avoided: the message is not drawn into the thread until the API
  * has accepted it. A send can be refused — an unreachable number, no linked sender — and
  * showing a message that then vanishes is worse than a half-second wait.
  */
-export function Composer({ to }: { to: string | null }) {
+export function Composer({ conversationId, to }: { conversationId: string; to: string | null }) {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   /** Sends the current text, keeping it in the box if the API refuses it. */
   function submit() {
-    if (to === null || text.trim() === '' || pending) return;
+    if (text.trim() === '' || pending) return;
     const body = text;
     setError(null);
     startTransition(async () => {
-      const result = await sendReply(to, body);
+      const result = await sendReply(conversationId, body);
       if (result.ok) setText('');
       else setError(result.error ?? 'Send failed.');
     });
@@ -42,16 +46,6 @@ export function Composer({ to }: { to: string | null }) {
     submit();
   }
 
-  if (to === null) {
-    return (
-      <div className="border-t border-border bg-surface px-5 py-3">
-        <p className="text-xs text-muted">
-          This contact has no phone number on file, so there is nothing to reply to.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <form onSubmit={onSubmit} className="border-t border-border bg-surface px-5 py-3">
       {error !== null && <p className="mb-2 text-xs text-danger">{error}</p>}
@@ -61,7 +55,7 @@ export function Composer({ to }: { to: string | null }) {
           onChange={(e) => { setText(e.target.value); }}
           onKeyDown={onKeyDown}
           rows={1}
-          placeholder={`Message ${to}`}
+          placeholder={to === null ? 'Reply' : `Message ${to}`}
           disabled={pending}
           className="max-h-40 min-h-[2.5rem] flex-1 resize-y rounded-lg border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-60"
         />

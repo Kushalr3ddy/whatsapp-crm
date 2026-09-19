@@ -217,3 +217,44 @@ already has content, and exit non-zero rather than guess.
 meantime — `ENCRYPTION_KEY` and `ENCRYPTION_INDEX_KEY` must be kept in a password manager, and
 never in the same place as a database dump. A backup holding both the ciphertext and its key is
 a backup of plaintext.
+
+---
+
+## D-10 · What belongs in the inbox — broadcast output, and unknown senders
+
+**What:** two related questions about the inbox's contents, both raised by using it.
+
+**1. Broadcast output would flood it.** A campaign to 500 contacts produces 500 outbound
+messages across 500 conversations. Rendered the way the inbox renders anything else, it buries
+every real conversation the moment a campaign runs — the inbox stops being a place where a
+person answers people and becomes a send log.
+
+**2. Unknown senders are mixed in with known contacts.** Anyone can message a linked number,
+and today they appear in the same list as real contacts. WhatsApp privacy addresses make this
+sharper: the contact has no phone at all, just a `wa_lid` identity, so there is nothing to
+recognise them by.
+
+**Why parked:** the second is not painful at this volume, and the first cannot be answered
+properly until there is a campaign to look at — the right shape depends on whether people want
+per-recipient detail in the inbox at all, which is genuinely unclear before anyone runs one.
+
+**The options, so they are not re-derived:**
+
+| Approach | Shape |
+|---|---|
+| **Filter** | One inbox, a toggle for "conversations with a human reply". Cheapest; the campaign is still in there |
+| **Separate surface** | Campaign sends live under Broadcast and never enter the inbox until someone replies. A reply promotes the thread in. Closest to how people actually work |
+| **Message-request tray** | Instagram's shape, applied to unknown senders: a separate tray until someone is accepted or replied to. Solves (2), not (1) |
+
+Current leaning: **separate surface** for broadcast, because a campaign send is not a
+conversation until somebody answers it; and the **tray** for unknown senders, but only once
+volume makes it worth the extra place to look.
+
+**What brings it back:** P7, at the point the first campaign is about to be sent to more than a
+handful of people. Or: enough unsolicited inbound that finding a real conversation becomes
+annoying.
+
+**Cost of deferring:** none structurally — `conversation` already carries `status`, and a
+campaign send is already distinguishable by `message.sent_by`, so either shape can be built
+later without a migration. The cost is only that the first campaign run will be ugly if it
+arrives before this is decided.

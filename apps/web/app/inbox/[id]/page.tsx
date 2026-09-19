@@ -58,7 +58,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
       <header className="border-b border-border bg-surface px-5 py-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         <p className="mt-0.5 text-xs text-muted">
-          {conversation?.contactPhone ?? 'No phone on file'}
+          {conversation?.contactPhone ?? 'Privacy address — no phone shared'}
           {senderLabel !== null && ` · via ${senderLabel}`}
         </p>
       </header>
@@ -104,7 +104,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
         </ol>
       </div>
 
-      <Composer to={conversation?.contactPhone ?? null} />
+      <Composer conversationId={id} to={conversation?.contactPhone ?? null} />
     </>
   );
 }

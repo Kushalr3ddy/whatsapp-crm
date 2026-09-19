@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { Nav } from './nav';
 import './globals.css';
 
 /** Browser tab title and description. Generic on purpose — the product is not one company's. */
@@ -27,7 +28,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="flex h-screen flex-col overflow-hidden antialiased">
+        <Nav />
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      </body>
     </html>
   );
 }

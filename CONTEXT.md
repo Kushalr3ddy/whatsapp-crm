@@ -1412,3 +1412,58 @@ it is worth applying wherever a doc was written ahead of the code.
 **125 tests, exit code 0.**
 
 **Files:** `docs/15-api.md`
+
+---
+
+## 2026-09-20 · Session 020 · Replying to someone with no phone number, and the shape of the product
+
+**A real conversation arrived from `110762928373833@lid`** — a WhatsApp **privacy address**,
+which carries no phone number at all. The receive path handled it exactly as designed: stored
+as a `wa_lid` identity rather than forced into a phone column
+(`packages/core/src/messages.ts:37`).
+
+**The reply path could not answer it.** `POST /api/v1/messages` took only `to`, which runs
+through `normalisePhone()` — so it could never name a contact that has no number, and the
+composer correctly but uselessly said *"nothing to reply to"*.
+
+The striking part: **everything downstream already worked.** `handleSend` resolves the
+recipient from the conversation, preferring `phone` and falling back to `wa_jid` / `wa_lid`
+(`work.ts:99`), and passes `providerAddress` to Baileys when the kind is not a phone
+(`work.ts:126`). Only the front door was too narrow.
+
+**Fixed:** `POST /messages` now takes **either** `to` **or** `conversationId`, exactly one,
+enforced by a Zod refinement. A reply addressed by thread needs no normalisation — the
+conversation already knows which identity it holds. Unknown or cross-tenant conversation → 404,
+not 403. The web composer now always replies by conversation, which is the right model for a
+thread reply regardless. Four tests cover it, including a contact constructed exactly as an
+inbound `@lid` produces one.
+
+**Navigation, at Kushal's suggestion.** The inbox is one section among several, not the whole
+product: a top bar with **Inbox · Numbers · Broadcast · Billing**. Broadcast and Billing are
+placeholder pages marked *"not built yet"* that say what they will hold — an empty "coming soon"
+invites the same question every week. The theme toggle moved to the bar, and `/link` became
+"Numbers".
+
+The Broadcast placeholder carries the warning plainly: **not safe to fake**, because there is no
+rate limiting anywhere in the send path and a bulk send today is the fastest way to lose a
+number.
+
+**Pinned as D-10 · What belongs in the inbox.** Kushal's observation that a broadcast would
+flood it — 500 contacts means 500 conversations, and the inbox stops being a place where a
+person answers people and becomes a send log. Recorded together with the related question of
+unknown senders (his Instagram message-request comparison), since both are the same tension
+about what the inbox is for. Three options written down with the current leaning: a separate
+surface for campaign sends that only promotes a thread into the inbox when someone replies, and
+a request tray for unknown senders once volume justifies a second place to look. Cost of
+deferring is nil structurally — `conversation.status` and `message.sent_by` already make either
+shape buildable without a migration.
+
+**129 tests, exit code 0.** Verified in the browser: the nav renders, both placeholders render,
+and the privacy-address thread now shows a working composer. Nothing was sent — the gateway was
+deliberately left down.
+
+**Files:** `apps/api/src/routes/messages.ts`, `apps/web/app/nav.tsx`,
+`apps/web/app/coming-soon.tsx`, `apps/web/app/billing/page.tsx`,
+`apps/web/app/broadcast/page.tsx`, `apps/web/app/layout.tsx`, `apps/web/app/inbox/**`,
+`apps/web/lib/crm.ts`, `apps/web/app/actions.ts`, `docs/21-deferred.md`,
+`tests/integration/api.test.ts`

@@ -187,6 +187,59 @@ describe('sending', () => {
     expect(r.body.data[0].messageCount).toBe(1);
   });
 
+  it('replies into an existing conversation, addressed by thread rather than number', async () => {
+    await activeSender();
+    const first = await request(app).post('/api/v1/messages').set(...auth())
+      .send({ to: '+919876543210', body: 'one' });
+    const conversationId = first.body.data.conversationId;
+
+    const r = await request(app).post('/api/v1/messages').set(...auth())
+      .send({ conversationId, body: 'two' });
+
+    expect(r.status).toBe(202);
+    expect(r.body.data.conversationId).toBe(conversationId);
+  });
+
+  it('replies to a contact that has no phone at all — a WhatsApp privacy address', async () => {
+    const sender = await activeSender();
+    // Exactly what an inbound @lid produces: an identity with no phone number anywhere.
+    const rows = await db.execute(sql`
+      WITH c AS (
+        INSERT INTO contact (org_id, display_name, source)
+        VALUES ((SELECT id FROM org), '110762928373833@lid', 'inbound_message') RETURNING id
+      ), i AS (
+        INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
+        SELECT (SELECT id FROM org), c.id, 'wa_lid', '110762928373833@lid', true FROM c
+      )
+      INSERT INTO conversation (org_id, contact_id, sender_identity_id)
+      SELECT (SELECT id FROM org), c.id, ${sender} FROM c
+      RETURNING id`);
+    const conversationId = (rows as unknown as Array<{ id: string }>)[0]!.id;
+
+    const r = await request(app).post('/api/v1/messages').set(...auth())
+      .send({ conversationId, body: 'reply to a privacy address' });
+
+    // `to` could never name this person. Addressing by conversation is the only way to answer,
+    // and the gateway resolves the wa_lid identity when it sends.
+    expect(r.status).toBe(202);
+  });
+
+  it('refuses a conversation belonging to nobody', async () => {
+    const r = await request(app).post('/api/v1/messages').set(...auth())
+      .send({ conversationId: '00000000-0000-4000-8000-000000000000', body: 'hi' });
+    expect(r.status).toBe(404);
+    expect(r.body.code).toBe('NOT_FOUND');
+  });
+
+  it('refuses both an address and a conversation, and refuses neither', async () => {
+    const both = await request(app).post('/api/v1/messages').set(...auth())
+      .send({ to: '+919876543210', conversationId: '00000000-0000-4000-8000-000000000000', body: 'x' });
+    expect(both.status).toBe(422);
+
+    const neither = await request(app).post('/api/v1/messages').set(...auth()).send({ body: 'x' });
+    expect(neither.status).toBe(422);
+  });
+
   it('counts queued messages, so the inbox can warn that nothing has been sent', async () => {
     await activeSender();
     await request(app).post('/api/v1/messages').set(...auth())

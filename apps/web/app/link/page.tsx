@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { listSenders, CrmApiError } from '@/lib/crm';
 import type { Sender } from '@/lib/crm';
 import { LinkPanel } from './link-panel';
@@ -27,8 +26,7 @@ export default async function LinkPage() {
   return (
     <main className="mx-auto max-w-2xl px-5 py-8">
       <header className="mb-6">
-        <Link href="/inbox" className="text-xs text-muted hover:text-ink">← Inbox</Link>
-        <h1 className="mt-2 text-lg font-semibold tracking-tight">Link a WhatsApp number</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Numbers</h1>
         <p className="mt-1 text-sm text-muted">
           Scan the QR from WhatsApp on your phone: <strong>Settings → Linked Devices → Link a
           device</strong>. The gateway must be running — <code>npm run gateway</code>.

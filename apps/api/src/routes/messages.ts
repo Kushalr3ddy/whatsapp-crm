@@ -5,11 +5,22 @@ import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import { normalisePhone } from '@crm/shared';
 
-/** Body for queueing an outbound message. */
+/**
+ * Body for queueing an outbound message.
+ *
+ * Addressed **either** by phone (`to`, which starts a conversation if none exists) or by
+ * `conversationId` (a reply in an existing thread). The second exists because not every
+ * contact has a phone number: someone messaging from a WhatsApp privacy address arrives as a
+ * `wa_lid` identity with no number at all, and `to` could never name them. The send path
+ * already handles it — the gateway resolves whichever identity the conversation holds.
+ */
 const sendMessage = z.object({
-  to: z.string().min(4),
+  to: z.string().min(4).optional(),
+  conversationId: z.string().uuid().optional(),
   body: z.string().min(1).max(4096),
   senderId: z.string().uuid().optional()
+}).refine((v) => (v.to === undefined) !== (v.conversationId === undefined), {
+  message: 'send exactly one of `to` or `conversationId`'
 });
 
 /**
@@ -89,11 +100,35 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
-    const { to, body, senderId } = parsed.data;
+    const { to, conversationId, body, senderId } = parsed.data;
+    const orgIdEarly = req.crm!.orgId;
+
+    // Replying into an existing thread. No phone is involved, so no normalisation applies —
+    // the conversation already knows which identity it belongs to, phone or privacy address.
+    if (conversationId !== undefined) {
+      const replied = await db.execute(sql`
+        INSERT INTO message (org_id, conversation_id, direction, status, content_type,
+                             body_enc, body_hmac, sent_by)
+        SELECT ${orgIdEarly}, v.id, 'outbound', 'queued', 'text',
+               ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
+               ${kms.blindIndex(body)}, 'api'
+        FROM conversation v
+        WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}
+        RETURNING id, conversation_id AS "conversationId", status`);
+
+      const row = (replied as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
+      if (!row) {
+        // 404 rather than 403: confirming a conversation exists in another tenant is a leak.
+        res.status(404).json(problem(req, 'NOT_FOUND', 'No such conversation.'));
+        return;
+      }
+      res.status(202).json({ data: row });
+      return;
+    }
 
     // One normalisation boundary for the whole system. The previous system had this function
     // and never called it on the way in, so one person became several contacts (M8).
-    const phone = normalisePhone(to, defaultCountry);
+    const phone = normalisePhone(to!, defaultCountry);
     if (!phone.ok) {
       res.status(422).json(problem(req, `PHONE_${phone.reason.toUpperCase()}`, phone.message));
       return;

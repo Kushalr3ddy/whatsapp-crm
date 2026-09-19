@@ -152,6 +152,22 @@ export async function queueMessage(to: string, body: string): Promise<{ id: stri
   });
 }
 
+/**
+ * Queues a reply into an existing thread.
+ *
+ * Addressed by conversation rather than by number, because not every contact has one: a
+ * message from a WhatsApp privacy address arrives as a `wa_lid` identity with no phone at all.
+ * The conversation already knows how to reach them.
+ */
+export async function queueReply(
+  conversationId: string, body: string
+): Promise<{ id: string; conversationId: string }> {
+  return request<{ id: string; conversationId: string }>('/messages', {
+    method: 'POST',
+    body: JSON.stringify({ conversationId, body })
+  });
+}
+
 /** The challenge a person acts on to link a number: a QR to scan, or a code to type. */
 export type LinkChallenge =
   | { mode: 'qr'; qr: string; expiresAt: string }
