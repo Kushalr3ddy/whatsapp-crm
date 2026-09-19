@@ -50,17 +50,120 @@ Read these before deciding to use it.
 
 ## Running it
 
-Nothing to run yet. The intended experience, once P1 lands:
+Verified end to end on 2026-09-19: a real number linked, a real message sent and delivered.
+
+### What you need
+
+- **Node 22+** and **Docker** (for Postgres). Nothing else.
+
+### Setup, once
 
 ```bash
-git clone <this repo> && cd whatsapp-crm
-make setup          # checks Docker, generates secrets, migrates, creates the first admin
-docker compose --profile core up -d
+git clone https://github.com/Kushalr3ddy/whatsapp-crm.git && cd whatsapp-crm
+npm install
+cp .env.example .env
 ```
 
-That is the `lean` preset: one app process, Postgres, Caddy — **~700 MB–1 GB RAM**, every
-v1 feature working, no Redis, no object store, no telemetry stack. Add pieces when you need
-them; nothing else is required.
+Then fill in the five required secrets in `.env`. Every one is a hard crash at boot if
+missing — never a silent fallback:
+
+```bash
+openssl rand -hex 32     # APP_SECRET
+openssl rand -hex 32     # ENCRYPTION_KEY
+openssl rand -hex 32     # ENCRYPTION_INDEX_KEY   (must DIFFER from ENCRYPTION_KEY)
+openssl rand -hex 32     # API_KEY
+```
+
+`DATABASE_URL` for the bundled container is:
+
+```
+postgresql://dev:dev@localhost:5434/whatsapp_crm_dev
+```
+
+`PUBLIC_URL=http://localhost:3000` is fine locally.
+
+> **Back up `ENCRYPTION_KEY` somewhere other than the database.** Losing it means losing every
+> linked number and every stored message, permanently. See [22 · Encryption](docs/22-encryption.md).
+
+Start Postgres and create the schema — this does both databases, app and test:
+
+```bash
+npm run db:setup
+```
+
+### Running it, three processes
+
+Each in its own terminal. They are separate on purpose: the gateway owns the WhatsApp sockets,
+so restarting the API never drops a connection.
+
+```bash
+npm run dev          # API on :3000
+```
+```bash
+npm run gateway      # owns the WhatsApp sockets — nothing sends without this
+```
+```bash
+npm run web          # inbox UI on :3001
+```
+
+### Linking a number
+
+A sender must exist first. Put your key in the shell — `.env` is not loaded for you:
+
+```bash
+export API_KEY=$(grep '^API_KEY=' .env | cut -d= -f2-)
+```
+
+Then create one:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/senders -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -d '{"label":"my number"}'
+```
+
+Then open **http://localhost:3001/link**, click **Link this number**, and scan the QR from
+WhatsApp → **Settings → Linked Devices → Link a device**.
+
+The QR expires in under a minute; click again for a fresh one. Once the socket opens the
+sidebar reads **"1 number connected"** and the sender is promoted to `active` automatically.
+
+### Sending
+
+Open **http://localhost:3001/inbox**, pick a conversation, type, send. Or over HTTP:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/messages -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -d '{"to":"+919876543210","body":"hello"}'
+```
+
+That returns **202, not 201** — accepted, not sent. The gateway does the sending, and the status
+moves `queued → sent → delivered → read` in the thread. If nothing is linked the message stays
+`queued` and goes out on its own once a number connects.
+
+More requests to try by hand, with real responses, in
+[15 · Public API](docs/15-api.md#trying-it-by-hand-insomnia-postman-curl).
+
+### Checking it still works
+
+```bash
+npm run check        # typecheck (server + web) + lint + 122 tests
+```
+
+`npm run` lists every script. [20 · Orientation](docs/20-orientation.md) explains the stack and
+every term used in the docs, assuming no prior knowledge.
+
+### Things that will catch you out
+
+- **`npm run web:build` fails while `npm run web` is running** — both write `apps/web/.next`.
+  Stop the dev server first.
+- **Two databases in one container.** `whatsapp_crm_dev` holds real data *including WhatsApp
+  credentials*; `whatsapp_crm_test` is what the suite truncates. Data lives in a named Docker
+  volume and survives a restart.
+- **Nothing sends without the gateway.** A queued message is not a failure — it is waiting.
+
+### Deployment
+
+Not done yet, and it is the point at which the production database gets chosen. The intended
+shape is the `lean` preset: one app process, Postgres, Caddy — **~700 MB–1 GB RAM**, every v1
+feature, no Redis, no object store, no telemetry.
 
 | Preset | RAM | Shape |
 |---|---|---|

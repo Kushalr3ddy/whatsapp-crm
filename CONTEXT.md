@@ -1180,3 +1180,50 @@ the 515 will be handled and the link will complete.
 **Files:** `packages/channels/src/port.ts`, `packages/channels/src/index.ts`,
 `packages/channels/baileys/src/index.ts`, `packages/channels/fake/src/index.ts`,
 `apps/gateway/src/work.ts`, `apps/gateway/src/main.ts`, `tests/integration/gateway-work.test.ts`
+
+---
+
+## 2026-09-19 · Session 019g · The live test finally passed
+
+**A real WhatsApp message was sent and delivered.** The first in this project's history.
+
+```
+10:15:12  whatsapp connection open      ← the reconnect fix carried the 515 handshake through
+10:15:12  connection state changed      ← state: open, persisted for the first time ever
+10:16:25  message sent                  ← the 60s safety sweep picked up the queued message
+10:16:26  delivered                     ← delivery receipt came back through mapStatus()
+```
+
+Message `a90a2922`, queued on 18 September, went `queued → sent → delivered` to +919380727007
+without anything being restarted or re-queued by hand.
+
+**Everything the fixes claimed, verified against the database:**
+
+| Check | Result |
+|---|---|
+| `channel_session.connection_state` | `open` — written for the first time; nothing could set it before |
+| `sender_identity.status` | `active` — promoted automatically from `linking`, which only `wa:link` used to do |
+| `warmup_started_at` | set |
+| `link_challenge` | cleared on connect, so the UI stops offering a dead QR |
+| `channel_auth_state` | 35 rows of encrypted session state |
+| UI sidebar | reads **"1 number connected"** |
+| Thread | shows the message as **delivered** |
+
+**Noise worth recognising, not a fault:** Baileys logs `bad decrypt` repeatedly during the first
+history sync after a fresh link (`decodeSyncdMutations`). It is app-state sync failing to decode
+old history and has no effect on sending or receiving.
+
+**README rewritten.** Its "Running it" section still said *"Nothing to run yet"* — three phases
+out of date. It now carries the verified setup: prerequisites, the five required secrets and how
+to generate them, `db:setup`, the three processes and why they are separate, linking through
+`/link`, sending from the UI or over HTTP, and the traps (`web:build` clashing with a running
+`web`, the two databases, nothing sending without the gateway). The `export API_KEY=…` line was
+run exactly as written before being committed.
+
+**122 tests, exit code 0.**
+
+**Still not built** — asked for and not yet done: pairing-code entry in the UI (the adapter and
+API already support it; only the UI does not), the QR countdown, an explicit link timeout that
+marks the attempt failed, and a queued-message warning in the inbox.
+
+**Files:** `README.md`, `CONTEXT.md`
