@@ -154,7 +154,7 @@ A signed-in browser session. Added with the authentication work; it had no entry
 a session is what *establishes* which org a request acts in, so a policy reading
 `current_setting('app.org_id')` could never match.
 
-## `audit_log` ⬜
+## `audit_log` ✅
 
 Append-only record of every state change. **No row may have a null actor** — that is what
 makes "who did this?" always answerable (NFR-17).
@@ -170,7 +170,15 @@ makes "who did this?" always answerable (NFR-17).
 | `before` / `after` | jsonb NULL | State either side of the change. Answers "what actually changed?" rather than just "something changed". |
 | `ip` | inet NULL | Source address where one applies. Absent for system actions. |
 | `request_id` | text | Correlates the audit row with the log lines from the same request. |
-| `at` | timestamptz | When. BRIN-indexed once the table is partitioned by month. |
+| `at` | timestamptz | When. BRIN-indexed once the table is partitioned by month. A `CHECK` refuses a future timestamp — always a bug, and a trail that accepts them cannot be trusted to order events. |
+
+**Append-only is enforced, not described:** migration 0008 revokes `UPDATE` and `DELETE` from
+`crm_app`, so a compromised application cannot rewrite history to cover its tracks. The
+retention job needs `DELETE` and therefore runs as a different role. What this does *not* cover
+is anyone holding the database directly — see D-13.
+
+**Reads are not audited yet**, only state changes and authentication. That is D-13, and its
+trigger is media landing.
 
 ---
 

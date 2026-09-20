@@ -56,6 +56,57 @@ export const orgMembership = pgTable('org_membership', {
 ]);
 
 /**
+ * Append-only record of every state change.
+ *
+ * **No row may have a null actor** — that is what makes "who did this?" always answerable
+ * (NFR-17). Automated changes use the reserved system actor rather than leaving it empty.
+ *
+ * Written by application code inside the same transaction as the change it describes, not by
+ * a database trigger. A trigger cannot be forgotten, which is its appeal, but it has no
+ * request context — no actor, no IP, no request id — and no *intent*: it sees three UPDATEs
+ * where the application knows that was `contact.merged`. Intent is what makes this readable a
+ * year later. Being in the same transaction means an unaudited change is impossible: if the
+ * audit insert fails, the change it describes rolls back with it.
+ *
+ * This is not a log. Logs are operational, rotated, and have no tenant scope; this is a
+ * product record with a viewer (F11), a retention policy and compliance weight. `requestId`
+ * is the seam between the two — it correlates a row here with the log lines from that request.
+ *
+ * Deliberately **not** a record of traffic. `message` already says what was sent; auditing
+ * every send would double write volume for no new information.
+ */
+export const auditLog = pgTable('audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  /** `user` / `system` / `api` / `agent` — a person and an automation without two null columns. */
+  actorType: text('actor_type').notNull(),
+  /**
+   * Who or what did it. Not a foreign key: an actor may be a user, an API key or the reserved
+   * system actor, which live in different tables — and the audit row must outlive all of them.
+   */
+  actorId: uuid('actor_id').notNull(),
+  /** Verb-shaped and stable enough to filter on: `auth.login.succeeded`, `api_key.revoked`. */
+  action: text('action').notNull(),
+  /** Not a foreign key either, because the target may later be deleted and this must survive. */
+  targetType: text('target_type'),
+  targetId: uuid('target_id'),
+  /**
+   * State either side of the change — "what actually changed?" rather than "something did".
+   * **Never put a secret here**: no password hashes, no key material, no message bodies.
+   */
+  before: jsonb('before'),
+  after: jsonb('after'),
+  ip: text('ip'),
+  /** Correlates this row with the log lines from the same request. */
+  requestId: text('request_id'),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('audit_log_org_at_idx').on(t.orgId, t.at),
+  index('audit_log_actor_idx').on(t.actorId),
+  index('audit_log_action_idx').on(t.action)
+]);
+
+/**
  * A signed-in browser session.
  *
  * Deliberately **not** row-level-security protected, for the same reason `app_user` is not:

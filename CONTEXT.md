@@ -1592,3 +1592,66 @@ exporting the printed value, then verified as written — key minted, exported, 
 **Files:** `apps/web/lib/crm.ts`, `apps/web/app/login/**`, `apps/web/middleware.ts`,
 `apps/web/app/nav.tsx`, `apps/web/app/inbox/layout.tsx`, `apps/web/app/link/page.tsx`,
 `docs/23-auth.md`, `docs/README.md`, `docs/09-security.md`, `README.md`, `.env.example`
+
+---
+
+## 2026-09-20 · Session 022 · The audit log
+
+**182 tests, exit code 0** — up from 169.
+
+**A table, not logs**, and the distinction is the point. F11 specifies a viewer that filters by
+actor, action, target and date, which cannot be built over rotated log files. Retention is a
+policy (1 year) rather than a rotation window, the rows are tenant-scoped with RLS, and
+`before`/`after` need structure. Pino logs stay what they are — operational and ephemeral —
+and `request_id` is the seam: an audit row points at the log lines from its own request.
+
+**Written by application code inside the transaction it describes**, not by a database trigger.
+A trigger cannot be forgotten, which is its appeal, but it has no request context and no
+*intent*: it sees three `UPDATE`s where the application knows that was `contact.merged`. Same
+transaction means an unaudited change is impossible — a test asserts exactly that by forcing
+the audit insert to fail and checking the change rolled back with it.
+
+**Three things the migration does that drizzle does not generate**, and the table is not worth
+having without them: RLS like every other tenant table; `REVOKE UPDATE, DELETE` from `crm_app`,
+so append-only is enforced rather than commented; and a `CHECK` refusing a timestamp in the
+future, which is always a bug and which destroys the ordering the trail exists to provide.
+
+**Scope, at Kushal's call:** state changes and authentication only — no read auditing. Covered:
+login succeeded, login failed, logout, password changed, org created, user added, key issued,
+key revoked. **Not** every message: `message` is already the record of what was sent, and
+auditing each send would double write volume for no new information.
+
+**Two deliberate restraints, both tested:** no secret ever reaches the table — a test asserts
+no `$argon2id$` appears anywhere in a trail, and an issued key is recorded by prefix, never by
+secret. And a failed login for an **unknown** email records nothing, because there is no tenant
+to record it against and inventing one would leak into some org's log that a stranger typed an
+address it has never heard of.
+
+**A significant finding while wiring it up: row-level security is not engaged on the request
+path.** Nothing calls `setTenant()` for an API request — only provisioning and the startup
+probe do. Every route works because the dev role owns the tables and bypasses RLS, which is
+precisely what `inspectDatabaseSecurity()` warns about. Isolation today rests on explicit
+`WHERE org_id` in every query, which is real and tested, but the second layer is doing nothing.
+Recorded in `docs/09-security.md` as a known gap. Audit writes go through
+`writeAuditInTenant()`, which opens a transaction and sets the tenant — necessary here more
+than anywhere, since a silent RLS refusal would roll back the change being audited.
+
+**Pinned as D-13 · Access auditing — who *read* what.** Kushal's request. The trigger to watch
+is **media landing**: there is nothing sensitive to read today because attachments are never
+downloaded, and it is far better to have the trail from the first stored file than to retrofit
+one with a gap. Records the shape too — same table with `conversation.read`-style actions, not
+every list query, never sampled — and notes that defending against a compromised database
+administrator needs append-only storage elsewhere and is a different problem.
+
+**Also fixed:** `typecheck:web` was missing from CI, so a UI type error would have passed. My
+omission when the web app landed.
+
+**Audit of the phase claims turned up that P1 is overstated.** It is marked ✅ but
+`infra/compose/` holds only a `.gitkeep` — there is no compose file, so
+`docker compose --profile core up` cannot run — and of the four drivers P1 called for (storage,
+email, kms, secrets) only kms exists. No provider contract suite either.
+
+**Files:** `packages/core/src/audit.ts`, `packages/core/src/provisioning.ts`,
+`packages/db/src/schema.ts`, `packages/db/migrations/0008_*.sql`,
+`apps/api/src/routes/{auth,admin}.ts`, `tests/integration/audit.test.ts`,
+`docs/{05-data-model,09-security,21-deferred}.md`, `.github/workflows/ci.yml`

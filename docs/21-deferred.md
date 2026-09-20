@@ -334,3 +334,48 @@ a judgement about it.
 
 **What this repository owes that module:** a stable way to fetch an attachment and know which
 contact it came from. Nothing more.
+
+---
+
+## D-13 · Access auditing — who *read* what
+
+**What:** recording reads, not just changes. Who opened this conversation, who downloaded this
+attachment, who ran this export. The DPDP-shaped question.
+
+**Why parked:** the audit log built today covers **state changes and authentication** — who
+changed what, who signed in, who minted a key. That is the answerable half at this size. Read
+auditing has a different cost shape: the table grows with *usage* rather than with *change*, so
+a busy inbox writes an audit row every time someone opens a thread. Designing for that volume
+before it can be measured means guessing.
+
+It is also not yet useful. There is nothing sensitive to read: message bodies are already in
+the inbox for anyone with access, and **attachments are not downloaded at all** (D-11). The
+question "who read this CV?" cannot be answered because no CV is ever stored.
+
+**What brings it back — any one of these:**
+
+1. **Media lands.** The moment a candidate's CV is stored, "who opened it" becomes a real
+   question, and it is far better to have the trail from the first file than to retrofit one
+   and have a gap. This is the likeliest trigger and it is close.
+2. **A DPDP access request**, or an obligation to show who has seen a data subject's record.
+3. **More than a handful of agents**, where "who looked at this contact" stops being obvious
+   from the fact that three people work here.
+
+**Shape when it arrives**, so it is not re-derived:
+
+| Decision | Leaning |
+|---|---|
+| What counts as a read | Opening a thread, downloading an attachment, running an export. **Not** every list query — a paginated inbox load is not a meaningful access event |
+| Where it goes | The same `audit_log`, with `action` like `conversation.read`. A second table would split the answer to one question across two places |
+| Volume | Revisit partitioning by month at the same time; `at` is already indexed for it |
+| Sampling | Never. A sampled access log answers "probably nobody" to a question that deserves a real answer |
+
+**Cost of deferring:** a gap in the trail for the period before it exists. That gap is harmless
+while nothing sensitive is stored, and stops being harmless the day media lands — which is why
+the first trigger above is the one to watch.
+
+**Related, and deliberately out of scope:** the audit log lives in the same database as the data
+it describes, so anyone holding the database can edit it. The `REVOKE UPDATE, DELETE` in
+migration 0008 stops the *application* rewriting history, which is the realistic threat;
+defending against a compromised database administrator needs append-only storage elsewhere —
+a WORM bucket or an external log sink — and is a different problem.

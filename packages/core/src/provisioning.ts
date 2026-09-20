@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { setTenant, type Database } from '@crm/db';
+import { writeAudit, AUDIT, SYSTEM_ACTOR, type AuditActor } from './audit.js';
 import type { PasswordHasher } from '@crm/auth-builtin';
 
 /** What provisioning produced. */
@@ -34,7 +35,9 @@ export class AlreadyExistsError extends Error {
 export async function createOrgWithAdmin(
   db: Database,
   hasher: PasswordHasher,
-  input: { orgName: string; slug: string; email: string; password: string; displayName: string }
+  input: { orgName: string; slug: string; email: string; password: string; displayName: string },
+  /** Who provisioned this. The CLI and the bootstrap key are both the system acting. */
+  actor: AuditActor = SYSTEM_ACTOR
 ): Promise<ProvisionedOrg> {
   const email = input.email.trim().toLowerCase();
   const passwordHash = await hasher.hash(input.password);
@@ -63,6 +66,18 @@ export async function createOrgWithAdmin(
       INSERT INTO org_membership (org_id, user_id, role)
       VALUES (${orgId}, ${userId}, 'admin')`);
 
+    // Same transaction as the change: if either of these fails, nothing happened at all.
+    // Note what is absent from `after` — the password hash. An audit log holding secrets is a
+    // second copy of the problem it exists to detect.
+    await writeAudit(tx, {
+      orgId, actor, action: AUDIT.orgCreated, targetType: 'org', targetId: orgId,
+      after: { name: input.orgName, slug: input.slug }
+    });
+    await writeAudit(tx, {
+      orgId, actor, action: AUDIT.userAdded, targetType: 'app_user', targetId: userId,
+      after: { email, role: 'admin' }
+    });
+
     return { orgId, userId };
   });
 }
@@ -77,7 +92,8 @@ export async function createOrgWithAdmin(
 export async function addUserToOrg(
   db: Database,
   hasher: PasswordHasher,
-  input: { orgId: string; email: string; password: string; displayName: string; role: 'admin' | 'agent' }
+  input: { orgId: string; email: string; password: string; displayName: string; role: 'admin' | 'agent' },
+  actor: AuditActor = SYSTEM_ACTOR
 ): Promise<{ userId: string }> {
   const email = input.email.trim().toLowerCase();
   const passwordHash = await hasher.hash(input.password);
@@ -103,6 +119,11 @@ export async function addUserToOrg(
       RETURNING id`);
     if ((membership as unknown as unknown[]).length === 0) throw new AlreadyExistsError('email');
 
+    await writeAudit(tx, {
+      orgId: input.orgId, actor, action: AUDIT.userAdded,
+      targetType: 'app_user', targetId: userId, after: { email, role: input.role }
+    });
+
     return { userId };
   });
 }
@@ -114,21 +135,39 @@ export async function addUserToOrg(
  * actually remove whoever the change was meant to remove (docs/09-security.md).
  */
 export async function setPassword(
-  db: Database, hasher: PasswordHasher, email: string, newPassword: string
+  db: Database, hasher: PasswordHasher, email: string, newPassword: string,
+  actor: AuditActor = SYSTEM_ACTOR
 ): Promise<{ userId: string; sessionsRevoked: number }> {
   const passwordHash = await hasher.hash(newPassword);
+  const normalised = email.trim().toLowerCase();
 
-  const rows = await db.execute(sql`
-    UPDATE app_user SET password_hash = ${passwordHash}, updated_at = now()
-    WHERE email = ${email.trim().toLowerCase()}
-    RETURNING id`);
-  const userId = (rows as unknown as Array<{ id: string }>)[0]?.id;
-  if (userId === undefined) throw new Error(`no user with email ${email}`);
+  return db.transaction(async (tx) => {
+    const rows = await tx.execute(sql`
+      UPDATE app_user SET password_hash = ${passwordHash}, updated_at = now()
+      WHERE email = ${normalised}
+      RETURNING id`);
+    const userId = (rows as unknown as Array<{ id: string }>)[0]?.id;
+    if (userId === undefined) throw new Error(`no user with email ${email}`);
 
-  const revoked = await db.execute(sql`
-    UPDATE session SET revoked_at = now()
-    WHERE user_id = ${userId} AND revoked_at IS NULL
-    RETURNING id`);
+    const revoked = await tx.execute(sql`
+      UPDATE session SET revoked_at = now()
+      WHERE user_id = ${userId} AND revoked_at IS NULL
+      RETURNING id`);
+    const sessionsRevoked = (revoked as unknown as unknown[]).length;
 
-  return { userId, sessionsRevoked: (revoked as unknown as unknown[]).length };
+    // A person may belong to several orgs; the change is recorded in each, because each of
+    // them has a legitimate interest in knowing that this account's password changed.
+    const orgs = await tx.execute(sql`
+      SELECT org_id AS "orgId" FROM org_membership WHERE user_id = ${userId}`);
+    for (const m of orgs as unknown as Array<{ orgId: string }>) {
+      await setTenant(tx, m.orgId);
+      await writeAudit(tx, {
+        orgId: m.orgId, actor, action: AUDIT.passwordChanged,
+        targetType: 'app_user', targetId: userId,
+        after: { sessionsRevoked }
+      });
+    }
+
+    return { userId, sessionsRevoked };
+  });
 }

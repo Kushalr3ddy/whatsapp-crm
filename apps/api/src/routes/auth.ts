@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 import type { PasswordHasher } from '@crm/auth-builtin';
-import { createSession, revokeSession } from '@crm/core';
+import { createSession, revokeSession, writeAuditInTenant, AUDIT, SYSTEM_ACTOR } from '@crm/core';
 import { SESSION_COOKIE, CSRF_COOKIE } from '../auth.js';
 
 /** Body for signing in. */
@@ -105,6 +105,17 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
 
     if (!ok || user === undefined || user.status !== 'active') {
       recordFailure(email);
+      // Only recorded when the account exists. An unknown email has no tenant to record it
+      // against, and inventing one would leak into some org's log that a stranger typed an
+      // address it has never heard of.
+      if (user !== undefined) {
+        await writeAuditInTenant(db, {
+          orgId: user.orgId, actor: { type: 'user', id: user.id }, action: AUDIT.loginFailed,
+          targetType: 'app_user', targetId: user.id,
+          after: { reason: user.status !== 'active' ? 'account_disabled' : 'wrong_password' },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+      }
       res.status(401).json(problem(req, 401, 'INVALID_CREDENTIALS', 'Email or password is wrong.'));
       return;
     }
@@ -115,6 +126,11 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
       ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null
     });
     await db.execute(sql`UPDATE app_user SET last_login_at = now() WHERE id = ${user.id}`);
+    await writeAuditInTenant(db, {
+      orgId: user.orgId, actor: { type: 'user', id: user.id }, action: AUDIT.loginSucceeded,
+      targetType: 'session', targetId: issued.sessionId,
+      ip: req.ip ?? null, requestId: String(req.id)
+    });
 
     const csrf = randomBytes(24).toString('base64url');
     const secure = isProduction ? ' Secure;' : '';
@@ -131,7 +147,13 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
   /** Ends the current session and clears both cookies. */
   router.post('/logout', async (req: Request, res: Response) => {
     if (req.crm?.kind === 'session' && req.crm.credentialId !== null) {
-      await revokeSession(db, req.crm.credentialId);
+      const { orgId, userId, credentialId } = req.crm;
+      await revokeSession(db, credentialId);
+      await writeAuditInTenant(db, {
+        orgId, actor: { type: 'user', id: userId ?? SYSTEM_ACTOR.id }, action: AUDIT.logout,
+        targetType: 'session', targetId: credentialId,
+        ip: req.ip ?? null, requestId: String(req.id)
+      });
     }
     res.setHeader('Set-Cookie', [
       `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`,

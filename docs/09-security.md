@@ -66,6 +66,26 @@ npm run db:rls-demo          # from inside the repo
 It writes a row as one org, reads it as another, and asserts all four cases — including that
 RLS blocks **writes** as well as reads. Everything rolls back.
 
+## Known gap: RLS is not engaged on the request path
+
+**Nothing sets `app.org_id` on an API request.** Only provisioning and the startup probe call
+`setTenant()`. Every route works today because the development role owns the tables and
+therefore bypasses row-level security — the exact situation `inspectDatabaseSecurity()` warns
+about below.
+
+So tenant isolation is currently enforced by **application code**: every query filters by
+`org_id` explicitly, and the API resolves that org from the credential rather than guessing.
+That is real isolation, and the cross-tenant tests pass against it. But RLS — the second layer,
+the one that catches a forgotten `WHERE` — is not doing anything at runtime.
+
+Closing it means running each request's queries inside one transaction with `setTenant()`
+applied. It cannot be done per *connection*: `set_config(..., true)` is transaction-scoped, and
+setting it non-transactionally would leak a tenant across a pooled connection, which is worse
+than not setting it at all.
+
+`audit_log` writes already do this correctly through `writeAuditInTenant()`, because an audit
+insert shares its transaction with real work and a silent RLS refusal would roll that work back.
+
 ## Verifying isolation actually works, at startup
 
 Three different things defeat row-level security, and they are easy to confuse: being a

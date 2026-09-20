@@ -57,6 +57,13 @@
       "when": 1789889334201,
       "tag": "0007_chubby_ezekiel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789909864604,
+      "tag": "0008_aberrant_thunderbolt",
+      "breakpoints": true
     }
   ]
 }
