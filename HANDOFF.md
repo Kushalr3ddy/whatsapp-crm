@@ -138,6 +138,7 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
 | `routes/messages.ts` | A **malformed UUID returns 500** — `conversations/not-a-uuid/messages` reaches Postgres, the cast throws (22P02), and it surfaces as `INTERNAL_ERROR`. Wants a 422, or 404 to match the "404 not 403" rule. Path params are not validated; bodies are |
 | `routes/*.ts` | `problem()` hardcodes **`"status": 0`** in the body while the real code goes in the status line. `auth.ts` builds its own correctly with the real number, so `body.status` disagrees between routes |
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
+| **The linked number receives nothing** | **Sends work; inbound is dead since 2026-09-20 09:12 UTC.** On reconnect WhatsApp delivered 17 `message` frames and **every one failed to decrypt** — `Session error: Bad MAC`, `SessionError: No matching sessions found`. Baileys discards undecryptable messages before `messages.upsert` fires, so nothing reaches our code at all (verified by instrumenting the handler: it logged zero events). All 18 failures were `fromMe: true` echoes of our own sends to `110762928373833@lid`. The companion's Signal session state has diverged from the peer's — the usual causes are two clients sharing one set of credentials, or a lost write to `channel_auth_state`. **The fix is to re-link the number** (`npm run wa:link`); queued messages that failed with Bad MAC are most likely gone. Until then the media path has never been exercised against a real WhatsApp file — only against `storeMedia` directly, which is every layer except the download itself |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle | **In-process**, so several replicas would each count separately (P9) |
@@ -162,6 +163,15 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
   anyone traced it. It now refuses when there is no org, or more than one, and points at
   `npm run admin -- org`.
 - **`SET LOCAL` cannot take a bind parameter.** Use `setTenant()` (`set_config(..., true)`).
+- **`Bad MAC` means messages arrive and vanish, while sending still works.** An outbound send
+  establishes its own session, so a corrupt companion session looks like a half-working link
+  rather than a broken one. Baileys drops what it cannot decrypt *before* `messages.upsert`,
+  so the application sees silence, not an error. Check the gateway log for
+  `failed to decrypt message` before suspecting anything in our own code.
+- **This gateway only sees traffic in reconnect flushes.** `markOnlineOnConnect: false` means
+  WhatsApp notifies the phone and queues for the companion; messages sent while it was
+  connected only appeared after a restart. Strongly indicated by the timestamps rather than
+  proven, but assume nothing arrives in real time until that is settled.
 - **A file's type must come from its bytes, never its name.** `detectMediaType` in
   `@crm/shared` is the only thing that decides it, and there is deliberately no signature for
   HTML or SVG — both are script execution contexts when served from our own origin, so they
@@ -217,6 +227,9 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
 
 ## Next
 
+0. **Re-link the number and re-send a file** — parked, but it blocks the only end-to-end proof
+   that media works. See the first row of the defects table. Everything downstream of the
+   download is tested; the download itself is not.
 1. **Show attachments in the inbox.** The API serves them and the UI does not yet render the
    `media` object on a message — a download link and a filename is the whole job. Then
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
