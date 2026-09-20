@@ -29,15 +29,31 @@ function say(line = ''): void {
 }
 
 /**
- * Finds the dev org and sender row, creating them on first run. Real provisioning happens
- * through the API later; this keeps the harness self-contained.
+ * Finds the org and this script's sender row, creating the sender on first run.
+ *
+ * It used to create the organisation too — `INSERT ... ON CONFLICT (slug) DO UPDATE` on a
+ * hardcoded `dev` slug. That is how a hand-shaped org row nobody could account for ended up in
+ * the database, and it cost two separate misdiagnoses before anyone worked out where it came
+ * from. Provisioning is a real code path now (`createOrgWithAdmin`), so this refuses rather
+ * than inventing a tenant: a second org appearing because a helper script ran is precisely the
+ * failure being avoided.
  */
 async function ensureSender(db: ReturnType<typeof createDatabase>): Promise<{ orgId: string; senderId: string }> {
-  const orgRows = await db.execute(sql`
-    INSERT INTO org (name, slug) VALUES ('Dev', 'dev')
-    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-    RETURNING id`);
-  const orgId = (orgRows as unknown as Array<{ id: string }>)[0]!.id;
+  const orgRows = await db.execute(sql`SELECT id FROM org ORDER BY created_at ASC LIMIT 2`);
+  const orgs = orgRows as unknown as Array<{ id: string }>;
+  if (orgs.length === 0) {
+    throw new Error(
+      'No organisation exists. Create one first:\n' +
+      '  npm run admin -- org --name "Your Company" --slug your-company --email you@example.com'
+    );
+  }
+  if (orgs.length > 1) {
+    throw new Error(
+      'More than one organisation exists, and this script cannot know which you mean.\n' +
+      'Link through the UI instead: npm run web, then /link'
+    );
+  }
+  const orgId = orgs[0]!.id;
 
   const existing = await db.execute(sql`
     SELECT id FROM sender_identity WHERE org_id = ${orgId} AND label = ${SENDER_LABEL} LIMIT 1`);

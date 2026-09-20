@@ -1746,3 +1746,28 @@ is worth much less than one that begins with it. Then P4's assignment and collis
 then engaging RLS, then closing out P1.
 
 **Files:** `HANDOFF.md`, `docs/05-data-model.md`
+
+---
+
+## 2026-09-20 · Session 024b · Cleanup: real names on the real rows
+
+**The org is now `Hiring Studios` / `hiring-studios`**, renamed from the `Dev` row that
+`wa-link.ts` created by accident on 18 September. **The admin account is now
+`developer@hiringstudios.com`**, renamed from the throwaway used to test the login flow. Every
+session was revoked.
+
+**Found while doing it, and fixed:** `wa-link.ts` unconditionally ran
+`INSERT INTO org (name, slug) VALUES ('Dev','dev') ON CONFLICT (slug) DO UPDATE`. Renaming the
+org would therefore have made the next `npm run wa:link` **create a second one** — the same
+accidental-row problem, recurring. It now looks for an existing org, refuses when there is none
+or more than one, and points at `npm run admin -- org`. Provisioning is a real code path now;
+a helper script has no business inventing a tenant.
+
+**Deliberately not done: the password.** The one used for the login test is in the chat
+transcript, and running `npm run admin -- password` here would simply put a new one there too.
+Left for Kushal to run in his own terminal, where the output goes nowhere else. The account
+cannot be reached from outside localhost in the meantime — there is no deployment.
+
+**214 tests, exit code 0.** Tree clean, ports free.
+
+**Files:** `scripts/wa-link.ts`, `HANDOFF.md`

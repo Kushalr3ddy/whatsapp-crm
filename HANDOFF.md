@@ -81,6 +81,11 @@ npm run db:setup
 npm run admin -- org --name "Hiring Studios" --slug hiring-studios --email you@example.com
 ```
 
+**On this machine that is already done.** The org is **Hiring Studios** (`hiring-studios`,
+`5f82ad62-…`) with one admin, `developer@hiringstudios.com`. `npm run admin -- whoami` lists
+organisations; `npm run admin -- password --email developer@hiringstudios.com` sets a new
+password and ends every session on the account.
+
 Three processes, separate so restarting the API never drops a WhatsApp socket:
 
 ```bash
@@ -136,6 +141,11 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
   wrong three times: `sender_identity.status` went `active` and never came back;
   `channel_session.connection_state` went `open` and never came back; and neither was cleared
   when the gateway stopped. P6 will score sender health on exactly these columns.
+- **Helper scripts must not invent tenants.** `wa-link.ts` used to `INSERT INTO org ... ON
+  CONFLICT (slug) DO UPDATE` against a hardcoded `dev` slug, which is how an org row nobody
+  could account for ended up in the database — and it cost two separate misdiagnoses before
+  anyone traced it. It now refuses when there is no org, or more than one, and points at
+  `npm run admin -- org`.
 - **`SET LOCAL` cannot take a bind parameter.** Use `setTenant()` (`set_config(..., true)`).
 - **`set_config(..., true)` and `SET LOCAL` are transaction-scoped.** Pasted into psql line by
   line they silently do nothing. Run `npm run db:rls-demo`.
