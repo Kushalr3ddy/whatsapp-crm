@@ -53,6 +53,12 @@ jobs:
       - name: typecheck
         run: npm run typecheck
 
+      # apps/web is excluded from the root tsconfig — it needs DOM, JSX and React types that
+      # do not belong in the Node server config — so it has to be checked separately or a
+      # type error in the UI passes CI unnoticed.
+      - name: typecheck web
+        run: npm run typecheck:web
+
       # Includes the comment rule and the layering rule, both of which are architectural
       # rather than stylistic (docs/11-conventions.md).
       - name: lint
