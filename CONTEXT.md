@@ -1771,3 +1771,25 @@ cannot be reached from outside localhost in the meantime — there is no deploym
 **214 tests, exit code 0.** Tree clean, ports free.
 
 **Files:** `scripts/wa-link.ts`, `HANDOFF.md`
+
+---
+
+## 2026-09-20 · Session 025 · The testers screenshot lands
+
+`docs/assets/testers.png` is committed. Session 024c reframed `docs/12-testing.md` around the
+"just test in prod" / "team of testers, they're called users" exchange but could not write the
+pasted screenshot to disk, so the document shipped referencing an image that did not exist —
+the alt text and the blockquote carried the joke meanwhile, which is why it still read
+correctly. Kushal pasted it again; the desktop app writes such a paste to `~/Downloads`, and
+that is where this copy came from.
+
+919×560, 262 KB, kept in the repository rather than hotlinked for the reason
+`docs/assets/README.md` already gives: the documentation should still render years from now,
+when whatever hosted the image has moved.
+
+**Also recorded: session 024c never appended here** — the first gap in this log against the
+"append every session, no exceptions" rule. Noted rather than backfilled as though it had been
+written at the time. Its work was `docs/12-testing.md` and `docs/assets/README.md`, and the
+commit message (94b4772) carries the reasoning in full.
+
+**Files:** `docs/assets/testers.png`, `CONTEXT.md`
