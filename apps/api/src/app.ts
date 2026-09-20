@@ -5,7 +5,10 @@ import { sql } from 'drizzle-orm';
 import type { Config, Logger } from '@crm/shared';
 import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
-import { requireApiKey } from './auth.js';
+import type { PasswordHasher } from '@crm/auth-builtin';
+import { attachPrincipal, requireAuthenticated, requireTenant, requireCsrf } from './auth.js';
+import { authRouter } from './routes/auth.js';
+import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
 import { messagesRouter } from './routes/messages.js';
 
@@ -15,6 +18,7 @@ export interface AppDependencies {
   readonly logger: Logger;
   readonly db: Database;
   readonly kms: KmsDriver;
+  readonly hasher: PasswordHasher;
 }
 
 /**
@@ -80,10 +84,25 @@ export function buildApp(deps: AppDependencies): Express {
     });
   });
 
-  // Everything under /api/v1 requires an API key and resolves a tenant. Mounted as one
-  // guard rather than per-route, so a new route cannot be added unprotected by omission.
+  // Everything under /api/v1 authenticates and resolves a tenant. Mounted as one guard
+  // rather than per-route, so a new route cannot be added unprotected by omission.
+  //
+  // The ordering matters and is deliberate:
+  //   attachPrincipal     — works out who is calling; never rejects
+  //   requireCsrf         — only bites cookie-authenticated writes; header auth passes through
+  //   /auth               — must be reachable unauthenticated: it is how you get a credential
+  //   requireAuthenticated— the door closes here
+  //   /admin              — provisioning, before a tenant exists to belong to
+  //   requireTenant       — refuses the bootstrap key everywhere below, so no data route can
+  //                         be reached by the deployment-level secret
   const api = express.Router();
-  api.use(requireApiKey(deps.config, deps.db));
+  api.use(attachPrincipal(deps.config, deps.db));
+  api.use(requireCsrf);
+  // Before the door closes: logging in is how a credential is obtained.
+  api.use('/auth', authRouter(deps.db, deps.hasher, deps.config.NODE_ENV === 'production'));
+  api.use(requireAuthenticated);
+  api.use('/admin', adminRouter(deps.db, deps.hasher));
+  api.use(requireTenant);
   api.use('/senders', sendersRouter(deps.db));
   api.use('/', messagesRouter(deps.db, deps.kms, deps.config.DEFAULT_COUNTRY));
   app.use('/api/v1', api);

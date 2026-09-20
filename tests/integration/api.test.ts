@@ -4,6 +4,8 @@ import request from 'supertest';
 import { sql } from 'drizzle-orm';
 import { createDatabase, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
+import { BuiltinPasswordHasher } from '@crm/auth-builtin';
+import { issueApiKey } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
 
@@ -20,19 +22,41 @@ const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 
 let db: Database;
 let app: ReturnType<typeof buildApp>;
-const auth = () => ['Authorization', `Bearer ${API_KEY}`] as const;
+let orgId: string;
+/** A real per-org key, minted fresh for each test. This is what data routes now require. */
+let orgKey: string;
+
+/** Authenticates as the org, the way an integration actually would. */
+const auth = () => ['Authorization', `Bearer ${orgKey}`] as const;
+
+/** Authenticates as the deployment. Reaches provisioning only — never data. */
+const bootstrapAuth = () => ['Authorization', `Bearer ${API_KEY}`] as const;
 
 beforeAll(() => {
   db = createDatabase(url, { max: 6 });
-  app = buildApp({ config, logger, db, kms });
+  app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher() });
 });
 afterAll(async () => { await db.$client.end(); });
 
 beforeEach(async () => {
-  // These tests exercise the single-org path, so the table must hold exactly one.
+  // Cascades to api_key, session, membership and everything tenant-scoped.
   await db.execute(sql`DELETE FROM org`);
-  await db.execute(sql`INSERT INTO org(name,slug) VALUES ('t','t-api')`);
+  const rows = await db.execute(sql`INSERT INTO org(name,slug) VALUES ('t','t-api') RETURNING id`);
+  orgId = (rows as unknown as Array<{ id: string }>)[0]!.id;
+
+  // Every data route now needs a key that *states* its org, rather than one shared secret
+  // that had to guess. Minted per test so nothing leaks between them.
+  const issued = await issueApiKey(db, {
+    orgId, name: 'test', scopes: [...API_SCOPES_FOR_TESTS]
+  });
+  orgKey = issued.secret;
 });
+
+/** Full scopes: these tests are about the routes, not about scope enforcement. */
+const API_SCOPES_FOR_TESTS = [
+  'contacts:read', 'contacts:write', 'conversations:read', 'conversations:write',
+  'messages:send', 'senders:read', 'senders:write'
+] as const;
 
 describe('authentication', () => {
   it('refuses a request with no key', async () => {
@@ -42,32 +66,64 @@ describe('authentication', () => {
   });
 
   it('refuses a wrong key, without saying which part was wrong', async () => {
-    const r = await request(app).get('/api/v1/senders').set('Authorization', 'Bearer nope');
-    expect(r.status).toBe(401);
-    // Identical response to "no key at all": distinguishing them tells an attacker their
-    // key format is right.
-    expect(r.body.detail).toBe('Send a valid API key as: Authorization: Bearer <key>');
+    const none = await request(app).get('/api/v1/senders');
+    const wrong = await request(app).get('/api/v1/senders').set('Authorization', 'Bearer nope');
+
+    expect(wrong.status).toBe(401);
+    // Identical to "no credential at all": distinguishing them tells an attacker their key
+    // format was right.
+    expect(wrong.body.detail).toBe(none.body.detail);
+    expect(wrong.body.code).toBe(none.body.code);
   });
 
-  it('accepts a valid key', async () => {
+  it('accepts a valid per-org key', async () => {
     const r = await request(app).get('/api/v1/senders').set(...auth());
     expect(r.status).toBe(200);
   });
 
-  it('refuses rather than guesses when more than one org exists', async () => {
-    // A config-level key cannot say which tenant it speaks for, and picking one would be a
-    // cross-tenant leak waiting to happen. Per-org keys arrive in P2.
+  it('serves a second org without complaint, because the key names its own tenant', async () => {
+    // This used to be a 409 MULTIPLE_ORGS. The org was resolved by `SELECT id FROM org LIMIT 2`
+    // and a config-level key could not say which tenant it meant, so a second org broke the
+    // entire API. A key now states its org, and more than one is unremarkable.
     await db.execute(sql`INSERT INTO org(name,slug) VALUES ('second','t-api-2')`);
+
     const r = await request(app).get('/api/v1/senders').set(...auth());
-    expect(r.status).toBe(409);
-    expect(r.body.code).toBe('MULTIPLE_ORGS');
+    expect(r.status).toBe(200);
   });
 
-  it('reports clearly when nothing is provisioned', async () => {
-    await db.execute(sql`DELETE FROM org`);
+  it('never lets one org see the data of another', async () => {
+    const other = await db.execute(sql`
+      INSERT INTO org(name,slug) VALUES ('second','t-api-2') RETURNING id`);
+    const otherOrgId = (other as unknown as Array<{ id: string }>)[0]!.id;
+    await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${otherOrgId}, 'baileys', 'theirs', 'active')`);
+
     const r = await request(app).get('/api/v1/senders').set(...auth());
-    expect(r.status).toBe(503);
-    expect(r.body.code).toBe('NO_ORG');
+
+    expect(r.status).toBe(200);
+    // The other tenant's sender must not appear, whatever else is in the table.
+    expect((r.body.data as Array<{ label: string }>).some((x) => x.label === 'theirs')).toBe(false);
+  });
+
+  it('refuses the deployment bootstrap key on data routes', async () => {
+    const r = await request(app).get('/api/v1/senders').set(...bootstrapAuth());
+    // It authenticates, but it holds no org and must never reach data — that single shared
+    // secret having full read/write is the hole per-org keys exist to close.
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('BOOTSTRAP_KEY_SCOPE');
+  });
+
+  it('refuses a revoked key', async () => {
+    await db.execute(sql`UPDATE api_key SET revoked_at = now() WHERE org_id = ${orgId}`);
+    const r = await request(app).get('/api/v1/senders').set(...auth());
+    expect(r.status).toBe(401);
+  });
+
+  it('refuses an expired key', async () => {
+    await db.execute(sql`UPDATE api_key SET expires_at = now() - interval '1 second' WHERE org_id = ${orgId}`);
+    const r = await request(app).get('/api/v1/senders').set(...auth());
+    expect(r.status).toBe(401);
   });
 });
 

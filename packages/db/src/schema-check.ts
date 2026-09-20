@@ -23,7 +23,8 @@ export interface SchemaCheckResult {
  */
 const REQUIRED_TABLES = [
   'org', 'app_user', 'org_membership', 'contact', 'contact_identity',
-  'sender_identity', 'channel_session', 'channel_auth_state', 'conversation', 'message'
+  'sender_identity', 'channel_session', 'channel_auth_state', 'conversation', 'message',
+  'session', 'api_key'
 ] as const;
 
 /**

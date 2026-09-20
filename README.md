@@ -115,18 +115,35 @@ npm run gateway      # owns the WhatsApp sockets — nothing sends without this
 npm run web          # inbox UI on :3001
 ```
 
-### Linking a number
+### Provisioning, once
 
-A sender must exist first. Put your key in the shell — `.env` is not loaded for you:
+Nothing works until an organisation exists. The `API_KEY` in `.env` is a **bootstrap**
+credential — it can create an org and mint that org's first key, and is refused on every data
+route.
 
 ```bash
-export API_KEY=$(grep '^API_KEY=' .env | cut -d= -f2-)
+npm run admin -- org --name "Your Company" --slug your-company --email you@example.com
 ```
 
-Then create one:
+That prints an org id and a generated password. Save both. Then mint the key the UI uses:
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/senders -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -d '{"label":"my number"}'
+npm run admin -- key --org <org-id> --name web --scopes contacts:read,conversations:read,conversations:write,messages:send,senders:read,senders:write
+```
+
+Put it in `.env` as `CRM_API_KEY=`. `npm run admin` on its own lists the commands; `whoami`
+lists organisations.
+
+### Linking a number
+
+A sender must exist first:
+
+```bash
+export CRM_API_KEY=$(grep '^CRM_API_KEY=' .env | cut -d= -f2-)
+```
+
+```bash
+curl -X POST http://localhost:3000/api/v1/senders -H "Authorization: Bearer $CRM_API_KEY" -H "Content-Type: application/json" -d '{"label":"my number"}'
 ```
 
 Then open **http://localhost:3001/link**, click **Link this number**, and scan the QR from
@@ -140,7 +157,7 @@ sidebar reads **"1 number connected"** and the sender is promoted to `active` au
 Open **http://localhost:3001/inbox**, pick a conversation, type, send. Or over HTTP:
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/messages -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -d '{"to":"+919876543210","body":"hello"}'
+curl -X POST http://localhost:3000/api/v1/messages -H "Authorization: Bearer $CRM_API_KEY" -H "Content-Type: application/json" -d '{"to":"+919876543210","body":"hello"}'
 ```
 
 That returns **202, not 201** — accepted, not sent. The gateway does the sending, and the status
@@ -153,7 +170,7 @@ More requests to try by hand, with real responses, in
 ### Checking it still works
 
 ```bash
-npm run check        # typecheck (server + web) + lint + 122 tests
+npm run check        # typecheck (server + web) + lint + 169 tests
 ```
 
 `npm run` lists every script. [20 · Orientation](docs/20-orientation.md) explains the stack and

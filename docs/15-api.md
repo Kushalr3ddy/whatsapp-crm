@@ -9,13 +9,33 @@
 Authorization: Bearer crm_live_a1b2c3...
 ```
 
-API keys are hashed at rest, scoped, rotatable, rate-limited per key, with last-used tracking.
-Session cookies exist **only** for the first-party UI and require CSRF tokens; they are not a
-supported integration path.
+API keys are hashed at rest, scoped, revocable, with last-used tracking. Session cookies exist
+**only** for the first-party UI and require CSRF; they are not a supported integration path.
 
-Scopes: `contacts:read|write` · `conversations:read|write` · `messages:send` ·
-`campaigns:read|write` · `templates:read|write` · `imports:write` · `senders:read|write` ·
-`webhooks:manage` · `admin`.
+**Three kinds of credential**, and the difference matters:
+
+| Credential | Who | Reaches |
+|---|---|---|
+| **Per-org API key** (`crm_live_…`) | integrations | everything its scopes allow, in its own org |
+| **Session cookie** | a signed-in person | everything their role allows, in their org |
+| **`API_KEY` from `.env`** | the deployment itself | **provisioning only** — create an org, mint its first key. Refused on every data route |
+
+That last row is the important one. A single shared secret with full read/write over every org
+is the hole per-org keys exist to close, so the bootstrap key cannot read a message or a
+contact. It exists to solve the chicken-and-egg problem of a brand-new deployment having no
+organisation and therefore no key.
+
+Keys are resolved to their own org. Nothing is inferred: an earlier version ran
+`SELECT id FROM org LIMIT 2` and refused with `409 MULTIPLE_ORGS` the moment a second
+organisation existed, because a config-level key could not say which tenant it meant.
+
+**Scopes implemented today:** `contacts:read|write` · `conversations:read|write` ·
+`messages:send` · `senders:read|write`. An unknown scope is rejected when the key is issued,
+rather than silently granting nothing. ⬜ Not yet: `campaigns:*`, `templates:*`,
+`imports:write`, `webhooks:manage`, `admin`.
+
+**Rate limiting is still not implemented** — `rate_limit_per_min` is stored on every key and
+enforced nowhere (P9). Login attempts *are* throttled, with progressive lockout, in-process.
 
 ## Conventions
 
@@ -63,7 +83,20 @@ what the endpoint accepts now.
 | `GET` | `/api/v1/senders/:id/link` | The challenge, once the gateway has produced it |
 | `GET` | `/api/v1/conversations` | Includes `contactPhone` and `queuedCount` |
 | `GET` | `/api/v1/conversations/:id/messages` | Bodies decrypted for display |
-| `POST` | `/api/v1/messages` | **`{to, body, senderId?}`** → 202. See the note below |
+| `POST` | `/api/v1/messages` | **`{to \| conversationId, body, senderId?}`** → 202. See the note below |
+| `POST` | `/api/v1/auth/login` | Public. `{email, password}` → session + CSRF cookies |
+| `POST` | `/api/v1/auth/logout` | Ends the session, clears both cookies |
+| `GET` | `/api/v1/auth/me` | Who the caller is: kind, org, role, scopes |
+| `POST` | `/api/v1/admin/orgs` | **Bootstrap key only.** Creates an org and its first admin |
+| `POST` | `/api/v1/admin/keys` | Mints a key. Bootstrap (names the org) or an admin session |
+| `GET` | `/api/v1/admin/keys` | Admin session. Never returns a secret |
+| `DELETE` | `/api/v1/admin/keys/:id` | Admin session. Soft revoke |
+| `POST` | `/api/v1/admin/users` | Admin session. Adds someone to the org |
+
+**Cookie-authenticated writes need CSRF.** Echo the readable `crm_csrf` cookie back in an
+`x-csrf-token` header on any non-GET request authenticated by cookie. API-key requests need
+none of this: an `Authorization` header is never sent automatically by a browser, which is the
+entire attack being defended against.
 
 **The send body today is flat**, not the nested form further down this page:
 

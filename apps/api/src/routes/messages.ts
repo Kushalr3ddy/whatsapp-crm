@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
+import { requireScope } from '../auth.js';
 import { normalisePhone } from '@crm/shared';
 
 /**
@@ -35,7 +36,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
   const router = Router();
 
   /** Lists conversations, most recently active first. */
-  router.get('/conversations', async (req: Request, res: Response) => {
+  router.get('/conversations', requireScope('conversations:read'), async (req: Request, res: Response) => {
     const rows = await db.execute(sql`
       SELECT v.id, v.status, v.unread_count AS "unreadCount",
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
@@ -65,7 +66,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
   });
 
   /** Returns one thread, oldest first, with bodies decrypted for display. */
-  router.get('/conversations/:id/messages', async (req: Request, res: Response) => {
+  router.get('/conversations/:id/messages', requireScope('conversations:read'), async (req: Request, res: Response) => {
     const rows = await db.execute(sql`
       SELECT m.id, m.direction, m.content_type AS "contentType", m.status,
              m.error_code AS "errorCode", m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
@@ -93,7 +94,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
   });
 
   /** Queues an outbound message. The gateway sends it; poll the thread for status. */
-  router.post('/messages', async (req: Request, res: Response) => {
+  router.post('/messages', requireScope('messages:send'), async (req: Request, res: Response) => {
     const parsed = sendMessage.safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json(problem(req, 'VALIDATION_FAILED', parsed.error.issues.map(

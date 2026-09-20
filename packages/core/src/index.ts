@@ -3,3 +3,18 @@ export {
   storeInboundMessage, markMessageSent, markMessageFailed, applyDeliveryStatus,
   type InboundMessage, type StoredInbound
 } from './messages.js';
+
+export {
+  createSession, resolveSession, revokeSession, revokeAllSessionsForUser, secretsMatch,
+  type SessionPrincipal, type IssuedSession
+} from './sessions.js';
+
+export {
+  issueApiKey, resolveApiKey, revokeApiKey, listApiKeys, API_SCOPES,
+  type KeyPrincipal, type IssuedKey, type ApiScope
+} from './api-keys.js';
+
+export {
+  createOrgWithAdmin, addUserToOrg, setPassword, AlreadyExistsError,
+  type ProvisionedOrg
+} from './provisioning.js';

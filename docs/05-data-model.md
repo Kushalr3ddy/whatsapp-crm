@@ -118,7 +118,7 @@ same person can be an admin in one org and an agent in another, with no schema c
 | `joined_at` | timestamptz | When access was granted. Part of the access-review trail. |
 | — | UNIQUE (org_id, user_id) | One membership per person per org, enforced by the database rather than by a check-then-insert race. |
 
-## `api_key` ⬜
+## `api_key` ✅
 
 Machine access. Sessions are for the first-party UI only; integrations always use a key.
 
@@ -134,6 +134,25 @@ Machine access. Sessions are for the first-party UI only; integrations always us
 | `last_used_at` | timestamptz NULL | Identifies dormant keys worth revoking, and helps date a compromise. |
 | `expires_at` | timestamptz NULL | Optional automatic expiry for temporary integrations. |
 | `revoked_at` | timestamptz NULL | Soft revocation — the row stays so audit entries referencing it still resolve. |
+
+## `session` ✅
+
+A signed-in browser session. Added with the authentication work; it had no entry here before.
+
+| Column | Type | What it is |
+|---|---|---|
+| `id` | uuid PK | Row identity. |
+| `user_id` | uuid FK → app_user | Who is signed in. Cascade-deletes with the person. |
+| `org_id` | uuid FK → org | Which tenant this session acts in, chosen at login — a person may belong to several. |
+| `token_hash` | text UNIQUE | SHA-256 of the token. The token itself is never stored, so a database leak grants no session. A fast hash is correct here: the input is 32 random bytes, so there is nothing to brute-force and Argon2 on every request would be a self-inflicted bottleneck. |
+| `expires_at` | timestamptz | Absolute expiry, regardless of activity. |
+| `last_seen_at` | timestamptz | Drives the idle timeout, and answers "was this session in use when it was abused?". |
+| `ip` / `user_agent` | text NULL | Recorded for the audit trail, **never** for authorisation — both are trivially spoofed. |
+| `revoked_at` | timestamptz NULL | Set by logout, and by every password change. |
+
+**Not row-level-security protected**, the same deliberate exception `app_user` takes: resolving
+a session is what *establishes* which org a request acts in, so a policy reading
+`current_setting('app.org_id')` could never match.
 
 ## `audit_log` ⬜
 

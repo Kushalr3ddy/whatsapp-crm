@@ -56,6 +56,67 @@ export const orgMembership = pgTable('org_membership', {
 ]);
 
 /**
+ * A signed-in browser session.
+ *
+ * Deliberately **not** row-level-security protected, for the same reason `app_user` is not:
+ * the lookup happens *before* any tenant context exists — resolving the session is what
+ * establishes which org the request acts in. Enumeration is not a risk because the lookup key
+ * is a hash of a 32-byte random token, and the application still filters by `orgId` on every
+ * query that follows.
+ *
+ * Server-side rather than a stateless token, because `docs/09-security.md` requires session
+ * invalidation on password change, which a self-contained JWT cannot do without a revocation
+ * list — at which point it is a session table with extra steps.
+ */
+export const session = pgTable('session', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => appUser.id, { onDelete: 'cascade' }),
+  /** Which tenant this session acts in, chosen at login. A person may belong to several. */
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  /** SHA-256 of the token. The token itself is never stored, so a database leak grants nothing. */
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  /** Supports idle timeout and answers "was this session in use when it was abused?". */
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Recorded for the audit trail, never for authorisation — both are trivially spoofed. */
+  ip: text('ip'),
+  userAgent: text('user_agent'),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('session_user_idx').on(t.userId),
+  index('session_expires_idx').on(t.expiresAt)
+]);
+
+/**
+ * Machine access. Sessions are for the first-party UI only; integrations always use a key
+ * (docs/05-data-model.md).
+ *
+ * Not RLS-protected, and for the same reason as `session`: looking the key up is how the org
+ * is discovered, so it cannot already be known.
+ */
+export const apiKey = pgTable('api_key', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  /** Human label — "job portal", "zapier" — so a key can be revoked without guessing its use. */
+  name: text('name').notNull(),
+  /** SHA-256 of the secret. Shown once at creation and never stored. */
+  keyHash: text('key_hash').notNull().unique(),
+  /** First characters, in clear, purely so the UI can show which key is which. */
+  prefix: text('prefix').notNull(),
+  /** Least privilege: a key that only reads contacts cannot send a message. */
+  scopes: text('scopes').array().notNull().default([]),
+  rateLimitPerMin: integer('rate_limit_per_min').notNull().default(120),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  /** Soft revocation, so audit entries referencing this key still resolve. */
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('api_key_org_idx').on(t.orgId)
+]);
+
+/**
  * A person the org talks to. Deliberately carries no domain fields — no candidate, no
  * customer, no patient. Anything business-specific lives in `customFields`, and anything
  * owned by another system is referenced through `externalRef` (docs/01-vision-scope.md).

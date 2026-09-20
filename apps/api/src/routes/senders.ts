@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
+import { requireScope } from '../auth.js';
 
 /** Body for creating a sender identity. */
 const createSender = z.object({
@@ -28,7 +29,7 @@ export function sendersRouter(db: Database): Router {
   const router = Router();
 
   /** Lists senders with their live connection state and risk score. */
-  router.get('/', async (req: Request, res: Response) => {
+  router.get('/', requireScope('senders:read'), async (req: Request, res: Response) => {
     const rows = await db.execute(sql`
       SELECT si.id, si.label, si.provider, si.phone_e164 AS "phoneE164", si.status,
              si.risk_score AS "riskScore", si.warmup_started_at AS "warmupStartedAt",
@@ -43,7 +44,7 @@ export function sendersRouter(db: Database): Router {
   });
 
   /** Creates a sender. It exists but is not connected until it has been linked. */
-  router.post('/', async (req: Request, res: Response) => {
+  router.post('/', requireScope('senders:write'), async (req: Request, res: Response) => {
     const parsed = createSender.safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json(problem(req, 'VALIDATION_FAILED', parsed.error.issues.map(
@@ -62,7 +63,7 @@ export function sendersRouter(db: Database): Router {
    * Starts linking. Returns 202 rather than the challenge itself, because the gateway has to
    * reach WhatsApp first — poll `GET /senders/:id/link` for the QR or code.
    */
-  router.post('/:id/link', async (req: Request, res: Response) => {
+  router.post('/:id/link', requireScope('senders:write'), async (req: Request, res: Response) => {
     const parsed = startLink.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(422).json(problem(req, 'VALIDATION_FAILED', parsed.error.issues.map(
@@ -106,7 +107,7 @@ export function sendersRouter(db: Database): Router {
   });
 
   /** Returns the challenge once the gateway has it, or reports that it is still pending. */
-  router.get('/:id/link', async (req: Request, res: Response) => {
+  router.get('/:id/link', requireScope('senders:read'), async (req: Request, res: Response) => {
     const rows = await db.execute(sql`
       SELECT cs.link_challenge AS challenge, cs.link_error AS error,
              cs.qr_expires_at AS "expiresAt", cs.connection_state AS "connectionState",

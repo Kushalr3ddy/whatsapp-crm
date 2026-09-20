@@ -87,9 +87,16 @@ export class CrmApiError extends Error {
  * which in Next surfaces as an unrelated build error rather than a readable message.
  */
 function apiConfig(): { baseUrl: string; key: string } {
-  const key = process.env.API_KEY;
+  // A per-org key, NOT the deployment-level API_KEY. That one is a bootstrap credential now:
+  // it can provision an organisation and mint keys, and is refused on every data route.
+  const key = process.env.CRM_API_KEY;
   if (key === undefined || key === '') {
-    throw new Error('API_KEY is not set. The UI reads the same .env as the API — see .env.example.');
+    throw new Error(
+      'CRM_API_KEY is not set. The UI needs a per-org key, not the deployment API_KEY.\n' +
+      'Mint one:  npm run admin -- key --org <org-id> --name web --scopes ' +
+      'contacts:read,conversations:read,conversations:write,messages:send,senders:read,senders:write\n' +
+      'List orgs: npm run admin -- whoami'
+    );
   }
   return { baseUrl: process.env.CRM_API_URL ?? 'http://localhost:3000', key };
 }

@@ -50,6 +50,13 @@
       "when": 1789738046320,
       "tag": "0006_link_handshake",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789889334201,
+      "tag": "0007_chubby_ezekiel",
+      "breakpoints": true
     }
   ]
 }

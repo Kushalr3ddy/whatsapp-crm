@@ -1467,3 +1467,72 @@ deliberately left down.
 `apps/web/app/broadcast/page.tsx`, `apps/web/app/layout.tsx`, `apps/web/app/inbox/**`,
 `apps/web/lib/crm.ts`, `apps/web/app/actions.ts`, `docs/21-deferred.md`,
 `tests/integration/api.test.ts`
+
+---
+
+## 2026-09-20 · Session 021 · P2 authentication
+
+**Built the auth layer.** 169 tests, exit code 0 — up from 129.
+
+**Two decisions taken first**, both Kushal's: the deployment `API_KEY` becomes a **bootstrap**
+credential with data access removed, and this slice is backend only — the login screen comes
+next.
+
+**A correction I had to make mid-build.** I bumped `engines` from `>=22` to `>=24` to use
+Node 24's built-in Argon2, and Kushal pushed back: changing the runtime floor to avoid a
+dependency is backwards. He was right. A runtime floor affects every other package, the Docker
+base image, CI and anyone on Node 22 LTS (supported into 2027); a dependency is far smaller and
+more reversible. Reverted, and used `@node-rs/argon2` instead — prebuilt binaries, no
+`node-gyp`, `engines: >=10`. If the floor ever moves it should be an ADR, not a side effect of
+choosing a hash function.
+
+**What exists now:**
+
+- **`session` and `api_key` tables.** Neither is RLS-protected, the same deliberate exception
+  `app_user` takes and for the same reason: resolving a session or key is what *establishes*
+  which org a request acts in, so a policy reading `app.org_id` could never match. Both store
+  only a SHA-256 of a high-entropy secret — fast hashing is correct there, unlike for a
+  password, because there is nothing to brute-force.
+- **`BuiltinPasswordHasher`** in `packages/providers/auth/builtin` — Argon2id at OWASP's 2024
+  floor, parameters embedded in the PHC string so they can be raised later without invalidating
+  stored hashes. `needsRehash` reports which to upgrade on next login.
+- **`createOrgWithAdmin()`** — the single provisioning seam, in one transaction. Note the
+  ordering RLS forces: the `org` policy has no `WITH CHECK`, so Postgres reuses its `USING`
+  clause for inserts and accepts only a row whose `id` matches `app.org_id`. The id is
+  therefore generated first and the tenant set to it *before* the insert. Backwards, this fails
+  under a correct role while appearing to work as the table owner.
+- **Sessions** with absolute expiry, idle timeout, revocation, and eviction of every session on
+  password change. Resolution joins `org_membership`, so removing someone's membership ends
+  access immediately rather than whenever their session happens to lapse.
+- **Login** with progressive lockout, and a dummy-hash verify when the account does not exist so
+  that a missing account and a wrong password take the same time and the same response — without
+  it, timing enumerates valid emails.
+- **Double-submit CSRF** on cookie-authenticated writes only. API keys are exempt by design: an
+  `Authorization` header is never sent automatically by a browser, which is the whole attack.
+- **Per-org API keys with scopes**, enforced per route. Unknown scopes are rejected at issue
+  time rather than silently granting nothing.
+- **`npm run admin`** — org, user, password, key, keys, whoami. Passwords are generated and
+  printed rather than taken as arguments, which would put them in shell history and the process
+  list. Every command was run as documented before being committed.
+
+**`409 MULTIPLE_ORGS` is gone.** The test that asserted it now asserts the opposite — a second
+org is unremarkable, because a key names its own tenant. A new test proves one org cannot see
+another's senders.
+
+**Two bugs caught by the tests I was writing:** `requireAuth` rejected before the login route
+could be reached, so signing in was impossible — split into `attachPrincipal` (never rejects)
+and `requireAuthenticated` (closes the door after `/auth`). And `requireScope` was written but
+never applied to any route, so scopes were decorative until the scope test failed.
+
+**The web app was going to break** — it authenticated with the env key, which is now refused on
+data routes. It reads `CRM_API_KEY` instead, and throws with the exact `npm run admin` command
+to mint one rather than failing with a bare 403.
+
+**Still not built:** self-service password reset (needs the email driver, still an empty
+directory), `audit_log`, TOTP, the OIDC driver, and rate limiting on anything but login.
+
+**Files:** `packages/providers/auth/builtin/**`, `packages/core/{sessions,api-keys,provisioning}.ts`,
+`apps/api/src/auth.ts`, `apps/api/src/routes/{auth,admin}.ts`, `apps/api/src/app.ts`,
+`packages/db/src/schema.ts`, `packages/db/migrations/0007_*.sql`, `scripts/admin.ts`,
+`tests/integration/{auth,api}.test.ts`, `README.md`, `docs/{15-api,05-data-model}.md`,
+`.env.example`
