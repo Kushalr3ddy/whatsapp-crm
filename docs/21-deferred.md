@@ -283,6 +283,20 @@ from the outset: `Content-Disposition: attachment`, content type from **magic by
 than the filename, never rendered inline, and served behind the same authentication as
 everything else. Twenty lines at build time; very painful once file URLs are in circulation.
 
+**Isolation does not extend to the filesystem, and this is the part to be careful about.**
+Tenant isolation here is row-level security — forced on every tenant table and *measured* at
+boot by `inspectDatabaseSecurity()`. RLS protects **rows**. Files live on a filesystem Postgres
+cannot reach, so a stored attachment is protected only by whatever the download endpoint
+remembers to check. The `media` row is covered; the bytes are not.
+
+Two consequences for whenever this is built:
+
+1. **Resolve every download through the database** — file → message → conversation → org → the
+   requesting principal — rather than trusting a path. The check that RLS performs for free on
+   a row has to be written by hand for a file, in exactly one place.
+2. **Storage keys must be unguessable**: random, never the original filename, never sequential.
+   A guessable key turns a missed check into a public bucket.
+
 **On VirusTotal**, since it is the obvious reach:
 
 - **Hash lookup** is privacy-safe — a digest reveals nothing — but nearly useless for this
