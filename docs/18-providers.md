@@ -67,6 +67,17 @@ without its credentials is a **boot-time crash with a readable message**, not a 
   missing *required* infrastructure always is.
 - **Authorisation is never delegated.** An external IdP authenticates; roles and scopes stay
   local, so the permission model is identical regardless of who signs the user in.
+- **Email is optional, and every flow that uses it has a path that does not.** A deployment may
+  have no `EMAIL_DRIVER` configured at all — so password reset is administrator-initiated
+  first and self-service second, and an invitation can be handed over out of band rather than
+  only by link. Making email mandatory would mean a customer with no working mail setup could
+  not recover an account, which is a worse failure than not having the convenience.
+
+  Worth knowing when this comes up: a self-hosted customer rarely needs a domain **of their
+  own** for this. Google Workspace, Microsoft 365 and Zoho all expose SMTP, and their domains
+  already carry SPF and DKIM — pointing `EMAIL_DRIVER=smtp` at the customer's existing mail
+  provider sends as them, authenticated, with no DNS work. Owning the domain matters for
+  *bulk* sending reputation, not for a handful of transactional messages.
 
 ## Cost and lock-in
 
