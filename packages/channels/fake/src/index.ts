@@ -2,8 +2,7 @@ import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
   NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent,
   ProviderHealth,
-  Recipient, SenderRef, SendResult
-} from '@crm/channels';
+  Recipient, SenderRef, SendResult, InboundMedia } from '@crm/channels';
 
 /**
  * A sent message, kept in memory so tests can assert on what would have gone out.
@@ -59,6 +58,8 @@ export class FakeChannelProvider implements ChannelProvider {
 
   private readonly health_ = new Map<string, ProviderHealth>();
   private readonly inboundQueue: NormalisedInboundEvent[] = [];
+  /** Attachments this fake will hand back, keyed by the ref put on the event. */
+  private readonly media = new Map<string, InboundMedia>();
   private readonly statusQueue: NormalisedStatusEvent[] = [];
   private readonly connectionQueue: NormalisedConnectionEvent[] = [];
   private readonly waiters: Array<() => void> = [];
@@ -130,6 +131,21 @@ export class FakeChannelProvider implements ChannelProvider {
     return { providerMessageId, acceptedAt: new Date() };
   }
 
+  /**
+   * Hands back media previously queued with `receiveMessage`, or null when there is none.
+   *
+   * Throws for a ref it does not know, which is how a real provider behaves when media has
+   * expired — the contract requires the caller to keep the message and lose only the file.
+   */
+  async downloadMedia(event: NormalisedInboundEvent): Promise<InboundMedia | null> {
+    if (event.mediaRef === null) return null;
+    const media = this.media.get(event.mediaRef);
+    if (media === undefined) {
+      throw new Error(`no media for ref ${event.mediaRef} — expired, or never stored`);
+    }
+    return media;
+  }
+
   /** Streams inbound events until shutdown. */
   async *inbound(): AsyncIterable<NormalisedInboundEvent> {
     yield* this.drain(this.inboundQueue);
@@ -168,14 +184,34 @@ export class FakeChannelProvider implements ChannelProvider {
 
   // ---- test controls, not part of the port -------------------------------------------
 
-  /** Simulates an inbound message arriving. */
-  receiveMessage(event: Partial<NormalisedInboundEvent> & { senderId: string; fromProviderAddress: string }): void {
+  /**
+   * Simulates an inbound message arriving.
+   *
+   * Pass `media` to simulate an attachment: it is registered against a generated ref and
+   * handed back by `downloadMedia`, so the whole media pipeline is exercisable with no
+   * WhatsApp account. Omit it and the message carries no file, as before.
+   */
+  receiveMessage(
+    event: Partial<NormalisedInboundEvent> & { senderId: string; fromProviderAddress: string },
+    media?: InboundMedia
+  ): void {
+    const providerMessageId = event.providerMessageId ?? `fake-in-${++this.counter}`;
+    let mediaRef = event.mediaRef ?? null;
+    if (media !== undefined) {
+      mediaRef = `fake-media-${providerMessageId}`;
+      this.media.set(mediaRef, media);
+    }
     this.inboundQueue.push({
-      providerMessageId: `fake-in-${++this.counter}`,
-      fromPhoneE164: null, body: '', contentType: 'text', mediaRef: null,
-      receivedAt: new Date(), raw: {}, ...event
+      providerMessageId,
+      fromPhoneE164: null, body: '', contentType: 'text',
+      receivedAt: new Date(), raw: {}, ...event, mediaRef
     });
     this.release();
+  }
+
+  /** Drops a stored attachment without removing its message, to simulate expiry at the provider. */
+  expireMedia(mediaRef: string): void {
+    this.media.delete(mediaRef);
   }
 
   /** Simulates a delivery-state change from the provider. */

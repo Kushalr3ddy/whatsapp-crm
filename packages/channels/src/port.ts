@@ -65,10 +65,34 @@ export interface NormalisedInboundEvent {
   readonly fromProviderAddress: string;
   readonly body: string;
   readonly contentType: 'text' | 'image' | 'document' | 'audio' | 'video' | 'other';
+  /**
+   * The provider's handle for the attachment, or null when the message carries none.
+   *
+   * Opaque on purpose — what it means differs per provider (Baileys can only re-download from
+   * the message itself; Meta issues a media id), so nothing outside the adapter interprets it.
+   * Its one job above the port is to answer "is there a file here to fetch?".
+   */
   readonly mediaRef: string | null;
   readonly receivedAt: Date;
   /** The untouched provider payload, persisted before processing so it can be replayed. */
   readonly raw: unknown;
+}
+
+/**
+ * The bytes behind an inbound media message.
+ *
+ * `declaredContentType` and `filename` are both **the sender's input**, carried through for
+ * the record and for the download filename — never for deciding how to serve the file. That
+ * decision is made from the bytes themselves by `detectMediaType`, because a file named
+ * `cv.pdf` containing HTML is a stored-XSS payload and the name is exactly what an attacker
+ * controls (docs/21-deferred.md, D-11).
+ */
+export interface InboundMedia {
+  readonly bytes: Uint8Array;
+  /** What the provider says it is. Recorded, never trusted. */
+  readonly declaredContentType: string | null;
+  /** What the sender called it. Unsanitised — `safeFilename` is applied before it is used. */
+  readonly filename: string | null;
 }
 
 /** A delivery-state change, normalised across providers. */
@@ -159,6 +183,20 @@ export interface ChannelProvider {
 
   /** Inbound messages, normalised. Consumed by the gateway and republished onto the queue. */
   inbound(): AsyncIterable<NormalisedInboundEvent>;
+
+  /**
+   * Fetches the file behind an inbound message, or null when it carries none.
+   *
+   * Takes the whole event rather than `mediaRef` because providers differ in what they need to
+   * retrieve bytes: Baileys re-downloads from the original message payload, which is why
+   * `raw` is carried on every event, while Meta would use an id. Keeping the whole event in
+   * the signature means neither adapter has to smuggle provider state out through a string.
+   *
+   * Throws when the file exists but cannot be fetched — expired, revoked, or the connection is
+   * down. The caller must treat that as "message kept, attachment missing" rather than losing
+   * the message, because the text of a message with a failed attachment is still worth having.
+   */
+  downloadMedia(event: NormalisedInboundEvent): Promise<InboundMedia | null>;
 
   /** Delivery-state changes, normalised. */
   status(): AsyncIterable<NormalisedStatusEvent>;

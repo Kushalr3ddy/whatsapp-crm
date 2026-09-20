@@ -3,7 +3,9 @@ import { createLogger, loadConfig, ConfigError } from '@crm/shared';
 import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
-import { storeInboundMessage, applyDeliveryStatus } from '@crm/core';
+import { storeInboundMessage, applyDeliveryStatus, storeMedia } from '@crm/core';
+import { createStorage } from '@crm/storage';
+import type { NormalisedInboundEvent } from '@crm/channels';
 import {
   applyConnectionEvent, handleLinkRequest, handleSend, markAllSessionsClosed, restoreSessions,
   sweepPendingWork,
@@ -44,6 +46,10 @@ async function main(): Promise<void> {
   });
   const authStore = new PostgresAuthStateStore(db, kms);
   const provider = new BaileysChannelProvider({ authStore, logger });
+  // Attachments land here rather than in the API, because this is the process holding the
+  // connection that can fetch them — WhatsApp media is re-downloaded through the socket that
+  // received it, not from a URL anyone else could call.
+  const storage = createStorage(config);
 
   const ctx: WorkContext = {
     db, provider, logger,
@@ -78,6 +84,12 @@ async function main(): Promise<void> {
           );
           await db.execute(sql`
             UPDATE sender_identity SET last_inbound_at = now() WHERE id = ${event.senderId}`);
+
+          // Only for a message that was actually inserted. A redelivery already has its file,
+          // and fetching it again would cost a round trip to WhatsApp to produce a duplicate.
+          if (event.mediaRef !== null && stored.messageId !== null) {
+            await fetchAttachment(stored.messageId, org, event);
+          }
         }
       } catch (error) {
         // One malformed message must never stop the inbound stream.
@@ -88,6 +100,44 @@ async function main(): Promise<void> {
       }
     }
   })();
+
+  /**
+   * Downloads one attachment and stores it, or gives up loudly without losing the message.
+   *
+   * Failure here must not propagate. An attachment can be unavailable for reasons that have
+   * nothing to do with us — WhatsApp expires media, a sender deletes it, the socket drops
+   * mid-transfer — and the text of a message whose file could not be fetched is still worth
+   * keeping. The message stays, its `content_type` still says `image` or `document`, and
+   * `media_id` stays null, which is exactly how the inbox knows to say an attachment exists
+   * and could not be retrieved.
+   */
+  async function fetchAttachment(
+    messageId: string, orgId: string, event: NormalisedInboundEvent
+  ): Promise<void> {
+    try {
+      const media = await provider.downloadMedia(event);
+      if (media === null) return;
+
+      const stored = await storeMedia(db, storage, {
+        orgId, messageId, bytes: media.bytes, filename: media.filename
+      });
+      logger.info(
+        {
+          messageId, mediaId: stored.mediaId, contentType: stored.contentType,
+          sizeBytes: stored.sizeBytes, deduplicated: stored.deduplicated,
+          // Logged when they disagree, because a mismatch is either a broken sender or an
+          // attempt to have the file served as something it is not (D-11).
+          declared: media.declaredContentType
+        },
+        'attachment stored'
+      );
+    } catch (error) {
+      logger.error(
+        { messageId, err: error instanceof Error ? error.message : String(error) },
+        'could not fetch an attachment; the message is stored without it'
+      );
+    }
+  }
 
   // ── delivery receipts ───────────────────────────────────────────────────────────────
   void (async () => {

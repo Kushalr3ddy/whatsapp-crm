@@ -1,9 +1,11 @@
 import makeWASocket, {
-  Browsers, DisconnectReason as BaileysDisconnect, fetchLatestBaileysVersion,
-  type WASocket, type ConnectionState
+  Browsers, DisconnectReason as BaileysDisconnect, downloadMediaMessage,
+  fetchLatestBaileysVersion,
+  type WASocket, type ConnectionState, type WAMessage
 } from 'baileys';
 import type {
-  AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
+  AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, InboundMedia,
+  LinkChallenge,
   NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent,
   ProviderHealth, Recipient,
   SenderRef, SendResult
@@ -197,6 +199,42 @@ export class BaileysChannelProvider implements ChannelProvider {
     return this.#status;
   }
 
+  /**
+   * Re-downloads the file behind an inbound message.
+   *
+   * Baileys has no "fetch media by id": WhatsApp media is encrypted per message, and the keys
+   * needed to decrypt it live in the message payload. That is why the event carries `raw` and
+   * why this takes the event rather than a handle.
+   *
+   * `reuploadRequest` is not optional in practice. WhatsApp expires media on its servers, and
+   * when that has happened the only way to get the bytes is to ask the sender's device to
+   * re-upload them — which needs a live socket, so this fails rather than returning nothing
+   * when the sender is not connected. The caller keeps the message either way.
+   */
+  async downloadMedia(event: NormalisedInboundEvent): Promise<InboundMedia | null> {
+    if (event.mediaRef === null) return null;
+
+    const conn = this.#connections.get(event.senderId);
+    if (!conn || conn.state !== 'open') {
+      throw new Error(`sender ${event.senderId} is not connected, so media cannot be downloaded`);
+    }
+
+    const message = event.raw as WAMessage;
+    const bytes = await downloadMediaMessage(message, 'buffer', {}, {
+      logger: this.#options.logger,
+      reuploadRequest: conn.socket.updateMediaMessage
+    });
+
+    const content = message.message ?? {};
+    // Both of these are the SENDER's words about their own file. Carried through for the
+    // record and for the saved filename; never used to decide how the file is served.
+    const declared = content.imageMessage?.mimetype ?? content.videoMessage?.mimetype
+      ?? content.documentMessage?.mimetype ?? content.audioMessage?.mimetype ?? null;
+    const filename = content.documentMessage?.fileName ?? null;
+
+    return { bytes: new Uint8Array(bytes), declaredContentType: declared, filename };
+  }
+
   /** Connection state changes, so the gateway can persist them as they happen. */
   connections(): AsyncIterable<NormalisedConnectionEvent> {
     return this.#connectionEvents;
@@ -367,6 +405,10 @@ export class BaileysChannelProvider implements ChannelProvider {
     if (jid.endsWith('@g.us') || jid === 'status@broadcast') return;
 
     const { body, contentType } = extractBody(m.message);
+    // Baileys cannot fetch an attachment from an id — it re-downloads from the message
+    // payload, which is carried on `raw`. So the ref is just the message id: its only job
+    // above the port is to say that a file exists here at all.
+    const hasMedia = contentType !== 'text' && contentType !== 'other';
     this.#inbound.push({
       providerMessageId: m.key.id,
       senderId,
@@ -376,7 +418,7 @@ export class BaileysChannelProvider implements ChannelProvider {
       fromProviderAddress: jid,
       body,
       contentType,
-      mediaRef: null,
+      mediaRef: hasMedia ? m.key.id : null,
       receivedAt: toDate(m.messageTimestamp),
       raw
     });

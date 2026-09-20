@@ -276,12 +276,15 @@ the filesystem `StorageDriver` with provider-neutral keys.
 | **Antivirus** | `SCANNER_DRIVER=clamav`, opt-in, ~1 GB RAM for daemon plus signatures, against a `lean` target of ~1 GB total |
 | **Size caps and quotas** | WhatsApp permits ~16 MB images and ~100 MB documents. Candidate CVs accumulate quickly |
 
-**NOT parked — build with the first byte:** how files are **served**. Storing an attachment is
-harmless; serving it is where the exploit lives. An HTML or SVG file served from the app's own
-origin is stored XSS against a logged-in session, and the attacker only has to message it. So
-from the outset: `Content-Disposition: attachment`, content type from **magic bytes** rather
-than the filename, never rendered inline, and served behind the same authentication as
-everything else. Twenty lines at build time; very painful once file URLs are in circulation.
+**NOT parked — and now built.** How files are **served** was the part that could not wait.
+Storing an attachment is harmless; serving it is where the exploit lives. An HTML or SVG file
+served from the app's own origin is stored XSS against a logged-in session, and the attacker
+only has to message it. All of it landed with the first byte, in `apps/api/src/routes/media.ts`:
+`Content-Disposition: attachment` on every response, content type from **magic bytes**
+(`detectMediaType`) rather than the filename, never rendered inline, `X-Content-Type-Options:
+nosniff`, and the same authentication as everything else. `tests/integration/media.test.ts`
+holds a file whose name says PDF and whose bytes say HTML, and asserts it comes back as
+`application/octet-stream`.
 
 **Isolation does not extend to the filesystem, and this is the part to be careful about.**
 Tenant isolation here is row-level security — forced on every tenant table and *measured* at
@@ -289,13 +292,13 @@ boot by `inspectDatabaseSecurity()`. RLS protects **rows**. Files live on a file
 cannot reach, so a stored attachment is protected only by whatever the download endpoint
 remembers to check. The `media` row is covered; the bytes are not.
 
-Two consequences for whenever this is built:
+Two consequences, both now implemented:
 
-1. **Resolve every download through the database** — file → message → conversation → org → the
+1. **Every download resolves through the database** — file → message → conversation → org → the
    requesting principal — rather than trusting a path. The check that RLS performs for free on
-   a row has to be written by hand for a file, in exactly one place.
-2. **Storage keys must be unguessable**: random, never the original filename, never sequential.
-   A guessable key turns a missed check into a public bucket.
+   a row is written by hand for a file, in exactly one place: `resolveMedia()`.
+2. **Storage keys are unguessable**: `org/<org>/media/<uuid>.<ext>`, built only by `mediaKey()`,
+   never from the original filename and never sequential.
 
 **On VirusTotal**, since it is the obvious reach:
 
@@ -308,8 +311,9 @@ Two consequences for whenever this is built:
   parties, with no consent and no way back. Enterprise private scanning exists, but it is paid
   and still a transfer to a third party. **ClamAV, locally, is the answer** — nothing leaves.
 
-**What brings it back:** enough stored media for retention to matter, a real erasure request, or
-the first deployment onto a host where an unencrypted uploads directory is not acceptable.
+**What brings the parked half back:** enough stored media for retention to matter, a real
+erasure request, or the first deployment onto a host where an unencrypted uploads directory is
+not acceptable. Media now lands, so the clock on all three has started.
 
 **Cost of deferring:** encryption is the expensive one to retrofit — it means rewriting every
 stored file, and the storage key layout should therefore allow a per-file marker from day one
@@ -337,12 +341,23 @@ contact it came from. Nothing more.
 
 ---
 
-## D-13 · Access auditing — who *read* what
+## D-13 · Access auditing — who *read* what · **LANDED**
 
 **What:** recording reads, not just changes. Who opened this conversation, who downloaded this
 attachment, who ran this export. The DPDP-shaped question.
 
-**Why parked:** the audit log built today covers **state changes and authentication** — who
+**Trigger 1 fired: media landed, and this landed with it** rather than after, so there is no
+gap at the start of the trail. Two actions exist today — `conversation.read` when a thread is
+opened, and `media.downloaded` when a file is fetched, written *before* the transfer starts so
+an abandoned download still counts. Both go in the same `audit_log`, as the table below says
+they should. Listing the inbox is deliberately not recorded. Exports do not exist yet and join
+this list when they do.
+
+The volume question is unresolved rather than answered: nothing polls the thread endpoint
+today, so it is one row per open. If P4's realtime work turns that into a poll, revisit it —
+along with partitioning `audit_log` by month.
+
+**Why it was parked, and what changed:** the audit log built today covers **state changes and authentication** — who
 changed what, who signed in, who minted a key. That is the answerable half at this size. Read
 auditing has a different cost shape: the table grows with *usage* rather than with *change*, so
 a busy inbox writes an audit row every time someone opens a thread. Designing for that volume

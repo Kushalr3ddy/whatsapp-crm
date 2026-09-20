@@ -11,6 +11,7 @@ import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { issueApiKey } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
+import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 import { withTenant, type TenantRunner } from '../../apps/api/src/tenant.js';
 
 /**
@@ -35,6 +36,7 @@ const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 
 let db: Database;
 let app: ReturnType<typeof buildApp>;
+let media: TempStorage;
 let tenantRole: string | null;
 let isolationEffective: boolean;
 let orgA: string;
@@ -53,12 +55,13 @@ function asTenant(orgId: string): TenantRunner {
 
 beforeAll(async () => {
   db = createDatabase(url, { max: 6 });
+  media = tempStorage();
   const security = await inspectDatabaseSecurity(db);
   isolationEffective = security.isolationEffective;
   tenantRole = await resolveTenantRole(db, security);
-  app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole });
+  app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole, storage: media.storage });
 });
-afterAll(async () => { await db.$client.end(); });
+afterAll(async () => { await db.$client.end(); media.cleanup(); });
 
 beforeEach(async () => {
   await db.execute(sql`DELETE FROM org`);

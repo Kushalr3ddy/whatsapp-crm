@@ -4,10 +4,9 @@ import type { Database } from '@crm/db';
 import type { PasswordHasher } from '@crm/auth-builtin';
 import {
   createOrgWithAdmin, addUserToOrg, issueApiKey, listApiKeys, revokeApiKey,
-  API_SCOPES, AlreadyExistsError, writeAuditInTenant, AUDIT, SYSTEM_ACTOR,
-  type AuditActor
+  API_SCOPES, AlreadyExistsError, writeAuditInTenant, AUDIT
 } from '@crm/core';
-import { requireBootstrap, requireRole } from '../auth.js';
+import { auditActor, requireBootstrap, requireRole } from '../auth.js';
 
 /** Body for provisioning an organisation and its first admin. */
 const createOrg = z.object({
@@ -39,19 +38,6 @@ function problem(req: Request, status: number, code: string, detail: string) {
   return { type: 'about:blank', title: code, status, code, detail, request_id: req.id };
 }
 
-/**
- * Who is acting, for the audit trail.
- *
- * The bootstrap key is the deployment itself, which is the system — there is no person behind
- * it and pretending otherwise would put a fiction in the permanent record.
- */
-function actorOf(req: Request): AuditActor {
-  const ctx = req.crm;
-  if (ctx?.kind === 'session' && ctx.userId !== null) return { type: 'user', id: ctx.userId };
-  if (ctx?.kind === 'api_key' && ctx.credentialId !== null) return { type: 'api', id: ctx.credentialId };
-  return SYSTEM_ACTOR;
-}
-
 /** Turns Zod issues into one readable line. */
 function issues(error: z.ZodError): string {
   return error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
@@ -75,7 +61,7 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
       return;
     }
     try {
-      const result = await createOrgWithAdmin(db, hasher, parsed.data, actorOf(req));
+      const result = await createOrgWithAdmin(db, hasher, parsed.data, auditActor(req));
       res.status(201).json({ data: result });
     } catch (error) {
       if (error instanceof AlreadyExistsError) {
@@ -120,7 +106,7 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
     // The prefix, never the secret. An audit log holding working credentials would be a
     // second copy of the thing it exists to police.
     await writeAuditInTenant(db, {
-      orgId, actor: actorOf(req), action: AUDIT.apiKeyIssued,
+      orgId, actor: auditActor(req), action: AUDIT.apiKeyIssued,
       targetType: 'api_key', targetId: issued.id,
       after: { name: parsed.data.name, prefix: issued.prefix, scopes: parsed.data.scopes },
       ip: req.ip ?? null, requestId: String(req.id)
@@ -147,7 +133,7 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
       return;
     }
     await writeAuditInTenant(db, {
-      orgId: req.crm!.orgId, actor: actorOf(req), action: AUDIT.apiKeyRevoked,
+      orgId: req.crm!.orgId, actor: auditActor(req), action: AUDIT.apiKeyRevoked,
       targetType: 'api_key', targetId: id, ip: req.ip ?? null, requestId: String(req.id)
     });
     res.status(204).end();
@@ -161,7 +147,7 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
       return;
     }
     try {
-      const result = await addUserToOrg(db, hasher, { orgId: req.crm!.orgId, ...parsed.data }, actorOf(req));
+      const result = await addUserToOrg(db, hasher, { orgId: req.crm!.orgId, ...parsed.data }, auditActor(req));
       res.status(201).json({ data: result });
     } catch (error) {
       if (error instanceof AlreadyExistsError) {

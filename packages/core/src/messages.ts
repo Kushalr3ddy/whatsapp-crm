@@ -21,6 +21,14 @@ export interface StoredInbound {
   readonly conversationId: string;
   /** False when this exact message had already been stored — a redelivery, not new traffic. */
   readonly isNew: boolean;
+  /**
+   * The row just written, or null for a redelivery that inserted nothing.
+   *
+   * Needed to attach an attachment afterwards, and null is the right answer on a redelivery:
+   * the file is already stored against the original, and downloading it again would cost a
+   * round trip to WhatsApp to arrive at a duplicate.
+   */
+  readonly messageId: string | null;
 }
 
 /**
@@ -86,11 +94,17 @@ export async function storeInboundMessage(
     )
     SELECT (SELECT contact_id FROM resolved) AS contact_id,
            (SELECT id FROM conv) AS conversation_id,
+           (SELECT id FROM ins) AS message_id,
            EXISTS (SELECT 1 FROM ins) AS is_new`);
 
-  const row = (rows as unknown as Array<{ contact_id: string; conversation_id: string; is_new: boolean }>)[0];
+  const row = (rows as unknown as Array<{
+    contact_id: string; conversation_id: string; message_id: string | null; is_new: boolean;
+  }>)[0];
   if (!row) throw new Error('storing the inbound message returned nothing');
-  return { contactId: row.contact_id, conversationId: row.conversation_id, isNew: row.is_new };
+  return {
+    contactId: row.contact_id, conversationId: row.conversation_id,
+    isNew: row.is_new, messageId: row.message_id
+  };
 }
 
 /** Marks a queued outbound message as accepted by the provider. */

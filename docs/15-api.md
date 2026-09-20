@@ -68,7 +68,7 @@ Branch on `code`, never on `detail`.
 
 ## What exists today
 
-**Eight endpoints, plus two unauthenticated health checks.** Everything else in this document
+**Nine endpoints, plus two unauthenticated health checks.** Everything else in this document
 is design, not implementation — the `Resources` list below is the intended surface, and the
 `Sending a message` example shows the shape it will take once the dispatcher exists, **not**
 what the endpoint accepts now.
@@ -82,7 +82,8 @@ what the endpoint accepts now.
 | `POST` | `/api/v1/senders/:id/link` | `{mode: 'qr' \| 'pairing_code', phoneE164?}` → 202 + poll URL |
 | `GET` | `/api/v1/senders/:id/link` | The challenge, once the gateway has produced it |
 | `GET` | `/api/v1/conversations` | Includes `contactPhone` and `queuedCount` |
-| `GET` | `/api/v1/conversations/:id/messages` | Bodies decrypted for display |
+| `GET` | `/api/v1/conversations/:id/messages` | Bodies decrypted for display. Carries `media` and `mediaUnavailable` |
+| `GET` | `/api/v1/media/:id` | Streams one attachment. Always a download — see below |
 | `POST` | `/api/v1/messages` | **`{to \| conversationId, body, senderId?}`** → 202. See the note below |
 | `POST` | `/api/v1/auth/login` | Public. `{email, password}` → session + CSRF cookies |
 | `POST` | `/api/v1/auth/logout` | Ends the session, clears both cookies |
@@ -110,6 +111,49 @@ Authorization: Bearer <API_KEY>
 It returns **202**, not 201 — accepted for sending, not sent. There is no `Idempotency-Key`
 support, no `intent`, no template rendering and no dispatcher yet; the caller's message is
 queued and the gateway sends it.
+
+### Attachments
+
+A message that arrived with a file carries it on the thread response:
+
+```json
+{
+  "id": "…", "direction": "inbound", "contentType": "document", "body": "",
+  "media": {
+    "id": "0b16afdb-…",
+    "url": "/api/v1/media/0b16afdb-…",
+    "contentType": "application/pdf",
+    "sizeBytes": 184320,
+    "filename": "Priya Sharma CV.pdf"
+  },
+  "mediaUnavailable": false
+}
+```
+
+`media` is null when there is no file. **`mediaUnavailable` is true when there was one and it
+could not be fetched** — WhatsApp expires media, and a message whose attachment failed to
+download is kept rather than lost, so a client can say so instead of showing an empty bubble.
+
+`GET /api/v1/media/:id` streams the bytes. It needs the same `conversations:read` scope as the
+thread, and four things about the response are deliberate and will not change:
+
+- **`Content-Disposition: attachment`, always.** Nothing is ever served inline, images
+  included. A file that slips past type detection still cannot execute.
+- **`Content-Type` comes from the file's magic bytes**, decided when it was stored — never
+  from its name or from what the sender's client declared. Unrecognised files are
+  `application/octet-stream`.
+- **`X-Content-Type-Options: nosniff`**, so the browser cannot overrule that.
+- **`Cache-Control: private, no-store`.** Attachments are personal data; no shared cache and
+  no browser disk cache keeps a copy.
+
+There is **no signed URL and no public path**, on purpose. Every request resolves
+file → message → conversation → org through the database, because row-level security protects
+the row and cannot reach the bytes — a URL that granted access on its own would route around
+the only check there is. Another tenant's attachment answers **404**, not 403: saying
+"forbidden" would confirm the file exists.
+
+Each download is recorded in the audit log as `media.downloaded`, and opening a thread as
+`conversation.read` (`docs/21-deferred.md`, D-13).
 
 Worked examples with real responses, including every failure case, are in
 [Trying it by hand](#trying-it-by-hand-insomnia-postman-curl) at the end of this document.

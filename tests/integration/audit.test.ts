@@ -11,6 +11,7 @@ import {
   SYSTEM_ACTOR, AUDIT
 } from '@crm/core';
 import { buildApp } from '../../apps/api/src/app.js';
+import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const API_KEY = randomBytes(32).toString('hex');
@@ -26,6 +27,7 @@ const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 
 let db: Database;
 let app: ReturnType<typeof buildApp>;
+let media: TempStorage;
 
 const bootstrap = () => ['Authorization', `Bearer ${API_KEY}`] as const;
 const freshEmail = () => `u${randomBytes(6).toString('hex')}@example.com`;
@@ -62,10 +64,11 @@ function cookieValue(setCookie: string[] | undefined, name: string): string {
 
 beforeAll(async () => {
   db = createDatabase(url, { max: 6 });
+  media = tempStorage();
   const tenantRole = await resolveTenantRole(db, await inspectDatabaseSecurity(db));
-  app = buildApp({ config, logger, db, kms, hasher, tenantRole });
+  app = buildApp({ config, logger, db, kms, hasher, tenantRole, storage: media.storage });
 });
-afterAll(async () => { await db.$client.end(); });
+afterAll(async () => { await db.$client.end(); media.cleanup(); });
 beforeEach(async () => { await db.execute(sql`DELETE FROM org`); });
 
 describe('the audit table itself', () => {

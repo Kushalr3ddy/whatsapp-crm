@@ -8,6 +8,7 @@ import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { issueApiKey } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
+import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const API_KEY = randomBytes(32).toString('hex');
@@ -22,6 +23,7 @@ const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 
 let db: Database;
 let app: ReturnType<typeof buildApp>;
+let media: TempStorage;
 let orgId: string;
 /** A real per-org key, minted fresh for each test. This is what data routes now require. */
 let orgKey: string;
@@ -34,13 +36,14 @@ const bootstrapAuth = () => ['Authorization', `Bearer ${API_KEY}`] as const;
 
 beforeAll(async () => {
   db = createDatabase(url, { max: 6 });
+  media = tempStorage();
   // Resolved the same way the real server resolves it, so these tests run with row-level
   // security actually enforced rather than bypassed. The test role owns the tables, so
   // without this every policy in the schema would sit inert underneath the suite.
   const tenantRole = await resolveTenantRole(db, await inspectDatabaseSecurity(db));
-  app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole });
+  app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole, storage: media.storage });
 });
-afterAll(async () => { await db.$client.end(); });
+afterAll(async () => { await db.$client.end(); media.cleanup(); });
 
 beforeEach(async () => {
   // Cascades to api_key, session, membership and everything tenant-scoped.

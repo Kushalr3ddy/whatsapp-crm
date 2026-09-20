@@ -23,3 +23,8 @@ export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
   type AuditActor, type AuditEntry, type ActorType
 } from './audit.js';
+
+export {
+  storeMedia, resolveMedia,
+  type IncomingMedia, type StoredMedia, type ResolvedMedia
+} from './media.js';

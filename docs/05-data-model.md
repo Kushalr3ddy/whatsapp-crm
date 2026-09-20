@@ -177,8 +177,11 @@ makes "who did this?" always answerable (NFR-17).
 retention job needs `DELETE` and therefore runs as a different role. What this does *not* cover
 is anyone holding the database directly — see D-13.
 
-**Reads are not audited yet**, only state changes and authentication. That is D-13, and its
-trigger is media landing.
+**Reads are audited from the point media landed**, which was D-13's trigger. Two actions
+exist: `conversation.read` when a thread is opened and `media.downloaded` when a file is
+fetched. Listing the inbox is deliberately **not** recorded — a paginated load is not a
+meaningful access event, and a log that records one buries the events that are. Exports, when
+they exist, join this list.
 
 ---
 
@@ -433,14 +436,30 @@ worked for two campaigns at once (M31).
 | `sent_by_id` | uuid NULL | Which specific user or key. |
 | `created_at` / `sent_at` / `delivered_at` / `read_at` | timestamptz | The delivery timeline. The gaps between them are the funnel. |
 
-## `conversation_participant` · `internal_note` · `canned_reply` · `media_asset` ⬜
+## `media_asset` ✅
+
+| Column | Type | What it is |
+|---|---|---|
+| `id`, `org_id` | uuid | Row identity and tenant. RLS'd like every org-scoped table. |
+| **`storage_key`** | text | Provider-neutral path, so migrating from a directory to a bucket is a copy rather than a rewrite. **Random and unguessable** — `org/<org>/media/<uuid>.<ext>`, never the sender's filename. RLS protects this row and stops at the filesystem, so a guessable key would turn one missed check into a public bucket (D-11). |
+| `storage_driver` | text | Which backend holds it. Recorded rather than inferred from config, so a part-migrated estate is readable. |
+| **`content_type`** | text | Decided from **magic bytes** at store time, never from the filename or the provider's claim — both are the sender's input. Anything unrecognised is `application/octet-stream`, which downloads instead of rendering. |
+| `size_bytes` | int | What was stored. Also what `Content-Length` says on the way out. |
+| `sha256` | text | Hex digest of the stored bytes. Deduplicates within an org — the same CV forwarded by five people is one file — and is the only way to tell later that what is on disk is what arrived. Deliberately **not** deduplicated across orgs: that would tangle two tenants' erasure paths. |
+| `filename` | text NULL | What the sender called it, sanitised. Display and the saved filename only; it decides nothing. |
+| `scanned_at` | timestamptz NULL | When an antivirus pass last ran. Always null today — no scanner exists (D-11). |
+
+`message.media_id` points here. It stays **null for a media message whose bytes could not be
+fetched**, while `content_type` still says `image` or `document` — which is how the inbox knows
+to say an attachment exists and could not be retrieved, rather than showing an empty message.
+
+## `conversation_participant` · `internal_note` · `canned_reply` ⬜
 
 | Table | Key columns | What it is |
 |---|---|---|
 | `conversation_participant` | `conversation_id`, `user_id`, `role`, `last_read_at` | Who is watching a thread. Powers collision detection — knowing another agent is already in here. |
 | `internal_note` | `conversation_id`, `author_user_id`, `body`, `mentions uuid[]` | Team-only commentary inside a thread. **Never transmitted.** `mentions` drives notifications. |
 | `canned_reply` | `org_id`, `shortcut`, `body`, `locale` | Saved responses with variable substitution. `shortcut` is what the agent types to insert it. |
-| `media_asset` | `org_id`, `storage_key`, `content_type`, `size_bytes`, `sha256`, `scanned_at` | An attachment. `storage_key` is a provider-neutral path so migrating buckets is a copy, not a rewrite. `sha256` deduplicates identical files; `scanned_at` records an antivirus pass where one is configured. |
 
 ---
 

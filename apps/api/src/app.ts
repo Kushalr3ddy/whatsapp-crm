@@ -6,12 +6,14 @@ import type { Config, Logger } from '@crm/shared';
 import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { PasswordHasher } from '@crm/auth-builtin';
+import type { StorageDriver } from '@crm/storage';
 import { attachPrincipal, requireAuthenticated, requireTenant, requireCsrf } from './auth.js';
 import { withTenant } from './tenant.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
 import { messagesRouter } from './routes/messages.js';
+import { mediaRouter } from './routes/media.js';
 
 /** Everything the HTTP layer needs, passed in rather than imported. */
 export interface AppDependencies {
@@ -20,6 +22,8 @@ export interface AppDependencies {
   readonly db: Database;
   readonly kms: KmsDriver;
   readonly hasher: PasswordHasher;
+  /** Where attachments live. The API only ever reads; the gateway is what writes them. */
+  readonly storage: StorageDriver;
   /**
    * The Postgres role tenant queries run as, or null to stay as the connecting role.
    * Resolved at startup by `resolveTenantRole`, because whether it is needed depends on
@@ -116,6 +120,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(requireTenant);
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
+  api.use('/media', mediaRouter(deps.storage));
   api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY));
   app.use('/api/v1', api);
 

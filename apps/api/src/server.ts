@@ -1,6 +1,7 @@
 import { createLogger, loadConfig, ConfigError } from '@crm/shared';
 import { createDatabase, inspectDatabaseSecurity, resolveTenantRole, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
+import { createStorage } from '@crm/storage';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { buildApp } from './app.js';
 
@@ -64,8 +65,12 @@ async function main(): Promise<void> {
     indexKeyHex: config.ENCRYPTION_INDEX_KEY
   });
 
+  // Read-only from here: attachments are written by the gateway, which is the process
+  // holding the connection they arrive on.
+  const storage = createStorage(config);
+
   const app = buildApp({
-    config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole
+    config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole, storage
   });
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info(

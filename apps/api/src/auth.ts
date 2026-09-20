@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { resolveApiKey, resolveSession, secretsMatch } from '@crm/core';
+import { resolveApiKey, resolveSession, secretsMatch, SYSTEM_ACTOR, type AuditActor } from '@crm/core';
 import type { Config } from '@crm/shared';
 import type { Database } from '@crm/db';
 
@@ -42,6 +42,22 @@ declare global {
 /** Builds an RFC 7807 problem body. `status` mirrors the HTTP status code, as the spec says. */
 function problem(req: Request, status: number, code: string, detail: string) {
   return { type: 'about:blank', title: code, status, code, detail, request_id: req.id };
+}
+
+/**
+ * Who is acting, for the audit trail.
+ *
+ * Lives here rather than in one router because every audited route needs the same answer, and
+ * two copies of this would eventually disagree about what an API key is.
+ *
+ * The bootstrap key is the deployment itself, which is the system — there is no person behind
+ * it and pretending otherwise would put a fiction in the permanent record.
+ */
+export function auditActor(req: Request): AuditActor {
+  const ctx = req.crm;
+  if (ctx?.kind === 'session' && ctx.userId !== null) return { type: 'user', id: ctx.userId };
+  if (ctx?.kind === 'api_key' && ctx.credentialId !== null) return { type: 'api', id: ctx.credentialId };
+  return SYSTEM_ACTOR;
 }
 
 /** Reads one cookie without pulling in a parser dependency for a single value. */

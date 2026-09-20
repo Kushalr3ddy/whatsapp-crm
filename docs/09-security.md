@@ -176,6 +176,34 @@ Every ciphertext column carries a `key_version`. Rotation is an online batch job
 blind-index key is separate and **not** rotated — rotating it would invalidate every lookup
 index, which is a different operation entirely and is documented as such.
 
+### Stored attachments
+
+Files are the sharpest edge in this system, and the rules are not negotiable per-caller — they
+are properties of the one endpoint that serves them (`apps/api/src/routes/media.ts`).
+
+**Storing a hostile file is harmless. Serving it is the whole risk.** An HTML or SVG attachment
+returned from our own origin with its own content type is stored XSS against a logged-in
+session, and an attacker gets one by sending a WhatsApp message. So:
+
+| Rule | Why |
+|---|---|
+| Content type from **magic bytes** | The filename and the provider's declared type are both the sender's input. `cv.pdf` containing HTML is the attack |
+| Nothing recognised as markup | There is no signature for HTML or SVG on purpose; both fall through to `application/octet-stream` |
+| `Content-Disposition: attachment`, always | Never inline, images included. A file that beats type detection still cannot execute |
+| `X-Content-Type-Options: nosniff` | Stops the browser overruling the type we set |
+| `Cache-Control: private, no-store` | Attachments are personal data; no shared cache, no browser disk copy |
+| Unguessable storage keys | `org/<org>/media/<uuid>.<ext>`, never the filename |
+| Every download resolved through the database | file → message → conversation → org → principal |
+| Another tenant's file returns **404** | 403 would confirm it exists |
+
+**Row-level security does not reach the filesystem.** It protects the `media_asset` row; the
+bytes live where Postgres cannot see them. That asymmetry is why the resolution walk above is
+written by hand in exactly one place, and why there is deliberately **no signed URL** — a URL
+that granted access on its own would route around the only check there is.
+
+Not yet done, and parked in D-11: encryption at rest for files, retention enforcement, and
+antivirus scanning.
+
 ### In transit
 TLS everywhere, HSTS, modern cipher suites. Internal service traffic stays on the Docker
 network or is TLS'd when split across hosts.

@@ -353,6 +353,11 @@ export const message = pgTable('message', {
   errorCode: text('error_code'),
   sentBy: text('sent_by').notNull().default('system'),
   sentByUserId: uuid('sent_by_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+
+  // The attachment, when there is one. Null for a text message, and also null for a media
+  // message whose bytes were never retrieved — the content type still says `image`, so the
+  // inbox can say an attachment exists and could not be fetched rather than showing nothing.
+  mediaId: uuid('media_id').references(() => mediaAsset.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
@@ -360,4 +365,45 @@ export const message = pgTable('message', {
 }, (t) => [
   uniqueIndex('message_provider_id_uidx').on(t.orgId, t.providerMessageId),
   index('message_conversation_idx').on(t.conversationId, t.createdAt)
+]);
+
+/**
+ * One stored attachment.
+ *
+ * Separate from `message` rather than columns on it because the same file can arrive twice —
+ * `sha256` is what makes that detectable — and because retention and erasure operate on files
+ * as their own population, on a different clock from the messages that reference them.
+ *
+ * **`storage_key` is provider-neutral and unguessable.** Row-level security protects this row;
+ * it does not reach the bytes, which live on a filesystem Postgres cannot see. So a guessable
+ * key would turn one missed authorisation check into a public bucket (docs/21-deferred.md,
+ * D-11). `mediaKey()` in `@crm/storage` is the only thing that builds one.
+ */
+export const mediaAsset = pgTable('media_asset', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+
+  storageKey: text('storage_key').notNull(),
+  // Which backend holds it. Recorded rather than inferred from config, so a deployment that
+  // migrates from a directory to a bucket can tell which files have actually moved.
+  storageDriver: text('storage_driver').notNull(),
+
+  // Determined from MAGIC BYTES, never from the filename the sender chose. Serving a file as
+  // the type its name claims is how an HTML attachment becomes stored XSS (docs/09-security.md).
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  // Hex sha256 of the stored bytes. Deduplication, and the only way to tell after the fact
+  // that what is on disk is what arrived.
+  sha256: text('sha256').notNull(),
+
+  // What the sender called it, sanitised. For display and for the download filename only —
+  // never for deciding a content type.
+  filename: text('filename'),
+
+  // When an antivirus pass last ran. Null means never scanned; no scanner exists yet (D-11).
+  scannedAt: timestamp('scanned_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  uniqueIndex('media_asset_key_uidx').on(t.storageKey),
+  index('media_asset_digest_idx').on(t.orgId, t.sha256)
 ]);

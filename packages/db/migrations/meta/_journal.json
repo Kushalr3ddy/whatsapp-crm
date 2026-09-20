@@ -64,6 +64,13 @@
       "when": 1789909864604,
       "tag": "0008_aberrant_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789925514789,
+      "tag": "0009_legal_hairball",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,13 @@ export interface ChannelProviderHarness {
   deliverInbound(provider: ChannelProvider, senderId: string, from: string, body: string): void;
   /** Whether this implementation can be made to fail for one specific recipient. */
   canSimulateRecipientFailure: boolean;
+  /** Whether inbound messages carrying an attachment can be simulated. */
+  canDeliverMedia: boolean;
+  /** Delivers an inbound message with an attachment, returning the bytes it should yield. */
+  deliverInboundMedia?(
+    provider: ChannelProvider, senderId: string, from: string, bytes: Uint8Array,
+    filename: string | null
+  ): void;
   /** Produces a provider whose sends fail only for `phoneE164`. */
   createWithFailingRecipient?(phoneE164: string): Promise<{ provider: ChannelProvider; sender: SenderRef }>;
 }
@@ -215,6 +222,81 @@ export function runChannelProviderContract(name: string, harness: ChannelProvide
         await consume;
         await provider.shutdown();
       });
+    });
+
+    describe('media', () => {
+      it('returns null for a message that carries no attachment', async () => {
+        // Not an error and not an empty buffer. A text message having no file is the ordinary
+        // case, and a caller must be able to tell it apart from a download that failed.
+        const { provider, sender } = await harness.create();
+        await provider.connect(sender);
+
+        const consume = (async () => {
+          for await (const event of provider.inbound()) {
+            expect(event.mediaRef).toBeNull();
+            expect(await provider.downloadMedia(event)).toBeNull();
+            break;
+          }
+        })();
+        harness.deliverInbound(provider, sender.id, '+919876543210', 'just text');
+        await consume;
+        await provider.shutdown();
+      });
+
+      it.runIf(harness.canDeliverMedia)(
+        'marks a message that has an attachment, and hands back its exact bytes',
+        async () => {
+          const { provider, sender } = await harness.create();
+          await provider.connect(sender);
+
+          // Deliberately binary, and deliberately not valid UTF-8: an adapter that treats
+          // media as text corrupts every PDF it touches, and the corruption is invisible
+          // until someone opens one.
+          const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x00, 0xff, 0xfe, 0x80]);
+
+          const consume = (async () => {
+            for await (const event of provider.inbound()) {
+              // The ref is what says a file exists at all; its content is the adapter's business.
+              expect(event.mediaRef).not.toBeNull();
+
+              const media = await provider.downloadMedia(event);
+              expect(media).not.toBeNull();
+              expect(Array.from(media!.bytes)).toEqual(Array.from(bytes));
+              expect(media!.filename).toBe('cv.pdf');
+              break;
+            }
+          })();
+
+          harness.deliverInboundMedia!(provider, sender.id, '+919876543210', bytes, 'cv.pdf');
+          await consume;
+          await provider.shutdown();
+        }
+      );
+
+      it.runIf(harness.canDeliverMedia)(
+        'throws rather than returning null when the attachment cannot be fetched',
+        async () => {
+          // The distinction the gateway depends on: null means "no file", a throw means "there
+          // was a file and it could not be had". Collapsing the two would silently turn an
+          // expired attachment into a message that never had one.
+          const { provider, sender } = await harness.create();
+          await provider.connect(sender);
+
+          const consume = (async () => {
+            for await (const event of provider.inbound()) {
+              const gone = { ...event, mediaRef: 'definitely-not-a-real-ref' };
+              await expect(provider.downloadMedia(gone)).rejects.toThrow();
+              break;
+            }
+          })();
+
+          harness.deliverInboundMedia!(
+            provider, sender.id, '+919876543210', new Uint8Array([1, 2, 3]), null
+          );
+          await consume;
+          await provider.shutdown();
+        }
+      );
     });
 
     describe('shutdown', () => {

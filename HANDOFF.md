@@ -36,7 +36,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**223 tests · 78 source files · 13 of 35 specced tables · 9 migrations · 52 commits.**
+**255 tests in 20 files · 70 source files · 14 of 35 specced tables · 10 migrations · 53 commits.**
 
 ### What actually works
 
@@ -53,7 +53,15 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
 - **`audit_log`**: append-only, RLS'd, `UPDATE`/`DELETE` revoked from the app role, written in
   the same transaction as the change it describes. Covers authentication and admin actions.
 - **Storage**: `StorageDriver` port + filesystem driver + a **contract suite** (25 tests) that
-  every future backend must pass. Not wired to anything yet.
+  every future backend must pass.
+- **Media**: attachments are downloaded by the gateway, typed from **magic bytes**, stored
+  under unguessable keys, deduplicated per org by `sha256`, and served by
+  `GET /api/v1/media/:id` — always `Content-Disposition: attachment`, never inline, `nosniff`,
+  `private, no-store`, resolved file → message → conversation → org on every request. A
+  message whose file could not be fetched is kept and marked `mediaUnavailable`.
+- **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
+  transfer starts so an abandoned download still counts. Inbox listing is deliberately not
+  audited.
 - **Row-level security on the request path**: every tenant query runs in a transaction with
   `app.org_id` set, and — because the app connects as a role that would otherwise bypass
   policies entirely — drops to the restricted `crm_app` role for the length of that
@@ -62,9 +70,10 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
 
 ### What does not exist
 
-No media/file handling (the storage driver exists; nothing calls it) · no self-service password
-reset · no campaigns or broadcast · **no rate limiting, warmup or pacing in the send path** ·
-no Meta adapter · no Excel import · no deployment · no read auditing (D-13).
+No **outbound** media — receiving and serving work; sending a file does not · no encryption at
+rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
+no campaigns or broadcast · **no rate limiting, warmup or pacing in the send path** · no Meta
+adapter · no Excel import · no deployment.
 
 ---
 
@@ -99,7 +108,7 @@ npm run gateway   # owns the WhatsApp sockets — nothing sends without this
 npm run web       # UI       :3001
 ```
 
-Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 223 tests.
+Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 255 tests.
 
 ---
 
@@ -128,7 +137,8 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
 |---|---|
 | `routes/messages.ts` | A **malformed UUID returns 500** — `conversations/not-a-uuid/messages` reaches Postgres, the cast throws (22P02), and it surfaces as `INTERNAL_ERROR`. Wants a 422, or 404 to match the "404 not 403" rule. Path params are not validated; bodies are |
 | `routes/*.ts` | `problem()` hardcodes **`"status": 0`** in the body while the real code goes in the status line. `auth.ts` builds its own correctly with the real number, so `body.status` disagrees between routes |
-| **Gateway** | Writes inbound messages as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
+| **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
+| Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle | **In-process**, so several replicas would each count separately (P9) |
 | `api_key.rate_limit_per_min` | Stored and **enforced nowhere** |
@@ -152,6 +162,10 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
   anyone traced it. It now refuses when there is no org, or more than one, and points at
   `npm run admin -- org`.
 - **`SET LOCAL` cannot take a bind parameter.** Use `setTenant()` (`set_config(..., true)`).
+- **A file's type must come from its bytes, never its name.** `detectMediaType` in
+  `@crm/shared` is the only thing that decides it, and there is deliberately no signature for
+  HTML or SVG — both are script execution contexts when served from our own origin, so they
+  fall through to `application/octet-stream` and download instead.
 - **Setting the tenant is only half of it — the *role* has to be one policies apply to.** A
   superuser, a BYPASSRLS role, or the owner of the table is not subject to RLS at all, and the
   default deployment connects as the owner. `dev` on this machine is a superuser, so every
@@ -203,12 +217,10 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
 
 ## Next
 
-1. **Media**, and it is the obvious one now — the `StorageDriver` and its contract suite exist
-   and nothing calls them. Needs a media reference on `message`, a download step in the
-   gateway, and a streaming endpoint. **D-11** records what must not be deferred: magic-byte
-   typing, `Content-Disposition: attachment`, never inline, unguessable keys. Read auditing
-   (**D-13**) should land with it, not after — a trail with a gap at the start is worth much
-   less than one that begins with the first stored file.
+1. **Show attachments in the inbox.** The API serves them and the UI does not yet render the
+   `media` object on a message — a download link and a filename is the whole job. Then
+   **outbound** media, which needs the send path to carry a file and `OutboundContent` to
+   stop being text-only.
 2. **Finish P4** — assignment, collision detection, notes, canned replies, search, realtime.
    `conversation.assignee_user_id` exists and nothing populates it, so an agent and an admin
    see the same inbox. `conversation_participant` (`docs/05-data-model.md`) is what powers

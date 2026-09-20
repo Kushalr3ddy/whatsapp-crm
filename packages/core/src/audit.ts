@@ -88,7 +88,17 @@ export const AUDIT = {
   orgCreated: 'org.created',
   userAdded: 'user.added',
   apiKeyIssued: 'api_key.issued',
-  apiKeyRevoked: 'api_key.revoked'
+  apiKeyRevoked: 'api_key.revoked',
+
+  // Reads, not changes (docs/21-deferred.md, D-13). Recorded from the moment attachments
+  // could be stored at all, because a trail that begins after the first CV is worth much
+  // less than one that begins with it.
+  //
+  // Deliberately NOT every query: listing an inbox is not a meaningful access event, and a
+  // log that records one is too noisy to answer the question it exists for. Opening a thread
+  // and downloading a file are.
+  conversationRead: 'conversation.read',
+  mediaDownloaded: 'media.downloaded'
 } as const;
 
 /**

@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
-import { requireScope } from '../auth.js';
+import { writeAudit, AUDIT } from '@crm/core';
+import { auditActor, requireScope } from '../auth.js';
 import { normalisePhone } from '@crm/shared';
 
 /**
@@ -66,18 +67,45 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
 
   /** Returns one thread, oldest first, with bodies decrypted for display. */
   router.get('/conversations/:id/messages', requireScope('conversations:read'), async (req: Request, res: Response) => {
-    const rows = await req.tenant!((tx) => tx.execute(sql`
-      SELECT m.id, m.direction, m.content_type AS "contentType", m.status,
-             m.error_code AS "errorCode", m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
-             m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt"
-      FROM message m
-      JOIN conversation v ON v.id = m.conversation_id
-      WHERE v.id = ${req.params.id} AND v.org_id = ${req.crm!.orgId}
-      ORDER BY m.created_at ASC
-      LIMIT 500`));
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
 
-    const messages = (rows as unknown as Array<{ bodyEnc: Uint8Array | null }>).map((m) => {
-      const { bodyEnc, ...rest } = m;
+    const rows = await req.tenant!(async (tx) => {
+      const found = await tx.execute(sql`
+        SELECT m.id, m.direction, m.content_type AS "contentType", m.status,
+               m.error_code AS "errorCode", m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
+               m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt",
+               m.media_id AS "mediaId", ma.content_type AS "mediaContentType",
+               ma.size_bytes AS "mediaSizeBytes", ma.filename AS "mediaFilename"
+        FROM message m
+        JOIN conversation v ON v.id = m.conversation_id
+        LEFT JOIN media_asset ma ON ma.id = m.media_id
+        WHERE v.id = ${conversationId} AND v.org_id = ${orgId}
+        ORDER BY m.created_at ASC
+        LIMIT 500`);
+
+      // Opening a thread is a read worth recording, now that a thread can hold a CV (D-13).
+      // Listing the inbox is not, and is deliberately left unaudited: an access log that
+      // records every pagination is too noisy to answer the question it exists for.
+      //
+      // One row per open, because nothing polls this endpoint. If P4's realtime work turns
+      // it into a poll, this becomes a row every few seconds and needs revisiting.
+      if ((found as unknown as unknown[]).length > 0) {
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.conversationRead,
+          targetType: 'conversation', targetId: conversationId,
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+      }
+      return found;
+    });
+
+    const messages = (rows as unknown as Array<{
+      bodyEnc: Uint8Array | null; contentType: string; mediaId: string | null;
+      mediaContentType: string | null; mediaSizeBytes: number | null;
+      mediaFilename: string | null;
+    }>).map((m) => {
+      const { bodyEnc, mediaId, mediaContentType, mediaSizeBytes, mediaFilename, ...rest } = m;
       // Decrypt for display only. A body that cannot be decrypted is reported rather than
       // hidden — usually it means the encryption key has changed, and silently showing an
       // empty message would make that look like data loss.
@@ -87,7 +115,22 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
         try { body = new TextDecoder().decode(kms.decrypt(bodyEnc)); }
         catch { undecryptable = true; }
       }
-      return { ...rest, body, undecryptable };
+      return {
+        ...rest, body, undecryptable,
+        // The path rather than a bare id, so a client never has to know how to build one —
+        // and never invents a public one. There is no unauthenticated way to reach a file.
+        media: mediaId === null ? null : {
+          id: mediaId,
+          url: `/api/v1/media/${mediaId}`,
+          contentType: mediaContentType,
+          sizeBytes: mediaSizeBytes,
+          filename: mediaFilename
+        },
+        // A media message with no stored file: the attachment existed and could not be
+        // fetched. Said explicitly so the inbox can show that rather than an empty bubble,
+        // which would look like the person sent nothing.
+        mediaUnavailable: m.contentType !== 'text' && mediaId === null
+      };
     });
     res.json({ data: messages });
   });
