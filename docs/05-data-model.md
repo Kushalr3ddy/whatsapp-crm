@@ -331,7 +331,7 @@ Append-only. **This is the source of truth for where someone is**, and how they 
 
 # Channels
 
-## `sender_identity` ⬜
+## `sender_identity` ✅
 
 **The unit the anti-ban engine protects.** Note it is not called "session": a sender identity
 is the number and its accumulated reputation; a session is one connection to it. The old
@@ -356,7 +356,7 @@ re-linking a number silently broke sending.
 | `meta_quality_rating` | text NULL | `high` / `medium` / `low` from Meta. Marketing sends **hard-stop at low**. |
 | `meta_messaging_tier` | text NULL | 250 / 1k / 10k / 100k / unlimited. The dispatcher will not exceed the known tier. |
 
-## `channel_session` ⬜
+## `channel_session` ✅
 
 One connection to a sender. Runtime state, not reputation.
 
@@ -369,7 +369,7 @@ One connection to a sender. Runtime state, not reputation.
 | `reconnect_attempts` | int | Drives exponential backoff. A reconnect storm is worse than a slow recovery. |
 | `qr_expires_at` | timestamptz NULL | When the current linking QR goes stale. |
 
-## `channel_auth_state` ⬜
+## `channel_auth_state` ✅
 
 Baileys' credentials, one row per key. **The reason sessions survive a restart.**
 
@@ -388,7 +388,7 @@ sessions had to be reconnected by hand after every restart (M29). Keeping it her
 
 # Conversations
 
-## `conversation` ⬜
+## `conversation` ✅
 
 A thread with one contact on one sender. **Conversation is always the scope** — message
 history is fetched per conversation, never per contact. The old system's `listMessages()`
@@ -411,7 +411,7 @@ worked for two campaigns at once (M31).
 | `snoozed_until` | timestamptz NULL | When a snoozed thread reopens. |
 | `closed_at` / `closed_by` | timestamptz / uuid NULL | Resolution trail. |
 
-## `message` ⬜
+## `message` ✅
 
 | Column | Type | What it is |
 |---|---|---|

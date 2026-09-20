@@ -1712,3 +1712,37 @@ its matrix describes intent and had been read as status more than once.
 **Files:** `packages/providers/storage/**`, `tests/contract/storage-driver.ts`,
 `tests/contract/filesystem-storage.test.ts`, `packages/shared/src/config.ts`,
 `docs/18-providers.md`, `.env.example`
+
+---
+
+## 2026-09-20 · Session 024 · Handoff brought current
+
+Updated `HANDOFF.md` rather than replacing it — Kushal had rewritten it earlier today and its
+structure was right.
+
+**Changed:** 169 → **214 tests**, 12 → 13 tables, 8 → 9 migrations, 47 commits. Added the audit
+log and the storage driver to what works. Removed `audit_log` from what does not exist.
+
+**P1 is now marked "overstated" rather than ✅**, with the reason stated inline:
+`infra/compose/` holds only a `.gitkeep`, so its own exit criterion —
+`docker compose --profile core up` — cannot run, and of the four drivers it called for only
+`kms` and now `storage` exist.
+
+**Two defects added to the table**, one of which matters more than anything else on it:
+**row-level security is not engaged on the request path.** Nothing calls `setTenant()` for an
+API request, so every route works only because the dev role owns the tables and bypasses RLS.
+Isolation today is real but rests entirely on explicit `WHERE org_id` in application code; the
+second layer does nothing. The entry records why it cannot be fixed per-connection — the
+setting is transaction-scoped, and setting it otherwise would leak a tenant across a pooled
+connection.
+
+**One defect closed rather than carried:** the stale ✅/⬜ markers in `docs/05-data-model.md`.
+Five tables that have existed since P3 were still marked unbuilt. All 13 now match reality.
+
+**`Next` rewritten** in the order the work actually wants doing: media first, since the storage
+driver and its contract suite now exist and nothing calls them — with read auditing (D-13)
+landing *with* it rather than after, because a trail that begins after the first CV is stored
+is worth much less than one that begins with it. Then P4's assignment and collision detection,
+then engaging RLS, then closing out P1.
+
+**Files:** `HANDOFF.md`, `docs/05-data-model.md`

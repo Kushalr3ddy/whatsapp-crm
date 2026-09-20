@@ -26,13 +26,17 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | | | |
 |---|---|---|
 | P0 | Docs — 42 files | ✅ |
-| P1 | Skeleton — Express, config gate, migrations, CI | ✅ |
+| P1 | Skeleton — Express, config gate, migrations, CI | **overstated** |
 | P2 | Core domain — orgs, users, sessions, API keys, RLS | **mostly** |
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
 | P4 | Inbox | **partial** |
 | P5 | Ingestion · P6 Anti-ban · P7 Campaigns · P8 Meta | not started |
 
-**169 tests · 72 source files · 12 of 35 specced tables · 8 migrations.**
+**P1 is marked done but is not.** `infra/compose/` holds only a `.gitkeep`, so
+`docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
+it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
+
+**214 tests · 77 source files · 13 of 35 specced tables · 9 migrations · 47 commits.**
 
 ### What actually works
 
@@ -46,12 +50,16 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
   CSRF, login throttling, `npm run admin` for provisioning and support.
 - **Web UI**: sign-in, inbox (list · thread · composer), link screen with live QR and
   countdown, light/dark, Broadcast and Billing placeholders.
+- **`audit_log`**: append-only, RLS'd, `UPDATE`/`DELETE` revoked from the app role, written in
+  the same transaction as the change it describes. Covers authentication and admin actions.
+- **Storage**: `StorageDriver` port + filesystem driver + a **contract suite** (25 tests) that
+  every future backend must pass. Not wired to anything yet.
 
 ### What does not exist
 
-No media/file handling · no `audit_log` · no self-service password reset · no campaigns or
-broadcast · **no rate limiting, warmup or pacing in the send path** · no Meta adapter · no
-Excel import · no deployment.
+No media/file handling (the storage driver exists; nothing calls it) · no self-service password
+reset · no campaigns or broadcast · **no rate limiting, warmup or pacing in the send path** ·
+no Meta adapter · no Excel import · no deployment · no read auditing (D-13).
 
 ---
 
@@ -81,7 +89,7 @@ npm run gateway   # owns the WhatsApp sockets — nothing sends without this
 npm run web       # UI       :3001
 ```
 
-Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 169 tests.
+Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 214 tests.
 
 ---
 
@@ -100,7 +108,7 @@ Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 169 
 | — | The `.env` `API_KEY` is a **bootstrap credential**: provisioning only, refused on data |
 | — | The UI **forwards the user's session**; it holds no machine credential |
 
-Parked decisions with trigger conditions: **D-1 … D-12** in [`docs/21-deferred.md`](docs/21-deferred.md).
+Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred.md`](docs/21-deferred.md).
 
 ---
 
@@ -110,7 +118,8 @@ Parked decisions with trigger conditions: **D-1 … D-12** in [`docs/21-deferred
 |---|---|
 | `routes/messages.ts` | A **malformed UUID returns 500** — `conversations/not-a-uuid/messages` reaches Postgres, the cast throws (22P02), and it surfaces as `INTERNAL_ERROR`. Wants a 422, or 404 to match the "404 not 403" rule. Path params are not validated; bodies are |
 | `routes/*.ts` | `problem()` hardcodes **`"status": 0`** in the body while the real code goes in the status line. `auth.ts` builds its own correctly with the real number, so `body.status` disagrees between routes |
-| `docs/05-data-model.md` | The ✅/⬜ markers are **stale** — 7 marked built, 12 actually exist |
+| **Request path** | **RLS is not engaged.** Nothing calls `setTenant()` for an API request — only provisioning and the startup probe do. Every route works because the dev role owns the tables and bypasses RLS. Isolation today rests on explicit `WHERE org_id` in every query, which is real and tested, but the second layer is doing nothing. Closing it means running each request's queries in one transaction with `setTenant()`; it cannot be per-connection, because the setting is transaction-scoped and setting it otherwise leaks a tenant across a pooled connection. `docs/09-security.md` records this |
+| `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle | **In-process**, so several replicas would each count separately (P9) |
 | `api_key.rate_limit_per_min` | Stored and **enforced nowhere** |
 
@@ -173,14 +182,22 @@ Parked decisions with trigger conditions: **D-1 … D-12** in [`docs/21-deferred
 
 ## Next
 
-1. **`audit_log`** — "who did this" is still unanswerable, and it is worth having *before*
-   there are CVs to read rather than retrofitted after.
+1. **Media**, and it is the obvious one now — the `StorageDriver` and its contract suite exist
+   and nothing calls them. Needs a media reference on `message`, a download step in the
+   gateway, and a streaming endpoint. **D-11** records what must not be deferred: magic-byte
+   typing, `Content-Disposition: attachment`, never inline, unguessable keys. Read auditing
+   (**D-13**) should land with it, not after — a trail with a gap at the start is worth much
+   less than one that begins with the first stored file.
 2. **Finish P4** — assignment, collision detection, notes, canned replies, search, realtime.
-   The role columns exist and nothing populates them; an agent and an admin see the same inbox.
-3. **Media** — a filesystem `StorageDriver`, a media reference on `message`, download in the
-   gateway, a streaming endpoint. See **D-11**, and note that serving safely is the part that
-   must not be deferred.
-4. **P6 anti-ban before any bulk send.** Not optional.
-5. **Deployment**, which is also when the production database gets decided. Note:
+   `conversation.assignee_user_id` exists and nothing populates it, so an agent and an admin
+   see the same inbox. `conversation_participant` (`docs/05-data-model.md`) is what powers
+   collision detection: knowing someone else is already in a thread, so two people do not
+   answer the same candidate fifteen seconds apart.
+3. **Engage RLS on the request path.** See the defects table. It is the second layer of tenant
+   isolation and it is currently doing nothing.
+4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
+   contract suite like storage now has.
+5. **P6 anti-ban before any bulk send.** Not optional.
+6. **Deployment**, which is also when the production database gets decided. Note:
    **`ENCRYPTION_KEY` must be backed up separately from the database** — losing it means losing
-   every linked number and every stored message.
+   every linked number and every stored message, permanently.
