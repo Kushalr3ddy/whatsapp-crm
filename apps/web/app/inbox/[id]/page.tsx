@@ -84,10 +84,20 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
                     : 'border border-border bg-surface'
                 ].join(' ')}
               >
+                {m.contentType !== 'text' && (
+                  // Media is recognised but not downloaded: the file itself is never fetched
+                  // or stored, so say so rather than render an empty bubble. Attachments need
+                  // a storage driver and a media column, neither of which exists yet.
+                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wide opacity-70">
+                    {m.contentType} · not downloaded
+                  </p>
+                )}
                 <p className="text-sm whitespace-pre-wrap break-words">
                   {m.undecryptable
                     ? '[this message could not be decrypted]'
-                    : m.body ?? `[${m.contentType}]`}
+                    : m.body === null || m.body === ''
+                      ? <span className="opacity-60">no text content</span>
+                      : m.body}
                 </p>
                 <p
                   className={[
