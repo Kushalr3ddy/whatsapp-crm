@@ -10,6 +10,12 @@ either the bundled Postgres or a managed one. Right instinct; this generalises i
 
 ## The matrix
 
+> **What is actually implemented**, since this table describes the intent: `kms/local`,
+> `auth/builtin` and `storage/filesystem`. Every other port below is an empty directory — the
+> interface is not written, let alone a driver. `storage` and `channels` are the two with a
+> **contract suite**: one set of tests written against the port and run against each driver, so
+> swapping the backend is a tested claim rather than a hope.
+
 | Resource | Port | Free / self-hosted (default) | Managed / paid |
 |---|---|---|---|
 | **Object storage** | `StorageDriver` | **filesystem** (`lean`), **MinIO** (bundled) | AWS S3, Cloudflare R2, Backblaze B2, DO Spaces, Wasabi, GCS — any S3-compatible endpoint |

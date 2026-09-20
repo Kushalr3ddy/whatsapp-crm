@@ -37,6 +37,8 @@ const configSchema = z.object({
   // Each defaults to the free, self-hostable option, so an empty .env still boots.
   PRESET: z.enum(['lean', 'standard', 'scale']).default('lean'),
   STORAGE_DRIVER: z.enum(['filesystem', 'minio', 's3']).default('filesystem'),
+  /** Where the filesystem driver keeps objects. Ignored by every other storage driver. */
+  STORAGE_PATH: z.string().default('./storage'),
   QUEUE_DRIVER: z.enum(['pgboss', 'bullmq']).default('pgboss'),
   TELEMETRY_DRIVER: z.enum(['none', 'prometheus', 'otlp']).default('none'),
   LLM_DRIVER: z.enum(['none', 'ollama', 'openai', 'anthropic', 'gemini']).default('none'),

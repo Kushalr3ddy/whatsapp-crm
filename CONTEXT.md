@@ -1655,3 +1655,60 @@ email, kms, secrets) only kms exists. No provider contract suite either.
 `packages/db/src/schema.ts`, `packages/db/migrations/0008_*.sql`,
 `apps/api/src/routes/{auth,admin}.ts`, `tests/integration/audit.test.ts`,
 `docs/{05-data-model,09-security,21-deferred}.md`, `.github/workflows/ci.yml`
+
+---
+
+## 2026-09-20 · Session 023 · The storage driver, and a contract suite for it
+
+**214 tests, exit code 0** — up from 182. Twenty-five of the new ones are the contract suite.
+
+**`@crm/storage`** — the port, deliberately in its own package rather than inside the driver
+the way `KmsDriver` is. The contract suite must not be able to import a concrete
+implementation, or it stops being a contract and becomes that driver's unit tests.
+
+**`@crm/storage-filesystem`** — the free, self-hostable default for `lean`.
+
+**Three decisions worth recording:**
+
+1. **The port stores the content type**, not just bytes. S3 does this natively and a filesystem
+   does not, so leaving it out would mean `stat()` answering differently depending on the
+   backend — exactly the inconsistency a contract suite exists to rule out. The filesystem
+   driver keeps a `.meta` sidecar and hides it from `list()`.
+2. **No signed-URL method, on purpose.** Access has to resolve through the database — file →
+   message → conversation → org → principal — because RLS does not reach the filesystem
+   (D-11). A URL that grants access on its own would route around the only check there is.
+3. **Key validation is a security boundary, not tidiness.** A filesystem driver turns a key
+   into a path, so `../../.env` reads the encryption key. `assertValidKey` refuses relative
+   segments, absolute paths, backslashes, empty segments and null bytes; the driver then does
+   a *second*, independent check that the resolved path is inside the root. One validation
+   function away from a `resolve()` is not where a single point of failure belongs.
+
+**What a contract suite is**, since this is the second one: a set of tests written against the
+**port**, exported as a function, and called once per implementation with a small harness. The
+tests never know which driver they are driving. Anything they can observe is part of the
+contract; anything they cannot is that backend's own business. It is what turns "swap
+filesystem for S3" from a hope into something tested before the swap.
+
+The suite asserts the things that silently differ between backends and would otherwise be
+discovered in production: exact binary round-trip (a driver treating content as UTF-8 corrupts
+every PDF), stream and whole-read agreeing, overwrite semantics, **zero bytes being a file
+rather than an absence**, `get` throwing while `stat` returns null, `getStream` failing
+*before* piping starts rather than as an error event on a response whose headers have gone,
+deleting something absent being unremarkable, listing not crossing a prefix — which is what
+tenant erasure depends on — and a deleted object leaving no ghost behind in listings.
+
+**`createStorage()`** is the only place that knows which driver is in use, which is what P1's
+exit criterion means by "flipping `STORAGE_DRIVER` changes no application code". `minio` and
+`s3` throw rather than falling back: a deployment that asked for S3 and quietly got a local
+directory looks fine until a second process starts and cannot see the first one's files.
+
+**Not yet wired to anything.** No media table, no download step in the gateway, no endpoint.
+That is the next piece, and D-11 records what it must do — magic-byte typing,
+`Content-Disposition: attachment`, never inline, unguessable keys.
+
+**Also recorded:** `docs/18-providers.md` now says which ports are actually implemented, since
+its matrix describes intent and had been read as status more than once.
+
+**Files:** `packages/providers/storage/**`, `tests/contract/storage-driver.ts`,
+`tests/contract/filesystem-storage.test.ts`, `packages/shared/src/config.ts`,
+`docs/18-providers.md`, `.env.example`
