@@ -394,3 +394,54 @@ it describes, so anyone holding the database can edit it. The `REVOKE UPDATE, DE
 migration 0008 stops the *application* rewriting history, which is the realistic threat;
 defending against a compromised database administrator needs append-only storage elsewhere —
 a WORM bucket or an external log sink — and is a different problem.
+
+---
+
+## D-14 · The linked number receives nothing — `Bad MAC` on every inbound
+
+**What:** the companion WhatsApp session can **send** but cannot **receive**. Re-linking the
+number is the fix; it is parked until there is a reason to spend the number's stability on it.
+
+**The evidence, so nobody re-derives it.** Inbound stopped at **2026-09-20 09:12 UTC** while
+outbound kept working — messages queued through the API reached the contact with status `sent`
+the same evening. On a gateway restart WhatsApp delivered **17 `"tag": "message"` frames** and
+every one failed:
+
+```
+Session error: Error: Bad MAC
+ERROR: failed to decrypt message
+  key: { remoteJid: "110762928373833@lid", fromMe: true, … }
+  err: SessionError: No matching sessions found for message
+```
+
+All 18 failures were `fromMe: true` — echoes of **our own** sends syncing back. Baileys
+discards what it cannot decrypt **before** `messages.upsert` fires, which was confirmed by
+instrumenting that handler: it logged **zero** events across a restart that pulled 17 frames.
+So the application sees silence, not an error, and nothing in our code is at fault.
+
+The companion's Signal session state has diverged from the peer's. The usual causes are two
+clients sharing one set of credentials, or a lost write to `channel_auth_state`.
+
+**Why parked:** re-linking is not free. It burns a pairing on a number that is unofficial,
+bannable and has no appeal route (`docs/08-antiban.md`), and the number is currently stable in
+every other respect. Nothing being built right now needs inbound.
+
+**What brings it back — any one of these:**
+
+1. **Verifying media end to end.** This is the real cost: the download step has never met an
+   actual WhatsApp file. `storeMedia`, typing, serving and auditing are all tested; the one
+   link from provider to bytes is not, and no test can close that gap.
+2. **Anything that consumes inbound** — P4's assignment and collision detection, P5 ingestion,
+   or P6 scoring sender health on real inbound traffic.
+3. **A second number being linked**, since whatever corrupted this session would be worth
+   understanding before it happens twice.
+
+**Cost of deferring:** the queued messages that failed with `Bad MAC` are almost certainly gone
+already — WhatsApp stops re-delivering once retry receipts are exhausted — so that cost is
+sunk rather than growing. What does grow is the media blind spot: every further layer built on
+top of an unverified download is a layer that has to be re-checked when it is finally exercised.
+
+**Two gotchas that came out of diagnosing it**, both now in `HANDOFF.md`: a corrupt session
+looks like a *half-working* link rather than a broken one, because sending establishes its own
+session; and this gateway appears to see traffic only in reconnect flushes, since
+`markOnlineOnConnect: false` has WhatsApp notify the phone and queue for the companion.

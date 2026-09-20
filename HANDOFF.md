@@ -96,7 +96,14 @@ npm run admin -- org --name "Hiring Studios" --slug hiring-studios --email you@e
 ```
 
 **On this machine that is already done.** The org is **Hiring Studios** (`hiring-studios`,
-`5f82ad62-…`) with one admin, `developer@hiringstudios.com`. `npm run admin -- whoami` lists
+`5f82ad62-…`) with one admin, `developer@hiringstudios.com`.
+
+**There is deliberate test data in the dev database.** One contact,
+`[TEST DATA - DO NOT TOUCH] media demo +919999000001` (`source = 'test_fixture'`), with two
+messages and two `media_asset` rows named `[TEST] …`, plus their files under `./storage`. They
+exist so the media endpoint can be exercised without a live WhatsApp file, which D-14 currently
+prevents. Left in place on purpose — delete them only when D-14 is closed and media has been
+verified against a real attachment. `npm run admin -- whoami` lists
 organisations; `npm run admin -- password --email developer@hiringstudios.com` sets a new
 password and ends every session on the account.
 
@@ -127,7 +134,9 @@ Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 255 
 | — | The `.env` `API_KEY` is a **bootstrap credential**: provisioning only, refused on data |
 | — | The UI **forwards the user's session**; it holds no machine credential |
 
-Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred.md`](docs/21-deferred.md).
+Parked decisions with trigger conditions: **D-1 … D-14** in [`docs/21-deferred.md`](docs/21-deferred.md).
+**D-14 blocks the only end-to-end proof that media works** — everything downstream of the
+download is tested; the download itself has never met a real WhatsApp file.
 
 ---
 
@@ -138,7 +147,7 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
 | `routes/messages.ts` | A **malformed UUID returns 500** — `conversations/not-a-uuid/messages` reaches Postgres, the cast throws (22P02), and it surfaces as `INTERNAL_ERROR`. Wants a 422, or 404 to match the "404 not 403" rule. Path params are not validated; bodies are |
 | `routes/*.ts` | `problem()` hardcodes **`"status": 0`** in the body while the real code goes in the status line. `auth.ts` builds its own correctly with the real number, so `body.status` disagrees between routes |
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
-| **The linked number receives nothing** | **Sends work; inbound is dead since 2026-09-20 09:12 UTC.** On reconnect WhatsApp delivered 17 `message` frames and **every one failed to decrypt** — `Session error: Bad MAC`, `SessionError: No matching sessions found`. Baileys discards undecryptable messages before `messages.upsert` fires, so nothing reaches our code at all (verified by instrumenting the handler: it logged zero events). All 18 failures were `fromMe: true` echoes of our own sends to `110762928373833@lid`. The companion's Signal session state has diverged from the peer's — the usual causes are two clients sharing one set of credentials, or a lost write to `channel_auth_state`. **The fix is to re-link the number** (`npm run wa:link`); queued messages that failed with Bad MAC are most likely gone. Until then the media path has never been exercised against a real WhatsApp file — only against `storeMedia` directly, which is every layer except the download itself |
+| **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle | **In-process**, so several replicas would each count separately (P9) |
@@ -227,9 +236,6 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
 
 ## Next
 
-0. **Re-link the number and re-send a file** — parked, but it blocks the only end-to-end proof
-   that media works. See the first row of the defects table. Everything downstream of the
-   download is tested; the download itself is not.
 1. **Show attachments in the inbox.** The API serves them and the UI does not yet render the
    `media` object on a message — a download link and a filename is the whole job. Then
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
