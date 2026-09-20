@@ -258,3 +258,65 @@ annoying.
 campaign send is already distinguishable by `message.sent_by`, so either shape can be built
 later without a migration. The cost is only that the first campaign run will be ugly if it
 arrives before this is decided.
+
+---
+
+## D-11 · Media at rest — encryption, retention, scanning, compliance
+
+**What:** everything about received files *except* storing and serving them, which is built as
+the filesystem `StorageDriver` with provider-neutral keys.
+
+**Parked, deliberately:**
+
+| Question | Why it waits |
+|---|---|
+| **Encryption at rest** | Message bodies are encrypted; files would not be. A CV is *more* sensitive than the message carrying it — name, phone, address, salary. Encrypting costs cheap range requests and streaming, so it is a trade to make deliberately rather than by default |
+| **Retention** | Specced at one year in `09-security.md`, with a nightly hard-delete job that does not exist |
+| **DPDP / erasure** | A deletion request has to reach the files, not only the rows — see D-2 |
+| **Antivirus** | `SCANNER_DRIVER=clamav`, opt-in, ~1 GB RAM for daemon plus signatures, against a `lean` target of ~1 GB total |
+| **Size caps and quotas** | WhatsApp permits ~16 MB images and ~100 MB documents. Candidate CVs accumulate quickly |
+
+**NOT parked — build with the first byte:** how files are **served**. Storing an attachment is
+harmless; serving it is where the exploit lives. An HTML or SVG file served from the app's own
+origin is stored XSS against a logged-in session, and the attacker only has to message it. So
+from the outset: `Content-Disposition: attachment`, content type from **magic bytes** rather
+than the filename, never rendered inline, and served behind the same authentication as
+everything else. Twenty lines at build time; very painful once file URLs are in circulation.
+
+**On VirusTotal**, since it is the obvious reach:
+
+- **Hash lookup** is privacy-safe — a digest reveals nothing — but nearly useless for this
+  corpus. VT only knows files it has seen, and every CV is a unique document. The answer is
+  "unknown" essentially every time.
+- **Uploading the file is a data-protection breach.** VirusTotal's public API shares submitted
+  samples with its security-community corpus, where paying subscribers can download them.
+  Submitting a candidate's CV publishes their name, phone, address and salary history to third
+  parties, with no consent and no way back. Enterprise private scanning exists, but it is paid
+  and still a transfer to a third party. **ClamAV, locally, is the answer** — nothing leaves.
+
+**What brings it back:** enough stored media for retention to matter, a real erasure request, or
+the first deployment onto a host where an unencrypted uploads directory is not acceptable.
+
+**Cost of deferring:** encryption is the expensive one to retrofit — it means rewriting every
+stored file, and the storage key layout should therefore allow a per-file marker from day one
+so a mixed estate is readable during a migration.
+
+---
+
+## D-12 · Resume parsing and ATS-friendliness scoring
+
+**Not deferred — out of scope for this repository, permanently.**
+
+Recorded so it is not re-proposed. `docs/01-vision-scope.md:39` is explicit: *"Nothing
+domain-specific in the schema. No `candidate`, no `job`, no `deal`."* Judging whether a résumé
+is ATS-friendly is recruitment-domain by definition, and putting it here would break the single
+rule that makes this product reusable by anyone who is not a recruiter — which is exactly how
+the previous system became un-reusable.
+
+**Where it belongs:** a module beside the job portal, consuming this CRM over HTTP, in the same
+relationship this CRM already has with it (`docs/16-integration-jobportal.md`). This side
+receives the file, stores it and exposes it through the API; the other side fetches it and makes
+a judgement about it.
+
+**What this repository owes that module:** a stable way to fetch an attachment and know which
+contact it came from. Nothing more.
