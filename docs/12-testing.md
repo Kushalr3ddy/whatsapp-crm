@@ -1,11 +1,26 @@
 # 12 · Testing strategy
 
-The prior system had **zero tests** and verified changes by messaging real people from a real
-WhatsApp account (`00-prior-art.md`, M20). That is the bar being cleared.
+## Who does the testing here?
 
-The `fake` adapters are what make it possible: with `ChannelProvider` and `SourceConnector` as
-ports, the entire pipeline — dispatcher, anti-ban engine, campaigns, inbox, webhooks — is
-testable with no phone, no account and no network.
+![Discord. Matt: "just test in prod." kitty: "yeah we have a team of testers, they're called users."](assets/testers.png)
+
+> **Matt** — just test in prod
+>
+> **kitty** — yeah we have a team of testers they're called users
+
+Funny anywhere else. Here it is a **description of the system this one replaces**: the prior
+system had **zero tests** and verified changes by messaging real people from a real WhatsApp
+account (`00-prior-art.md`, M20). The testers were the candidates.
+
+And the stakes are worse than an embarrassing bug. Testing in production on this stack means
+sending real messages from a real number — and the number is the asset with no recovery path.
+A bad loop does not produce a bug report; it produces a permanent ban with no appeal
+(`08-antiban.md`).
+
+So the answer to the question is: **the `fake` adapters do.** With `ChannelProvider` and
+`SourceConnector` as ports, the entire pipeline — dispatcher, anti-ban engine, campaigns,
+inbox, webhooks — is testable with no phone, no account and no network. That is the bar being
+cleared, and it is why the ports exist at all.
 
 ## The pyramid
 
