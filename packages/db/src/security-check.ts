@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { Database } from './client.js';
+import type { Database, Transaction } from './client.js';
 
 /** What we found out about the role the application is connecting as. */
 export interface DatabaseSecurityReport {
@@ -115,34 +115,102 @@ export async function setTenant(
   await executor.execute(sql`SELECT set_config('app.org_id', ${orgId}, true)`);
 }
 
+/**
+ * The role the migrations create for the application to run tenant queries as.
+ *
+ * It exists because of the sentence above: an owner or a superuser bypasses row-level
+ * security, so a deployment where the application connects as the role that owns the tables —
+ * which is every deployment that has not been split up on purpose, including this one — gets
+ * no enforcement from the policies at all. `crm_app` is neither, so policies apply to it.
+ * Created NOLOGIN in migration 0001 and reached with `SET LOCAL ROLE`, not a second
+ * connection, so no password has to exist for it.
+ */
+export const TENANT_ROLE = 'crm_app';
+
+/**
+ * Switches the current transaction to another Postgres role, for the rest of that transaction.
+ *
+ * `SET LOCAL ROLE` cannot take a bind parameter, exactly like `SET LOCAL` above, so the name
+ * is interpolated — and therefore checked against a strict pattern first. The name comes from
+ * this module rather than from a request, so this is defence against a future caller, not
+ * against today's one.
+ */
+export async function assumeRole(
+  executor: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }, role: string
+): Promise<void> {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(role)) {
+    throw new Error(`refusing to switch to an implausible role name: ${JSON.stringify(role)}`);
+  }
+  await executor.execute(sql.raw(`SET LOCAL ROLE "${role}"`));
+}
+
+/**
+ * Works out which role tenant-scoped requests should run as, by measuring rather than assuming.
+ *
+ * Returns `null` when the connecting role already has policies enforced against it — there is
+ * nothing to fix, and switching would only add a failure mode. Otherwise it checks whether
+ * dropping to `crm_app` for the transaction actually makes isolation work, and returns the
+ * role only if it does. Answering from `pg_roles` alone would be guessing: the role can exist
+ * and still be missing the grants it needs, in which case switching to it breaks every query
+ * instead of protecting anything.
+ *
+ * Called once at startup and the answer reused, because it costs a transaction.
+ */
+export async function resolveTenantRole(
+  db: Database, report: DatabaseSecurityReport
+): Promise<string | null> {
+  if (report.isolationEffective) return null;
+
+  let effective = false;
+  try {
+    await db.transaction(async (tx) => {
+      await assumeRole(tx, TENANT_ROLE);
+      effective = !(await probeVisibleAcrossTenants(tx));
+      throw PROBE_ROLLBACK;
+    });
+  } catch (error) {
+    // The role may not exist, may not be one we are allowed to become, or may lack grants.
+    // Any of those means the answer is "carry on as we are", not a failed startup.
+    if (error !== PROBE_ROLLBACK) return null;
+  }
+  return effective ? TENANT_ROLE : null;
+}
+
 /** Sentinel used to abort the probe transaction once it has told us what we need. */
 const PROBE_ROLLBACK = Symbol('probe-rollback');
 
 /**
- * Creates a row under a random tenant, then tries to read it with no tenant context set.
- * Returns true when the row is invisible — which is isolation working. Always rolls back.
+ * Creates a row under a random tenant, then tries to read it as a different tenant.
+ * Returns true when the row was visible — which is isolation NOT working.
+ */
+async function probeVisibleAcrossTenants(tx: Transaction): Promise<boolean> {
+  const probeOrg = '00000000-0000-4000-8000-0000000000ff';
+  const otherOrg = '00000000-0000-4000-8000-0000000000ee';
+  await setTenant(tx, probeOrg);
+  await tx.execute(sql`
+    INSERT INTO org (id, name, slug) VALUES (${probeOrg}, 'rls probe', 'rls-probe-transient')
+    ON CONFLICT (id) DO NOTHING`);
+  await tx.execute(sql`
+    INSERT INTO contact (org_id, display_name, source) VALUES (${probeOrg}, 'rls probe', 'probe')`);
+
+  // Switch to a DIFFERENT tenant — which is the question that actually matters: can one
+  // org see another's rows? Not cleared instead, because `''::uuid` raises a cast error
+  // that an earlier version of this probe mistook for "isolation is working".
+  await setTenant(tx, otherOrg);
+  const rows = await tx.execute(sql`
+    SELECT EXISTS (SELECT 1 FROM contact WHERE display_name = 'rls probe') AS visible`);
+  return (rows as unknown as Array<{ visible: boolean }>)[0]?.visible ?? false;
+}
+
+/**
+ * Creates a row under a random tenant, then tries to read it as another. Returns true when
+ * the row is invisible — which is isolation working. Always rolls back.
  */
 async function probeIsolation(db: Database): Promise<boolean> {
   let visible = false;
   try {
     await db.transaction(async (tx) => {
-      const probeOrg = '00000000-0000-4000-8000-0000000000ff';
-      const otherOrg = '00000000-0000-4000-8000-0000000000ee';
-      await setTenant(tx, probeOrg);
-      await tx.execute(sql`
-        INSERT INTO org (id, name, slug) VALUES (${probeOrg}, 'rls probe', 'rls-probe-transient')
-        ON CONFLICT (id) DO NOTHING`);
-      await tx.execute(sql`
-        INSERT INTO contact (org_id, display_name, source) VALUES (${probeOrg}, 'rls probe', 'probe')`);
-
-      // Switch to a DIFFERENT tenant — which is the question that actually matters: can one
-      // org see another's rows? Not cleared instead, because `''::uuid` raises a cast error
-      // that an earlier version of this probe mistook for "isolation is working".
-      await setTenant(tx, otherOrg);
-      const rows = await tx.execute(sql`
-        SELECT EXISTS (SELECT 1 FROM contact WHERE display_name = 'rls probe') AS visible`);
-      visible = (rows as unknown as Array<{ visible: boolean }>)[0]?.visible ?? false;
-
+      visible = await probeVisibleAcrossTenants(tx);
       throw PROBE_ROLLBACK;
     });
   } catch (error) {

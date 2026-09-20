@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { sql } from 'drizzle-orm';
-import { createDatabase, setTenant, type Database } from '@crm/db';
+import { createDatabase, setTenant, type Database, inspectDatabaseSecurity, resolveTenantRole } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { createLogger, type Config } from '@crm/shared';
@@ -60,9 +60,10 @@ function cookieValue(setCookie: string[] | undefined, name: string): string {
   return '';
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   db = createDatabase(url, { max: 6 });
-  app = buildApp({ config, logger, db, kms, hasher });
+  const tenantRole = await resolveTenantRole(db, await inspectDatabaseSecurity(db));
+  app = buildApp({ config, logger, db, kms, hasher, tenantRole });
 });
 afterAll(async () => { await db.$client.end(); });
 beforeEach(async () => { await db.execute(sql`DELETE FROM org`); });

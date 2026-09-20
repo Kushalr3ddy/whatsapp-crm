@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID, randomBytes } from 'node:crypto';
 import request from 'supertest';
 import { sql } from 'drizzle-orm';
-import { createDatabase, type Database } from '@crm/db';
+import { createDatabase, type Database, inspectDatabaseSecurity, resolveTenantRole } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { issueApiKey } from '@crm/core';
@@ -32,9 +32,13 @@ const auth = () => ['Authorization', `Bearer ${orgKey}`] as const;
 /** Authenticates as the deployment. Reaches provisioning only — never data. */
 const bootstrapAuth = () => ['Authorization', `Bearer ${API_KEY}`] as const;
 
-beforeAll(() => {
+beforeAll(async () => {
   db = createDatabase(url, { max: 6 });
-  app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher() });
+  // Resolved the same way the real server resolves it, so these tests run with row-level
+  // security actually enforced rather than bypassed. The test role owns the tables, so
+  // without this every policy in the schema would sit inert underneath the suite.
+  const tenantRole = await resolveTenantRole(db, await inspectDatabaseSecurity(db));
+  app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole });
 });
 afterAll(async () => { await db.$client.end(); });
 

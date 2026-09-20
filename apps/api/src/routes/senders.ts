@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import type { Database } from '@crm/db';
 import { requireScope } from '../auth.js';
 
 /** Body for creating a sender identity. */
@@ -25,12 +24,12 @@ const startLink = z.object({
  * records the request and the gateway writes the QR or pairing code back onto the same row.
  * Callers start a link, then poll for the challenge.
  */
-export function sendersRouter(db: Database): Router {
+export function sendersRouter(): Router {
   const router = Router();
 
   /** Lists senders with their live connection state and risk score. */
   router.get('/', requireScope('senders:read'), async (req: Request, res: Response) => {
-    const rows = await db.execute(sql`
+    const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT si.id, si.label, si.provider, si.phone_e164 AS "phoneE164", si.status,
              si.risk_score AS "riskScore", si.warmup_started_at AS "warmupStartedAt",
              si.last_inbound_at AS "lastInboundAt",
@@ -39,7 +38,7 @@ export function sendersRouter(db: Database): Router {
       FROM sender_identity si
       LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
       WHERE si.org_id = ${req.crm!.orgId}
-      ORDER BY si.created_at ASC`);
+      ORDER BY si.created_at ASC`));
     res.json({ data: rows });
   });
 
@@ -52,10 +51,10 @@ export function sendersRouter(db: Database): Router {
       return;
     }
     const { label, provider, phoneE164 } = parsed.data;
-    const rows = await db.execute(sql`
+    const rows = await req.tenant!((tx) => tx.execute(sql`
       INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
       VALUES (${req.crm!.orgId}, ${provider}, ${label}, ${phoneE164 ?? null}, 'linking')
-      RETURNING id, label, provider, phone_e164 AS "phoneE164", status`);
+      RETURNING id, label, provider, phone_e164 AS "phoneE164", status`));
     res.status(201).json({ data: (rows as unknown as unknown[])[0] });
   });
 
@@ -77,8 +76,8 @@ export function sendersRouter(db: Database): Router {
       return;
     }
 
-    const owned = await db.execute(sql`
-      SELECT id FROM sender_identity WHERE id = ${req.params.id} AND org_id = ${req.crm!.orgId}`);
+    const owned = await req.tenant!((tx) => tx.execute(sql`
+      SELECT id FROM sender_identity WHERE id = ${req.params.id} AND org_id = ${req.crm!.orgId}`));
     if ((owned as unknown as unknown[]).length === 0) {
       // 404 rather than 403: confirming a resource exists in another tenant is itself a leak.
       res.status(404).json(problem(req, 'NOT_FOUND', 'No such sender.'));
@@ -87,7 +86,7 @@ export function sendersRouter(db: Database): Router {
 
     // Upsert the session row and clear any previous challenge. The trigger on
     // link_requested_at notifies the gateway, which writes the challenge back here.
-    const rows = await db.execute(sql`
+    const rows = await req.tenant!((tx) => tx.execute(sql`
       INSERT INTO channel_session (sender_identity_id, link_requested_mode, link_requested_phone,
                                    link_requested_at, link_challenge, link_error, connection_state)
       VALUES (${req.params.id}, ${mode}, ${phoneE164 ?? null}, now(), NULL, NULL, 'connecting')
@@ -95,7 +94,7 @@ export function sendersRouter(db: Database): Router {
         SET link_requested_mode = ${mode}, link_requested_phone = ${phoneE164 ?? null},
             link_requested_at = now(), link_challenge = NULL, link_error = NULL,
             connection_state = 'connecting', updated_at = now()
-      RETURNING id`);
+      RETURNING id`));
 
     res.status(202).json({
       data: {
@@ -108,13 +107,13 @@ export function sendersRouter(db: Database): Router {
 
   /** Returns the challenge once the gateway has it, or reports that it is still pending. */
   router.get('/:id/link', requireScope('senders:read'), async (req: Request, res: Response) => {
-    const rows = await db.execute(sql`
+    const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT cs.link_challenge AS challenge, cs.link_error AS error,
              cs.qr_expires_at AS "expiresAt", cs.connection_state AS "connectionState",
              si.status
       FROM sender_identity si
       LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
-      WHERE si.id = ${req.params.id} AND si.org_id = ${req.crm!.orgId}`);
+      WHERE si.id = ${req.params.id} AND si.org_id = ${req.crm!.orgId}`));
     const row = (rows as unknown as Array<{
       challenge: unknown; error: string | null; expiresAt: string | null;
       connectionState: string | null; status: string;

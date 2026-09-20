@@ -7,6 +7,7 @@ import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { PasswordHasher } from '@crm/auth-builtin';
 import { attachPrincipal, requireAuthenticated, requireTenant, requireCsrf } from './auth.js';
+import { withTenant } from './tenant.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
@@ -19,6 +20,12 @@ export interface AppDependencies {
   readonly db: Database;
   readonly kms: KmsDriver;
   readonly hasher: PasswordHasher;
+  /**
+   * The Postgres role tenant queries run as, or null to stay as the connecting role.
+   * Resolved at startup by `resolveTenantRole`, because whether it is needed depends on
+   * whether the connecting role bypasses row-level security (`apps/api/src/tenant.ts`).
+   */
+  readonly tenantRole: string | null;
 }
 
 /**
@@ -95,6 +102,10 @@ export function buildApp(deps: AppDependencies): Express {
   //   /admin              — provisioning, before a tenant exists to belong to
   //   requireTenant       — refuses the bootstrap key everywhere below, so no data route can
   //                         be reached by the deployment-level secret
+  //   withTenant          — opens the tenant-scoped executor the data routes run every query
+  //                         through. Mounted here, once, rather than per route: the routers
+  //                         below are no longer given a pool handle at all, so a new data
+  //                         route cannot reach the database except through this
   const api = express.Router();
   api.use(attachPrincipal(deps.config, deps.db));
   api.use(requireCsrf);
@@ -103,8 +114,9 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(requireAuthenticated);
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
-  api.use('/senders', sendersRouter(deps.db));
-  api.use('/', messagesRouter(deps.db, deps.kms, deps.config.DEFAULT_COUNTRY));
+  api.use(withTenant(deps.db, deps.tenantRole));
+  api.use('/senders', sendersRouter());
+  api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY));
   app.use('/api/v1', api);
 
   /** Anything unrouted. Kept in the same problem+json shape as a real error. */

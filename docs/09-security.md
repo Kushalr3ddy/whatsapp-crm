@@ -66,25 +66,60 @@ npm run db:rls-demo          # from inside the repo
 It writes a row as one org, reads it as another, and asserts all four cases — including that
 RLS blocks **writes** as well as reads. Everything rolls back.
 
-## Known gap: RLS is not engaged on the request path
+## RLS on the request path
 
-**Nothing sets `app.org_id` on an API request.** Only provisioning and the startup probe call
-`setTenant()`. Every route works today because the development role owns the tables and
-therefore bypasses row-level security — the exact situation `inspectDatabaseSecurity()` warns
-about below.
+Every tenant-scoped query runs inside a transaction that has `app.org_id` set. The middleware
+that arranges it is `withTenant` (`apps/api/src/tenant.ts`), mounted once for everything below
+`requireTenant`, and it attaches a **runner** rather than a handle:
 
-So tenant isolation is currently enforced by **application code**: every query filters by
-`org_id` explicitly, and the API resolves that org from the credential rather than guessing.
-That is real isolation, and the cross-tenant tests pass against it. But RLS — the second layer,
-the one that catches a forgotten `WHERE` — is not doing anything at runtime.
+```ts
+const rows = await req.tenant!((tx) => tx.execute(sql`SELECT ... FROM conversation`));
+```
 
-Closing it means running each request's queries inside one transaction with `setTenant()`
-applied. It cannot be done per *connection*: `set_config(..., true)` is transaction-scoped, and
-setting it non-transactionally would leak a tenant across a pooled connection, which is worse
-than not setting it at all.
+Three details are load-bearing.
 
-`audit_log` writes already do this correctly through `writeAuditInTenant()`, because an audit
-insert shares its transaction with real work and a silent RLS refusal would roll that work back.
+**The transaction wraps the queries, not the request.** Holding one open for the whole request
+would pin a pooled connection for as long as the response takes — fatal once a handler streams
+a media file. The runner opens a transaction per unit of work instead.
+
+**The data routers are no longer given a pool handle.** `messagesRouter` and `sendersRouter`
+take no `Database` argument, so a new route physically cannot query outside the tenant
+transaction; it has nothing to query with. This is deliberate — the previous arrangement
+depended on every future handler remembering, and that is exactly the kind of discipline that
+holds until the day it doesn't.
+
+**The role is switched too, when the connecting role would bypass the policies.** This is the
+part that makes the difference between RLS being configured and RLS being *in force*. A
+superuser, a role with BYPASSRLS, or the owner of the table is not subject to policies at all,
+and a default deployment connects as the owner — so setting `app.org_id` alone would have
+changed nothing. `resolveTenantRole()` measures whether that is the case at startup and, if so,
+returns the restricted `crm_app` role that migration 0001 creates; the runner then issues
+`SET LOCAL ROLE crm_app` inside each transaction. It is `LOCAL`, so it ends with the
+transaction and never escapes onto the pooled connection. When the application already connects
+as a restricted role, the resolver returns null and no switch happens.
+
+It resolves by **probing, not by reading `pg_roles`**: a role can exist and still lack the
+grants it needs, and switching to it then breaks every query rather than protecting anything.
+
+`tests/integration/rls-request-path.test.ts` is the proof, and it is written to be capable of
+failing. It runs queries with **no `org_id` filter at all** and asserts Postgres withholds the
+other tenant's rows — the only way to observe the second layer separately from the first, since
+every real query filters explicitly. It also asserts the suite is not vacuous: if the role is
+not restricted and no switch happened, that is a failed test rather than a green one.
+
+### What is still not covered
+
+- **The gateway process** writes inbound messages directly as the connecting role. It is not on
+  the request path and does not go through this.
+- **`/auth` and `/admin`** deliberately do not: they resolve credentials and provision orgs,
+  which is the work that decides *which* tenant a request is, and `app_user`, `session` and
+  `api_key` carry no policies for that reason.
+- The first layer has not been removed. Every query still filters by `org_id`; this is the
+  second one, and the value of a second layer is that it is independent of the first.
+
+`audit_log` writes arrange the same thing separately through `writeAuditInTenant()`, because an
+audit insert shares its transaction with the real work and a silent RLS refusal would roll that
+work back.
 
 ## Verifying isolation actually works, at startup
 

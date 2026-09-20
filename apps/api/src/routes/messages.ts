@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import { requireScope } from '../auth.js';
 import { normalisePhone } from '@crm/shared';
@@ -32,12 +31,12 @@ const sendMessage = z.object({
  * the dispatcher (P6) — a route that could reach a provider directly would be a way to bypass
  * them, which is precisely the hole the previous system had (docs/00-prior-art.md, M12).
  */
-export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: string): Router {
+export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
   const router = Router();
 
   /** Lists conversations, most recently active first. */
   router.get('/conversations', requireScope('conversations:read'), async (req: Request, res: Response) => {
-    const rows = await db.execute(sql`
+    const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT v.id, v.status, v.unread_count AS "unreadCount",
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
              c.id AS "contactId", c.display_name AS "contactName",
@@ -61,13 +60,13 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
       WHERE v.org_id = ${req.crm!.orgId}
       ORDER BY GREATEST(COALESCE(v.last_inbound_at, v.created_at),
                         COALESCE(v.last_outbound_at, v.created_at)) DESC
-      LIMIT 100`);
+      LIMIT 100`));
     res.json({ data: rows });
   });
 
   /** Returns one thread, oldest first, with bodies decrypted for display. */
   router.get('/conversations/:id/messages', requireScope('conversations:read'), async (req: Request, res: Response) => {
-    const rows = await db.execute(sql`
+    const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT m.id, m.direction, m.content_type AS "contentType", m.status,
              m.error_code AS "errorCode", m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
              m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt"
@@ -75,7 +74,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
       JOIN conversation v ON v.id = m.conversation_id
       WHERE v.id = ${req.params.id} AND v.org_id = ${req.crm!.orgId}
       ORDER BY m.created_at ASC
-      LIMIT 500`);
+      LIMIT 500`));
 
     const messages = (rows as unknown as Array<{ bodyEnc: Uint8Array | null }>).map((m) => {
       const { bodyEnc, ...rest } = m;
@@ -107,7 +106,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
     // Replying into an existing thread. No phone is involved, so no normalisation applies —
     // the conversation already knows which identity it belongs to, phone or privacy address.
     if (conversationId !== undefined) {
-      const replied = await db.execute(sql`
+      const replied = await req.tenant!((tx) => tx.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type,
                              body_enc, body_hmac, sent_by)
         SELECT ${orgIdEarly}, v.id, 'outbound', 'queued', 'text',
@@ -115,7 +114,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
                ${kms.blindIndex(body)}, 'api'
         FROM conversation v
         WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}
-        RETURNING id, conversation_id AS "conversationId", status`);
+        RETURNING id, conversation_id AS "conversationId", status`));
 
       const row = (replied as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
       if (!row) {
@@ -143,7 +142,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
     }
 
     const orgId = req.crm!.orgId;
-    const rows = await db.execute(sql`
+    const rows = await req.tenant!((tx) => tx.execute(sql`
       WITH chosen_sender AS (
         SELECT id FROM sender_identity
         WHERE org_id = ${orgId}
@@ -176,7 +175,7 @@ export function messagesRouter(db: Database, kms: KmsDriver, defaultCountry: str
              ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
              ${kms.blindIndex(body)}, 'api'
       FROM conv
-      RETURNING id, conversation_id AS "conversationId", status`);
+      RETURNING id, conversation_id AS "conversationId", status`));
 
     const created = (rows as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
     if (!created) {

@@ -1,5 +1,5 @@
 import { createLogger, loadConfig, ConfigError } from '@crm/shared';
-import { createDatabase, inspectDatabaseSecurity, verifySchema } from '@crm/db';
+import { createDatabase, inspectDatabaseSecurity, resolveTenantRole, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { buildApp } from './app.js';
@@ -43,12 +43,30 @@ async function main(): Promise<void> {
     logger.info({ role: security.role }, 'tenant isolation verified for this database role');
   }
 
+  // Which role tenant-scoped requests should run as. Null when the connecting role already
+  // has policies enforced against it; otherwise the restricted role the migrations create,
+  // but only when dropping to it was measured to actually make isolation work. The queries
+  // themselves always set the tenant — the role is what decides whether the policies reading
+  // it apply at all (apps/api/src/tenant.ts).
+  const tenantRole = await resolveTenantRole(db, security);
+  if (tenantRole !== null) {
+    logger.info({ role: security.role, tenantRole },
+      'tenant requests will run as a restricted role, so row-level security applies to them');
+  } else if (!security.isolationEffective) {
+    logger.warn({ role: security.role },
+      'row-level security is NOT enforced on the request path: the connecting role bypasses ' +
+      'it and no restricted role was available to drop to. Tenant isolation rests entirely ' +
+      'on the org filter in each query. See docs/09-security.md');
+  }
+
   const kms = new LocalKms({
     keyHex: config.ENCRYPTION_KEY,
     indexKeyHex: config.ENCRYPTION_INDEX_KEY
   });
 
-  const app = buildApp({ config, logger, db, kms, hasher: new BuiltinPasswordHasher() });
+  const app = buildApp({
+    config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole
+  });
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info(
       { port: config.PORT, preset: config.PRESET, role: config.PROCESS_ROLE, env: config.NODE_ENV },

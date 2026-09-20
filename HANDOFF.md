@@ -36,7 +36,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**214 tests · 77 source files · 13 of 35 specced tables · 9 migrations · 47 commits.**
+**223 tests · 78 source files · 13 of 35 specced tables · 9 migrations · 52 commits.**
 
 ### What actually works
 
@@ -54,6 +54,11 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
   the same transaction as the change it describes. Covers authentication and admin actions.
 - **Storage**: `StorageDriver` port + filesystem driver + a **contract suite** (25 tests) that
   every future backend must pass. Not wired to anything yet.
+- **Row-level security on the request path**: every tenant query runs in a transaction with
+  `app.org_id` set, and — because the app connects as a role that would otherwise bypass
+  policies entirely — drops to the restricted `crm_app` role for the length of that
+  transaction. The data routers hold no pool handle, so a new route cannot query around it.
+  Proved by tests that query with **no `org_id` filter** and watch Postgres withhold the rows.
 
 ### What does not exist
 
@@ -94,7 +99,7 @@ npm run gateway   # owns the WhatsApp sockets — nothing sends without this
 npm run web       # UI       :3001
 ```
 
-Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 214 tests.
+Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 223 tests.
 
 ---
 
@@ -123,7 +128,7 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
 |---|---|
 | `routes/messages.ts` | A **malformed UUID returns 500** — `conversations/not-a-uuid/messages` reaches Postgres, the cast throws (22P02), and it surfaces as `INTERNAL_ERROR`. Wants a 422, or 404 to match the "404 not 403" rule. Path params are not validated; bodies are |
 | `routes/*.ts` | `problem()` hardcodes **`"status": 0`** in the body while the real code goes in the status line. `auth.ts` builds its own correctly with the real number, so `body.status` disagrees between routes |
-| **Request path** | **RLS is not engaged.** Nothing calls `setTenant()` for an API request — only provisioning and the startup probe do. Every route works because the dev role owns the tables and bypasses RLS. Isolation today rests on explicit `WHERE org_id` in every query, which is real and tested, but the second layer is doing nothing. Closing it means running each request's queries in one transaction with `setTenant()`; it cannot be per-connection, because the setting is transaction-scoped and setting it otherwise leaks a tenant across a pooled connection. `docs/09-security.md` records this |
+| **Gateway** | Writes inbound messages as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle | **In-process**, so several replicas would each count separately (P9) |
 | `api_key.rate_limit_per_min` | Stored and **enforced nowhere** |
@@ -147,6 +152,12 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
   anyone traced it. It now refuses when there is no org, or more than one, and points at
   `npm run admin -- org`.
 - **`SET LOCAL` cannot take a bind parameter.** Use `setTenant()` (`set_config(..., true)`).
+- **Setting the tenant is only half of it — the *role* has to be one policies apply to.** A
+  superuser, a BYPASSRLS role, or the owner of the table is not subject to RLS at all, and the
+  default deployment connects as the owner. `dev` on this machine is a superuser, so every
+  policy in the schema sat inert until the request path started issuing
+  `SET LOCAL ROLE crm_app`. Measure with `resolveTenantRole()`; never conclude from `pg_roles`
+  that a role will work, because it can exist and lack the grants.
 - **`set_config(..., true)` and `SET LOCAL` are transaction-scoped.** Pasted into psql line by
   line they silently do nothing. Run `npm run db:rls-demo`.
 - **Superusers and table owners bypass RLS**, and `pg_tables.rowsecurity` still reports `true`.
@@ -203,11 +214,9 @@ Parked decisions with trigger conditions: **D-1 … D-13** in [`docs/21-deferred
    see the same inbox. `conversation_participant` (`docs/05-data-model.md`) is what powers
    collision detection: knowing someone else is already in a thread, so two people do not
    answer the same candidate fifteen seconds apart.
-3. **Engage RLS on the request path.** See the defects table. It is the second layer of tenant
-   isolation and it is currently doing nothing.
-4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
+3. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
    contract suite like storage now has.
-5. **P6 anti-ban before any bulk send.** Not optional.
-6. **Deployment**, which is also when the production database gets decided. Note:
+4. **P6 anti-ban before any bulk send.** Not optional.
+5. **Deployment**, which is also when the production database gets decided. Note:
    **`ENCRYPTION_KEY` must be backed up separately from the database** — losing it means losing
    every linked number and every stored message, permanently.
