@@ -83,6 +83,10 @@ create a proper one.
 
 ## Authentication & authorisation
 
+**[23 · Authentication](23-auth.md) explains all of this end to end** — the three credentials,
+the login flow, session forwarding, why only one of the two cookies is `HttpOnly`, and **which
+parts of the design below are not yet implemented**.
+
 - **Built-in driver**: Argon2id (not bcrypt — M16), login rate limiting with progressive
   lockout, TOTP MFA (V2), password reset via single-use expiring tokens, session invalidation
   on password change, CSRF tokens on cookie-authenticated routes.

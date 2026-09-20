@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ThemeToggle } from './theme-toggle';
+import { signOut } from './login/actions';
 
 /** One destination in the top bar. `soon` marks a section that exists only as a placeholder. */
 interface Tab {
@@ -28,6 +29,9 @@ const TABS: Tab[] = [
 export function Nav() {
   const pathname = usePathname();
 
+  // Nothing to navigate to, and no one to sign out, before signing in.
+  if (pathname === '/login') return null;
+
   return (
     <nav className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-surface px-3">
       <div className="flex items-center gap-1">
@@ -50,7 +54,17 @@ export function Nav() {
           );
         })}
       </div>
-      <ThemeToggle />
+      <div className="flex items-center gap-1.5">
+        <ThemeToggle />
+        <form action={signOut}>
+          <button
+            type="submit"
+            className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:bg-accent-soft"
+          >
+            Sign out
+          </button>
+        </form>
+      </div>
     </nav>
   );
 }

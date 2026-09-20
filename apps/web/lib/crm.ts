@@ -1,9 +1,15 @@
+import { cookies } from 'next/headers';
+
 /**
  * The server-side client for the CRM HTTP API.
  *
- * Every function here runs on the server only — in a server component or a server action —
- * because each one sends the API key. Importing this from a `'use client'` component would
- * put the key in the browser bundle, so it is never re-exported through one.
+ * Every function runs on the server only — in a server component or a server action.
+ *
+ * **It holds no credential of its own.** Each request forwards the signed-in person's session
+ * cookie through to the API, so the API authenticates *them*, not "the web app". That is what
+ * makes roles mean anything: an agent reaches exactly what an agent may reach, because the
+ * same check runs whether the request came from a browser or from curl. A shared org-wide key
+ * here would have given every signed-in user full access regardless of their role.
  */
 
 /** One conversation as the inbox list needs it. Mirrors `GET /api/v1/conversations`. */
@@ -86,19 +92,38 @@ export class CrmApiError extends Error {
  * Deliberately not hoisted to module scope: a missing key would then throw at import time,
  * which in Next surfaces as an unrelated build error rather than a readable message.
  */
-function apiConfig(): { baseUrl: string; key: string } {
-  // A per-org key, NOT the deployment-level API_KEY. That one is a bootstrap credential now:
-  // it can provision an organisation and mint keys, and is refused on every data route.
-  const key = process.env.CRM_API_KEY;
-  if (key === undefined || key === '') {
-    throw new Error(
-      'CRM_API_KEY is not set. The UI needs a per-org key, not the deployment API_KEY.\n' +
-      'Mint one:  npm run admin -- key --org <org-id> --name web --scopes ' +
-      'contacts:read,conversations:read,conversations:write,messages:send,senders:read,senders:write\n' +
-      'List orgs: npm run admin -- whoami'
-    );
+/** Raised when the API rejects the forwarded session. The UI turns this into a redirect. */
+export class NotAuthenticatedError extends Error {
+  /** No detail on purpose: the caller only needs to know to send the person to /login. */
+  constructor() {
+    super('not authenticated');
+    this.name = 'NotAuthenticatedError';
   }
-  return { baseUrl: process.env.CRM_API_URL ?? 'http://localhost:3000', key };
+}
+
+/** Where the API lives. */
+function baseUrl(): string {
+  return process.env.CRM_API_URL ?? 'http://localhost:3000';
+}
+
+/**
+ * Builds the headers that carry the caller's identity to the API.
+ *
+ * Forwards both cookies verbatim. The CSRF cookie has to travel as a header too, because the
+ * API requires cookie-authenticated writes to echo it — the double-submit check. Reading it
+ * here is legitimate: this code runs on the server, inside the person's own request.
+ */
+async function forwardedAuth(): Promise<Record<string, string>> {
+  const jar = await cookies();
+  const session = jar.get('crm_session')?.value ?? '';
+  const csrf = jar.get('crm_csrf')?.value ?? '';
+
+  if (session === '') throw new NotAuthenticatedError();
+
+  return {
+    Cookie: `crm_session=${session}; crm_csrf=${csrf}`,
+    'x-csrf-token': csrf
+  };
 }
 
 /**
@@ -108,16 +133,20 @@ function apiConfig(): { baseUrl: string; key: string } {
  * for the lifetime of the build and show a thread frozen at deploy time.
  */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const { baseUrl, key } = apiConfig();
-  const response = await fetch(`${baseUrl}/api/v1${path}`, {
+  const auth = await forwardedAuth();
+  const response = await fetch(`${baseUrl()}/api/v1${path}`, {
     ...init,
     cache: 'no-store',
     headers: {
-      Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
+      ...auth,
       ...init?.headers
     }
   });
+
+  // A rejected session is not an ordinary API error — the person has to sign in again, and
+  // every caller wants the same response to it.
+  if (response.status === 401) throw new NotAuthenticatedError();
 
   const payload: unknown = await response.json().catch(() => null);
 

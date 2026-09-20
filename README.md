@@ -125,21 +125,26 @@ route.
 npm run admin -- org --name "Your Company" --slug your-company --email you@example.com
 ```
 
-That prints an org id and a generated password. Save both. Then mint the key the UI uses:
+That prints an org id and a generated password — **save both**. Sign in with them at
+`http://localhost:3001/login`.
+
+The UI needs no key of its own: it forwards your session to the API, so the API authorises
+*you*, by your role. Integrations are different and do need a key:
 
 ```bash
-npm run admin -- key --org <org-id> --name web --scopes contacts:read,conversations:read,conversations:write,messages:send,senders:read,senders:write
+npm run admin -- key --org <org-id> --name "job portal" --scopes messages:send,contacts:read
 ```
 
-Put it in `.env` as `CRM_API_KEY=`. `npm run admin` on its own lists the commands; `whoami`
-lists organisations.
+`npm run admin` on its own lists the commands; `whoami` lists organisations. How all of this
+fits together, with diagrams: [23 · Authentication](docs/23-auth.md).
 
 ### Linking a number
 
-A sender must exist first:
+A sender must exist first. Over HTTP that needs a key — mint one **once** with the command
+above, then put the printed secret in your shell:
 
 ```bash
-export CRM_API_KEY=$(grep '^CRM_API_KEY=' .env | cut -d= -f2-)
+export CRM_API_KEY=crm_live_...
 ```
 
 ```bash

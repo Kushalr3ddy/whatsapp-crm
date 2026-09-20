@@ -1536,3 +1536,59 @@ directory), `audit_log`, TOTP, the OIDC driver, and rate limiting on anything bu
 `packages/db/src/schema.ts`, `packages/db/migrations/0007_*.sql`, `scripts/admin.ts`,
 `tests/integration/{auth,api}.test.ts`, `README.md`, `docs/{15-api,05-data-model}.md`,
 `.env.example`
+
+---
+
+## 2026-09-20 · Session 021b · The login screen, and session forwarding
+
+**The web app now holds no credential of its own.** It forwards the signed-in person's session
+cookie to the API on every call, so the API authorises *them* by role rather than seeing one
+shared application identity. `CRM_API_KEY` is deleted from `.env.example` entirely — it existed
+for one slice and is gone.
+
+Why this rather than an org-wide key in the UI: with a shared key, **every signed-in user would
+have full access regardless of role**. Login would gate the front door and nothing behind it,
+and `assignee_user_id`, `admin` and `agent` would stay decorative. Forwarding means the same
+check applies whether a request came from a browser or from curl.
+
+**Built:** `/login` with a server action that exchanges credentials and relays both cookies,
+sign-out that revokes server-side before clearing them, `middleware.ts` redirecting to `/login`
+with a `?next=` so people return where they were going, and expired-session handling in the
+inbox and link pages that redirects rather than showing an error banner.
+
+**Verified in a browser, not just by tests:** a wrong password is refused with *"Email or
+password is wrong"* and stays put; the right one redirects to `/inbox` and the real
+conversations load through the forwarded session; **`crm_session` is invisible to script while
+`crm_csrf` is visible**, which is exactly the required asymmetry; sign-out clears the cookies
+**and** the database row shows `revoked_at` set while still inside its expiry window, so a
+stolen copy of that cookie is already useless.
+
+**Clarified for the record — `.env` is not "used once" and never gets nuked.** It is read on
+every boot: `DATABASE_URL`, `ENCRYPTION_KEY` and `APP_SECRET` are needed each time the process
+starts. `API_KEY` stays present but is only *used* when provisioning. D-9's generator would
+create the file once, idempotently, never overwriting a value that exists. A secrets manager
+later changes where the values come *from* — injected as environment variables at process
+start rather than read from a file — but the process has them in its environment either way.
+
+**Also corrected a misconception about TOTP:** a restart has no effect on it. There is no
+server-side counter — the code derives from a stored secret plus current time, and both survive
+a restart trivially. The real concerns are clock drift (handled with a ±1 step window) and that
+the secret would live in `app_user.mfa_secret_enc`, making it one more thing `ENCRYPTION_KEY`
+controls.
+
+**Written:** `docs/23-auth.md`, 238 lines with diagrams — the three credentials, the login
+sequence, session forwarding, why only one of the two cookies is `HttpOnly`, the CSRF
+double-submit, the middleware being a convenience rather than a boundary, what is stored and
+hashed how, the RLS ordering `createOrgWithAdmin` is forced into, and a table of what is not
+built. Linked from `docs/README.md` and `09-security.md`.
+
+**A README command I wrote and then caught:** an `export CRM_API_KEY=$(npm run admin key …)`
+one-liner that would mint a **new key every time it was run**. Replaced with minting once and
+exporting the printed value, then verified as written — key minted, exported, `curl` returned
+200. The verification key was revoked afterwards.
+
+**169 tests, exit code 0.** Servers stopped, ports free.
+
+**Files:** `apps/web/lib/crm.ts`, `apps/web/app/login/**`, `apps/web/middleware.ts`,
+`apps/web/app/nav.tsx`, `apps/web/app/inbox/layout.tsx`, `apps/web/app/link/page.tsx`,
+`docs/23-auth.md`, `docs/README.md`, `docs/09-security.md`, `README.md`, `.env.example`

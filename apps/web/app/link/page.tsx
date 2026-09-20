@@ -1,4 +1,5 @@
-import { listSenders, CrmApiError } from '@/lib/crm';
+import { redirect } from 'next/navigation';
+import { listSenders, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Sender } from '@/lib/crm';
 import { LinkPanel } from './link-panel';
 
@@ -15,13 +16,17 @@ export const dynamic = 'force-dynamic';
 export default async function LinkPage() {
   let senders: Sender[] = [];
   let failure: string | null = null;
+  let expired = false;
   try {
     senders = await listSenders();
   } catch (error) {
+    if (error instanceof NotAuthenticatedError) expired = true;
     failure = error instanceof CrmApiError
       ? `${error.code}: ${error.message}`
       : 'Could not reach the API. Is it running? Start it with: npm run dev';
   }
+
+  if (expired) redirect('/login?next=/link');
 
   return (
     <main className="mx-auto max-w-2xl px-5 py-8">

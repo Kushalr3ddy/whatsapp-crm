@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { listConversations, listSenders, CrmApiError } from '@/lib/crm';
+import { redirect } from 'next/navigation';
+import { listConversations, listSenders, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Conversation, Sender } from '@/lib/crm';
 import { AutoRefresh } from './auto-refresh';
 
@@ -34,10 +35,14 @@ export default async function InboxLayout({ children }: { children: ReactNode })
   let conversations: Conversation[];
   let senders: Sender[];
   let failure: string | null = null;
+  let expired = false;
 
   try {
     [conversations, senders] = await Promise.all([listConversations(), listSenders()]);
   } catch (error) {
+    // The session was rejected by the API — the cookie exists but is no longer valid, so
+    // middleware let it through. Signing in again is the only useful response.
+    if (error instanceof NotAuthenticatedError) expired = true;
     // The overwhelmingly likely cause is the API not running, so say that plainly rather
     // than showing a stack trace. Anything else still surfaces its own message.
     failure = error instanceof CrmApiError
@@ -46,6 +51,9 @@ export default async function InboxLayout({ children }: { children: ReactNode })
     conversations = [];
     senders = [];
   }
+
+  // Outside the catch: redirect() works by throwing, so calling it inside would be caught.
+  if (expired) redirect('/login?next=/inbox');
 
   // `status` is the business state and is 'active' the moment a sender row is created, so it
   // would report a number as ready before anyone has scanned a QR. `connectionState` is the
