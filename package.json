@@ -16,6 +16,7 @@
   "scripts": {
     "//1": "\u2500\u2500\u2500 everyday \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
     "dev": "tsx watch --env-file-if-exists=.env apps/api/src/server.ts",
+    "dev:all": "bash infra/scripts/dev-up.sh",
     "gateway": "tsx watch --env-file-if-exists=.env apps/gateway/src/main.ts",
     "web": "NEXT_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env node_modules/next/dist/bin/next dev apps/web --port 3001",
     "web:build": "NEXT_TELEMETRY_DISABLED=1 npm --workspace @crm/web run build",

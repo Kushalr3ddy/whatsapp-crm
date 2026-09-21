@@ -100,10 +100,26 @@ Start Postgres and create the schema — this does both databases, app and test:
 npm run db:setup
 ```
 
-### Running it, three processes
+### Running it
 
-Each in its own terminal. They are separate on purpose: the gateway owns the WhatsApp sockets,
-so restarting the API never drops a connection.
+One terminal, everything:
+
+```bash
+npm run dev:all      # database, migrations, all three processes. Ctrl-C stops them
+```
+
+It waits for each service to answer before reporting it ready, prints whether row-level
+security is actually being enforced, and streams the three logs prefixed by which process
+spoke. `--no-web` skips Next (much faster); `--no-gateway` runs without any WhatsApp
+connection. Postgres is deliberately left running on Ctrl-C — it holds linked credentials.
+
+**Then read [`docs/24-local-testing.md`](docs/24-local-testing.md)** for how to get a key and
+exercise the API, attachments and the audit trail by hand.
+
+#### Or three processes, one terminal each
+
+They are separate on purpose: the gateway owns the WhatsApp sockets, so restarting the API
+never drops a connection.
 
 ```bash
 npm run dev          # API on :3000

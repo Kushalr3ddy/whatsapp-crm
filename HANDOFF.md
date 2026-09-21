@@ -107,13 +107,23 @@ verified against a real attachment. `npm run admin -- whoami` lists
 organisations; `npm run admin -- password --email developer@hiringstudios.com` sets a new
 password and ends every session on the account.
 
-Three processes, separate so restarting the API never drops a WhatsApp socket:
+All of it in one terminal — database, migrations, three processes, Ctrl-C stops them:
+
+```bash
+npm run dev:all             # --no-web and --no-gateway if you want less
+```
+
+Or separately, which is what `dev:all` is running. They are separate processes so that
+restarting the API never drops a WhatsApp socket:
 
 ```bash
 npm run dev       # API      :3000
 npm run gateway   # owns the WhatsApp sockets — nothing sends without this
 npm run web       # UI       :3001
 ```
+
+**[`docs/24-local-testing.md`](docs/24-local-testing.md)** is the by-hand testing recipe:
+getting a key, exercising the API, checking the attachment headers, reading the audit trail.
 
 Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 255 tests.
 
