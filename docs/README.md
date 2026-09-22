@@ -14,6 +14,9 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes 
 [04 Architecture](04-architecture.md) → [05 Data model](05-data-model.md) →
 [11 Conventions](11-conventions.md) → [12 Testing](12-testing.md)
 
+**To load contacts in** — [07 Ingestion](07-ingestion.md) (the design) →
+[25 Ingestion guide](25-ingestion-guide.md) (the sources, deduping and a walkthrough)
+
 **To deploy or operate it** — [13 Deployment](13-deployment.md) →
 [19 Capacity](19-capacity.md) → [14 Runbooks](14-runbooks.md) →
 [09 Security](09-security.md) → [22 Encryption](22-encryption.md) →
@@ -47,6 +50,8 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes 
 | [21 Deferred decisions](21-deferred.md) | What we deliberately have not decided, and what brings each back |
 | [22 Encryption](22-encryption.md) | How data is encrypted before it reaches the database and decrypted on the way back; keys, rotation, DEK/KEK, and what survives losing a key |
 | [23 Authentication](23-auth.md) | The three credentials, the login flow, session forwarding, CSRF, and what guards what |
+| [24 Testing it by hand](24-local-testing.md) | Start the stack, get a key, exercise every endpoint, read the headers that matter |
+| [25 Ingestion guide](25-ingestion-guide.md) | Every source, how deduping works at both layers, and a hands-on walkthrough |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 | [ADRs](adr/) | Decisions that would be expensive to reverse, and why |
 
