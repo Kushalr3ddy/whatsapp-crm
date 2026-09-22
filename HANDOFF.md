@@ -30,7 +30,9 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P2 | Core domain — orgs, users, sessions, API keys, RLS | **mostly** |
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
 | P4 | Inbox | **partial** |
-| P5 | Ingestion · P6 Anti-ban · P7 Campaigns · P8 Meta | not started |
+| P5 | Ingestion | not started |
+| P6 | Anti-ban — warmup, rate ceilings, jitter | **layers 1–2 of 6** |
+| P7 | Campaigns · P8 Meta | not started |
 
 **P1 is marked done but is not.** `infra/compose/` holds only a `.gitkeep`, so
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
