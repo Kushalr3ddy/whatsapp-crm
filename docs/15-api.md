@@ -1,7 +1,13 @@
 # 15 · Public API
 
-`https://<host>/api/v1`. OpenAPI 3.1 generated from the Zod schemas at
-`/api/v1/openapi.json` — generated, so it cannot drift from the code (M22).
+`https://<host>/api/v1`.
+
+⬜ **There is no OpenAPI spec yet, and no `/api/v1/openapi.json`.** The intent is to generate
+OpenAPI 3.1 from the Zod schemas that already validate every request body, so the spec cannot
+drift from the code the way a hand-written one does (M22) — but none of that is built. Until it
+is, **this document and [`24 · Testing it by hand`](24-local-testing.md) are the API
+documentation**, and `What exists today` below is the part of this page that is true right now.
+The rest describes the intended surface.
 
 ## Authentication
 
