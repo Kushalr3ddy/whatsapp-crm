@@ -1,0 +1,521 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-09-22T20:08:08Z",
+  "__export_source": "whatsapp-crm:docs",
+  "resources": [
+    {
+      "_id": "wrk_crm",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "whatsapp-crm (local)",
+      "description": "Local testing collection. See docs/24-local-testing.md.\n\nWARNING: requests that queue a message send REAL WhatsApp messages when the gateway is running and a number is linked. Only send to numbers you control.",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_crm",
+      "_type": "environment",
+      "parentId": "wrk_crm",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "http://localhost:3000/api/v1",
+        "bootstrap_key": "PASTE API_KEY FROM .env",
+        "org_key": "PASTE THE crm_live_... SECRET FROM MINT A KEY",
+        "org_id": "",
+        "conversation_id": "",
+        "media_id": "",
+        "sender_id": "",
+        "test_recipient": "+91XXXXXXXXXX"
+      },
+      "metaSortKey": 0,
+      "modified": 0,
+      "created": 0
+    },
+    {
+      "_id": "grp_health",
+      "_type": "request_group",
+      "parentId": "wrk_crm",
+      "name": "0 \u00b7 Health",
+      "description": "No authentication. Prove the process and database are up.",
+      "metaSortKey": -100,
+      "environment": {},
+      "modified": 0,
+      "created": 0
+    },
+    {
+      "_id": "r_health",
+      "_type": "request",
+      "parentId": "grp_health",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/../../health",
+      "name": "health \u2014 process is alive",
+      "description": "Must not touch the database. A database blip must never look like a dead process.",
+      "method": "GET",
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": 1,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_ready",
+      "_type": "request",
+      "parentId": "grp_health",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/../../ready",
+      "name": "ready \u2014 database reachable",
+      "description": "",
+      "method": "GET",
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": 2,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "grp_auth",
+      "_type": "request_group",
+      "parentId": "wrk_crm",
+      "name": "1 \u00b7 Credentials",
+      "description": "Two kinds, not interchangeable. The bootstrap key provisions and is REFUSED on every data route.",
+      "metaSortKey": -90,
+      "environment": {},
+      "modified": 0,
+      "created": 0
+    },
+    {
+      "_id": "r_mintkey",
+      "_type": "request",
+      "parentId": "grp_auth",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/admin/keys",
+      "name": "mint an org key (bootstrap)",
+      "description": "The secret is returned ONCE. Paste it into the org_key environment variable.\n\nrateLimitPerMin is optional; omit for the default of 120, 0 for unlimited.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.bootstrap_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"orgId\": \"{{ _.org_id }}\",\n  \"name\": \"insomnia\",\n  \"scopes\": [\n    \"conversations:read\",\n    \"messages:send\",\n    \"senders:read\",\n    \"senders:write\"\n  ],\n  \"rateLimitPerMin\": 120\n}"
+      }
+    },
+    {
+      "_id": "r_me",
+      "_type": "request",
+      "parentId": "grp_auth",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/auth/me",
+      "name": "who am I",
+      "description": "",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 2,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_login",
+      "_type": "request",
+      "parentId": "grp_auth",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/auth/login",
+      "name": "sign in (session + CSRF cookies)",
+      "description": "Cookie auth. Non-GET requests afterwards must echo the crm_csrf cookie in an x-csrf-token header \u2014 that is the double-submit check.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 3,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"you@example.com\",\n  \"password\": \"...\"\n}"
+      }
+    },
+    {
+      "_id": "grp_data",
+      "_type": "request_group",
+      "parentId": "wrk_crm",
+      "name": "2 \u00b7 Data",
+      "description": "",
+      "metaSortKey": -80,
+      "environment": {},
+      "modified": 0,
+      "created": 0
+    },
+    {
+      "_id": "r_convs",
+      "_type": "request",
+      "parentId": "grp_data",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations",
+      "name": "list conversations",
+      "description": "",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_thread",
+      "_type": "request",
+      "parentId": "grp_data",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}/messages",
+      "name": "read a thread",
+      "description": "Writes a conversation.read audit row (D-13). Carries `media` and `mediaUnavailable`.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 2,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_senders",
+      "_type": "request",
+      "parentId": "grp_data",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/senders",
+      "name": "list senders",
+      "description": "",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 3,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_media",
+      "_type": "request",
+      "parentId": "grp_data",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/media/{{ _.media_id }}",
+      "name": "download an attachment",
+      "description": "Check the HEADERS, not the bytes. All four must be present:\n  Content-Type            from the file's magic bytes, never its name\n  Content-Disposition     attachment, always \u2014 never inline\n  X-Content-Type-Options  nosniff\n  Cache-Control           private, no-store\n\nWrites a media.downloaded audit row before any byte moves.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 4,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "grp_refuse",
+      "_type": "request_group",
+      "parentId": "wrk_crm",
+      "name": "3 \u00b7 Things that must be refused",
+      "description": "Every one of these is a deliberate answer. If any of them changes, something regressed.",
+      "metaSortKey": -70,
+      "environment": {},
+      "modified": 0,
+      "created": 0
+    },
+    {
+      "_id": "r_401",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations",
+      "name": "no credential \u2192 401",
+      "description": "Identical body to a WRONG credential. Distinguishing them confirms to an attacker that their key format was right.",
+      "method": "GET",
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": 1,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_403",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations",
+      "name": "bootstrap key on a data route \u2192 403",
+      "description": "BOOTSTRAP_KEY_SCOPE. One shared secret with full data access is the hole that per-org keys exist to close.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.bootstrap_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 2,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_422",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/not-a-uuid/messages",
+      "name": "malformed id \u2192 422, not 500",
+      "description": "Used to be a 500: the value reached Postgres, the uuid cast raised 22P02, and a caller's typo surfaced as INTERNAL_ERROR.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 3,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_404",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/media/00000000-0000-4000-8000-00000000dead",
+      "name": "another tenant's attachment \u2192 404, not 403",
+      "description": "404 rather than 403 on purpose. Saying 'forbidden' would confirm the file exists.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 4,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_status",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/not-a-uuid/messages",
+      "name": "check body.status matches the status line",
+      "description": "Two routers used to hardcode \"status\": 0 in the body while the real code went out on the status line. body.status must equal the HTTP status on every route.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 5,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "grp_limits",
+      "_type": "request_group",
+      "parentId": "wrk_crm",
+      "name": "4 \u00b7 Rate limiting (per key)",
+      "description": "Mint a key with rateLimitPerMin=3, point it at this, and send it four times.",
+      "metaSortKey": -60,
+      "environment": {},
+      "modified": 0,
+      "created": 0
+    },
+    {
+      "_id": "r_ratelimit",
+      "_type": "request",
+      "parentId": "grp_limits",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/senders",
+      "name": "burn the key's per-minute limit \u2192 429",
+      "description": "Send repeatedly. Watch RateLimit-Remaining count down, then a 429 RATE_LIMITED with Retry-After.\n\nIn-process for now: with several replicas each counts separately (P9).",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "grp_p6",
+      "_type": "request_group",
+      "parentId": "wrk_crm",
+      "name": "5 \u00b7 Send pacing (P6) \u2014 READ THIS FIRST",
+      "description": "These queue REAL messages. With the gateway running and a number linked they will be SENT to whoever test_recipient names. Use a number you control.\n\nThe gate is in the gateway, not the API, so the API always answers 202. What pacing changes is WHEN the gateway drains the queue \u2014 and whether it drains it at all.",
+      "metaSortKey": -50,
+      "environment": {},
+      "modified": 0,
+      "created": 0
+    },
+    {
+      "_id": "r_send",
+      "_type": "request",
+      "parentId": "grp_p6",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/messages",
+      "name": "queue one message \u2192 202",
+      "description": "202 means ACCEPTED, not sent. The gateway decides when it actually goes.\n\nThen poll the thread: status goes queued \u2192 sent \u2192 delivered \u2192 read.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"to\": \"{{ _.test_recipient }}\",\n  \"body\": \"hello from whatsapp-crm\"\n}"
+      }
+    },
+    {
+      "_id": "r_send_conv",
+      "_type": "request",
+      "parentId": "grp_p6",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/messages",
+      "name": "reply into an existing thread \u2192 202",
+      "description": "For a contact with no phone number \u2014 a WhatsApp privacy address (@lid) has none, and `to` could never name them.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 2,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"conversationId\": \"{{ _.conversation_id }}\",\n  \"body\": \"reply\"\n}"
+      }
+    },
+    {
+      "_id": "r_burst",
+      "_type": "request",
+      "parentId": "grp_p6",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/messages",
+      "name": "queue a burst, then watch it drain slowly",
+      "description": "Send this 10+ times quickly, then poll the thread.\n\nWITHOUT pacing every one would go at machine speed \u2014 which is how a number is lost permanently.\n\nWITH pacing you should see:\n  \u00b7 a 1.5-4s gap between each send (Gaussian, not a fixed interval)\n  \u00b7 no more than SEND_RATE_PER_MINUTE (default 8) in any minute\n  \u00b7 the rest sitting at status 'queued' \u2014 NOT failed\n\nA paced message is left queued on purpose: early is not wrong, and failing it would lose it. Watch the gateway log for 'send paced'.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 3,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"to\": \"{{ _.test_recipient }}\",\n  \"body\": \"burst test\"\n}"
+      }
+    },
+    {
+      "_id": "r_poll",
+      "_type": "request",
+      "parentId": "grp_p6",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}/messages",
+      "name": "poll the thread to watch statuses move",
+      "description": "There is currently NO API that says why a message is still queued \u2014 paced and 'sender disconnected' look identical from here. Only the gateway log distinguishes them. That gap is recorded in HANDOFF.md.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 4,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    }
+  ]
+}

@@ -81,6 +81,15 @@ one with its first admin, and prints a generated password.
 
 ---
 
+## Or use Insomnia
+
+`tools/insomnia-collection.json` imports as a collection with everything below already set up —
+including the refusals that must stay refused (401, 403, 422, 404) and a group for exercising
+the pacing gate. Fill in `base_url`, `bootstrap_key` and `org_key` in the environment.
+
+**The pacing group queues real messages.** With the gateway running and a number linked they
+are actually sent, so point `test_recipient` at a number you control.
+
 ## Exercise the API
 
 ```bash

@@ -53,6 +53,37 @@ Load      batched upsert, 500 rows per transaction
 Report    per-row outcome in import_row; summary counts on import_run
 ```
 
+## The same file must not import twice — and the name is not the file
+
+**Requirement, 2026-09-22.** Re-importing a spreadsheet that has already been imported must be
+refused, or recognised as a re-run, **regardless of what it is called**. `contacts.xlsx`,
+`contacts (1).xlsx` and `contacts-final-FINAL.xlsx` are one file; `contacts.xlsx` exported
+again tomorrow with three new rows is a different one. A filename answers neither question.
+
+**Content hash, not filename, not size, not modified time.** Hash the bytes on upload —
+`sha256` over the stored file, the same way `media_asset` already does for attachments — and
+store it on `import_run` with a unique index per org. A second upload of identical bytes finds
+the existing run.
+
+Three consequences worth settling now rather than discovering later:
+
+| Question | Answer |
+|---|---|
+| Re-upload of identical bytes | **Refuse with a pointer to the original run**, not a silent success. "Already imported on 12 March as run #41, 812 rows" is useful; a duplicate-but-fine is how a double import gets noticed a week later |
+| Same content, different org | Different import. Hashes are scoped per org — cross-tenant dedup would leak the existence of one tenant's file into another's |
+| Deliberate re-import | An explicit `force` flag. It exists because the legitimate case is real — a mapping was wrong and the run is being redone — and because without it people rename the file to get past the check, which defeats the whole mechanism |
+
+**Hashing the file is not the same as deduplicating rows**, and both are needed. Two different
+files usually overlap: yesterday's export and today's share 800 of 803 rows. That is what the
+identity-resolution and merge stages below are for — the file hash stops the *whole file* being
+processed twice, and identity rules stop the same *person* becoming two contacts. Neither
+replaces the other. The previous system had neither, which is how one candidate became several
+contacts (M8).
+
+Hash the bytes **as received**, before any parsing. A spreadsheet re-saved by Excel without any
+edit will hash differently, and that is acceptable: it is a genuinely different file, and the
+row-level identity rules catch the overlap.
+
 ## The specific fixes
 
 ### Server-side only (M3)

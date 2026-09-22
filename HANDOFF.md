@@ -157,7 +157,7 @@ Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 255 
 | — | The `.env` `API_KEY` is a **bootstrap credential**: provisioning only, refused on data |
 | — | The UI **forwards the user's session**; it holds no machine credential |
 
-Parked decisions with trigger conditions: **D-1 … D-15** in [`docs/21-deferred.md`](docs/21-deferred.md).
+Parked decisions with trigger conditions: **D-1 … D-16** in [`docs/21-deferred.md`](docs/21-deferred.md).
 **D-14 blocks the only end-to-end proof that media works** — everything downstream of the
 download is tested; the download itself has never met a real WhatsApp file.
 
@@ -169,6 +169,7 @@ download is tested; the download itself has never met a real WhatsApp file.
 |---|---|
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
 | **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end |
+| Pacing has no window | A message held back by the anti-ban gate is indistinguishable from one whose sender is disconnected — both sit at `queued`, and only the gateway log says which. Fine for one operator, wrong for campaigns, where "why has this not gone?" is the first question asked |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |

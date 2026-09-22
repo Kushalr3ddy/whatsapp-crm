@@ -483,3 +483,43 @@ renders on github.com.
 **When it is built:** generate from `docs/` rather than copying. Two sources of truth for a
 sentence is how one of them becomes wrong, and this project has already had that happen with
 the API document claiming an OpenAPI endpoint that did not exist.
+
+---
+
+## D-16 · The legal surface: terms, privacy policy, and recorded consent
+
+**What:** the things a product has to put in front of a person before it may act for them —
+terms and conditions accepted at signup, a privacy policy, and a **record** of who accepted
+which version and when. Distinct from **D-2**, which is the regulatory machinery (data
+residency, DPDP consent enforcement for messaging, DLT registration); this is the front door.
+
+**Why parked:** there is no signup. Accounts are provisioned with `npm run admin`, by the
+person who owns the deployment, for people they already employ. There is nobody to show terms
+to yet, and terms written before the product's shape settles would be rewritten anyway.
+
+**What brings it back — any one of these, and the first is close:**
+
+1. **Self-service signup**, or any account created by someone other than the operator.
+2. **The repository going public** (see **D-3**, licence) — a self-hosted product ships terms
+   its operators can adapt, not none at all.
+3. **The first tenant that is not us.** The moment this holds another organisation's contact
+   data, acceptance stops being a formality and becomes the basis for processing it.
+
+**Shape when it arrives, so it is not re-derived:**
+
+| Decision | Leaning |
+|---|---|
+| Where acceptance lives | Its own table — `terms_acceptance(user_id, version, accepted_at, ip)`. **Not a boolean on `app_user`:** a boolean cannot answer "which version did they agree to?", and that is the only question that matters when the terms change |
+| Versioning | Terms are versioned and immutable once published. Re-acceptance is a new row, never an update |
+| Blocking | Unaccepted current terms blocks the app, not the login — someone must be able to sign in to accept them |
+| Audit | `terms.accepted` in the existing `audit_log`, same as every other act |
+
+**The disclosure that is specific to this product, and the reason this is not boilerplate:**
+**Baileys is unofficial and using it violates WhatsApp's Terms of Service.** A number can be
+banned permanently with no appeal. Any terms this project ships must say so plainly to the
+operator — hiding it would be both dishonest and useless, since the operator is the one whose
+number is at risk. `docs/08-antiban.md` already carries the technical half of that sentence;
+this is the half that has to be said out loud to a human before they link a number.
+
+**Cost of deferring:** low while the only users are the operator's own staff, and sharp the day
+someone else's data arrives — acceptance cannot be backdated, so a gap is permanent.

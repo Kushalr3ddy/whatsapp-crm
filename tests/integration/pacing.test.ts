@@ -148,6 +148,45 @@ describe('rate windows, counted from what was actually sent', () => {
     expect(decision.allowed).toBe(true);
   });
 
+  it('refuses at the hourly ceiling, between the minute and the day', async () => {
+    // 200/hour sits between two limits that have config knobs and one that does not. Untested
+    // it would be the ceiling nobody notices is missing until a number is gone.
+    await alreadySent(30 * 60 * 1000, 200);
+    const decision = await checkSendAllowance(db, senderId, {
+      ...limits, perMinute: 1000, warmupStartedAt: new Date(Date.now() - 30 * 86_400_000)
+    });
+
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.reason).toBe('per_hour');
+  });
+
+  it('applies an override through the real allowance check, not just the ceiling maths', async () => {
+    // dailyCeiling is unit-tested; this asserts the override actually reaches it from the
+    // sender row, which is the part a refactor would silently break.
+    await alreadySent(2 * 60 * 60 * 1000, 5);
+    const decision = await checkSendAllowance(db, senderId, {
+      ...limits, perMinute: 1000, dailyCapOverride: 5,
+      warmupStartedAt: new Date(Date.now() - 30 * 86_400_000)
+    });
+
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.detail).toContain('5');
+  });
+
+  it('counts only this sender, not the whole org', async () => {
+    // Two numbers on one org must not throttle each other; that is what a per-org ceiling
+    // would be for, and it does not exist yet.
+    const other = (await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${orgId}, 'fake', 'other', 'active') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    await alreadySent(5_000, 8);
+
+    const decision = await checkSendAllowance(db, other, {
+      ...limits, warmupStartedAt: new Date(Date.now() - 30 * 86_400_000)
+    });
+    expect(decision.allowed).toBe(true);
+  });
+
   it('stops at the daily ceiling for a warming number', async () => {
     await alreadySent(6 * 60 * 60 * 1000, 20);
     const decision = await checkSendAllowance(db, senderId, { ...limits, perMinute: 1000 });
