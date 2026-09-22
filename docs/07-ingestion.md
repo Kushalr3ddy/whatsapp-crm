@@ -84,6 +84,34 @@ Hash the bytes **as received**, before any parsing. A spreadsheet re-saved by Ex
 edit will hash differently, and that is acceptable: it is a genuinely different file, and the
 row-level identity rules catch the overlap.
 
+### Not every source is a file, and the hash does not fit all of them
+
+The connectors listed above split into two shapes, and they need **different** duplicate
+protection. Conflating them is how a live sheet either re-imports forever or stops syncing.
+
+| Source | Shape | What stops a duplicate |
+|---|---|---|
+| `csv` `excel` `jsonl` | A file someone uploads | **Content hash**, as above. Built for `csv` |
+| `s3-folder` | Files, discovered rather than uploaded | Content hash, per object |
+| `gsheets` | A live document that changes under you | **Cursor**, not a hash. Hashing works only to skip an *unchanged* sheet; once a cell moves the hash is new while 900 rows are not |
+| `rest` | A paginated pull | **Cursor** — `updated_since`, or the provider's page token |
+| `webhook` | Records pushed one at a time | **Per-record idempotency key**. There is no file to hash, and the same record will legitimately arrive twice |
+| `database` | A query against someone's schema | Cursor on a monotonic column |
+
+**Two layers, and both are always needed.** The file hash stops the *whole file* being
+processed twice. Identity resolution stops the same *person* becoming two contacts — and that
+one applies to every source, including the ones with no hash at all, because yesterday's export
+and today's overlap by 800 of 803 rows. Neither replaces the other.
+
+So a live source that has no hash is not unprotected: it re-reads rows, and identity resolution
+recognises the people. What it loses is the cheap "nothing has changed, skip the whole thing"
+answer, which is what a cursor buys back.
+
+**For a webhook specifically**, the idempotency key is the sender's record id carried on an
+`external` identity — the same mechanism `message.provider_message_id` already uses to make a
+redelivered WhatsApp notification a no-op at the database level rather than in application code
+where it could race.
+
 ## The specific fixes
 
 ### Server-side only (M3)
