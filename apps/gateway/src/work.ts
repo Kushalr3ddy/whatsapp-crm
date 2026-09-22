@@ -1,8 +1,12 @@
 import { sql } from 'drizzle-orm';
-import type { Database } from '@crm/db';
+import { setTenant, type Database, type Transaction } from '@crm/db';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
-import { markMessageFailed, markMessageSent, checkSendAllowance } from '@crm/core';
+import {
+  markMessageFailed, markMessageSent, checkSendAllowance,
+  dispatchCampaign, reconcileCampaign, dailyCeiling
+} from '@crm/core';
 import type { Logger } from '@crm/shared';
+import type { KmsDriver } from '@crm/kms-local';
 
 /** A queued outbound message, joined to everything needed to actually send it. */
 interface QueuedSend {
@@ -29,6 +33,11 @@ interface PendingLink {
 /** Everything the work handlers need. Passed in, never imported, so they stay testable. */
 export interface WorkContext {
   readonly db: Database;
+  /**
+   * Encrypts a campaign body on its way into a message. Absent in contexts that never
+   * dispatch a campaign, which is most tests.
+   */
+  readonly kms?: KmsDriver;
   readonly provider: ChannelProvider;
   readonly logger: Logger;
   /** Decrypts a stored message body back to text for sending. */
@@ -182,6 +191,85 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
 }
 
 /**
+ * Turns campaign recipients into queued messages, never faster than the ceiling allows.
+ *
+ * **This is what stops a campaign being a ban.** A campaign does not queue its messages at
+ * launch: the `campaign_recipient` rows are the queue, and this converts only as many as the
+ * sender may still send today. Everything downstream — the pacing gate in `handleSend` — then
+ * applies unchanged, so there is no second path to a provider and no way for a campaign to
+ * bypass the gates (M12).
+ *
+ * It also keeps a campaign from burying an agent's reply: only a day's worth of campaign
+ * messages is ever sitting in the send queue at once.
+ */
+export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
+  if (!ctx.kms) return 0;
+
+  const rows = await ctx.db.execute(sql`
+    SELECT c.id, c.org_id AS "orgId", c.body, c.sender_identity_id AS "senderIdentityId",
+           si.warmup_started_at AS "warmupStartedAt",
+           si.daily_cap_override AS "dailyCapOverride"
+    FROM campaign c
+    JOIN sender_identity si ON si.id = c.sender_identity_id
+    WHERE c.status = 'running'
+    ORDER BY c.started_at ASC
+    LIMIT 20`);
+
+  let queued = 0;
+  for (const campaign of rows as unknown as Array<{
+    id: string; orgId: string; body: string; senderIdentityId: string;
+    warmupStartedAt: string | null; dailyCapOverride: number | null;
+  }>) {
+    const tenant = tenantRunner(ctx, campaign.orgId);
+
+    // What this sender may still send today, after everything it has already sent —
+    // including replies an agent sent by hand. A campaign gets the remainder, never a
+    // separate allowance of its own.
+    const usage = await ctx.db.execute(sql`
+      SELECT count(*) FILTER (WHERE m.sent_at > now() - interval '1 day')::int AS "sentToday",
+             count(*) FILTER (WHERE m.status = 'queued')::int AS "alreadyQueued",
+             max(m.sent_at) AS "lastSentAt"
+      FROM message m JOIN conversation v ON v.id = m.conversation_id
+      WHERE v.sender_identity_id = ${campaign.senderIdentityId} AND m.direction = 'outbound'`);
+    const u = (usage as unknown as Array<{
+      sentToday: number; alreadyQueued: number; lastSentAt: string | null;
+    }>)[0]!;
+
+    const ceiling = dailyCeiling(
+      {
+        perMinute: ctx.limits.perMinute, perDay: ctx.limits.perDay,
+        dailyCapOverride: campaign.dailyCapOverride,
+        warmupStartedAt: campaign.warmupStartedAt === null
+          ? null : new Date(campaign.warmupStartedAt)
+      },
+      u.lastSentAt === null ? null : new Date(u.lastSentAt),
+      new Date()
+    );
+    // Messages already waiting count against the allowance, or a sweep every few seconds
+    // would queue the whole audience before the first one had gone out.
+    const room = Math.max(0, ceiling - u.sentToday - u.alreadyQueued);
+
+    if (room > 0) {
+      queued += await dispatchCampaign(tenant, ctx.kms, {
+        orgId: campaign.orgId, campaignId: campaign.id,
+        senderIdentityId: campaign.senderIdentityId, body: campaign.body, limit: room
+      });
+    }
+    await tenant((tx) => reconcileCampaign(tx, campaign.orgId, campaign.id));
+  }
+  return queued;
+}
+
+/** A tenant-scoped runner for the gateway, which has no request to take one from. */
+function tenantRunner(ctx: WorkContext, orgId: string) {
+  return <T>(work: (tx: Transaction) => Promise<T>): Promise<T> =>
+    ctx.db.transaction(async (tx) => {
+      await setTenant(tx, orgId);
+      return work(tx);
+    });
+}
+
+/**
  * Picks up work left behind while this process was down.
  *
  * The reason the command channel is a durable table and not only a NOTIFY: a notification sent
@@ -201,6 +289,10 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
     ORDER BY created_at ASC LIMIT 200`);
   const sends = (sendRows as unknown as Array<{ id: string }>).map((r) => r.id);
   for (const id of sends) await handleSend(ctx, id);
+
+  // After sending, not before: a campaign tops the queue up with whatever allowance is left
+  // once this sweep's sends have been accounted for.
+  await dispatchCampaigns(ctx);
 
   return { links: links.length, sends: sends.length };
 }

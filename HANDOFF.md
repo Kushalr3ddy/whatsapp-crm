@@ -32,13 +32,14 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P4 | Inbox | **partial** |
 | P5 | Ingestion — CSV import | **first slice** |
 | P6 | Anti-ban — warmup, rate ceilings, jitter | **layers 1–2 of 6** |
-| P7 | Campaigns · P8 Meta | not started |
+| P7 | Campaigns — bulk send, paced | **first slice** |
+| P8 | Meta Cloud API | not started |
 
 **P1 is marked done but is not.** `infra/compose/` holds only a `.gitkeep`, so
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**313 tests in 23 files · 77 source files · 16 of 35 specced tables · 11 migrations · 63 commits.**
+**330 tests in 24 files · 79 source files · 20 of 35 specced tables · 12 migrations · 67 commits.**
 
 ### What actually works
 
@@ -64,6 +65,11 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
 - **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
   transfer starts so an abandoned download still counts. Inbox listing is deliberately not
   audited.
+- **Campaigns (P7, first slice)**: create a draft, freeze the audience at start, and the
+  gateway converts recipients into messages **only as fast as the anti-ban ceiling allows**.
+  Recipients are the queue, so pausing is instant and a campaign cannot bury an agent's reply.
+  The start response forecasts how many days it will take. Cancelled recipients are marked
+  skipped with a reason, never dropped.
 - **CSV import (P5, first slice)**: upload → dry run → commit. **Content-hash dedup**, so the
   same file cannot import twice whatever it is named; a deliberate re-import supersedes the
   old run. Ordered identity rules, phone normalisation on the way in, a per-row ledger, and a
@@ -261,18 +267,22 @@ download is tested; the download itself has never met a real WhatsApp file.
 
 ## Next
 
-1. **Show attachments in the inbox.** The API serves them and the UI does not yet render the
+1. **A `POST /contacts` route.** `contacts:write` is an enforceable scope with nothing behind
+   it, so a contact can only be created by an inbound message, a one-off send, or a CSV
+   import. It is what JobPortal needs to push a candidate over HTTP.
+2. **Show attachments in the inbox.** The API serves them and the UI does not yet render the
    `media` object on a message — a download link and a filename is the whole job. Then
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
    stop being text-only.
-2. **Finish P4** — assignment, collision detection, notes, canned replies, search, realtime.
+3. **Finish P4** — assignment, collision detection, notes, canned replies, search, realtime.
    `conversation.assignee_user_id` exists and nothing populates it, so an agent and an admin
    see the same inbox. `conversation_participant` (`docs/05-data-model.md`) is what powers
    collision detection: knowing someone else is already in a thread, so two people do not
    answer the same candidate fifteen seconds apart.
-3. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
+4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
    contract suite like storage now has.
-4. **P6 anti-ban before any bulk send.** Not optional.
-5. **Deployment**, which is also when the production database gets decided. Note:
+5. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health
+   scoring. Layers 1–2 exist; a campaign is capped but still sends at a machine's rhythm.
+6. **Deployment**, which is also when the production database gets decided. Note:
    **`ENCRYPTION_KEY` must be backed up separately from the database** — losing it means losing
    every linked number and every stored message, permanently.

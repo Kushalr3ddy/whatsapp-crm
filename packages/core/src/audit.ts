@@ -104,7 +104,14 @@ export const AUDIT = {
   // acts: one stores somebody's spreadsheet, the other changes the contact database.
   importUploaded: 'import.uploaded',
   importDryRun: 'import.dry_run',
-  importCommitted: 'import.committed'
+  importCommitted: 'import.committed',
+
+  // Campaigns. Starting one is the act worth recording — it is the moment an audience is
+  // frozen and a number commits to sending to all of them.
+  campaignCreated: 'campaign.created',
+  campaignStarted: 'campaign.started',
+  campaignPaused: 'campaign.paused',
+  campaignCancelled: 'campaign.cancelled'
 } as const;
 
 /**

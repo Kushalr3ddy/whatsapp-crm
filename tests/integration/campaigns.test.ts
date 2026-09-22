@@ -1,0 +1,347 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { randomBytes } from 'node:crypto';
+import request from 'supertest';
+import { sql } from 'drizzle-orm';
+import {
+  createDatabase, inspectDatabaseSecurity, resolveTenantRole, type Database
+} from '@crm/db';
+import { LocalKms } from '@crm/kms-local';
+import { FakeChannelProvider } from '@crm/channel-fake';
+import { BuiltinPasswordHasher } from '@crm/auth-builtin';
+import { issueApiKey } from '@crm/core';
+import { createLogger, type Config } from '@crm/shared';
+import { buildApp } from '../../apps/api/src/app.js';
+import { dispatchCampaigns, type WorkContext } from '../../apps/gateway/src/work.js';
+import { tempStorage, type TempStorage } from '../fixtures/storage.js';
+
+/**
+ * Campaigns (P7, first slice).
+ *
+ * The thing under test is not "can it send to a list" — that part is easy. It is that a
+ * campaign **cannot outrun the anti-ban ceiling**, cannot bury an agent's reply, and can be
+ * stopped instantly. A bulk sender that ignores the ceiling is how the number is lost, and the
+ * number has no recovery path.
+ */
+const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
+const API_KEY = randomBytes(32).toString('hex');
+const kms = new LocalKms({
+  keyHex: randomBytes(32).toString('hex'), indexKeyHex: randomBytes(32).toString('hex')
+});
+const config = {
+  PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test',
+  API_KEY, DEFAULT_COUNTRY: 'IN', SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+} as unknown as Config;
+const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
+
+let db: Database;
+let app: ReturnType<typeof buildApp>;
+let media: TempStorage;
+let orgId: string;
+let senderId: string;
+let key: string;
+let contactIds: string[];
+
+beforeAll(async () => {
+  db = createDatabase(url, { max: 6 });
+  media = tempStorage('crm-campaigns');
+  const tenantRole = await resolveTenantRole(db, await inspectDatabaseSecurity(db));
+  app = buildApp({
+    config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole,
+    storage: media.storage
+  });
+});
+afterAll(async () => { await db.$client.end(); media.cleanup(); });
+
+beforeEach(async () => {
+  await db.execute(sql`DELETE FROM org`);
+  orgId = (await db.execute(sql`
+    INSERT INTO org(name,slug) VALUES ('c','campaigns') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+  senderId = (await db.execute(sql`
+    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
+    VALUES (${orgId}, 'fake', 'blaster', '+919000000001', 'active', now() - interval '30 days')
+    RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+
+  // Ten reachable people, plus one with no phone number at all.
+  contactIds = [];
+  for (let i = 0; i < 10; i++) {
+    const c = (await db.execute(sql`
+      INSERT INTO contact (org_id, display_name, source)
+      VALUES (${orgId}, ${`Person ${String(i)}`}, 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    await db.execute(sql`
+      INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
+      VALUES (${orgId}, ${c}, 'phone', ${`+9198765000${String(i).padStart(2, '0')}`}, true)`);
+    contactIds.push(c);
+  }
+  const unreachable = (await db.execute(sql`
+    INSERT INTO contact (org_id, display_name, source)
+    VALUES (${orgId}, 'No Phone', 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+  contactIds.push(unreachable);
+
+  key = (await issueApiKey(db, {
+    orgId, name: 'campaigns', scopes: ['messages:send', 'conversations:read']
+  })).secret;
+});
+
+const auth = () => ['Authorization', `Bearer ${key}`] as const;
+
+/** Creates a draft campaign over the given contacts. */
+const create = (ids: string[] = contactIds, body = 'hello there') =>
+  request(app).post('/api/v1/campaigns').set(...auth())
+    .send({ name: 'outreach', body, senderIdentityId: senderId, explicitContactIds: ids });
+
+/** A gateway context whose sends are fake and whose jitter costs nothing. */
+function gatewayCtx(): WorkContext {
+  return {
+    db, provider: new FakeChannelProvider(), logger, kms,
+    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
+    limits: { perMinute: 8, perDay: 1500 }
+  };
+}
+
+describe('creating one', () => {
+  it('creates a draft and sends nothing', async () => {
+    const r = await create();
+    expect(r.status).toBe(201);
+    expect(r.body.data.status).toBe('draft');
+
+    // A draft has no audience yet and no messages. Creating is not committing.
+    const messages = await db.execute(sql`
+      SELECT count(*)::int AS n FROM message WHERE org_id = ${orgId}`);
+    expect((messages as unknown as Array<{ n: number }>)[0]!.n).toBe(0);
+  });
+
+  it('insists the audience is stated exactly once', async () => {
+    // Never "everyone" implicitly: a campaign that silently grows is one whose cost and risk
+    // nobody can predict.
+    const neither = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'x', body: 'y', senderIdentityId: senderId });
+    expect(neither.status).toBe(422);
+
+    const both = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({
+        name: 'x', body: 'y', senderIdentityId: senderId,
+        explicitContactIds: contactIds, fromImportRunId: '00000000-0000-4000-8000-00000000beef'
+      });
+    expect(both.status).toBe(422);
+  });
+
+  it('refuses a sender belonging to someone else', async () => {
+    const other = (await db.execute(sql`
+      INSERT INTO org(name,slug) VALUES ('d','campaigns-2') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    const theirSender = (await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${other}, 'fake', 'theirs', 'active') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+
+    const r = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'x', body: 'y', senderIdentityId: theirSender, explicitContactIds: contactIds });
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('starting one', () => {
+  it('freezes the audience and reports an unreachable contact rather than dropping it', async () => {
+    const created = await create();
+    const r = await request(app)
+      .post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+
+    expect(r.status).toBe(200);
+    // Eleven in, ten sendable, one skipped with a reason. The totals have to add up, or an
+    // operator stops trusting them.
+    expect(r.body.data.progress).toMatchObject({ total: 11, pending: 10, skipped: 1 });
+
+    const skipped = await db.execute(sql`
+      SELECT skip_reason AS "skipReason" FROM campaign_recipient
+      WHERE campaign_id = ${created.body.data.id} AND status = 'skipped'`);
+    expect((skipped as unknown as Array<{ skipReason: string }>)[0]!.skipReason).toBe('no_phone');
+  });
+
+  it('tells you how long it will take, before it starts', async () => {
+    const created = await create();
+    const r = await request(app)
+      .post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+
+    // The number an operator needs at the moment of starting, not afterwards.
+    expect(r.body.data.outlook).toMatchObject({ remaining: 10, daysToFinish: 0 });
+    expect(r.body.data.outlook.allowanceToday).toBeGreaterThan(0);
+  });
+
+  it('warns when the sender is still warming up', async () => {
+    // A 5,000-person campaign on a four-day-old number is a months-long proposition, and that
+    // must never be a surprise discovered after starting.
+    await db.execute(sql`
+      UPDATE sender_identity SET warmup_started_at = now() - interval '1 day'
+      WHERE id = ${senderId}`);
+
+    const created = await create();
+    const r = await request(app)
+      .post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+
+    expect(r.body.data.outlook.inWarmup).toBe(true);
+    expect(r.body.data.outlook.allowanceToday).toBeLessThanOrEqual(36);
+  });
+
+  it('does not re-snapshot when a paused campaign resumes', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    await request(app).post(`/api/v1/campaigns/${id}/pause`).set(...auth());
+
+    // Somebody new arrives while it is paused. They must not silently join an audience that
+    // was already approved.
+    const late = (await db.execute(sql`
+      INSERT INTO contact (org_id, display_name, source)
+      VALUES (${orgId}, 'Latecomer', 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    await db.execute(sql`
+      INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
+      VALUES (${orgId}, ${late}, 'phone', '+919876511111', true)`);
+
+    const resumed = await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    expect(resumed.body.data.progress.total).toBe(11);
+  });
+});
+
+describe('the ceiling holds', () => {
+  it('queues only what the sender may still send today', async () => {
+    // The whole point. Ten recipients, a ceiling of four — four messages, not ten.
+    await db.execute(sql`
+      UPDATE sender_identity SET daily_cap_override = 4 WHERE id = ${senderId}`);
+    const created = await create();
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+
+    const queued = await dispatchCampaigns(gatewayCtx());
+    expect(queued).toBe(4);
+
+    const messages = await db.execute(sql`
+      SELECT count(*)::int AS n FROM message WHERE org_id = ${orgId} AND status = 'queued'`);
+    expect((messages as unknown as Array<{ n: number }>)[0]!.n).toBe(4);
+  });
+
+  it('counts messages already waiting against the allowance', async () => {
+    // Without this a sweep every few seconds would queue the whole audience before the first
+    // message had gone out — the ceiling would be enforced on sends but not on the queue.
+    await db.execute(sql`
+      UPDATE sender_identity SET daily_cap_override = 4 WHERE id = ${senderId}`);
+    const created = await create();
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+
+    await dispatchCampaigns(gatewayCtx());
+    const second = await dispatchCampaigns(gatewayCtx());
+    expect(second).toBe(0);
+  });
+
+  it('leaves the rest pending rather than failing them', async () => {
+    await db.execute(sql`
+      UPDATE sender_identity SET daily_cap_override = 4 WHERE id = ${senderId}`);
+    const created = await create();
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+    await dispatchCampaigns(gatewayCtx());
+
+    const r = await request(app).get(`/api/v1/campaigns/${created.body.data.id}`).set(...auth());
+    expect(r.body.data.progress).toMatchObject({ queued: 4, pending: 6 });
+    // Still running: there is more to do tomorrow.
+    expect(r.body.data.status).toBe('running');
+  });
+
+  it('never dispatches a campaign that is not running', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    await request(app).post(`/api/v1/campaigns/${id}/pause`).set(...auth());
+
+    expect(await dispatchCampaigns(gatewayCtx())).toBe(0);
+  });
+});
+
+describe('stopping one', () => {
+  it('pauses instantly, because pending recipients are simply not dispatched', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+
+    const paused = await request(app).post(`/api/v1/campaigns/${id}/pause`).set(...auth());
+    expect(paused.body.data.status).toBe('paused');
+
+    const r = await request(app).get(`/api/v1/campaigns/${id}`).set(...auth());
+    // Nothing was queued, so nothing has to be unqueued.
+    expect(r.body.data.progress.pending).toBe(10);
+    expect(r.body.data.progress.queued).toBe(0);
+  });
+
+  it('cancels by marking the rest skipped, so the totals still add up', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    await request(app).post(`/api/v1/campaigns/${id}/cancel`).set(...auth());
+
+    const r = await request(app).get(`/api/v1/campaigns/${id}`).set(...auth());
+    expect(r.body.data.status).toBe('cancelled');
+    expect(r.body.data.progress).toMatchObject({ pending: 0, total: 11 });
+
+    const reasons = await db.execute(sql`
+      SELECT count(*)::int AS n FROM campaign_recipient
+      WHERE campaign_id = ${id} AND skip_reason = 'cancelled'`);
+    expect((reasons as unknown as Array<{ n: number }>)[0]!.n).toBe(10);
+  });
+
+  it('will not restart something that was cancelled', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    await request(app).post(`/api/v1/campaigns/${id}/cancel`).set(...auth());
+
+    const again = await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    expect(again.status).toBe(409);
+  });
+});
+
+describe('finishing', () => {
+  it('completes once every recipient has been dealt with', async () => {
+    const created = await create(contactIds.slice(0, 3));
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    await dispatchCampaigns(gatewayCtx());
+
+    // Pretend the gateway sent them.
+    await db.execute(sql`
+      UPDATE message SET status = 'sent', sent_at = now()
+      WHERE org_id = ${orgId} AND status = 'queued'`);
+    await dispatchCampaigns(gatewayCtx());
+
+    const r = await request(app).get(`/api/v1/campaigns/${id}`).set(...auth());
+    expect(r.body.data.status).toBe('completed');
+    expect(r.body.data.progress).toMatchObject({ sent: 3, pending: 0, queued: 0 });
+  });
+
+  it('puts campaign messages in the contact’s existing thread', async () => {
+    // A campaign message belongs in the same conversation as everything else, not in a
+    // parallel history an agent cannot see.
+    const created = await create(contactIds.slice(0, 1));
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+    await dispatchCampaigns(gatewayCtx());
+
+    const rows = await db.execute(sql`
+      SELECT count(*)::int AS n FROM conversation
+      WHERE org_id = ${orgId} AND contact_id = ${contactIds[0]!}`);
+    expect((rows as unknown as Array<{ n: number }>)[0]!.n).toBe(1);
+
+    const tagged = await db.execute(sql`
+      SELECT campaign_id AS "campaignId" FROM message WHERE org_id = ${orgId}`);
+    expect((tagged as unknown as Array<{ campaignId: string }>)[0]!.campaignId)
+      .toBe(created.body.data.id);
+  });
+});
+
+describe('isolation', () => {
+  it('will not show another tenant’s campaign', async () => {
+    const created = await create();
+    const other = (await db.execute(sql`
+      INSERT INTO org(name,slug) VALUES ('e','campaigns-3') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    const otherKey = (await issueApiKey(db, {
+      orgId: other, name: 'other', scopes: ['conversations:read']
+    })).secret;
+
+    const r = await request(app).get(`/api/v1/campaigns/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${otherKey}`);
+    expect(r.status).toBe(404);
+  });
+});

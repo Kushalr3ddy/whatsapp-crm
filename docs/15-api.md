@@ -74,7 +74,7 @@ Branch on `code`, never on `detail`.
 
 ## What exists today
 
-**Nine endpoints, plus two unauthenticated health checks.** Everything else in this document
+**Seventeen endpoints, plus two unauthenticated health checks.** Everything else in this document
 is design, not implementation — the `Resources` list below is the intended surface, and the
 `Sending a message` example shows the shape it will take once the dispatcher exists, **not**
 what the endpoint accepts now.
@@ -90,6 +90,13 @@ what the endpoint accepts now.
 | `GET` | `/api/v1/conversations` | Includes `contactPhone` and `queuedCount` |
 | `GET` | `/api/v1/conversations/:id/messages` | Bodies decrypted for display. Carries `media` and `mediaUnavailable` |
 | `GET` | `/api/v1/media/:id` | Streams one attachment. Always a download — see below |
+| `POST` | `/api/v1/imports` | `text/csv` body → stores it, content-hash dedup, 409 on a repeat |
+| `POST` | `/api/v1/imports/:id/run` | `{mapping, dryRun}` → dry run by default |
+| `GET` | `/api/v1/imports/:id` | Summary plus the rows that failed |
+| `POST` | `/api/v1/campaigns` | Creates a **draft**. Sends nothing |
+| `POST` | `/api/v1/campaigns/:id/start` | Freezes the audience, returns a forecast |
+| `POST` | `/api/v1/campaigns/:id/pause` · `/cancel` | Stops it. Pause is instant |
+| `GET` | `/api/v1/campaigns` · `/:id` | Progress by status, and days remaining |
 | `POST` | `/api/v1/messages` | **`{to \| conversationId, body, senderId?}`** → 202. See the note below |
 | `POST` | `/api/v1/auth/login` | Public. `{email, password}` → session + CSRF cookies |
 | `POST` | `/api/v1/auth/logout` | Ends the session, clears both cookies |
@@ -172,6 +179,24 @@ the only check there is. Another tenant's attachment answers **404**, not 403: s
 
 Each download is recorded in the audit log as `media.downloaded`, and opening a thread as
 `conversation.read` (`docs/21-deferred.md`, D-13).
+
+### Campaigns send at the ceiling, not on demand
+
+`POST /campaigns/:id/start` **queues nothing**. It freezes the audience into
+`campaign_recipient` rows, and the gateway converts those into messages only as fast as that
+sender's remaining daily allowance permits — so the response includes a forecast:
+
+```json
+{ "status": "running",
+  "progress": { "total": 5000, "pending": 4999, "skipped": 1 },
+  "outlook": { "remaining": 4999, "allowanceToday": 117, "daysToFinish": 42,
+               "inWarmup": true } }
+```
+
+**Read `daysToFinish` before you start.** A large campaign on a number that is days old is a
+months-long proposition, because the warmup ramp is a hard ceiling nothing can raise
+(`docs/08-antiban.md`). Recipients with no phone number come back as `skipped` with a reason
+rather than quietly reducing the total.
 
 Worked examples with real responses, including every failure case, are in
 [Trying it by hand](#trying-it-by-hand-insomnia-postman-curl) at the end of this document.

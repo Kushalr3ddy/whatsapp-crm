@@ -38,3 +38,8 @@ export {
   runImport,
   type ImportMapping, type ImportSummary, type RowOutcome, type Transform, type TenantWork
 } from './ingestion.js';
+
+export {
+  campaignProgress, forecast, snapshotAudience, dispatchCampaign, reconcileCampaign,
+  type CampaignProgress, type CampaignForecast
+} from './campaigns.js';

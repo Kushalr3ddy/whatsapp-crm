@@ -359,6 +359,9 @@ export const message = pgTable('message', {
   // message whose bytes were never retrieved — the content type still says `image`, so the
   // inbox can say an attachment exists and could not be fetched rather than showing nothing.
   mediaId: uuid('media_id').references(() => mediaAsset.id, { onDelete: 'set null' }),
+
+  /** Which campaign sent this, if any. Null for a reply or a one-off send. */
+  campaignId: uuid('campaign_id').references(() => campaign.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
@@ -492,4 +495,74 @@ export const importRowRecord = pgTable('import_row', {
 }, (t) => [
   uniqueIndex('import_row_number_uidx').on(t.importRunId, t.rowNumber),
   index('import_row_outcome_idx').on(t.importRunId, t.outcome)
+]);
+
+/**
+ * A bulk send.
+ *
+ * **The audience is always stated, never implied.** There is no "everyone" — a campaign names
+ * either an import run or an explicit list of contacts, because a campaign that silently grows
+ * when a contact is added is a campaign nobody can predict the cost or risk of.
+ */
+export const campaign = pgTable('campaign', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+
+  /** `draft` → `running` ⇄ `paused` → `completed`, or `cancelled`. */
+  status: text('status').notNull().default('draft'),
+
+  /**
+   * What to send. Plain text for now — `message_template` and its approval flow do not exist
+   * yet, and a campaign that cannot say anything is not worth having in the meantime.
+   */
+  body: text('body').notNull(),
+  /** Which number it sends from. One for now; `sender_pool` weighting is a later concern. */
+  senderIdentityId: uuid('sender_identity_id').notNull()
+    .references(() => senderIdentity.id, { onDelete: 'restrict' }),
+
+  /** The audience, stated one of two ways. Exactly one is set. */
+  fromImportRunId: uuid('from_import_run_id').references(() => importRun.id, { onDelete: 'set null' }),
+  explicitContactIds: jsonb('explicit_contact_ids'),
+
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('campaign_org_status_idx').on(t.orgId, t.status)
+]);
+
+/**
+ * One person in one campaign, and what became of them.
+ *
+ * **Snapshotted when the campaign starts**, so an import that grows afterwards cannot change
+ * who is being messaged mid-run.
+ *
+ * These rows are also the queue. A campaign does NOT create fifty thousand queued messages at
+ * launch — the dispatcher turns recipients into messages only as fast as the anti-ban ceiling
+ * allows. That is what makes pausing instant, keeps a campaign from burying an agent's reply
+ * in the send queue, and stops the pacing gate re-evaluating fifty thousand rows every sweep.
+ */
+export const campaignRecipient = pgTable('campaign_recipient', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  campaignId: uuid('campaign_id').notNull()
+    .references(() => campaign.id, { onDelete: 'cascade' }),
+  contactId: uuid('contact_id').notNull().references(() => contact.id, { onDelete: 'cascade' }),
+
+  /** `pending` → `queued` → `sent`, or `failed` / `skipped`. */
+  status: text('status').notNull().default('pending'),
+  /**
+   * Why this person was not messaged: `no_phone`, `duplicate`, `cancelled`.
+   * **A blocked recipient is reported, never silently dropped** — silent dropping is how an
+   * operator stops trusting the numbers.
+   */
+  skipReason: text('skip_reason'),
+  messageId: uuid('message_id').references(() => message.id, { onDelete: 'set null' }),
+  attemptedAt: timestamp('attempted_at', { withTimezone: true })
+}, (t) => [
+  // One row per person per campaign. Also what makes a re-run idempotent.
+  uniqueIndex('campaign_recipient_uidx').on(t.campaignId, t.contactId),
+  index('campaign_recipient_pending_idx').on(t.campaignId, t.status)
 ]);
