@@ -28,3 +28,8 @@ export {
   storeMedia, resolveMedia,
   type IncomingMedia, type StoredMedia, type ResolvedMedia
 } from './media.js';
+
+export {
+  checkSendAllowance, dailyCeiling, humanDelayMs,
+  type PacingLimits, type PacingDecision
+} from './pacing.js';

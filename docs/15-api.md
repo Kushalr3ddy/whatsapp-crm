@@ -276,10 +276,16 @@ See [`16-integration-jobportal.md`](16-integration-jobportal.md).
 
 ## Rate limits
 
-⬜ **Not built — and this is the one to be careful about.** There is no rate limiting
-anywhere: not per key, not per org, and **not in the send path**. The pacing that keeps a
-number alive is the anti-ban engine in P6. Until it exists, this API will send as fast as it
-is asked to (`docs/08-antiban.md`).
+✅ **Per key** — `rate_limit_per_min`, enforced, with `Retry-After` and `RateLimit-*` headers.
+In-process for now, so several replicas each count separately (P9).
+
+✅ **In the send path** — the gateway paces every outbound message: warmup ramp, per
+minute/hour/day ceilings, and a jittered pause. A paced message stays queued rather than
+failing, so **a 202 from this API means accepted, not imminent** — a large batch drains over
+hours by design (`docs/08-antiban.md`).
+
+⬜ **Per org** — not built. The remaining gap is one org's several keys or senders adding up
+to more traffic than any single ceiling allows.
 
 Per key, returned on every response:
 ```

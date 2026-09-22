@@ -24,7 +24,13 @@ let conversationId: string;
 
 /** Builds the context the gateway handlers take, with a fake WhatsApp behind it. */
 function ctxWith(provider: FakeChannelProvider) {
-  return { db, provider, logger, decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)) };
+  return {
+    db, provider, logger,
+    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
+    // High enough that the pacing gate never fires by accident; the tests that care about
+    // pacing set their own. Sleep is omitted so jitter costs these tests no real seconds.
+    limits: { perMinute: 1000, perDay: 10_000 }
+  };
 }
 
 /** Queues an outbound message the way the API will, and returns its id. */
@@ -230,7 +236,8 @@ describe('connection state', () => {
   }
 
   it('records an open socket, which is the only way to know a number is linked', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
     await applyConnectionEvent(ctx, {
       senderId, state: 'open', reason: null, at: new Date()
     });
@@ -242,7 +249,8 @@ describe('connection state', () => {
 
   it('promotes a sender that is still linking, so it becomes usable for sending', async () => {
     await db.execute(sql`UPDATE sender_identity SET status = 'linking' WHERE id = ${senderId}`);
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
 
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
 
@@ -258,7 +266,8 @@ describe('connection state', () => {
       VALUES (${senderId}, 'connecting', ${'{"mode":"qr","qr":"x"}'}::jsonb)
       ON CONFLICT (sender_identity_id) DO UPDATE
         SET link_challenge = ${'{"mode":"qr","qr":"x"}'}::jsonb`);
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
 
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
 
@@ -266,7 +275,8 @@ describe('connection state', () => {
   });
 
   it('demotes a logged-out number rather than leaving it looking active', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
     await applyConnectionEvent(ctx, {
       senderId, state: 'logged_out', reason: 'logged_out', at: new Date()
     });
@@ -278,7 +288,8 @@ describe('connection state', () => {
   });
 
   it('clears a stale open socket, which no running process is actually holding', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
     expect((await sessionRow()).state).toBe('open');
 
@@ -291,7 +302,8 @@ describe('connection state', () => {
   });
 
   it('keeps the last successful connection time across a later disconnect', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
     const connectedAt = (await sessionRow()).lastConnectedAt;
 

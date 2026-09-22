@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
-import { markMessageFailed, markMessageSent } from '@crm/core';
+import { markMessageFailed, markMessageSent, checkSendAllowance } from '@crm/core';
 import type { Logger } from '@crm/shared';
 
 /** A queued outbound message, joined to everything needed to actually send it. */
@@ -13,6 +13,9 @@ interface QueuedSend {
   readonly recipientValue: string;
   readonly recipientKind: string;
   readonly bodyEnc: Uint8Array | null;
+  /** Pacing inputs, read with the job so the gate costs no extra round trip. */
+  readonly warmupStartedAt: string | null;
+  readonly dailyCapOverride: number | null;
 }
 
 /** A pending request from the API to link a number. */
@@ -30,6 +33,17 @@ export interface WorkContext {
   readonly logger: Logger;
   /** Decrypts a stored message body back to text for sending. */
   readonly decrypt: (cipher: Uint8Array) => string;
+  /**
+   * Send ceilings, from config. Present so the anti-ban gate is configurable per deployment
+   * without a code change, and so tests can drive it to its limits in a few sends rather than
+   * fifteen hundred.
+   */
+  readonly limits: { readonly perMinute: number; readonly perDay: number };
+  /**
+   * Waits before a send. Injected so tests do not spend real seconds on jitter — production
+   * passes a real sleep, and skipping it entirely would defeat the point of the jitter.
+   */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -91,6 +105,8 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
   const rows = await ctx.db.execute(sql`
     SELECT m.id AS "messageId", m.org_id AS "orgId", m.body_enc AS "bodyEnc",
            si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
+           si.warmup_started_at AS "warmupStartedAt",
+           si.daily_cap_override AS "dailyCapOverride",
            ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
     FROM message m
     JOIN conversation v   ON v.id = m.conversation_id
@@ -120,6 +136,34 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       );
       return;
     }
+
+    // ── the anti-ban gate ────────────────────────────────────────────────────────────
+    // Nothing reaches a provider without passing this. It is the only thing between a loop
+    // and a permanently banned number, and it is a ceiling rather than a target
+    // (docs/08-antiban.md, P6 layers 1 and 2).
+    const pacing = await checkSendAllowance(ctx.db, job.senderIdentityId, {
+      perMinute: ctx.limits.perMinute,
+      perDay: ctx.limits.perDay,
+      dailyCapOverride: job.dailyCapOverride,
+      warmupStartedAt: job.warmupStartedAt === null ? null : new Date(job.warmupStartedAt)
+    });
+
+    if (!pacing.allowed) {
+      // Left queued, exactly like a disconnected sender: a message that is merely early is
+      // not a failed message, and failing it would lose it. The sweep retries.
+      ctx.logger.warn(
+        {
+          messageId, senderId: job.senderIdentityId, reason: pacing.reason,
+          retryAfterMs: pacing.retryAfterMs
+        },
+        `send paced: ${pacing.detail}`
+      );
+      return;
+    }
+
+    // The jittered pause. Deliberately before the send rather than after, so a burst arriving
+    // at once is spread out rather than going at once and then waiting.
+    if (ctx.sleep) await ctx.sleep(pacing.delayMs);
 
     const result = await ctx.provider.send(
       { id: job.senderIdentityId, phoneE164: job.senderPhone ?? '' },

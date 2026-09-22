@@ -62,6 +62,10 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
 - **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
   transfer starts so an abandoned download still counts. Inbox listing is deliberately not
   audited.
+- **Send pacing (P6 layers 1–2)**: warmup ramp (20/36/65/117/210/378/680 then steady), per
+  minute · hour · day ceilings, and a Gaussian-jittered 1.5–4 s pause before each send. Counted
+  from the `message` table, so it survives restarts and replicas. A paced message is left
+  queued, never failed. An override may only *lower* a ceiling.
 - **Row-level security on the request path**: every tenant query runs in a transaction with
   `app.org_id` set, and — because the app connects as a role that would otherwise bypass
   policies entirely — drops to the restricted `crm_app` role for the length of that
@@ -72,7 +76,8 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
 
 No **outbound** media — receiving and serving work; sending a file does not · no encryption at
 rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
-no campaigns or broadcast · **no rate limiting, warmup or pacing in the send path** · no Meta
+no campaigns or broadcast · **no anti-ban layers 3–6** — no typing simulation, circadian
+pacing, contact-graph gates or health scoring · no Meta
 adapter · no Excel import · no deployment.
 
 ---
@@ -80,8 +85,14 @@ adapter · no Excel import · no deployment.
 ## The honest risk
 
 Baileys is unofficial and violates WhatsApp's Terms of Service. A banned number is gone with no
-appeal. **There is still no rate limiting, warmup or pacing anywhere in the send path** — that
-is P6. Safe for a handful of messages to people who reply; unsafe pointed at a list.
+appeal. **Pacing now exists** — warmup, per minute/hour/day ceilings and jitter, enforced at the
+one point every send passes through — so a burst is capped rather than sent.
+
+That is a floor, not safety. Layers 3–6 are unbuilt (typing simulation, circadian pacing,
+contact-graph gates, health scoring, recovery), and the rule capping a number that has never
+*received* anything is deliberately deferred with **D-14** — which means **bulk from a number
+with no inbound is still the riskiest thing this system can do**, and that is exactly the
+number we have.
 
 ---
 

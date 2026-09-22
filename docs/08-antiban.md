@@ -36,6 +36,29 @@ which throttles volume, which reduces replies, which lowers the reply ratio, whi
 quality further. **Once started it is very hard to reverse** — so the engine is designed to
 brake early rather than recover late.
 
+## What is built, and what is not
+
+✅ **Layer 1 (warmup) and Layer 2 (rate limiting) are enforced** in
+`packages/core/src/pacing.ts`, called from `handleSend` in the gateway — the single point every
+outbound message passes through. A paced message is **left queued**, never failed: a message
+that is merely early has not gone wrong, and failing it would lose it.
+
+Counts come from the `message` table rather than an in-memory bucket. A bucket resets on
+restart and counts separately per replica, and `tsx watch` restarts the gateway on every file
+save — which would silently hand a developer an unlimited sender. The database already records
+what was sent and when, so it is the only source that cannot lie. The cache-driver buckets
+below (M13) are an optimisation for later, not a prerequisite.
+
+⬜ **Layers 3–6 are not built**: no typing simulation, no circadian pacing, no contact-graph
+multipliers, no health scoring, no recovery orchestration.
+
+⬜ **The "never received an inbound message is capped harder" rule is deliberately not
+implemented yet.** It is correct, and it is specced below — but inbound is currently broken
+(**D-14**), so every sender looks outbound-only and the rule would cap the entire system at 20
+sends a day. It lands with D-14, not before. **This is worth understanding rather than working
+around: bulk sending from a number that receives nothing is exactly the pattern the graph
+heuristics punish, so the risk is real even though the gate is not enforcing it.**
+
 ## Layer 1 — Warmup
 
 Per sender identity, from `warmup_started_at`. Exponential ramp, factor **1.8×/day**:
