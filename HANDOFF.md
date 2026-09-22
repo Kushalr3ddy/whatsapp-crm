@@ -144,7 +144,7 @@ Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 255 
 | — | The `.env` `API_KEY` is a **bootstrap credential**: provisioning only, refused on data |
 | — | The UI **forwards the user's session**; it holds no machine credential |
 
-Parked decisions with trigger conditions: **D-1 … D-14** in [`docs/21-deferred.md`](docs/21-deferred.md).
+Parked decisions with trigger conditions: **D-1 … D-15** in [`docs/21-deferred.md`](docs/21-deferred.md).
 **D-14 blocks the only end-to-end proof that media works** — everything downstream of the
 download is tested; the download itself has never met a real WhatsApp file.
 

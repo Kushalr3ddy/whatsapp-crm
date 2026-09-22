@@ -19,6 +19,48 @@ move fast — re-verify before quoting any of it externally.
 | **Chatwoot** | Open-source support inbox | Via integration | **Yes** | Excellent inbox; not WhatsApp-native, no campaign engine |
 | **Evolution API** | Open-source WhatsApp REST layer | Unofficial + official | **Yes** | ~9.2k stars; multi-instance; the de-facto OSS transport layer |
 | **Chatwoot + Evolution** | The OSS stack people actually assemble | Both | Yes | Two products stitched together; no unified campaign or anti-ban engine |
+| **wacrm** | Self-hosted WhatsApp CRM template | **Official only** | **Yes** | MIT, Next.js + Supabase, single-tenant. The closest thing to this project's shape — see below |
+
+### `wacrm` — the nearest neighbour (reviewed 2026-09-22)
+
+[`github.com/ArnasDon/wacrm`](https://github.com/ArnasDon/wacrm) · [wacrm.tech](https://wacrm.tech)
+· MIT · 741 commits · Next.js 16 + server actions + Supabase · single-tenant · self-hosted.
+
+Worth a section of its own because it is the only open-source project aiming at roughly the same
+place: a self-hostable WhatsApp CRM rather than an inbox or a transport layer.
+
+**What it has that we do not:** sales pipelines with kanban, a no-code automation builder, an AI
+reply assistant with a knowledge base (BYO OpenAI/Anthropic key), analytics, CSV contact import,
+outbound webhooks with HMAC-SHA256 signing, internal notes, agent assignment, media in the
+composer both directions, an MCP server, and a one-click deploy story. That is most of a product
+surface we have not started.
+
+**The decisive difference is the transport, and it is not a gap in their work — it is the rules
+of the API they chose.** wacrm is **Meta Cloud API only**. Its broadcasts are Meta-approved
+template messages, which means a verified Business account, a BSP, per-template approval, the
+24-hour service window and per-message fees. **Cold outreach to people who never messaged first
+is not something that stack can do.** That is the exact use case this project's Baileys path
+exists to serve, and the exact reason P6 exists to make it survivable.
+
+The inverse also holds and should be said plainly: for opt-in marketing to an existing customer
+list, their approach is cheaper to operate, legal, and carries no ban risk. We are not strictly
+better; we are aimed somewhere else.
+
+**On the numbers:** 2.4k stars against **6.2k forks**. That inversion is characteristic of a
+one-click-deploy template — people fork to deploy, not to contribute — so it should not be read
+as 6.2k developers.
+
+**What to take from it:**
+
+1. **Outbound webhooks with HMAC signing.** JobPortal will want events pushed rather than
+   polled, and this is the shape to copy (`docs/16-integration-jobportal.md`).
+2. **CSV import.** P5 already specs it; their shipping it is evidence of the demand.
+3. **An MCP server** is a cheap, differentiating surface once the public API is stable.
+
+**What not to take:** the architecture. Server actions against Supabase is faster to add
+features on, and we are deliberately paying for ports, adapters and a separate gateway process
+so that a transport can be swapped under a contract suite. That cost only pays back because we
+run two transports as peers — which is the one thing they cannot do.
 
 ## Table stakes
 

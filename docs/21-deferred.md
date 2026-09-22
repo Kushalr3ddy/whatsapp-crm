@@ -445,3 +445,41 @@ top of an unverified download is a layer that has to be re-checked when it is fi
 looks like a *half-working* link rather than a broken one, because sending establishes its own
 session; and this gateway appears to see traffic only in reconnect flushes, since
 `markOnlineOnConnect: false` has WhatsApp notify the phone and queue for the companion.
+
+---
+
+## D-15 · A documentation site
+
+**What:** the 25 files in `docs/` served as a real documentation site — searchable, linkable,
+with a landing page — rather than markdown read on GitHub. Prompted by
+[wacrm.tech](https://wacrm.tech), which is the presentation this project's docs do not have.
+
+**The brief, so it is not re-derived:** Vercel's documentation theme is the reference — a
+restrained, mostly monochrome palette, one accent colour, generous line height, a persistent
+left nav, a right-hand table of contents, and code blocks that are the loudest thing on the
+page. **Better than the reference, not merely similar:** this project's docs carry decision
+records and rationale rather than feature tours, so the design has to make long prose readable
+first and API reference second.
+
+**Why parked:** it is presentation, and the content already exists and is already good. A site
+makes the docs easier to *find*, which is a problem this project does not yet have — there are
+no outside readers. Building it now would also mean maintaining a second artefact while the
+docs themselves still change weekly.
+
+**What brings it back — any one of these:**
+
+1. **The repository going public**, or the licence decision landing (**D-3**). Nobody browses a
+   private repo's docs site.
+2. **The OpenAPI spec existing.** A generated spec wants somewhere to be rendered, and that is
+   the natural anchor for the whole site (`docs/15-api.md`).
+3. **JobPortal's team needing to self-serve** the integration rather than asking.
+4. **The first outside user**, for whom `git clone` to read the docs is a poor first impression.
+
+**Cost of deferring:** low, and that is the point. The content is portable markdown with
+relative links; any static site generator consumes it as-is. The risk is only that the docs
+drift into GitHub-specific formatting — so keep links relative and avoid anything that only
+renders on github.com.
+
+**When it is built:** generate from `docs/` rather than copying. Two sources of truth for a
+sentence is how one of them becomes wrong, and this project has already had that happen with
+the API document claiming an OpenAPI endpoint that did not exist.
