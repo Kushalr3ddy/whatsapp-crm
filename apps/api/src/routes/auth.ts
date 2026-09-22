@@ -6,6 +6,7 @@ import type { Database } from '@crm/db';
 import type { PasswordHasher } from '@crm/auth-builtin';
 import { createSession, revokeSession, writeAuditInTenant, AUDIT, SYSTEM_ACTOR } from '@crm/core';
 import { SESSION_COOKIE, CSRF_COOKIE } from '../auth.js';
+import { problem } from '../problem.js';
 
 /** Body for signing in. */
 const login = z.object({
@@ -55,10 +56,6 @@ function recordSuccess(email: string): void {
   attempts.delete(email);
 }
 
-/** Builds an RFC 7807 problem body with the real status in it. */
-function problem(req: Request, status: number, code: string, detail: string) {
-  return { type: 'about:blank', title: code, status, code, detail, request_id: req.id };
-}
 
 /**
  * Sign in, sign out, and "who am I".

@@ -100,6 +100,18 @@ what the endpoint accepts now.
 | `DELETE` | `/api/v1/admin/keys/:id` | Admin session. Soft revoke |
 | `POST` | `/api/v1/admin/users` | Admin session. Adds someone to the org |
 
+**Rate limiting.** Every API-key request is counted against that key's `rate_limit_per_min`
+(default 120, settable when minting it, `0` for unlimited). Over the ceiling returns **429
+`RATE_LIMITED`** with `Retry-After`, and every response carries `RateLimit-Limit` and
+`RateLimit-Remaining`. Sessions are not limited this way — the login route has its own throttle.
+Both counters are currently in-process, so with several replicas the effective ceiling is the
+limit times the replica count (P9).
+
+**A malformed id is a 422, not a 404.** Path parameters are validated before they reach the
+database. Well-formed-but-absent stays 404, because that answer must be indistinguishable from
+another tenant's resource; a malformed id cannot name a row in any tenant, so saying so leaks
+nothing.
+
 **Cookie-authenticated writes need CSRF.** Echo the readable `crm_csrf` cookie back in an
 `x-csrf-token` header on any non-GET request authenticated by cookie. API-key requests need
 none of this: an `Authorization` header is never sent automatically by a browser, which is the

@@ -9,6 +9,7 @@ import type { PasswordHasher } from '@crm/auth-builtin';
 import type { StorageDriver } from '@crm/storage';
 import { attachPrincipal, requireAuthenticated, requireTenant, requireCsrf } from './auth.js';
 import { withTenant } from './tenant.js';
+import { rateLimitApiKey } from './rate-limit.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
@@ -100,6 +101,8 @@ export function buildApp(deps: AppDependencies): Express {
   //
   // The ordering matters and is deliberate:
   //   attachPrincipal     — works out who is calling; never rejects
+  //   rateLimitApiKey     — enforces the key's own rate_limit_per_min. Above /auth, so a
+  //                         runaway integration cannot spend the login route's throttle
   //   requireCsrf         — only bites cookie-authenticated writes; header auth passes through
   //   /auth               — must be reachable unauthenticated: it is how you get a credential
   //   requireAuthenticated— the door closes here
@@ -112,6 +115,7 @@ export function buildApp(deps: AppDependencies): Express {
   //                         route cannot reach the database except through this
   const api = express.Router();
   api.use(attachPrincipal(deps.config, deps.db));
+  api.use(rateLimitApiKey);
   api.use(requireCsrf);
   // Before the door closes: logging in is how a credential is obtained.
   api.use('/auth', authRouter(deps.db, deps.hasher, deps.config.NODE_ENV === 'production'));

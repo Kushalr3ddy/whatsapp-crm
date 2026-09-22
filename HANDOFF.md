@@ -154,14 +154,11 @@ download is tested; the download itself has never met a real WhatsApp file.
 
 | Where | Problem |
 |---|---|
-| `routes/messages.ts` | A **malformed UUID returns 500** — `conversations/not-a-uuid/messages` reaches Postgres, the cast throws (22P02), and it surfaces as `INTERNAL_ERROR`. Wants a 422, or 404 to match the "404 not 403" rule. Path params are not validated; bodies are |
-| `routes/*.ts` | `problem()` hardcodes **`"status": 0`** in the body while the real code goes in the status line. `auth.ts` builds its own correctly with the real number, so `body.status` disagrees between routes |
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
 | **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
-| Login throttle | **In-process**, so several replicas would each count separately (P9) |
-| `api_key.rate_limit_per_min` | Stored and **enforced nowhere** |
+| Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
 
 ---
 

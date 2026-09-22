@@ -107,7 +107,7 @@ export interface ResolvedMedia {
  * **This is the only authorisation there is for a file.** Row-level security stops at the row;
  * the bytes sit on a filesystem it cannot reach, so the chain media → message → conversation →
  * org has to be walked deliberately, here, once (D-11). Returns null when the id names nothing
- * *this tenant can see* — which is also the answer for another tenant's file, because telling
+ * this tenant can see — which is also the answer for another tenant's file, because telling
  * the two apart would confirm the file exists.
  *
  * Runs inside the caller's tenant transaction so the policies apply to it as well; the join is

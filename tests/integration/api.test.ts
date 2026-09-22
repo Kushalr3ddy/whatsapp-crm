@@ -8,6 +8,7 @@ import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { issueApiKey } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
+import { resetRateLimits } from '../../apps/api/src/rate-limit.js';
 import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
@@ -351,5 +352,107 @@ describe('sending', () => {
     expect(r.body.data).toHaveLength(1);
     // The primary wins, so the reply address does not drift to a secondary number.
     expect(r.body.data[0].contactPhone).toBe('+919876543210');
+  });
+});
+
+describe('problem responses', () => {
+  it('refuses a malformed id rather than letting Postgres throw', async () => {
+    // This used to be a 500: the value reached a query, the uuid cast raised 22P02, and the
+    // error boundary turned a caller's typo into INTERNAL_ERROR. Bodies were validated and
+    // path parameters were not.
+    const r = await request(app)
+      .get('/api/v1/conversations/not-a-uuid/messages').set(...auth());
+
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('VALIDATION_FAILED');
+    expect(r.body.detail).toContain('id');
+  });
+
+  it('still answers 404 for an id that is well formed but absent', async () => {
+    // The distinction that matters: malformed is the caller's mistake and can be named,
+    // absent is indistinguishable from another tenant's and must not be.
+    const r = await request(app)
+      .get('/api/v1/conversations/00000000-0000-4000-8000-00000000dead/messages')
+      .set(...auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual([]);
+  });
+
+  it('validates ids on every route that takes one', async () => {
+    const senders = await request(app).get('/api/v1/senders/nope/link').set(...auth());
+    expect(senders.status).toBe(422);
+    const media = await request(app).get('/api/v1/media/nope').set(...auth());
+    expect(media.status).toBe(422);
+  });
+
+  it('puts the real status in the problem body, on every route', async () => {
+    // Two routers used to hardcode "status": 0 while the real code went out on the status
+    // line, so a client reading body.status got 0 from some routes and the truth from others.
+    const cases = [
+      request(app).get('/api/v1/conversations/not-a-uuid/messages').set(...auth()),
+      request(app).post('/api/v1/messages').set(...auth()).send({ body: '' }),
+      request(app).post('/api/v1/senders').set(...auth()).send({}),
+      request(app).get('/api/v1/media/00000000-0000-4000-8000-00000000dead').set(...auth()),
+      request(app).get('/api/v1/senders'),
+    ];
+    for (const pending of cases) {
+      const r = await pending;
+      if (r.status >= 400) {
+        expect(r.body.status, `body.status for ${r.request.url}`).toBe(r.status);
+        expect(r.body.status).not.toBe(0);
+      }
+    }
+  });
+});
+
+describe('per-key rate limiting', () => {
+  beforeEach(() => { resetRateLimits(); });
+
+  it('enforces the key’s own rate_limit_per_min', async () => {
+    // The column has existed since the key table did, and until now was enforced nowhere —
+    // which is worse than absent, because it reads like a control that is in force.
+    const slow = await issueApiKey(db, {
+      orgId, name: 'slow', scopes: ['senders:read'], rateLimitPerMin: 3
+    });
+    const hdr = ['Authorization', `Bearer ${slow.secret}`] as const;
+
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).get('/api/v1/senders').set(...hdr)).status).toBe(200);
+    }
+    const blocked = await request(app).get('/api/v1/senders').set(...hdr);
+
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.code).toBe('RATE_LIMITED');
+    // A well-behaved client is told exactly when to return rather than hammering.
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    expect(blocked.headers['ratelimit-limit']).toBe('3');
+  });
+
+  it('counts each key separately', async () => {
+    const a = await issueApiKey(db, {
+      orgId, name: 'a', scopes: ['senders:read'], rateLimitPerMin: 1
+    });
+    const b = await issueApiKey(db, {
+      orgId, name: 'b', scopes: ['senders:read'], rateLimitPerMin: 1
+    });
+
+    await request(app).get('/api/v1/senders').set('Authorization', `Bearer ${a.secret}`);
+    const aBlocked = await request(app).get('/api/v1/senders')
+      .set('Authorization', `Bearer ${a.secret}`);
+    const bFine = await request(app).get('/api/v1/senders')
+      .set('Authorization', `Bearer ${b.secret}`);
+
+    expect(aBlocked.status).toBe(429);
+    // One noisy integration must not throttle another org's — or even the same org's — key.
+    expect(bFine.status).toBe(200);
+  });
+
+  it('does not limit a session, which is a person clicking', async () => {
+    // Sessions carry no per-key ceiling; the abuse that matters lands on /auth/login, which
+    // has its own throttle.
+    for (let i = 0; i < 40; i++) {
+      const r = await request(app).get('/api/v1/senders').set(...auth());
+      expect(r.status).not.toBe(429);
+    }
   });
 });

@@ -46,7 +46,15 @@ function keyHash(secret: string): string {
  */
 export async function issueApiKey(
   db: Database,
-  input: { orgId: string; name: string; scopes: readonly string[]; expiresAt?: Date | null }
+  input: {
+    orgId: string; name: string; scopes: readonly string[]; expiresAt?: Date | null;
+    /**
+     * Requests per minute this key may make. Omitted takes the column default (120).
+     * Settable at issue time because otherwise the limit could only ever be changed with a
+     * hand-written UPDATE, which made the whole control unusable in practice.
+     */
+    rateLimitPerMin?: number | undefined;
+  }
 ): Promise<IssuedKey> {
   const unknown = input.scopes.filter((s) => !(API_SCOPES as readonly string[]).includes(s));
   if (unknown.length > 0) {
@@ -57,9 +65,11 @@ export async function issueApiKey(
   const prefix = secret.slice(0, 16);
 
   const rows = await db.execute(sql`
-    INSERT INTO api_key (org_id, name, key_hash, prefix, scopes, expires_at)
+    INSERT INTO api_key (org_id, name, key_hash, prefix, scopes, expires_at,
+                         rate_limit_per_min)
     VALUES (${input.orgId}, ${input.name}, ${keyHash(secret)}, ${prefix},
-            ${sql.param(input.scopes as string[])}, ${input.expiresAt?.toISOString() ?? null})
+            ${sql.param(input.scopes as string[])}, ${input.expiresAt?.toISOString() ?? null},
+            COALESCE(${input.rateLimitPerMin ?? null}, 120))
     RETURNING id`);
 
   return { id: (rows as unknown as Array<{ id: string }>)[0]!.id, secret, prefix };

@@ -4,6 +4,8 @@ import { sql } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
 import { writeAudit, AUDIT } from '@crm/core';
 import { auditActor, requireScope } from '../auth.js';
+import { problem } from '../problem.js';
+import { requireUuidParam } from '../params.js';
 import { normalisePhone } from '@crm/shared';
 
 /**
@@ -66,7 +68,7 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
   });
 
   /** Returns one thread, oldest first, with bodies decrypted for display. */
-  router.get('/conversations/:id/messages', requireScope('conversations:read'), async (req: Request, res: Response) => {
+  router.get('/conversations/:id/messages', requireUuidParam('id'), requireScope('conversations:read'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
     const conversationId = String(req.params.id);
 
@@ -139,7 +141,7 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
   router.post('/messages', requireScope('messages:send'), async (req: Request, res: Response) => {
     const parsed = sendMessage.safeParse(req.body);
     if (!parsed.success) {
-      res.status(422).json(problem(req, 'VALIDATION_FAILED', parsed.error.issues.map(
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
@@ -162,7 +164,7 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
       const row = (replied as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
       if (!row) {
         // 404 rather than 403: confirming a conversation exists in another tenant is a leak.
-        res.status(404).json(problem(req, 'NOT_FOUND', 'No such conversation.'));
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
         return;
       }
       res.status(202).json({ data: row });
@@ -173,13 +175,13 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
     // and never called it on the way in, so one person became several contacts (M8).
     const phone = normalisePhone(to!, defaultCountry);
     if (!phone.ok) {
-      res.status(422).json(problem(req, `PHONE_${phone.reason.toUpperCase()}`, phone.message));
+      res.status(422).json(problem(req, 422, `PHONE_${phone.reason.toUpperCase()}`, phone.message));
       return;
     }
     if (!phone.value.reachableOnWhatsApp) {
       // Caught here rather than at send time: a doomed send costs the sender's delivery ratio,
       // which feeds its health score (docs/08-antiban.md).
-      res.status(422).json(problem(req, 'NOT_REACHABLE',
+      res.status(422).json(problem(req, 422, 'NOT_REACHABLE',
         `${phone.value.e164} looks like a ${phone.value.type} number, which cannot receive WhatsApp.`));
       return;
     }
@@ -223,7 +225,7 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
     const created = (rows as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
     if (!created) {
       // The only way the chain produces nothing is having no usable sender.
-      res.status(409).json(problem(req, 'NO_ACTIVE_SENDER',
+      res.status(409).json(problem(req, 409, 'NO_ACTIVE_SENDER',
         'No linked WhatsApp number is available to send from. Link one first: POST /api/v1/senders/:id/link'));
       return;
     }
@@ -233,9 +235,4 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
   });
 
   return router;
-}
-
-/** Builds an RFC 7807 problem response with a stable machine-readable code. */
-function problem(req: Request, code: string, detail: string) {
-  return { type: 'about:blank', title: code, status: 0, code, detail, request_id: req.id };
 }

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { resolveApiKey, resolveSession, secretsMatch, SYSTEM_ACTOR, type AuditActor } from '@crm/core';
+import { problem } from './problem.js';
 import type { Config } from '@crm/shared';
 import type { Database } from '@crm/db';
 
@@ -26,6 +27,11 @@ export interface RequestContext {
   readonly scopes: readonly string[];
   /** Which key or session authorised this, for the audit trail. */
   readonly credentialId: string | null;
+  /**
+   * The key's own request ceiling, per minute. Null for a session, which is not limited this
+   * way — a person clicking around is not the traffic shape it protects against.
+   */
+  readonly rateLimitPerMin: number | null;
 }
 
 declare global {
@@ -39,10 +45,7 @@ declare global {
   }
 }
 
-/** Builds an RFC 7807 problem body. `status` mirrors the HTTP status code, as the spec says. */
-function problem(req: Request, status: number, code: string, detail: string) {
-  return { type: 'about:blank', title: code, status, code, detail, request_id: req.id };
-}
+
 
 /**
  * Who is acting, for the audit trail.
@@ -96,7 +99,8 @@ export function attachPrincipal(config: Config, db: Database) {
       if (principal !== null) {
         req.crm = {
           orgId: principal.orgId, kind: 'session', userId: principal.userId,
-          role: principal.role, scopes: [], credentialId: principal.sessionId
+          role: principal.role, scopes: [], credentialId: principal.sessionId,
+          rateLimitPerMin: null
         };
         next();
         return;
@@ -109,7 +113,8 @@ export function attachPrincipal(config: Config, db: Database) {
       if (key !== null) {
         req.crm = {
           orgId: key.orgId, kind: 'api_key', userId: null, role: null,
-          scopes: key.scopes, credentialId: key.keyId
+          scopes: key.scopes, credentialId: key.keyId,
+          rateLimitPerMin: key.rateLimitPerMin
         };
         next();
         return;
@@ -121,7 +126,7 @@ export function attachPrincipal(config: Config, db: Database) {
       if (secretsMatch(token, config.API_KEY)) {
         req.crm = {
           orgId: '', kind: 'bootstrap', userId: null, role: null,
-          scopes: [], credentialId: null
+          scopes: [], credentialId: null, rateLimitPerMin: null
         };
         next();
         return;

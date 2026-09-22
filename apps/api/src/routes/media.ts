@@ -3,6 +3,8 @@ import { pipeline } from 'node:stream/promises';
 import { resolveMedia, writeAudit, AUDIT } from '@crm/core';
 import { ObjectNotFoundError, type StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
+import { problem } from '../problem.js';
+import { requireUuidParam } from '../params.js';
 
 /**
  * Serving stored attachments.
@@ -30,7 +32,7 @@ export function mediaRouter(storage: StorageDriver): Router {
   const router = Router();
 
   /** Streams one attachment to a caller that is entitled to it. */
-  router.get('/:id', requireScope('conversations:read'), async (req: Request, res: Response) => {
+  router.get('/:id', requireUuidParam('id'), requireScope('conversations:read'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
 
     // Resolve and record in one tenant transaction, then leave it before streaming. Holding a
@@ -111,13 +113,7 @@ export function mediaRouter(storage: StorageDriver): Router {
  * that ignores `filename*` still saves something recognisable.
  */
 function disposition(filename: string): string {
-  // eslint-disable-next-line no-control-regex
   const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '');
   const safe = ascii === '' ? 'attachment' : ascii;
   return `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
-
-/** Builds an RFC 7807 problem response. `status` mirrors the HTTP status, as the spec says. */
-function problem(req: Request, status: number, code: string, detail: string) {
-  return { type: 'about:blank', title: code, status, code, detail, request_id: req.id };
 }

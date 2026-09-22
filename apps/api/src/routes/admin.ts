@@ -7,6 +7,7 @@ import {
   API_SCOPES, AlreadyExistsError, writeAuditInTenant, AUDIT
 } from '@crm/core';
 import { auditActor, requireBootstrap, requireRole } from '../auth.js';
+import { problem } from '../problem.js';
 
 /** Body for provisioning an organisation and its first admin. */
 const createOrg = z.object({
@@ -22,7 +23,9 @@ const createKey = z.object({
   name: z.string().min(1).max(100),
   scopes: z.array(z.enum(API_SCOPES)).min(1, 'a key with no scopes can do nothing'),
   /** Only the bootstrap key supplies this; a signed-in admin's org comes from their session. */
-  orgId: z.string().uuid().optional()
+  orgId: z.string().uuid().optional(),
+  /** Requests per minute. Omitted takes the default; 0 means unlimited, set deliberately. */
+  rateLimitPerMin: z.number().int().min(0).max(100_000).optional()
 });
 
 /** Body for inviting someone into an org. */
@@ -33,10 +36,6 @@ const createUser = z.object({
   role: z.enum(['admin', 'agent'])
 });
 
-/** Builds an RFC 7807 problem body with the real status in it. */
-function problem(req: Request, status: number, code: string, detail: string) {
-  return { type: 'about:blank', title: code, status, code, detail, request_id: req.id };
-}
 
 /** Turns Zod issues into one readable line. */
 function issues(error: z.ZodError): string {
@@ -102,7 +101,10 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
       return;
     }
 
-    const issued = await issueApiKey(db, { orgId, name: parsed.data.name, scopes: parsed.data.scopes });
+    const issued = await issueApiKey(db, {
+      orgId, name: parsed.data.name, scopes: parsed.data.scopes,
+      rateLimitPerMin: parsed.data.rateLimitPerMin
+    });
     // The prefix, never the secret. An audit log holding working credentials would be a
     // second copy of the thing it exists to police.
     await writeAuditInTenant(db, {

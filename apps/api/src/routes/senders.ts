@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { requireScope } from '../auth.js';
+import { problem } from '../problem.js';
+import { requireUuidParam } from '../params.js';
 
 /** Body for creating a sender identity. */
 const createSender = z.object({
@@ -46,7 +48,7 @@ export function sendersRouter(): Router {
   router.post('/', requireScope('senders:write'), async (req: Request, res: Response) => {
     const parsed = createSender.safeParse(req.body);
     if (!parsed.success) {
-      res.status(422).json(problem(req, 'VALIDATION_FAILED', parsed.error.issues.map(
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
@@ -62,16 +64,16 @@ export function sendersRouter(): Router {
    * Starts linking. Returns 202 rather than the challenge itself, because the gateway has to
    * reach WhatsApp first — poll `GET /senders/:id/link` for the QR or code.
    */
-  router.post('/:id/link', requireScope('senders:write'), async (req: Request, res: Response) => {
+  router.post('/:id/link', requireUuidParam('id'), requireScope('senders:write'), async (req: Request, res: Response) => {
     const parsed = startLink.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(422).json(problem(req, 'VALIDATION_FAILED', parsed.error.issues.map(
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
     const { mode, phoneE164 } = parsed.data;
     if (mode === 'pairing_code' && phoneE164 === undefined) {
-      res.status(422).json(problem(req, 'PHONE_REQUIRED',
+      res.status(422).json(problem(req, 422, 'PHONE_REQUIRED',
         'pairing_code mode needs phoneE164 — the number being linked types the code on its phone'));
       return;
     }
@@ -80,7 +82,7 @@ export function sendersRouter(): Router {
       SELECT id FROM sender_identity WHERE id = ${req.params.id} AND org_id = ${req.crm!.orgId}`));
     if ((owned as unknown as unknown[]).length === 0) {
       // 404 rather than 403: confirming a resource exists in another tenant is itself a leak.
-      res.status(404).json(problem(req, 'NOT_FOUND', 'No such sender.'));
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such sender.'));
       return;
     }
 
@@ -106,7 +108,7 @@ export function sendersRouter(): Router {
   });
 
   /** Returns the challenge once the gateway has it, or reports that it is still pending. */
-  router.get('/:id/link', requireScope('senders:read'), async (req: Request, res: Response) => {
+  router.get('/:id/link', requireUuidParam('id'), requireScope('senders:read'), async (req: Request, res: Response) => {
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT cs.link_challenge AS challenge, cs.link_error AS error,
              cs.qr_expires_at AS "expiresAt", cs.connection_state AS "connectionState",
@@ -120,11 +122,11 @@ export function sendersRouter(): Router {
     }>)[0];
 
     if (!row) {
-      res.status(404).json(problem(req, 'NOT_FOUND', 'No such sender.'));
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such sender.'));
       return;
     }
     if (row.error !== null) {
-      res.status(502).json(problem(req, 'LINK_FAILED', row.error));
+      res.status(502).json(problem(req, 502, 'LINK_FAILED', row.error));
       return;
     }
     res.json({
@@ -139,9 +141,4 @@ export function sendersRouter(): Router {
   });
 
   return router;
-}
-
-/** Builds an RFC 7807 problem response with a stable machine-readable code. */
-function problem(req: Request, code: string, detail: string) {
-  return { type: 'about:blank', title: code, status: 0, code, detail, request_id: req.id };
 }
