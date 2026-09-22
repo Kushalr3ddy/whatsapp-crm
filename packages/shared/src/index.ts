@@ -10,3 +10,4 @@ export { normalisePhone, isMatchableIdentity, type PhoneError } from './phone.js
 export {
   detectMediaType, safeFilename, UNKNOWN_MEDIA_TYPE, type MediaType
 } from './media-type.js';
+export { parseCsv, parseCsvRows, CsvError, type CsvTable } from './csv.js';

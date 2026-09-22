@@ -98,7 +98,13 @@ export const AUDIT = {
   // log that records one is too noisy to answer the question it exists for. Opening a thread
   // and downloading a file are.
   conversationRead: 'conversation.read',
-  mediaDownloaded: 'media.downloaded'
+  mediaDownloaded: 'media.downloaded',
+
+  // Imports. The upload is recorded separately from the commit because they are different
+  // acts: one stores somebody's spreadsheet, the other changes the contact database.
+  importUploaded: 'import.uploaded',
+  importDryRun: 'import.dry_run',
+  importCommitted: 'import.committed'
 } as const;
 
 /**

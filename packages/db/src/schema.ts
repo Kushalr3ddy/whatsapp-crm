@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean, customType, index, integer, jsonb, pgTable, primaryKey,
   text, timestamp, uniqueIndex, uuid
@@ -406,4 +407,89 @@ export const mediaAsset = pgTable('media_asset', {
 }, (t) => [
   uniqueIndex('media_asset_key_uidx').on(t.storageKey),
   index('media_asset_digest_idx').on(t.orgId, t.sha256)
+]);
+
+/**
+ * One attempt to import a file.
+ *
+ * The row exists from the moment bytes are stored, before anything is parsed, so a run that
+ * dies halfway is still a row somebody can look at rather than a silence.
+ *
+ * **`sha256` is unique per org, and that is the point.** The same spreadsheet must not import
+ * twice however it is named — `contacts.xlsx`, `contacts (1).xlsx` and `contacts-FINAL.xlsx`
+ * are one file, and a filename answers nothing (docs/07-ingestion.md). Scoped per org because
+ * cross-tenant dedup would leak the existence of one tenant's file into another's.
+ */
+export const importRun = pgTable('import_run', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+
+  sourceType: text('source_type').notNull().default('csv'),
+  /** What the uploader called it. Display only — it decides nothing, including identity. */
+  filename: text('filename'),
+  storageKey: text('storage_key').notNull(),
+  sha256: text('sha256').notNull(),
+  byteSize: integer('byte_size').notNull(),
+
+  /** `uploaded` → `dry_run` → `committed`, or `failed`. A run always reaches one of them. */
+  status: text('status').notNull().default('uploaded'),
+  rowCount: integer('row_count').notNull().default(0),
+  /** Column names as found in the file, so a mapping UI is built from fact, not guesswork. */
+  headers: jsonb('headers'),
+  /** The mapping this run was executed with. Kept so a result can be explained later. */
+  mapping: jsonb('mapping'),
+  /** Counts by outcome. Denormalised because the answer is wanted far more often than the rows. */
+  summary: jsonb('summary'),
+
+  /**
+   * Set when a deliberate re-import replaces this run.
+   *
+   * Exists so the uniqueness below can be **partial**. Without it the constraint and the
+   * `?force=true` escape hatch contradict each other: the database would refuse the second
+   * upload that the API had just decided to allow. With it, the invariant is the one actually
+   * wanted — *at most one live run per file per org* — and a re-import is an explicit act that
+   * supersedes the old run rather than an exception to the rule.
+   */
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true })
+}, (t) => [
+  uniqueIndex('import_run_digest_uidx').on(t.orgId, t.sha256)
+    .where(sql`superseded_at IS NULL`),
+  index('import_run_org_idx').on(t.orgId, t.createdAt)
+]);
+
+/**
+ * What happened to one row of one file.
+ *
+ * Every row gets one, including the ones that worked. A run **always completes** — a bad row
+ * is recorded and the run carries on, because a single unparseable phone number aborting a
+ * 50,000-row import is the behaviour this replaces (M4).
+ *
+ * `UNIQUE (import_run_id, row_number)` is what makes a killed worker resumable from the last
+ * committed batch instead of restartable from zero.
+ */
+export const importRowRecord = pgTable('import_row', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  importRunId: uuid('import_run_id').notNull()
+    .references(() => importRun.id, { onDelete: 'cascade' }),
+
+  /** 1-based, counting data rows — the header is not row 1. Matches what a spreadsheet shows. */
+  rowNumber: integer('row_number').notNull(),
+  /** `created` · `updated` · `skipped` · `error`. */
+  outcome: text('outcome').notNull(),
+  contactId: uuid('contact_id').references(() => contact.id, { onDelete: 'set null' }),
+  /** Why it failed, in words a person can act on. Null unless outcome is `error`. */
+  error: text('error'),
+  /**
+   * The row as read, so a failure can be inspected and re-uploaded without the original file.
+   * Kept per row rather than in a parallel unbounded table, which is what grew without limit
+   * in the system this replaces.
+   */
+  raw: jsonb('raw')
+}, (t) => [
+  uniqueIndex('import_row_number_uidx').on(t.importRunId, t.rowNumber),
+  index('import_row_outcome_idx').on(t.importRunId, t.outcome)
 ]);

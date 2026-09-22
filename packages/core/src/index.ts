@@ -33,3 +33,8 @@ export {
   checkSendAllowance, dailyCeiling, humanDelayMs,
   type PacingLimits, type PacingDecision
 } from './pacing.js';
+
+export {
+  runImport,
+  type ImportMapping, type ImportSummary, type RowOutcome, type Transform, type TenantWork
+} from './ingestion.js';

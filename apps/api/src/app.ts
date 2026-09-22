@@ -15,6 +15,17 @@ import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
 import { messagesRouter } from './routes/messages.js';
 import { mediaRouter } from './routes/media.js';
+import { importsRouter } from './routes/imports.js';
+
+/**
+ * How large a file may be uploaded to `/imports`.
+ *
+ * 20 MB is a very large CSV — roughly 200,000 contact rows — and small enough that holding one
+ * in memory while it is parsed is unremarkable. It becomes a streaming read, and a larger
+ * number, when the `SourceConnector` port lands (docs/07-ingestion.md).
+ */
+const IMPORT_LIMIT = '20mb';
+const IMPORT_LIMIT_BYTES = 20 * 1024 * 1024;
 
 /** Everything the HTTP layer needs, passed in rather than imported. */
 export interface AppDependencies {
@@ -64,6 +75,10 @@ export function buildApp(deps: AppDependencies): Express {
   );
 
   app.use(express.json({ limit: '1mb' }));
+  // The import upload is the one route that takes a file rather than JSON. Scoped to that
+  // path and capped, so no other route inherits a large body limit — the system this replaces
+  // had a global 50 MB JSON limit and every endpoint wore the cost (M3).
+  app.use('/api/v1/imports', express.raw({ type: ['text/csv', 'text/plain'], limit: IMPORT_LIMIT }));
 
   /**
    * Liveness. Answers "is this process running?" and nothing more — it must not touch the
@@ -125,6 +140,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));
+  api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES));
   api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY));
   app.use('/api/v1', api);
 

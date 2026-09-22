@@ -71,6 +71,13 @@
       "when": 1789925514789,
       "tag": "0009_legal_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790088874577,
+      "tag": "0010_wide_magus",
+      "breakpoints": true
     }
   ]
 }

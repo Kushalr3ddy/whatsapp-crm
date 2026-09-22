@@ -30,7 +30,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P2 | Core domain — orgs, users, sessions, API keys, RLS | **mostly** |
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
 | P4 | Inbox | **partial** |
-| P5 | Ingestion | not started |
+| P5 | Ingestion — CSV import | **first slice** |
 | P6 | Anti-ban — warmup, rate ceilings, jitter | **layers 1–2 of 6** |
 | P7 | Campaigns · P8 Meta | not started |
 
@@ -38,7 +38,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**255 tests in 20 files · 70 source files · 14 of 35 specced tables · 10 migrations · 53 commits.**
+**313 tests in 23 files · 77 source files · 16 of 35 specced tables · 11 migrations · 63 commits.**
 
 ### What actually works
 
@@ -64,6 +64,10 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
 - **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
   transfer starts so an abandoned download still counts. Inbox listing is deliberately not
   audited.
+- **CSV import (P5, first slice)**: upload → dry run → commit. **Content-hash dedup**, so the
+  same file cannot import twice whatever it is named; a deliberate re-import supersedes the
+  old run. Ordered identity rules, phone normalisation on the way in, a per-row ledger, and a
+  dry run that is the default. A sparse file cannot overwrite a name that is already there.
 - **Send pacing (P6 layers 1–2)**: warmup ramp (20/36/65/117/210/378/680 then steady), per
   minute · hour · day ceilings, and a Gaussian-jittered 1.5–4 s pause before each send. Counted
   from the `message` table, so it survives restarts and replicas. A paced message is left
