@@ -1,5 +1,11 @@
 # 07 · Data ingestion framework
 
+> **Looking for how to use it, or which source needs which kind of deduping?**
+> [25 · Ingestion guide](25-ingestion-guide.md) covers every source in depth, both layers of
+> duplicate protection, and a hands-on walkthrough. This document is the design and the
+> reasoning behind it.
+
+
 Feature-level view in [`06-features/F7-ingestion.md`](06-features/F7-ingestion.md).
 This is the framework design.
 
