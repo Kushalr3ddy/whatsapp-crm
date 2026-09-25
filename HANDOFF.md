@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-09-20
+# Handoff — state as of 2026-09-25
 
 A point-in-time snapshot for picking this up in a new session. For *how the project got here*
 read [`CONTEXT.md`](CONTEXT.md), the append-only session log. For *what it is*, read
@@ -88,9 +88,10 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
 
 No **outbound** media — receiving and serving work; sending a file does not · no encryption at
 rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
-no campaigns or broadcast · **no anti-ban layers 3–6** — no typing simulation, circadian
-pacing, contact-graph gates or health scoring · no Meta
-adapter · no Excel import · no deployment.
+**no way to create a contact except an inbound message or a CSV import** — `contacts:write` is
+an enforceable scope with nothing behind it · no message templates (a campaign carries a plain
+body) · **no anti-ban layers 3–6** — no typing simulation, circadian pacing, contact-graph
+gates or health scoring · no Meta adapter · no Excel import · no deployment.
 
 ---
 
@@ -148,7 +149,14 @@ npm run web       # UI       :3001
 **[`docs/24-local-testing.md`](docs/24-local-testing.md)** is the by-hand testing recipe:
 getting a key, exercising the API, checking the attachment headers, reading the audit trail.
 
-Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 255 tests.
+Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 330 tests.
+
+**Two documents are written for picking this up cold**, and are worth more than re-reading the
+code: [`docs/24-local-testing.md`](docs/24-local-testing.md) — start the stack, get a key,
+exercise every endpoint by hand, and what the attachment headers must say — and
+[`docs/25-ingestion-guide.md`](docs/25-ingestion-guide.md) — every ingestion source, how
+deduping works at both layers, and a walkthrough. `tools/insomnia-collection.json` imports the
+whole API surface including the refusals that must stay refused.
 
 ---
 
@@ -203,6 +211,13 @@ download is tested; the download itself has never met a real WhatsApp file.
   anyone traced it. It now refuses when there is no org, or more than one, and points at
   `npm run admin -- org`.
 - **`SET LOCAL` cannot take a bind parameter.** Use `setTenant()` (`set_config(..., true)`).
+- **`docker exec` needs `-i` to accept a heredoc.** Without it psql gets no stdin, reports
+  nothing, and changes nothing — it looks like it worked. Verify the rows, not the exit code.
+- **A unique index and an escape hatch will contradict each other.** `import_run` has
+  `UNIQUE (org_id, sha256)` and the API has `?force=true`; the database refused the upload the
+  API had just allowed. Fixed with a **partial** index (`WHERE superseded_at IS NULL`) and a
+  forced re-import superseding the old run. Expect the same shape wherever a constraint meets
+  a deliberate override.
 - **`Bad MAC` means messages arrive and vanish, while sending still works.** An outbound send
   establishes its own session, so a corrupt companion session looks like a half-working link
   rather than a broken one. Baileys drops what it cannot decrypt *before* `messages.upsert`,
@@ -265,11 +280,31 @@ download is tested; the download itself has never met a real WhatsApp file.
 
 ---
 
+## What landed most recently, and what it cost
+
+Six pieces, in order: **row-level security on the request path** → **media** → **send pacing
+(P6 layers 1–2)** → **CSV import (P5)** → **campaigns (P7)**, plus two small defect fixes
+(malformed UUID now 422 not 500; `problem()` no longer emits `"status": 0`) and per-key rate
+limiting actually being enforced.
+
+Three of those were verified by **deliberately breaking them** and watching tests fail, which
+is worth repeating for anything safety-critical: disabling the RLS role switch fails five
+tests, disabling the pacing gate fails two, and removing the campaign ceiling fails two more —
+including the one that hands the gateway ten messages with a ceiling of four.
+
+**What was tried and could not be finished:** verifying media end to end against a real
+WhatsApp file. Inbound has been dead since 20 September (**D-14**) and the diagnosis is
+complete — 17 frames delivered on reconnect, every one failing `Bad MAC`, `messages.upsert`
+firing zero times. It is not our bug and it needs a re-link, which needs the phone.
+
+---
+
 ## Next
 
 1. **A `POST /contacts` route.** `contacts:write` is an enforceable scope with nothing behind
    it, so a contact can only be created by an inbound message, a one-off send, or a CSV
-   import. It is what JobPortal needs to push a candidate over HTTP.
+   import. Anything that wants to add one person over HTTP has no way to. Small, and it
+   unblocks every other source.
 2. **Show attachments in the inbox.** The API serves them and the UI does not yet render the
    `media` object on a message — a download link and a filename is the whole job. Then
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
