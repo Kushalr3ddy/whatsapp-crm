@@ -100,6 +100,12 @@ export const AUDIT = {
   conversationRead: 'conversation.read',
   mediaDownloaded: 'media.downloaded',
 
+  // Inbox collaboration. Assignment and resolution are the acts two agents can disagree
+  // about — "who was meant to answer this?", "who closed it?" — so each writes a row with the
+  // value on either side, which is what makes those questions answerable after the fact.
+  conversationAssigned: 'conversation.assigned',
+  conversationStatusChanged: 'conversation.status_changed',
+
   // Imports. The upload is recorded separately from the commit because they are different
   // acts: one stores somebody's spreadsheet, the other changes the contact database.
   importUploaded: 'import.uploaded',

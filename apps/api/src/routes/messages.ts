@@ -27,6 +27,32 @@ const sendMessage = z.object({
 });
 
 /**
+ * Filters for the conversation list.
+ *
+ * `assignee` is a small union rather than a plain UUID: `me` and `unassigned` are the two
+ * views an agent lives in, and a UUID names one colleague. Anything else is refused so a typo
+ * cannot silently widen the query to every thread.
+ */
+const listQuery = z.object({
+  status: z.enum(['open', 'closed']).optional(),
+  assignee: z.union([
+    z.literal('me'), z.literal('unassigned'), z.string().uuid()
+  ]).optional()
+});
+
+/**
+ * Body for changing a conversation. Both fields optional, but the refine requires at least one:
+ * an empty PATCH means the caller meant to change something and did not, which is a mistake
+ * worth reporting rather than a no-op worth hiding. `assigneeUserId: null` unassigns.
+ */
+const patchConversation = z.object({
+  status: z.enum(['open', 'closed']).optional(),
+  assigneeUserId: z.string().uuid().nullable().optional()
+}).refine((v) => v.status !== undefined || v.assigneeUserId !== undefined, {
+  message: 'provide at least one of `status` or `assigneeUserId`'
+});
+
+/**
  * Conversations and messages.
  *
  * `POST /messages` **queues**, it does not send. The socket lives in the gateway, and more
@@ -37,11 +63,44 @@ const sendMessage = z.object({
 export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
   const router = Router();
 
-  /** Lists conversations, most recently active first. */
+  /**
+   * Lists conversations, most recently active first.
+   *
+   * Filters narrow by `status` (open/closed) and by `assignee`, where `me` is the signed-in
+   * user, `unassigned` is a null assignee, and a UUID is a specific member. The filters are the
+   * difference between one shared queue and a team that can divide work — without them an agent
+   * and an admin see the identical list (F3, AC-1).
+   */
   router.get('/conversations', requireScope('conversations:read'), async (req: Request, res: Response) => {
+    const parsed = listQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+        (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const { status, assignee } = parsed.data;
+    const orgId = req.crm!.orgId;
+
+    // `me` names the caller, so it needs a person. An API key is not one — it holds scopes, not
+    // an identity — so it cannot ask for "mine" and is told plainly rather than shown an empty
+    // list, which would look like a bug.
+    if (assignee === 'me' && req.crm!.userId === null) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED',
+        'assignee=me needs a signed-in user; an API key has no "mine".'));
+      return;
+    }
+
+    const conditions = [sql`v.org_id = ${orgId}`];
+    if (status !== undefined) conditions.push(sql`v.status = ${status}`);
+    if (assignee === 'me') conditions.push(sql`v.assignee_user_id = ${req.crm!.userId}`);
+    else if (assignee === 'unassigned') conditions.push(sql`v.assignee_user_id IS NULL`);
+    else if (assignee !== undefined) conditions.push(sql`v.assignee_user_id = ${assignee}`);
+    const where = sql.join(conditions, sql` AND `);
+
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT v.id, v.status, v.unread_count AS "unreadCount",
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
+             v.assignee_user_id AS "assigneeUserId", au.display_name AS "assigneeName",
              c.id AS "contactId", c.display_name AS "contactName",
              -- A subquery rather than a join: a contact may hold more than one phone
              -- identity, and joining would silently duplicate the conversation row.
@@ -60,11 +119,115 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
       FROM conversation v
       JOIN contact c ON c.id = v.contact_id
       JOIN sender_identity si ON si.id = v.sender_identity_id
-      WHERE v.org_id = ${req.crm!.orgId}
+      -- app_user carries no RLS (resolving a credential is what sets the tenant), so the
+      -- assignee's name is fetched by a plain join; the assignee id itself is only ever set to
+      -- an org member by PATCH below, so this cannot surface a name from another tenant.
+      LEFT JOIN app_user au ON au.id = v.assignee_user_id
+      WHERE ${where}
       ORDER BY GREATEST(COALESCE(v.last_inbound_at, v.created_at),
                         COALESCE(v.last_outbound_at, v.created_at)) DESC
       LIMIT 100`));
     res.json({ data: rows });
+  });
+
+  /**
+   * Lists the org's members, so the inbox can offer an assignee.
+   *
+   * Read access rather than admin: any agent may hand a thread to a colleague, and the whole
+   * point of assignment is that they can. Returns only what an assignee picker needs — never a
+   * password hash or an email, which are not this endpoint's business.
+   */
+  router.get('/users', requireScope('conversations:read'), async (req: Request, res: Response) => {
+    const rows = await req.tenant!((tx) => tx.execute(sql`
+      SELECT u.id, u.display_name AS "displayName", m.role
+      FROM org_membership m
+      JOIN app_user u ON u.id = m.user_id
+      WHERE m.org_id = ${req.crm!.orgId} AND u.status = 'active'
+      ORDER BY u.display_name ASC`));
+    res.json({ data: rows });
+  });
+
+  /**
+   * Changes a conversation's status or assignee.
+   *
+   * At least one field, so an empty PATCH is a caller error rather than a silent no-op. A new
+   * assignee must belong to the org — `assignee_user_id` references `app_user`, which has no
+   * tenancy of its own, so nothing but this check stops a thread being handed to a user from
+   * another org. Each change writes its own audit row with the value on both sides (F3, TC-3.8).
+   */
+  router.patch('/conversations/:id', requireUuidParam('id'), requireScope('conversations:write'),
+    async (req: Request, res: Response) => {
+    const parsed = patchConversation.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+        (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const { status, assigneeUserId } = parsed.data;
+
+    const result = await req.tenant!(async (tx) => {
+      // The state before the change, which is also the existence check: RLS scopes it to this
+      // org, so a missing row means "not here" without confirming it exists elsewhere.
+      const before = (await tx.execute(sql`
+        SELECT status, assignee_user_id AS "assigneeUserId"
+        FROM conversation WHERE id = ${conversationId} AND org_id = ${orgId}`)
+      ) as unknown as Array<{ status: string; assigneeUserId: string | null }>;
+      if (before.length === 0) return { notFound: true as const };
+
+      // Assigning to someone outside the org is a caller error, not a 404: the conversation is
+      // real and here, the assignee is the problem, so name it.
+      if (assigneeUserId !== undefined && assigneeUserId !== null) {
+        const member = (await tx.execute(sql`
+          SELECT 1 FROM org_membership WHERE org_id = ${orgId} AND user_id = ${assigneeUserId}`)
+        ) as unknown as unknown[];
+        if (member.length === 0) return { notMember: true as const };
+      }
+
+      const updated = (await tx.execute(sql`
+        UPDATE conversation SET
+          status = ${status ?? sql`status`},
+          assignee_user_id = ${assigneeUserId === undefined ? sql`assignee_user_id` : assigneeUserId},
+          updated_at = now()
+        WHERE id = ${conversationId} AND org_id = ${orgId}
+        RETURNING id, status, assignee_user_id AS "assigneeUserId"`)
+      ) as unknown as Array<{ id: string; status: string; assigneeUserId: string | null }>;
+
+      const prev = before[0]!;
+      // One row per field that actually moved. A PATCH that sets the value already held is not
+      // a change and is not audited — otherwise the log fills with re-assignments to the same
+      // person, which is noise in exactly the place clarity matters.
+      if (assigneeUserId !== undefined && assigneeUserId !== prev.assigneeUserId) {
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.conversationAssigned,
+          targetType: 'conversation', targetId: conversationId,
+          before: { assigneeUserId: prev.assigneeUserId },
+          after: { assigneeUserId },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+      }
+      if (status !== undefined && status !== prev.status) {
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.conversationStatusChanged,
+          targetType: 'conversation', targetId: conversationId,
+          before: { status: prev.status }, after: { status },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+      }
+      return { row: updated[0]! };
+    });
+
+    if ('notFound' in result) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    if ('notMember' in result) {
+      res.status(422).json(problem(req, 422, 'NOT_A_MEMBER',
+        'That user is not a member of this organisation and cannot be assigned the thread.'));
+      return;
+    }
+    res.json({ data: result.row });
   });
 
   /** Returns one thread, oldest first, with bodies decrypted for display. */

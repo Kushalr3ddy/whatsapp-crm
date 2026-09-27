@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
-import { queueReply, startLink, getLinkState, CrmApiError } from '@/lib/crm';
+import { queueReply, startLink, getLinkState, updateConversation, CrmApiError } from '@/lib/crm';
 import type { LinkMode } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
@@ -24,6 +24,26 @@ export async function sendReply(conversationId: string, body: string): Promise<S
 
   try {
     await queueReply(conversationId, text);
+  } catch (error) {
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
+
+  revalidatePath('/inbox');
+  return { ok: true };
+}
+
+/**
+ * Changes a thread's status or assignee, then refreshes the inbox so the list and the thread
+ * both reflect it. Errors come back rather than thrown — reassigning is an ordinary action a
+ * colleague might race on, not a crash — so the caller can show the reason and move on.
+ */
+export async function updateThread(
+  conversationId: string,
+  patch: { status?: 'open' | 'closed'; assigneeUserId?: string | null }
+): Promise<SendResult> {
+  try {
+    await updateConversation(conversationId, patch);
   } catch (error) {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     return { ok: false, error: 'Could not reach the API.' };

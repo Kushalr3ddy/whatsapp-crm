@@ -27,6 +27,27 @@ export interface Conversation {
   messageCount: number;
   /** Outbound messages accepted but not yet sent — nothing has left for these yet. */
   queuedCount: number;
+  /** Who owns this thread. Null when nobody has taken it — the "unassigned" queue. */
+  assigneeUserId: string | null;
+  /** The assignee's display name, resolved by the API so the list needn't join. */
+  assigneeName: string | null;
+}
+
+/** One member of the org, as the assignee picker needs them. Mirrors `GET /api/v1/users`. */
+export interface OrgUser {
+  id: string;
+  displayName: string;
+  role: string;
+}
+
+/** The signed-in principal. Mirrors `GET /api/v1/auth/me`. */
+export interface Me {
+  kind: 'session' | 'api_key' | 'bootstrap';
+  orgId: string;
+  /** Null for an API key, which is not a person. Present for a signed-in user. */
+  userId: string | null;
+  role: string | null;
+  scopes: string[];
 }
 
 /** One message in a thread. Mirrors `GET /api/v1/conversations/:id/messages`. */
@@ -165,6 +186,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 /** Lists conversations, most recently active first. */
 export async function listConversations(): Promise<Conversation[]> {
   return request<Conversation[]>('/conversations');
+}
+
+/** Lists the org's members, so the inbox can offer an assignee. */
+export async function listUsers(): Promise<OrgUser[]> {
+  return request<OrgUser[]>('/users');
+}
+
+/** Reads the signed-in principal, so the UI can tell which threads are "mine". */
+export async function getMe(): Promise<Me> {
+  return request<Me>('/auth/me');
+}
+
+/**
+ * Changes a conversation's status or assignee.
+ *
+ * `assigneeUserId: null` unassigns; omitting a field leaves it untouched. Returns the updated
+ * row so a caller can reflect the change without a second fetch.
+ */
+export async function updateConversation(
+  id: string, patch: { status?: 'open' | 'closed'; assigneeUserId?: string | null }
+): Promise<{ id: string; status: string; assigneeUserId: string | null }> {
+  return request<{ id: string; status: string; assigneeUserId: string | null }>(
+    `/conversations/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) }
+  );
 }
 
 /** Returns one thread, oldest message first. */

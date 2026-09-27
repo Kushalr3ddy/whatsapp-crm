@@ -1,6 +1,7 @@
-import { listConversations, listMessages, CrmApiError } from '@/lib/crm';
-import type { Message } from '@/lib/crm';
+import { listConversations, listMessages, listUsers, CrmApiError } from '@/lib/crm';
+import type { Message, OrgUser } from '@/lib/crm';
 import { Composer } from './composer';
+import { ThreadControls } from './thread-controls';
 
 /** Formats a message timestamp. Full date, because a thread spans days. */
 function stamp(iso: string): string {
@@ -49,18 +50,35 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     failure = error instanceof CrmApiError ? `${error.code}: ${error.message}` : 'Could not reach the API.';
   }
 
-  const conversation = (await listConversations().catch(() => [])).find((c) => c.id === id);
+  const [conversationList, users] = await Promise.all([
+    listConversations().catch(() => []),
+    listUsers().catch((): OrgUser[] => [])
+  ]);
+  const conversation = conversationList.find((c) => c.id === id);
   const title = conversation?.contactName ?? conversation?.contactPhone ?? 'Conversation';
   const senderLabel = conversation?.senderLabel ?? null;
 
   return (
     <>
-      <header className="border-b border-border bg-surface px-5 py-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="mt-0.5 text-xs text-muted">
-          {conversation?.contactPhone ?? 'Privacy address — no phone shared'}
-          {senderLabel !== null && ` · via ${senderLabel}`}
-        </p>
+      <header className="flex items-start justify-between gap-4 border-b border-border bg-surface px-5 py-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold">{title}</h2>
+          <p className="mt-0.5 text-xs text-muted">
+            {conversation?.contactPhone ?? 'Privacy address — no phone shared'}
+            {senderLabel !== null && ` · via ${senderLabel}`}
+          </p>
+        </div>
+        {/* Only when the thread is in the fetched list — a conversation past the most recent 100
+            has no row here to read status/assignee from, and there is no GET /conversations/:id
+            yet (a later slice of P4). */}
+        {conversation !== undefined && (
+          <ThreadControls
+            conversationId={id}
+            users={users}
+            assigneeUserId={conversation.assigneeUserId}
+            status={conversation.status}
+          />
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { listConversations, listSenders, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { Conversation, Sender } from '@/lib/crm';
+import { listConversations, listSenders, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { Conversation, Sender, Me } from '@/lib/crm';
 import { AutoRefresh } from './auto-refresh';
+import { ConversationList } from './conversation-list';
 
 /**
  * Rendered on every request, never prerendered.
@@ -15,16 +15,6 @@ import { AutoRefresh } from './auto-refresh';
  */
 export const dynamic = 'force-dynamic';
 
-/** Formats a timestamp for the conversation list: a time today, a date before that. */
-function shortTime(iso: string | null): string {
-  if (iso === null) return '';
-  const when = new Date(iso);
-  const today = new Date().toDateString() === when.toDateString();
-  return today
-    ? when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : when.toLocaleDateString([], { day: 'numeric', month: 'short' });
-}
-
 /**
  * The inbox shell: the conversation list on the left, the selected thread on the right.
  *
@@ -34,11 +24,12 @@ function shortTime(iso: string | null): string {
 export default async function InboxLayout({ children }: { children: ReactNode }) {
   let conversations: Conversation[];
   let senders: Sender[];
+  let me: Me | null = null;
   let failure: string | null = null;
   let expired = false;
 
   try {
-    [conversations, senders] = await Promise.all([listConversations(), listSenders()]);
+    [conversations, senders, me] = await Promise.all([listConversations(), listSenders(), getMe()]);
   } catch (error) {
     // The session was rejected by the API — the cookie exists but is no longer valid, so
     // middleware let it through. Signing in again is the only useful response.
@@ -89,49 +80,9 @@ export default async function InboxLayout({ children }: { children: ReactNode })
           </p>
         )}
 
-        <nav className="flex-1 overflow-y-auto">
-          {conversations.length === 0 && failure === null ? (
-            <p className="px-4 py-6 text-xs text-muted">
-              No conversations yet. They appear here once a message is sent or received.
-            </p>
-          ) : (
-            conversations.map((c) => (
-              <Link
-                key={c.id}
-                href={`/inbox/${c.id}`}
-                className="block border-b border-border px-4 py-3 hover:bg-accent-soft"
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-sm font-medium">
-                    {c.contactName ?? c.contactPhone ?? 'Unknown'}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-muted">
-                    {shortTime(c.lastInboundAt ?? c.lastOutboundAt)}
-                  </span>
-                </div>
-                <div className="mt-0.5 flex items-center justify-between gap-2">
-                  <span className="truncate text-xs text-muted">
-                    {c.queuedCount > 0 && (
-                      <span
-                        className="mr-1 text-danger"
-                        title={`${String(c.queuedCount)} message${c.queuedCount === 1 ? '' : 's'} queued — not sent yet`}
-                      >
-                        ⚠
-                      </span>
-                    )}
-                    {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
-                    {c.senderLabel !== null && ` · ${c.senderLabel}`}
-                  </span>
-                  {c.unreadCount > 0 && (
-                    <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
-                      {c.unreadCount}
-                    </span>
-                  )}
-                </div>
-              </Link>
-            ))
-          )}
-        </nav>
+        {failure === null && (
+          <ConversationList conversations={conversations} currentUserId={me?.userId ?? null} />
+        )}
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col bg-canvas">{children}</main>

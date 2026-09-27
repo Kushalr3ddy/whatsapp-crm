@@ -25,7 +25,8 @@
         "conversation_id": "",
         "media_id": "",
         "sender_id": "",
-        "test_recipient": "+91XXXXXXXXXX"
+        "test_recipient": "+91XXXXXXXXXX",
+        "user_id": ""
       },
       "metaSortKey": 0,
       "modified": 0,
@@ -514,6 +515,226 @@
       ],
       "authentication": {},
       "metaSortKey": 4,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "grp_inbox",
+      "_type": "request_group",
+      "parentId": "wrk_crm",
+      "modified": 0,
+      "created": 0,
+      "name": "2b \u00b7 Inbox (P4 \u2014 assignment, status, filters)",
+      "description": "Assign threads, resolve/reopen them, and filter the list. Needs a key with conversations:read AND conversations:write. Set user_id in the environment to an org member (GET /users lists them).",
+      "environment": {},
+      "environmentPropertyOrder": null,
+      "metaSortKey": 25
+    },
+    {
+      "_id": "r_users",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/users",
+      "name": "list org members (assignee picker)",
+      "description": "Every active member of the org: id, displayName, role. Copy an id into the user_id environment variable to assign a thread to them.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 1,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_convs_filter",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations?status=open&assignee=unassigned",
+      "name": "list conversations \u2014 filtered",
+      "description": "assignee = me | unassigned | <user uuid>; status = open | closed. `me` needs a signed-in session; with a KEY it returns 422. Rows now carry assigneeUserId + assigneeName.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 2,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_assign",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}",
+      "name": "assign a thread to a user \u2192 200",
+      "description": "Sets the owner. The user must be a member of this org, or it is 422 NOT_A_MEMBER. Writes a conversation.assigned audit row (before/after).",
+      "method": "PATCH",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 3,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"assigneeUserId\": \"{{ _.user_id }}\"\n}"
+      }
+    },
+    {
+      "_id": "r_setstatus",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}",
+      "name": "resolve / reopen a thread \u2192 200",
+      "description": "status is open or closed. Writes a conversation.status_changed audit row. Flip closed\u2194open to see it move between the status filters.",
+      "method": "PATCH",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 4,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"status\": \"closed\"\n}"
+      }
+    },
+    {
+      "_id": "r_unassign",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}",
+      "name": "unassign a thread \u2192 200",
+      "description": "An explicit null clears the owner \u2014 the thread returns to the Unassigned queue.",
+      "method": "PATCH",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 5,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"assigneeUserId\": null\n}"
+      }
+    },
+    {
+      "_id": "r_patch_empty",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}",
+      "name": "empty PATCH body \u2192 422",
+      "description": "At least one of status or assigneeUserId is required; an empty body is a caller mistake, not a no-op.",
+      "method": "PATCH",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 6,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{}"
+      }
+    },
+    {
+      "_id": "r_patch_notmember",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}",
+      "name": "assign to a non-member \u2192 422 NOT_A_MEMBER",
+      "description": "assignee_user_id points at app_user, which has no tenancy \u2014 so a user from another org (or a made-up id) is refused rather than silently assigned.",
+      "method": "PATCH",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 7,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"assigneeUserId\": \"00000000-0000-0000-0000-000000000000\"\n}"
+      }
+    },
+    {
+      "_id": "r_assignee_me_key",
+      "_type": "request",
+      "parentId": "grp_refuse",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations?assignee=me",
+      "name": "assignee=me with a key \u2192 422",
+      "description": "A key holds scopes, not an identity, so \"mine\" is meaningless for it and is refused plainly rather than returning an empty list.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 8,
       "settingStoreCookies": true,
       "settingSendCookies": true
     }
