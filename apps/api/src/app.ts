@@ -79,7 +79,17 @@ export function buildApp(deps: AppDependencies): Express {
   // The import upload is the one route that takes a file rather than JSON. Scoped to that
   // path and capped, so no other route inherits a large body limit — the system this replaces
   // had a global 50 MB JSON limit and every endpoint wore the cost (M3).
-  app.use('/api/v1/imports', express.raw({ type: ['text/csv', 'text/plain'], limit: IMPORT_LIMIT }));
+  // CSV and Excel both arrive as a raw body on this one path. Excel is binary, so its type and
+  // `application/octet-stream` (what some clients send) are accepted too; the handler tells them
+  // apart by the bytes, not the header.
+  app.use('/api/v1/imports', express.raw({
+    type: [
+      'text/csv', 'text/plain',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/octet-stream'
+    ],
+    limit: IMPORT_LIMIT
+  }));
 
   /**
    * Liveness. Answers "is this process running?" and nothing more — it must not touch the

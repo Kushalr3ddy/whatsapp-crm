@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { parseCsv, CsvError } from '@crm/shared';
+import { parseCsv, CsvError, parseXlsxRows, rowsToCsv, looksLikeXlsx } from '@crm/shared';
 import { runImport, writeAudit, AUDIT, type ImportMapping } from '@crm/core';
 import { assertValidKey, InvalidKeyError, type StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
@@ -57,7 +57,7 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
     const body = req.body as unknown;
     if (!Buffer.isBuffer(body) || body.byteLength === 0) {
       res.status(415).json(problem(req, 415, 'UNSUPPORTED_MEDIA_TYPE',
-        'POST the file itself with Content-Type: text/csv. Excel is not supported yet.'));
+        'POST the file itself — a CSV (text/csv) or an .xlsx spreadsheet.'));
       return;
     }
     if (body.byteLength > maxBytes) {
@@ -93,12 +93,29 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
       return;
     }
 
+    // An .xlsx is converted to CSV text here, so everything downstream — this parse, the dry
+    // run, the commit — is the one CSV path with one set of edge cases. The dedup hash above was
+    // taken on the bytes as received (the .xlsx itself), which is what the design requires.
+    const isXlsx = looksLikeXlsx(body);
     let table;
+    let stored: Buffer;
     try {
-      table = parseCsv(body.toString('utf8'));
+      if (isXlsx) {
+        const csvText = rowsToCsv(await parseXlsxRows(body));
+        stored = Buffer.from(csvText, 'utf8');
+        table = parseCsv(csvText);
+      } else {
+        stored = body;
+        table = parseCsv(body.toString('utf8'));
+      }
     } catch (error) {
       if (error instanceof CsvError) {
         res.status(422).json(problem(req, 422, 'MALFORMED_CSV', error.message));
+        return;
+      }
+      if (isXlsx) {
+        res.status(422).json(problem(req, 422, 'MALFORMED_XLSX',
+          'That file could not be read as an .xlsx spreadsheet.'));
         return;
       }
       throw error;
@@ -106,13 +123,14 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
 
     const id = randomUUID();
     // Keyed by run id, not by filename: the same unguessable-key reasoning as attachments,
-    // and it keeps two files of the same name from colliding.
+    // and it keeps two files of the same name from colliding. Always stored as CSV text — an
+    // .xlsx has been converted — so the run step re-parses it with the CSV parser.
     const key = `org/${orgId}/imports/${id}.csv`;
     try { assertValidKey(key); } catch (error) {
       if (error instanceof InvalidKeyError) throw new Error(`built an invalid storage key: ${key}`);
       throw error;
     }
-    await storage.put(key, body, { contentType: 'text/csv' });
+    await storage.put(key, stored, { contentType: 'text/csv' });
 
     await req.tenant!(async (tx) => {
       if (previous) {
@@ -126,7 +144,8 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
       await tx.execute(sql`
         INSERT INTO import_run (id, org_id, source_type, filename, storage_key, sha256,
                                 byte_size, status, row_count, headers)
-        VALUES (${id}, ${orgId}, 'csv', ${filename}, ${key}, ${sha256}, ${body.byteLength},
+        VALUES (${id}, ${orgId}, ${isXlsx ? 'xlsx' : 'csv'}, ${filename}, ${key}, ${sha256},
+                ${body.byteLength},
                 'uploaded', ${table.rows.length}, ${JSON.stringify(table.headers)}::jsonb)`);
       await writeAudit(tx, {
         orgId, actor: auditActor(req), action: AUDIT.importUploaded,

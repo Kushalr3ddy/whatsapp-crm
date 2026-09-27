@@ -14,7 +14,7 @@
     "apps/*"
   ],
   "scripts": {
-    "//1": "\u2500\u2500\u2500 everyday \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    "//1": "─── everyday ─────────────────────────────────────────────────────────",
     "dev": "tsx watch --env-file-if-exists=.env apps/api/src/server.ts",
     "dev:all": "bash infra/scripts/dev-up.sh",
     "gateway": "tsx watch --env-file-if-exists=.env apps/gateway/src/main.ts",
@@ -28,7 +28,7 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "//2": "\u2500\u2500\u2500 database: db:setup does everything a new clone needs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    "//2": "─── database: db:setup does everything a new clone needs ────────────",
     "db:setup": "npm run db:dev:up && npm run db:migrate:all",
     "db:dev:up": "bash infra/scripts/dev-db.sh up",
     "db:dev:down": "bash infra/scripts/dev-db.sh down",
@@ -43,16 +43,17 @@
     "db:migrate:test": "DATABASE_URL=postgresql://dev:dev@localhost:5434/whatsapp_crm_test tsx --env-file-if-exists=.env packages/db/src/migrate.ts",
     "db:generate": "drizzle-kit generate --config=packages/db/drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config=packages/db/drizzle.config.ts",
-    "//3": "\u2500\u2500\u2500 whatsapp: link a real number and send on it (docs/20-orientation.md) \u2500\u2500\u2500",
+    "//3": "─── whatsapp: link a real number and send on it (docs/20-orientation.md) ───",
     "wa:link": "tsx --env-file-if-exists=.env scripts/wa-link.ts",
     "wa:send": "tsx --env-file-if-exists=.env scripts/wa-link.ts send",
-    "//4": "\u2500\u2500\u2500 administration: provisioning and support (scripts/admin.ts) \u2500\u2500\u2500",
+    "//4": "─── administration: provisioning and support (scripts/admin.ts) ───",
     "admin": "tsx --env-file-if-exists=.env scripts/admin.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",
     "baileys": "6.7.24",
     "drizzle-orm": "^0.36.4",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "libphonenumber-js": "^1.11.15",
     "pino": "^9.5.0",

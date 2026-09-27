@@ -15,6 +15,7 @@ interface Tab {
 const TABS: Tab[] = [
   { href: '/inbox', label: 'Inbox' },
   { href: '/link', label: 'Numbers' },
+  { href: '/import', label: 'Import' },
   { href: '/broadcast', label: 'Broadcast', soon: true },
   { href: '/billing', label: 'Billing', soon: true }
 ];

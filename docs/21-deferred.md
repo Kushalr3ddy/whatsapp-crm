@@ -622,3 +622,81 @@ examples would mean redoing it. It also overlaps the Meta adapter (P8) and the M
 are fine as they are; this is additive on top, not a rewrite of them.
 
 **Cost of deferring:** none. Canned replies work now; this is enhancement.
+
+---
+
+## D-20 · SQLite support for single-machine deployments
+
+**What:** the option to run this against **SQLite** instead of Postgres, for a customer who
+installs it as a self-contained module on their own machine rather than pointing it at a
+centralised database.
+
+**Why parked:** the current build leans on Postgres in load-bearing ways, so this is a
+re-architecture, not a config flag:
+
+| Depends on | Used for | SQLite equivalent |
+|---|---|---|
+| **Row-level security** | tenant isolation (the whole multi-tenant model) | none — would move to app-level enforcement |
+| **LISTEN / NOTIFY** | the gateway command channel (link/unlink/send) | none — would move to polling |
+| **jsonb + GIN** | `contact.custom_fields` and search | JSON1, weaker; different indexing |
+| **triggers, `set_config`, transaction-scoped tenant** | isolation plumbing | rework |
+
+The deployment decision (2026-09-27) is **multi-tenant on a centralised Postgres**, which needs
+all of the above — so SQLite is not wanted for the primary mode. It only makes sense for a
+**single-tenant, one-customer-one-machine** install, where multi-tenancy and RLS are moot anyway.
+
+**What brings it back:** a concrete need to ship a single-machine install (a customer who will
+not run Postgres). At that point this is its own track — likely a `DbDriver` port with a Postgres
+adapter (RLS + NOTIFY) and a SQLite adapter (app-level scoping + polling), decided in an ADR,
+since it changes the security model.
+
+**Cost of deferring:** none today. It grows with every feature that reaches for a Postgres-only
+capability without a fallback in mind — so new isolation/notify logic should stay behind the
+helpers that already wrap it (`setTenant`, the gateway command channel), not spread raw.
+
+---
+
+## D-21 · The full import mapping wizard
+
+**What:** the complete mapping experience from `docs/07-ingestion.md`, on top of the **simple**
+import tab being built now (upload .csv/.xlsx → pick the phone/name/email column → preview →
+commit). The full version adds: multiple identity rules, per-column **transforms**
+(trim/lower/upper/digits), **keep vs drop** unmapped columns, and **saved, reusable mappings** so
+the same spreadsheet shape need not be re-mapped every time.
+
+**Why parked:** the simple tab covers the real "upload a sheet of contacts" need with far less
+UI. The wizard is worth building once there is a recurring import shape that the simple picker
+cannot express, or enough imports that re-mapping each time is the annoyance.
+
+**What brings it back:** a column layout the simple mapping cannot handle (several phone columns,
+a name split across columns, transforms needed before matching), or repeated imports of the same
+shape.
+
+**Cost of deferring:** low — the API already accepts a full versioned mapping
+(`mappingSchema` in `apps/api/src/routes/imports.ts`), so this is a UI-side expansion, not a
+backend change. The simple tab posts a subset of that same mapping.
+
+---
+
+## D-22 · Row-level de-duplication with a diff-style review
+
+**What:** de-duplication *within and against* an import, resolved by a person — not just the
+file-level hash check that exists now. When an incoming row matches an existing contact (or
+another row in the same file), **show the two side by side** (git-diff style, or something
+friendlier — highlighted field differences) and let the user **choose which version wins**,
+field by field or whole-row.
+
+**Why parked:** the file-hash check (refuse the same bytes twice, `?force=true` to re-run) is
+enough to stop the accident that actually happens — importing the same sheet twice. Row-level
+merge review is a much larger interaction and belongs with the full wizard (**D-21**), not the
+simple tab.
+
+**What brings it back:** imports that legitimately overlap existing contacts often enough that
+"which value is right?" needs a human answer rather than the current identity-rule precedence.
+
+**What exists to build on:** identity resolution already matches a row to an existing contact
+(`packages/core` import path), and the per-row ledger (`import_row`) records each outcome — so
+the data to diff is already produced; this is the review UI and the merge-choice on top.
+
+**Cost of deferring:** low. The current precedence (a sparse row cannot overwrite richer data,
+M9) is a safe default; this replaces "safe default" with "user's explicit choice".

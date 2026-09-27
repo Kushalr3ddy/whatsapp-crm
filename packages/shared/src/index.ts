@@ -11,3 +11,4 @@ export {
   detectMediaType, safeFilename, UNKNOWN_MEDIA_TYPE, type MediaType
 } from './media-type.js';
 export { parseCsv, parseCsvRows, CsvError, type CsvTable } from './csv.js';
+export { parseXlsxRows, rowsToCsv, looksLikeXlsx } from './xlsx.js';

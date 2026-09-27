@@ -281,6 +281,62 @@ export async function listCannedReplies(): Promise<CannedReply[]> {
   return request<CannedReply[]>('/canned-replies');
 }
 
+/** What an upload reports back: the headers and a sample, so a mapping is built from fact. */
+export interface ImportUpload {
+  id: string;
+  sha256: string;
+  rowCount: number;
+  headers: string[];
+  sample: Array<Record<string, string>>;
+  /** The run this deliberately re-imported (via ?force), or null. */
+  reimportOf: string | null;
+}
+
+/** The outcome of a dry run or a commit. */
+export interface ImportSummary {
+  read: number;
+  created: number;
+  errors: number;
+  dryRun: boolean;
+}
+
+/**
+ * Uploads a CSV or .xlsx file for import. Sends the raw bytes (not JSON), forwarding the session,
+ * with a content type the API's raw parser accepts — the handler tells CSV from Excel by the
+ * bytes regardless.
+ */
+export async function uploadImport(
+  bytes: ArrayBuffer, filename: string, contentType: string
+): Promise<ImportUpload> {
+  const auth = await forwardedAuth();
+  const response = await fetch(
+    `${baseUrl()}/api/v1/imports?filename=${encodeURIComponent(filename)}`,
+    { method: 'POST', cache: 'no-store', headers: { 'Content-Type': contentType, ...auth },
+      body: new Uint8Array(bytes) }
+  );
+  if (response.status === 401) throw new NotAuthenticatedError();
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = payload as Partial<ApiProblem> | null;
+    throw new CrmApiError({
+      code: problem?.code ?? 'UNKNOWN',
+      detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
+      status: response.status
+    });
+  }
+  return (payload as { data: ImportUpload }).data;
+}
+
+/** Runs a mapping over an uploaded file — a dry run to preview, or a commit to write contacts. */
+export async function runImportMapping(
+  id: string, mapping: unknown, dryRun: boolean
+): Promise<ImportSummary> {
+  return request<ImportSummary>(`/imports/${encodeURIComponent(id)}/run`, {
+    method: 'POST',
+    body: JSON.stringify({ mapping, dryRun })
+  });
+}
+
 /**
  * Queues an outbound message. Returns once the API has accepted it, not once it is sent —
  * the gateway owns actual delivery, so the thread has to be polled for status.

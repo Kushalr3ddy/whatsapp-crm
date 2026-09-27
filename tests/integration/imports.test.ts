@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { sql } from 'drizzle-orm';
 import {
@@ -311,5 +312,47 @@ describe('isolation and the trail', () => {
     // Storing somebody's spreadsheet and changing the contact database are different acts.
     expect((rows as unknown as Array<{ action: string }>).map((r) => r.action))
       .toEqual(['import.uploaded', 'import.committed']);
+  });
+});
+
+describe('Excel (.xlsx)', () => {
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  /** Builds a small .xlsx with the same columns as THREE_ROWS; the first phone is a NUMBER. */
+  async function xlsxBuffer(): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Sheet1');
+    ws.addRow(['Full Name', 'Mobile', 'Email']);
+    ws.addRow(['Priya Sharma', 9876500001, 'PRIYA@example.com']);   // a numeric cell on purpose
+    ws.addRow(['Rahul Verma', '+91 98765 00002', 'rahul@example.com']);
+    return Buffer.from(await wb.xlsx.writeBuffer() as ArrayBuffer);
+  }
+
+  it('parses a spreadsheet the same as a CSV, keeping a numeric phone intact', async () => {
+    const r = await request(app).post('/api/v1/imports?filename=contacts.xlsx')
+      .set(...auth()).set('Content-Type', XLSX).send(await xlsxBuffer());
+
+    expect(r.status).toBe(201);
+    expect(r.body.data.headers).toEqual(['Full Name', 'Mobile', 'Email']);
+    expect(r.body.data.rowCount).toBe(2);
+    // The number-typed phone came through as its digits, not 9.8e9 or a dropped leading form.
+    const rows = r.body.data.sample as Array<Record<string, string>>;
+    const priya = rows.find((row) => row['Full Name'] === 'Priya Sharma');
+    expect(priya?.Mobile).toBe('9876500001');
+  });
+
+  it('commits contacts from a spreadsheet', async () => {
+    const up = await request(app).post('/api/v1/imports')
+      .set(...auth()).set('Content-Type', XLSX).send(await xlsxBuffer());
+    const committed = await run(up.body.data.id, false);
+    expect(committed.status).toBe(200);
+    expect(committed.body.data).toMatchObject({ read: 2, created: 2, errors: 0, dryRun: false });
+  });
+
+  it('rejects a file that is not a real spreadsheet with 422', async () => {
+    const r = await request(app).post('/api/v1/imports')
+      .set(...auth()).set('Content-Type', XLSX).send(Buffer.from('PK\x03\x04 not really a zip'));
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('MALFORMED_XLSX');
   });
 });

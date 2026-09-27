@@ -39,7 +39,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**364 tests in 28 files · 83 source files · 22 of 35 specced tables · 14 migrations · 75 commits.**
+**367 tests in 28 files · 86 source files · 22 of 35 specced tables · 14 migrations · 76 commits.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -104,10 +104,13 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   Recipients are the queue, so pausing is instant and a campaign cannot bury an agent's reply.
   The start response forecasts how many days it will take. Cancelled recipients are marked
   skipped with a reason, never dropped.
-- **CSV import (P5, first slice)**: upload → dry run → commit. **Content-hash dedup**, so the
-  same file cannot import twice whatever it is named; a deliberate re-import supersedes the
-  old run. Ordered identity rules, phone normalisation on the way in, a per-row ledger, and a
-  dry run that is the default. A sparse file cannot overwrite a name that is already there.
+- **Import — CSV and Excel (P5, first slice)**: upload → dry run → commit, now with a web
+  **Import tab** and **.xlsx** support (exceljs, cells read as displayed text so a numeric phone
+  survives; converted to CSV and fed the one pipeline). **Content-hash dedup**, so the same file
+  cannot import twice whatever it is named; a deliberate re-import supersedes the old run. Ordered
+  identity rules, phone normalisation on the way in, a per-row ledger, and a dry run that is the
+  default. A sparse file cannot overwrite a name that is already there. The UI does the **simple**
+  mapping (pick phone/name/email); the full wizard is **D-21**, row-level dedup **D-22**.
 - **Send pacing (P6 layers 1–2)**: warmup ramp (20/36/65/117/210/378/680 then steady), per
   minute · hour · day ceilings, and a Gaussian-jittered 1.5–4 s pause before each send. Counted
   from the `message` table, so it survives restarts and replicas. A paced message is left
@@ -125,7 +128,7 @@ rest for files, no retention job, no antivirus (all D-11) · no self-service pas
 **no way to create a contact except an inbound message or a CSV import** — `contacts:write` is
 an enforceable scope with nothing behind it · no message templates (a campaign carries a plain
 body) · **no anti-ban layers 3–6** — no typing simulation, circadian pacing, contact-graph
-gates or health scoring · no Meta adapter · no Excel import · no deployment.
+gates or health scoring · no Meta adapter · no deployment.
 
 ---
 

@@ -8,11 +8,13 @@ operator's half**: what each source actually does, what protects it from duplica
 commands to try it.
 
 > **Status, stated once so nothing here misleads you.**
-> **Built:** CSV upload → dry run → commit, content-hash dedup, identity resolution, per-row
-> ledger.
-> **Not built:** Excel, Google Sheets, REST, database, webhooks, scheduled syncs, the mapping
-> UI. Each section below marks which it is. The ✅ sections you can run today; the ⬜ sections
-> are the design to build against, written now so the decisions are not re-derived later.
+> **Built:** CSV **and Excel (.xlsx)** upload → dry run → commit, content-hash dedup, identity
+> resolution, per-row ledger, and a web **Import tab** with a simple column mapping
+> (pick phone/name/email).
+> **Not built:** Google Sheets, REST, database, webhooks, scheduled syncs, and the **full**
+> mapping wizard (transforms, multiple identities, saved mappings — **D-21**) with row-level
+> diff-style dedup (**D-22**). Each section below marks which it is. The ✅ sections you can run
+> today; the ⬜ sections are the design to build against.
 
 ---
 

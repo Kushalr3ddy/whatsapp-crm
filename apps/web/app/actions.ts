@@ -3,9 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
-  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addNote, CrmApiError
+  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addNote,
+  uploadImport, runImportMapping, CrmApiError
 } from '@/lib/crm';
-import type { LinkMode } from '@/lib/crm';
+import type { LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
 export interface SendResult {
@@ -82,6 +83,70 @@ export interface LinkStatus {
   pairingCode: string | null;
   expiresAt: string | null;
   detail: string | null;
+}
+
+/** What the import panel gets back from an upload: the parsed file, or a reason it was refused. */
+export interface UploadResult {
+  ok: boolean;
+  error?: string;
+  upload?: ImportUpload;
+}
+
+/**
+ * Uploads a CSV or .xlsx sheet. The bytes go straight to the API (not through a JSON body), and
+ * a refusal — a duplicate file, a malformed sheet — comes back as a message rather than a throw,
+ * because those are ordinary things a person doing an import needs to see and act on.
+ */
+export async function uploadSheet(formData: FormData): Promise<UploadResult> {
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Choose a file first.' };
+  const name = file.name === '' ? 'upload' : file.name;
+  const contentType = name.toLowerCase().endsWith('.xlsx')
+    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    : 'text/csv';
+  try {
+    const upload = await uploadImport(await file.arrayBuffer(), name, contentType);
+    return { ok: true, upload };
+  } catch (error) {
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
+}
+
+/** The outcome of previewing or committing an import. */
+export interface RunResult {
+  ok: boolean;
+  error?: string;
+  summary?: ImportSummary;
+}
+
+/**
+ * Builds the mapping from the columns the person picked and runs it — a dry run to preview, or a
+ * commit to write the contacts. The mapping is assembled here rather than trusted from the
+ * client: the phone column is required, the name and email are optional.
+ */
+export async function runSheet(
+  id: string,
+  cols: { phone: string; name: string | null; email: string | null },
+  dryRun: boolean
+): Promise<RunResult> {
+  const identities: unknown[] = [{ kind: 'phone', from: cols.phone, transform: ['trim'] }];
+  if (cols.email !== null) identities.push({ kind: 'email', from: cols.email, transform: ['trim', 'lower'] });
+  const mapping = {
+    version: 1,
+    displayName: cols.name !== null ? { from: cols.name, transform: ['trim'] } : undefined,
+    identities,
+    defaultCountry: 'IN',
+    unmapped: 'keep'
+  };
+  try {
+    const summary = await runImportMapping(id, mapping, dryRun);
+    if (!dryRun) revalidatePath('/inbox');
+    return { ok: true, summary };
+  } catch (error) {
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
 }
 
 /** Unlinks a number, so a corrupt or logged-out session can be linked again from scratch. */

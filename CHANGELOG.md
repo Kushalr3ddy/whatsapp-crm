@@ -13,6 +13,19 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-27 — P5: Excel import + an Import tab in the UI
+- **Excel (.xlsx) is now supported**, alongside CSV. The upload endpoint detects a spreadsheet by
+  its bytes, reads it with exceljs taking every cell as its **displayed text** (so a phone stored
+  as a number survives as its digits, not `9.8e9`), converts to CSV, and feeds the exact same
+  dry-run/commit/dedup pipeline. New dependency: `exceljs`.
+- **New Import tab** (`/import`): upload a CSV or .xlsx → the columns are auto-guessed with
+  dropdowns to pick Phone (required) / Name / Email → **Preview** (dry run, writes nothing) →
+  **Import** (commit). File-hash dedup still refuses the same bytes twice.
+- This is the **simple** mapping; the full wizard (transforms, multiple identities, saved
+  mappings) is pinned **D-21**, and row-level dedup with a diff-style review is **D-22**.
+- 3 new tests (**367 total**), including a numeric phone cell surviving intact and a corrupt
+  sheet → 422.
+
 ### 2026-09-27 — Unlink / re-link recovery (unblocks D-14)
 - A number can now be **unlinked**: `POST /senders/:id/unlink` signals the gateway (via the same
   durable-row + NOTIFY channel as linking), which calls `logout()` — logging out on WhatsApp's
