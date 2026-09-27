@@ -837,6 +837,48 @@
       "metaSortKey": 9,
       "settingStoreCookies": true,
       "settingSendCookies": true
+    },
+    {
+      "_id": "r_conv_get",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}",
+      "name": "one conversation by id",
+      "description": "Fetches a single conversation, so a thread past the recent-100 list can still be opened. Another tenant's id is 404; malformed is 422.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 10,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_conv_read",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}/read",
+      "name": "mark read (clear unread)",
+      "description": "Zeroes unread_count. Opening the thread's messages does the same as a side effect.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 11,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
     }
   ]
 }

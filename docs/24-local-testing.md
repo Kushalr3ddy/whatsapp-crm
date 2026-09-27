@@ -165,6 +165,19 @@ Deliberate refusals: an empty body is **422**; a `assigneeUserId` who is not an 
 **422 `NOT_A_MEMBER`**; another tenant's conversation is **404**. Each change that actually moves
 writes an audit row (`conversation.assigned`, `conversation.status_changed`).
 
+### Open a thread, and mark it read
+
+```bash
+# fetch one conversation by id — works even for a thread past the recent-100 list
+curl -s localhost:3000/api/v1/conversations/$CONV -H "Authorization: Bearer $KEY"
+
+# clear the unread badge explicitly (opening the thread's messages also does it)
+curl -s -X POST localhost:3000/api/v1/conversations/$CONV/read -H "Authorization: Bearer $KEY"
+```
+
+`unread_count` rises on every inbound and is reset by reading the thread — before this it only
+ever grew. Another tenant's id is a **404**; a malformed id is a **422**.
+
 ### Internal notes
 
 ```bash

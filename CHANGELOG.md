@@ -13,6 +13,15 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-27 — P4: mark-read + open any thread
+- **Unread count now resets.** It was incremented on every inbound and cleared nowhere, so the
+  badge only ever grew. Opening a thread (fetching its messages) now zeroes it, and there is an
+  explicit `POST /conversations/:id/read` too.
+- **`GET /conversations/:id`** — a single conversation by id, so a thread past the recent-100 list
+  cap can be opened. The thread page now loads its details from this instead of scanning the list.
+- 6 new tests (**359 total**). Browser-verified: the media-demo thread's unread badge cleared on
+  open while the others kept theirs.
+
 ### 2026-09-27 — P4: thread lock (assignment-based, admin override)
 - Replying into a thread assigned to another agent → **409 `THREAD_ASSIGNED`**. The assignee
   replies fine, an **admin overrides**, and an **API key is exempt** (an integration is not a
@@ -132,27 +141,26 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
    dead). Presence + typing / collision detection (AC-3) is **pinned as D-17** — do it in the
    same slice as live inbound so the transport is paid for once. *New table:* `conversation_participant`.
 3. **P4 search** over message bodies + contact fields (AC-7). Needs the blind-index / trigram
-   decision on encrypted columns.
-4. **P4 small gaps** — `GET /conversations/{id}` (single-thread fetch), `POST /conversations/{id}/read`.
-5. **P4 leftovers — PINNED as D-18** (not required now): snooze (AC-6), Meta 24-hour window UI
+   decision on encrypted columns. **The last substantial P4 piece.**
+4. **P4 leftovers — PINNED as D-18** (not required now): snooze (AC-6), Meta 24-hour window UI
    (AC-9, needs P8), keyboard shortcuts (AC-10). Priority flag also deferred.
 
 > Presence/typing/collision → **D-17**. Snooze/Meta-window/keyboard → **D-18**.
 
 ### Other feature work
-6. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
+5. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
    contact can only be created by an inbound message, a one-off send, or a CSV import.
-7. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
+6. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
    suite like storage has.
-8. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
-9. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
+7. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
+8. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
 
 ### Hardening / deployment
-10. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
-    be backed up separately from the database** — losing it loses every linked number and message.
-11. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
+9. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
+   be backed up separately from the database** — losing it loses every linked number and message.
+10. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
     replicas each count separately.
-12. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
+11. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
 
 ---
 

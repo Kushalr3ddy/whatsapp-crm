@@ -32,6 +32,11 @@ The parts of the inbox and what they are for. Status as of this writing in brack
 - **Thread lock** *(built)* — once a thread is assigned, only that owner may reply until they
   resolve or reassign it; replying otherwise is `409`. An admin overrides, and an API key (an
   integration, not a person) is exempt. A deliberately simple stand-in for collision detection.
+- **Read state** *(built)* — opening a thread clears its unread badge (and `POST
+  /conversations/:id/read` does it explicitly). The count rises on inbound and resets on read;
+  it is per-conversation today, not yet per-agent.
+- **Opening any thread** *(built)* — `GET /conversations/:id` fetches one conversation by id, so a
+  thread further down than the recent-100 list can still be opened.
 - **Presence, typing, collision detection** *(deferred, D-17)* — showing that a colleague is
   viewing or typing in a thread. Needs a realtime channel; the thread lock covers the "don't both
   reply" case simply for now.

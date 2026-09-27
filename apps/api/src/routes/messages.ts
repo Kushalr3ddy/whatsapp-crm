@@ -164,6 +164,66 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
   });
 
   /**
+   * Returns one conversation on its own.
+   *
+   * The list is capped at 100, so a thread older than that could be found by id but not opened —
+   * the UI read the conversation's own details (title, status, assignee) out of the list. This
+   * fetches exactly one, by id, so any thread can be opened regardless of how many are ahead of
+   * it. Same shape as a list row.
+   */
+  router.get('/conversations/:id', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+    const rows = (await req.tenant!((tx) => tx.execute(sql`
+      SELECT v.id, v.status, v.unread_count AS "unreadCount",
+             v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
+             v.assignee_user_id AS "assigneeUserId", au.display_name AS "assigneeName",
+             c.id AS "contactId", c.display_name AS "contactName",
+             (SELECT ci.value_normalized FROM contact_identity ci
+               WHERE ci.contact_id = c.id AND ci.kind = 'phone'
+               ORDER BY ci.is_primary DESC, ci.created_at ASC
+               LIMIT 1) AS "contactPhone",
+             si.label AS "senderLabel",
+             (SELECT count(*)::int FROM message m WHERE m.conversation_id = v.id) AS "messageCount",
+             (SELECT count(*)::int FROM message m
+               WHERE m.conversation_id = v.id
+                 AND m.direction = 'outbound' AND m.status = 'queued') AS "queuedCount"
+      FROM conversation v
+      JOIN contact c ON c.id = v.contact_id
+      JOIN sender_identity si ON si.id = v.sender_identity_id
+      LEFT JOIN app_user au ON au.id = v.assignee_user_id
+      WHERE v.id = ${String(req.params.id)} AND v.org_id = ${req.crm!.orgId}`))
+    ) as unknown as Array<Record<string, unknown>>;
+
+    if (rows.length === 0) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    res.json({ data: rows[0] });
+  });
+
+  /**
+   * Marks a conversation read, clearing its unread badge.
+   *
+   * Opening a thread already does this as a side effect of fetching its messages; this is the
+   * explicit form for a client that clears the badge without loading the whole thread. Idempotent.
+   */
+  router.post('/conversations/:id/read', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const updated = (await req.tenant!((tx) => tx.execute(sql`
+      UPDATE conversation SET unread_count = 0
+      WHERE id = ${conversationId} AND org_id = ${orgId}
+      RETURNING id, unread_count AS "unreadCount"`)
+    ) as unknown as Array<{ id: string; unreadCount: number }>);
+    if (updated.length === 0) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    res.json({ data: updated[0] });
+  });
+
+  /**
    * Changes a conversation's status or assignee.
    *
    * At least one field, so an empty PATCH is a caller error rather than a silent no-op. A new
@@ -378,6 +438,12 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
           targetType: 'conversation', targetId: conversationId,
           ip: req.ip ?? null, requestId: String(req.id)
         });
+        // Opening a thread reads it: clear the unread badge. Without this the count only ever
+        // grew — it was incremented on every inbound and reset nowhere. Idempotent, so the
+        // 5-second inbox poll reopening the same thread costs nothing.
+        await tx.execute(sql`
+          UPDATE conversation SET unread_count = 0
+          WHERE id = ${conversationId} AND org_id = ${orgId} AND unread_count <> 0`);
       }
       return found;
     });

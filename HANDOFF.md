@@ -39,7 +39,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**353 tests in 27 files · 82 source files · 22 of 35 specced tables · 13 migrations · 72 commits.**
+**359 tests in 28 files · 82 source files · 22 of 35 specced tables · 13 migrations · 74 commits.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -88,6 +88,11 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   thread). Server-enforced in `POST /messages`; the composer mirrors it and still allows a note. A
   deliberately simple stand-in for presence/collision, which is **pinned as D-17**; snooze, the
   Meta-window UI and keyboard shortcuts are **pinned as D-18**.
+- **Mark-read and open-any-thread (P4)**: opening a thread now clears its unread badge —
+  `unread_count` was incremented on every inbound and reset nowhere, so it only grew; the messages
+  fetch zeroes it, and `POST /conversations/:id/read` is the explicit form. `GET /conversations/:id`
+  fetches one conversation by id, so a thread past the recent-100 list cap can be opened (the thread
+  page loads its details from it now, not from the capped list).
 - **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
   transfer starts so an abandoned download still counts. Inbox listing is deliberately not
   audited.
@@ -343,9 +348,9 @@ firing zero times. It is not our bug and it needs a re-link, which needs the pho
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
    stop being text-only.
 3. **Finish P4** — landed: assignment + status + filters, attachments in the thread, internal
-   notes, canned replies, and the thread lock. Remaining and still open: **search** (needs the
-   blind-index decision) and the two small endpoints `GET /conversations/:id` and
-   `POST /conversations/:id/read`. Deferred: **live inbound + presence/collision** is **D-17**
+   notes, canned replies, the thread lock, mark-read and open-any-thread. Remaining and still open:
+   **search** (needs the blind-index decision) — the last substantial P4 piece. Deferred: **live
+   inbound + presence/collision** is **D-17**
    (the big WebSocket lift, and live inbound is anyway blocked by D-14); snooze, the Meta-window
    countdown and keyboard shortcuts are **D-18**.
 4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a

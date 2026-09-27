@@ -1,7 +1,7 @@
 import {
-  listConversations, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
+  getConversation, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
 } from '@/lib/crm';
-import type { Message, OrgUser, Note, CannedReply, Me } from '@/lib/crm';
+import type { Message, OrgUser, Note, CannedReply, Me, Conversation } from '@/lib/crm';
 import { Composer } from './composer';
 import { ThreadControls } from './thread-controls';
 
@@ -131,9 +131,9 @@ function NoteBubble({ note }: { note: Note }) {
 /**
  * One thread: messages and internal notes on a shared timeline, with a composer underneath.
  *
- * The conversation's own details come from the list endpoint because there is no
- * `GET /conversations/:id` yet — which also means a thread outside the most recent 100
- * cannot be opened. Worth an endpoint of its own once that limit is reachable.
+ * The conversation's own details come from `GET /conversations/:id`, so any thread opens
+ * regardless of how far down the list it is — opening the thread also clears its unread badge,
+ * which the messages fetch does server-side.
  */
 export default async function ThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -147,18 +147,17 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     failure = error instanceof CrmApiError ? `${error.code}: ${error.message}` : 'Could not reach the API.';
   }
 
-  const [conversationList, users, cannedReplies, me] = await Promise.all([
-    listConversations().catch(() => []),
+  const [conversation, users, cannedReplies, me] = await Promise.all([
+    getConversation(id).catch((): Conversation | null => null),
     listUsers().catch((): OrgUser[] => []),
     listCannedReplies().catch((): CannedReply[] => []),
     getMe().catch((): Me | null => null)
   ]);
-  const conversation = conversationList.find((c) => c.id === id);
 
   // The thread lock, mirrored from the server guard in POST /messages: a thread assigned to
   // another agent is read-only to me unless I am an admin. Kept identical to the API so the
   // composer never offers a send the server would refuse.
-  const lockedByOther = conversation !== undefined
+  const lockedByOther = conversation !== null
     && conversation.assigneeUserId !== null
     && conversation.assigneeUserId !== me?.userId
     && me?.role !== 'admin';
@@ -182,10 +181,9 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
             {senderLabel !== null && ` · via ${senderLabel}`}
           </p>
         </div>
-        {/* Only when the thread is in the fetched list — a conversation past the most recent 100
-            has no row here to read status/assignee from, and there is no GET /conversations/:id
-            yet (a later slice of P4). */}
-        {conversation !== undefined && (
+        {/* Absent only if the fetch failed or the id is not in this org; otherwise every thread
+            has its controls, however far down the list it is. */}
+        {conversation !== null && (
           <ThreadControls
             conversationId={id}
             users={users}

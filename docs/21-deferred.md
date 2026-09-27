@@ -590,3 +590,35 @@ rest of the inbox); keyboard shortcuts are **small** and pure front-end; the Met
 **small on its own** but gated behind the much larger Meta adapter.
 
 **Cost of deferring:** none — all three are additive and touch no existing behaviour.
+
+---
+
+## D-19 · Rich message templates — user-managed, Meta-aligned, with media and import
+
+**What:** the grown-up version of canned replies. Today `canned_reply` is a plain
+shortcut + text body with `{{name}}` substitution (built, P4 chunk 2). The richer version is a
+**template system a user manages themselves** — a tab to create, edit and organise templates —
+that can carry **media** (an image/document header, like Meta's templates) and can be **imported**
+from somewhere rather than all hand-typed. See `docs/06-features/F4-templates.md`.
+
+**Why parked:** text is the priority now, and the plain canned replies already cover the everyday
+"don't retype the same opener" need. The richer shape should be **modelled on Meta's own template
+format** (WhatsApp message templates: category, header/body/footer, variables, buttons, and the
+approval flow), and that reference work has not been done — designing it before looking at Meta's
+examples would mean redoing it. It also overlaps the Meta adapter (P8) and the Meta-window UI
+(D-18), so it wants to land near them, not before.
+
+**What brings it back — any one of:**
+
+1. **Referring to Meta's template examples** and deciding how closely to mirror them (so the same
+   template can later be submitted to Meta for approval, not just used over Baileys).
+2. Users asking to **manage their own templates** in the UI rather than an admin seeding rows.
+3. **Media in templates** becoming a real need (an image header, a document) — which also depends
+   on outbound media existing at all.
+4. The **Meta Cloud API adapter (P8)** landing, since approved templates are how you message
+   outside the 24-hour window there.
+
+**What stays regardless:** the simple `canned_reply` table and its insert-with-`{{name}}` behaviour
+are fine as they are; this is additive on top, not a rewrite of them.
+
+**Cost of deferring:** none. Canned replies work now; this is enhancement.

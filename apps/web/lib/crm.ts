@@ -223,6 +223,11 @@ export async function listConversations(): Promise<Conversation[]> {
   return request<Conversation[]>('/conversations');
 }
 
+/** Fetches one conversation by id — how a thread opens regardless of how far down the list it is. */
+export async function getConversation(id: string): Promise<Conversation> {
+  return request<Conversation>(`/conversations/${encodeURIComponent(id)}`);
+}
+
 /** Lists the org's members, so the inbox can offer an assignee. */
 export async function listUsers(): Promise<OrgUser[]> {
   return request<OrgUser[]>('/users');
