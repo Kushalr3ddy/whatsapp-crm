@@ -65,6 +65,20 @@ export interface Message {
   createdAt: string;
   sentAt: string | null;
   readAt: string | null;
+  /**
+   * The attachment, when one is stored. `url` is the API path; the browser downloads through
+   * the web-side proxy at `/media/:id`, so the UI uses `id`, not this. Null for a text message
+   * or a media message whose bytes were never fetched (see `mediaUnavailable`).
+   */
+  media: {
+    id: string;
+    url: string;
+    contentType: string | null;
+    sizeBytes: number | null;
+    filename: string | null;
+  } | null;
+  /** True for a media message whose file could not be fetched — the attachment existed, the bytes did not. */
+  mediaUnavailable: boolean;
 }
 
 /** A WhatsApp number, linked or not. Mirrors `GET /api/v1/senders`. */

@@ -13,6 +13,19 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-27 — P4: attachments in the thread UI
+- Received attachments now render in the thread as a download link (filename + type + size)
+  instead of the old "not downloaded" placeholder; a media message whose bytes never arrived says
+  "attachment could not be fetched".
+- New web-side proxy route `GET /media/:id` ([apps/web/app/media/[id]/route.ts](apps/web/app/media/[id]/route.ts))
+  forwards the signed-in session to the API and streams the file back, preserving the API's
+  `Content-Disposition: attachment` + `nosniff` headers. The browser can't reach the API's media
+  route directly (different port in dev; the UI never holds a machine credential), so this is the
+  bridge.
+- **No new tables** — the API already served the `media` object; only the UI ignored it.
+- Verified: proxy forward path proven end-to-end (web → API → passthrough); full suite still 341.
+  A *successful authenticated* download + the visual bubble not yet eye-verified (needs a login).
+
 ### 2026-09-25 — P4 chunk 1: assignment + status + filters
 - `PATCH /conversations/:id` — set `status` (open/closed) and/or `assigneeUserId` (null unassigns).
   Cross-org conversation → 404; assignee from another org → 422 `NOT_A_MEMBER`; empty body → 422.
@@ -89,35 +102,32 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 ## To do (top = next)
 
 ### Quick wins / P4 continuation
-1. **Media in the inbox UI** — the API serves attachments; the thread UI still says "not
-   downloaded" ([inbox/[id]/page.tsx](apps/web/app/inbox/[id]/page.tsx) comment is stale). Render
-   the `media` object as a download link + filename. No backend work.
-2. **Outbound media** — send path must carry a file; `OutboundContent` must stop being text-only.
-3. **P4 chunk 2 — notes + canned replies.** *New tables:* `conversation_note`, `canned_reply`.
+1. **P4 chunk 2 — notes + canned replies.** *New tables:* `conversation_note`, `canned_reply`.
    Endpoints `POST /conversations/:id/notes`, `GET /canned-replies`. Notes never reach a provider
    (AC-4). Canned replies substitute contact variables (AC-5).
-4. **P4 chunk 3 — realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2), presence + typing /
+2. **Outbound media** — send path must carry a file; `OutboundContent` must stop being text-only.
+3. **P4 chunk 3 — realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2), presence + typing /
    collision detection (AC-3). *New table:* `conversation_participant`. Live assignment push.
-5. **P4 chunk 4 — search** over message bodies + contact fields (AC-7). Needs the blind-index /
+4. **P4 chunk 4 — search** over message bodies + contact fields (AC-7). Needs the blind-index /
    trigram decision on encrypted columns.
-6. **P4 leftovers** — snooze (*new column* `snooze_until` + a scheduler, AC-6), priority (*new
+5. **P4 leftovers** — snooze (*new column* `snooze_until` + a scheduler, AC-6), priority (*new
    column*), Meta 24-hour window countdown + template-only composer (AC-9), keyboard shortcuts
    (AC-10).
 
 ### Other feature work
-7. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
+6. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
    contact can only be created by an inbound message, a one-off send, or a CSV import.
-8. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
+7. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
    suite like storage has.
-9. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
-10. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
+8. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
+9. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
 
 ### Hardening / deployment
-11. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
+10. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
     be backed up separately from the database** — losing it loses every linked number and message.
-12. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
+11. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
     replicas each count separately.
-13. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
+12. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
 
 ---
 

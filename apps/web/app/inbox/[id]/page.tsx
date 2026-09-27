@@ -10,6 +10,48 @@ function stamp(iso: string): string {
   });
 }
 
+/** Human-readable file size, so a bubble can say "240 KB" rather than a raw byte count. */
+function fileSize(bytes: number | null): string {
+  if (bytes === null) return '';
+  if (bytes < 1024) return `${String(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * An attachment inside a bubble: a download link, or a note that the file could not be fetched.
+ *
+ * The link points at the web-side proxy (`/media/:id`), never the API directly — the browser
+ * has no way to authenticate to the API itself. The API serves every attachment as a download
+ * (`Content-Disposition: attachment`), so this is a link, not an inline preview, by design.
+ */
+function Attachment({ message }: { message: Message }) {
+  if (message.media !== null) {
+    const { id, filename, contentType, sizeBytes } = message.media;
+    const meta = [contentType, fileSize(sizeBytes)].filter((s) => s !== null && s !== '').join(' · ');
+    return (
+      <a
+        href={`/media/${id}`}
+        className="mb-1 flex items-center gap-2 rounded-lg border border-current/20 px-2.5 py-1.5 text-xs hover:opacity-80"
+      >
+        <span aria-hidden>↓</span>
+        <span className="min-w-0">
+          <span className="block truncate font-medium">{filename ?? 'attachment'}</span>
+          {meta !== '' && <span className="block opacity-70">{meta}</span>}
+        </span>
+      </a>
+    );
+  }
+  if (message.mediaUnavailable) {
+    return (
+      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide opacity-70">
+        {message.contentType} · attachment could not be fetched
+      </p>
+    );
+  }
+  return null;
+}
+
 /**
  * The delivery state of an outbound message, in words rather than ticks.
  *
@@ -102,21 +144,16 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
                     : 'border border-border bg-surface'
                 ].join(' ')}
               >
-                {m.contentType !== 'text' && (
-                  // Media is recognised but not downloaded: the file itself is never fetched
-                  // or stored, so say so rather than render an empty bubble. Attachments need
-                  // a storage driver and a media column, neither of which exists yet.
-                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wide opacity-70">
-                    {m.contentType} · not downloaded
-                  </p>
+                <Attachment message={m} />
+                {m.undecryptable ? (
+                  <p className="text-sm">[this message could not be decrypted]</p>
+                ) : m.body !== null && m.body !== '' ? (
+                  <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
+                ) : (
+                  // Nothing to say only when there is also no attachment — an image with no
+                  // caption is complete on its own and needs no "no text content" note.
+                  m.media === null && <p className="text-sm opacity-60">no text content</p>
                 )}
-                <p className="text-sm whitespace-pre-wrap break-words">
-                  {m.undecryptable
-                    ? '[this message could not be decrypted]'
-                    : m.body === null || m.body === ''
-                      ? <span className="opacity-60">no text content</span>
-                      : m.body}
-                </p>
                 <p
                   className={[
                     'mt-1 text-[11px]',

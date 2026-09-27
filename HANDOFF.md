@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-09-25
+# Handoff — state as of 2026-09-27
 
 A point-in-time snapshot for picking this up in a new session. For *how the project got here*
 read [`CONTEXT.md`](CONTEXT.md), the append-only session log. For *what it is*, read
@@ -29,7 +29,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P1 | Skeleton — Express, config gate, migrations, CI | **overstated** |
 | P2 | Core domain — orgs, users, sessions, API keys, RLS | **mostly** |
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
-| P4 | Inbox | **partial** |
+| P4 | Inbox — list/thread/composer, **assignment + status + filters** | **partial** |
 | P5 | Ingestion — CSV import | **first slice** |
 | P6 | Anti-ban — warmup, rate ceilings, jitter | **layers 1–2 of 6** |
 | P7 | Campaigns — bulk send, paced | **first slice** |
@@ -39,7 +39,10 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**330 tests in 24 files · 79 source files · 20 of 35 specced tables · 12 migrations · 67 commits.**
+**341 tests in 25 files · 81 source files · 20 of 35 specced tables · 12 migrations · 69 commits.**
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
+defects and gotchas; the changelog covers what has been built and what is left, in order.
 
 ### What actually works
 
@@ -62,6 +65,15 @@ it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage
   `GET /api/v1/media/:id` — always `Content-Disposition: attachment`, never inline, `nosniff`,
   `private, no-store`, resolved file → message → conversation → org on every request. A
   message whose file could not be fetched is kept and marked `mediaUnavailable`.
+- **Inbox collaboration (P4, chunk 1)**: `PATCH /conversations/:id` sets status (open/closed)
+  and assignee (or unassigns with an explicit null); `GET /conversations` filters by status and
+  by assignee (`me` / `unassigned` / a user id); `GET /users` lists org members for the picker.
+  An assignee must belong to the org — `assignee_user_id` points at `app_user`, which has no
+  tenancy of its own — so a foreign user is refused, a cross-org thread is a 404, and each field
+  that actually moves writes its own audit row (`conversation.assigned`,
+  `conversation.status_changed`). The web list has mine/unassigned/all + open/closed/any tabs,
+  and the thread header an assignee dropdown and resolve/reopen. **No new tables** — reused
+  columns already on `conversation`.
 - **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
   transfer starts so an abandoned download still counts. Inbox listing is deliberately not
   audited.
@@ -282,10 +294,15 @@ download is tested; the download itself has never met a real WhatsApp file.
 
 ## What landed most recently, and what it cost
 
-Six pieces, in order: **row-level security on the request path** → **media** → **send pacing
-(P6 layers 1–2)** → **CSV import (P5)** → **campaigns (P7)**, plus two small defect fixes
-(malformed UUID now 422 not 500; `problem()` no longer emits `"status": 0`) and per-key rate
-limiting actually being enforced.
+Most recent first: **P4 inbox chunk 1** — conversation assignment, status and list filters
+(commit `4474697`), reusing columns already on `conversation` so no migration; verified with 11
+integration tests, but the authenticated web click-through was not eye-verified (it needs a
+signed-in session, and the account password was not to hand).
+
+Before that, six pieces in order: **row-level security on the request path** → **media** →
+**send pacing (P6 layers 1–2)** → **CSV import (P5)** → **campaigns (P7)**, plus two small defect
+fixes (malformed UUID now 422 not 500; `problem()` no longer emits `"status": 0`) and per-key
+rate limiting actually being enforced.
 
 Three of those were verified by **deliberately breaking them** and watching tests fail, which
 is worth repeating for anything safety-critical: disabling the RLS role switch fails five
@@ -309,10 +326,11 @@ firing zero times. It is not our bug and it needs a re-link, which needs the pho
    `media` object on a message — a download link and a filename is the whole job. Then
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
    stop being text-only.
-3. **Finish P4** — assignment, collision detection, notes, canned replies, search, realtime.
-   `conversation.assignee_user_id` exists and nothing populates it, so an agent and an admin
-   see the same inbox. `conversation_participant` (`docs/05-data-model.md`) is what powers
-   collision detection: knowing someone else is already in a thread, so two people do not
+3. **Finish P4** — chunk 1 (assignment + status + filters) has landed; `assignee_user_id` is now
+   populated and the inbox can be divided by owner. Remaining: attachments in the thread UI (the
+   API serves them; the UI still says "not downloaded"), notes, canned replies, search, and
+   realtime + collision detection. `conversation_participant` (`docs/05-data-model.md`) is what
+   powers collision detection: knowing someone else is already in a thread, so two people do not
    answer the same candidate fifteen seconds apart.
 4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
    contract suite like storage now has.
