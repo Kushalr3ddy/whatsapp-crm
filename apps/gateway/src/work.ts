@@ -99,6 +99,51 @@ export async function handleLinkRequest(ctx: WorkContext, sessionId: string): Pr
 }
 
 /**
+ * Unlinks a number: logs it out on WhatsApp's side and discards the stored credentials.
+ *
+ * This is the recovery path a corrupt or logged-out session needs. Baileys only issues a fresh
+ * QR when there are no stored credentials, so without clearing them a re-link just reloads the
+ * broken session and never shows a QR. `provider.logout` clears them (and drops the socket if
+ * one is live); afterwards the sender is back to awaiting a link, and the next link request
+ * gets a clean QR.
+ */
+export async function handleUnlinkRequest(ctx: WorkContext, sessionId: string): Promise<void> {
+  const rows = await ctx.db.execute(sql`
+    SELECT sender_identity_id AS "senderIdentityId"
+    FROM channel_session
+    WHERE id = ${sessionId} AND unlink_requested_at IS NOT NULL`);
+  const row = (rows as unknown as Array<{ senderIdentityId: string }>)[0];
+  if (!row) return;                     // already handled, or superseded
+
+  try {
+    await ctx.provider.logout(row.senderIdentityId);
+  } catch (error) {
+    // Even if the logout call fails (no live socket, already gone from WhatsApp's side), the
+    // stored credentials are what matter for a re-link, and logout clears those first. Log and
+    // still reset the row so this does not loop.
+    ctx.logger.warn(
+      { senderId: row.senderIdentityId, err: error instanceof Error ? error.message : String(error) },
+      'logout during unlink did not complete cleanly'
+    );
+  }
+
+  // Return the sender to the same state as a freshly created, never-linked one — both the live
+  // connection state and the business status, so neither is left describing a link that is gone
+  // (the "written in both directions" rule, docs/00-prior-art.md).
+  await ctx.db.execute(sql`
+    UPDATE channel_session SET
+      connection_state = 'closed', disconnect_reason = 'unlinked',
+      link_requested_at = NULL, link_requested_mode = NULL, link_requested_phone = NULL,
+      link_challenge = NULL, link_error = NULL, qr_expires_at = NULL,
+      unlink_requested_at = NULL, updated_at = now()
+    WHERE id = ${sessionId}`);
+  await ctx.db.execute(sql`
+    UPDATE sender_identity SET status = 'linking', updated_at = now()
+    WHERE id = ${row.senderIdentityId}`);
+  ctx.logger.info({ senderId: row.senderIdentityId }, 'number unlinked; credentials cleared');
+}
+
+/**
  * Sends one queued message.
  *
  * Every failure is recorded against that message and nothing else. In the previous system one
@@ -282,6 +327,12 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
       AND link_requested_at > now() - interval '10 minutes'`);
   const links = (linkRows as unknown as Array<{ id: string }>).map((r) => r.id);
   for (const id of links) await handleLinkRequest(ctx, id);
+
+  // Unlink requests left behind: no time bound — a pending reset must not be lost just because
+  // the gateway was down when it was asked for.
+  const unlinkRows = await ctx.db.execute(sql`
+    SELECT id FROM channel_session WHERE unlink_requested_at IS NOT NULL`);
+  for (const r of unlinkRows as unknown as Array<{ id: string }>) await handleUnlinkRequest(ctx, r.id);
 
   const sendRows = await ctx.db.execute(sql`
     SELECT id FROM message

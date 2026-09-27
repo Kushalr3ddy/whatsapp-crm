@@ -879,6 +879,27 @@
       "metaSortKey": 11,
       "settingStoreCookies": true,
       "settingSendCookies": true
+    },
+    {
+      "_id": "r_unlink",
+      "_type": "request",
+      "parentId": "grp_data",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/senders/{{ _.sender_id }}/unlink",
+      "name": "unlink a number (reset for re-link)",
+      "description": "Clears the stored credentials so a corrupt/logged-out number can be linked again with a fresh QR. 202 async; 404 if never linked. See docs/24-local-testing.md and D-14.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 50,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
     }
   ]
 }

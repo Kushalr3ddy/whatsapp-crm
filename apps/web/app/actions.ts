@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
-import { queueReply, startLink, getLinkState, updateConversation, addNote, CrmApiError } from '@/lib/crm';
+import {
+  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addNote, CrmApiError
+} from '@/lib/crm';
 import type { LinkMode } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
@@ -80,6 +82,17 @@ export interface LinkStatus {
   pairingCode: string | null;
   expiresAt: string | null;
   detail: string | null;
+}
+
+/** Unlinks a number, so a corrupt or logged-out session can be linked again from scratch. */
+export async function unlinkNumber(senderId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await unlinkSender(senderId);
+  } catch (error) {
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
+  return { ok: true };
 }
 
 /** Asks the gateway to start linking. The challenge arrives on a later poll, not from this call. */

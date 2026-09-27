@@ -7,14 +7,14 @@ import { storeInboundMessage, applyDeliveryStatus, storeMedia } from '@crm/core'
 import { createStorage } from '@crm/storage';
 import type { NormalisedInboundEvent } from '@crm/channels';
 import {
-  applyConnectionEvent, handleLinkRequest, handleSend, markAllSessionsClosed, restoreSessions,
-  sweepPendingWork,
+  applyConnectionEvent, handleLinkRequest, handleUnlinkRequest, handleSend,
+  markAllSessionsClosed, restoreSessions, sweepPendingWork,
   type WorkContext
 } from './work.js';
 
 /** A command arriving on the Postgres NOTIFY channel. */
 interface GatewayCommand {
-  readonly kind: 'link' | 'send';
+  readonly kind: 'link' | 'unlink' | 'send';
   readonly id: string;
 }
 
@@ -199,6 +199,7 @@ async function main(): Promise<void> {
       try {
         const cmd = JSON.parse(payload) as GatewayCommand;
         if (cmd.kind === 'link') await handleLinkRequest(ctx, cmd.id);
+        else if (cmd.kind === 'unlink') await handleUnlinkRequest(ctx, cmd.id);
         else if (cmd.kind === 'send') await handleSend(ctx, cmd.id);
       } catch (error) {
         logger.error(

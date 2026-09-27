@@ -348,3 +348,13 @@ export async function startLink(
 export async function getLinkState(senderId: string): Promise<LinkState> {
   return request<LinkState>(`/senders/${encodeURIComponent(senderId)}/link`);
 }
+
+/**
+ * Unlinks a number: the gateway logs it out and clears the stored credentials, so a fresh link
+ * can issue a new QR. Returns once the request is recorded, not once the gateway has acted.
+ */
+export async function unlinkSender(senderId: string): Promise<{ senderId: string; status: string }> {
+  return request<{ senderId: string; status: string }>(
+    `/senders/${encodeURIComponent(senderId)}/unlink`, { method: 'POST' }
+  );
+}

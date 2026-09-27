@@ -276,6 +276,11 @@ export const channelSession = pgTable('channel_session', {
   linkChallenge: jsonb('link_challenge'),
   linkError: text('link_error'),
   qrExpiresAt: timestamp('qr_expires_at', { withTimezone: true }),
+
+  // Unlink request. Set by the API when a number is to be reset; the gateway (which owns the
+  // socket) sees the NOTIFY, logs out on WhatsApp's side and clears the stored credentials, so a
+  // fresh link can issue a new QR. Without this a corrupt or logged-out session is stuck linked.
+  unlinkRequestedAt: timestamp('unlink_requested_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
   uniqueIndex('channel_session_sender_uidx').on(t.senderIdentityId)

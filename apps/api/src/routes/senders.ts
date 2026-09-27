@@ -107,6 +107,34 @@ export function sendersRouter(): Router {
     });
   });
 
+  /**
+   * Unlinks a number so it can be linked again.
+   *
+   * Asynchronous like linking: the socket and the credentials live in the gateway process, so
+   * this records the request and the gateway logs out and clears the stored credentials. That
+   * clearing is the point — a corrupt or logged-out session stays "linked" (it can still send)
+   * and a re-link cannot issue a fresh QR while the old credentials remain.
+   */
+  router.post('/:id/unlink', requireUuidParam('id'), requireScope('senders:write'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const senderId = String(req.params.id);
+    const updated = await req.tenant!((tx) => tx.execute(sql`
+      UPDATE channel_session SET unlink_requested_at = now(), updated_at = now()
+      WHERE sender_identity_id = (
+        SELECT id FROM sender_identity WHERE id = ${senderId} AND org_id = ${orgId}
+      )
+      RETURNING id`));
+
+    if ((updated as unknown as unknown[]).length === 0) {
+      // Either no such sender in this org, or it was never linked (no channel_session row) so
+      // there is nothing to unlink. 404 either way — and it does not confirm another tenant's.
+      res.status(404).json(problem(req, 404, 'NOT_FOUND',
+        'No such sender, or it has never been linked.'));
+      return;
+    }
+    res.status(202).json({ data: { senderId, status: 'unlink_requested' } });
+  });
+
   /** Returns the challenge once the gateway has it, or reports that it is still pending. */
   router.get('/:id/link', requireUuidParam('id'), requireScope('senders:read'), async (req: Request, res: Response) => {
     const rows = await req.tenant!((tx) => tx.execute(sql`

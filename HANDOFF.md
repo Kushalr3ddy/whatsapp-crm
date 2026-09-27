@@ -39,7 +39,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**359 tests in 28 files · 82 source files · 22 of 35 specced tables · 13 migrations · 74 commits.**
+**364 tests in 28 files · 83 source files · 22 of 35 specced tables · 14 migrations · 75 commits.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -50,7 +50,10 @@ defects and gotchas; the changelog covers what has been built and what is left, 
 - Gated startup: config validated → schema verified → isolation checked → listen.
 - Postgres with RLS forced on every tenant table.
 - Baileys: link by **QR or pairing code**, send, receive, delivery receipts, **automatic
-  reconnect**. Credentials encrypted in Postgres, so sessions survive a restart.
+  reconnect**, and **unlink/re-link** — `POST /senders/:id/unlink` has the gateway log out and
+  clear the stored credentials so a re-link issues a fresh QR (a web Unlink button drives it).
+  This is the recovery path a corrupt session needs; there was none before. Credentials encrypted
+  in Postgres, so sessions survive a restart.
 - Gateway as its own process, commanded through a durable table + `NOTIFY`.
 - **Authentication**: argon2id passwords, server-side sessions, per-org API keys with scopes,
   CSRF, login throttling, `npm run admin` for provisioning and support.
@@ -217,7 +220,7 @@ download is tested; the download itself has never met a real WhatsApp file.
 | Where | Problem |
 |---|---|
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
-| **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end |
+| **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end. **A recovery path now exists** — the Unlink button (or `POST /senders/:id/unlink`) clears the corrupt credentials so a fresh QR can be scanned; closing D-14 is now a re-link away, but still needs the phone. |
 | Pacing has no window | A message held back by the anti-ban gate is indistinguishable from one whose sender is disconnected — both sit at `queued`, and only the gateway log says which. Fine for one operator, wrong for campaigns, where "why has this not gone?" is the first question asked |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |

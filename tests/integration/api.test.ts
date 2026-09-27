@@ -456,3 +456,38 @@ describe('per-key rate limiting', () => {
     }
   });
 });
+
+describe('unlinking a sender', () => {
+  it('records an unlink request for a linked number, so the gateway can reset it', async () => {
+    const s = await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${orgId}, 'baileys', 'linked', 'active') RETURNING id`);
+    const senderId = (s as unknown as Array<{ id: string }>)[0]!.id;
+    // A channel_session row exists once a number has been linked.
+    await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, connection_state) VALUES (${senderId}, 'open')`);
+
+    const r = await request(app).post(`/api/v1/senders/${senderId}/unlink`).set(...auth());
+    expect(r.status).toBe(202);
+
+    const cs = (await db.execute(sql`
+      SELECT unlink_requested_at AS u FROM channel_session WHERE sender_identity_id = ${senderId}`)
+    ) as unknown as Array<{ u: string | null }>;
+    expect(cs[0]!.u).not.toBeNull();
+  });
+
+  it('is a 404 for a sender that was never linked (no session row)', async () => {
+    const s = await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${orgId}, 'baileys', 'never', 'linking') RETURNING id`);
+    const senderId = (s as unknown as Array<{ id: string }>)[0]!.id;
+    const r = await request(app).post(`/api/v1/senders/${senderId}/unlink`).set(...auth());
+    expect(r.status).toBe(404);
+  });
+
+  it('is a 404 for an unknown sender id', async () => {
+    const r = await request(app)
+      .post('/api/v1/senders/00000000-0000-4000-8000-00000000dead/unlink').set(...auth());
+    expect(r.status).toBe(404);
+  });
+});

@@ -13,6 +13,18 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-27 — Unlink / re-link recovery (unblocks D-14)
+- A number can now be **unlinked**: `POST /senders/:id/unlink` signals the gateway (via the same
+  durable-row + NOTIFY channel as linking), which calls `logout()` — logging out on WhatsApp's
+  side and **clearing the stored credentials** — then resets the session and returns the sender to
+  awaiting-link. A web **Unlink / reset** button on the Numbers page drives it.
+- Why it matters: Baileys only issues a fresh QR when there are *no* stored credentials, so a
+  corrupt or logged-out session (which still looks "linked" because sending works) could never be
+  re-linked — there was no code path that cleared creds. This is the recovery path **D-14** needs:
+  unlink → link → scan a fresh QR.
+- Migration `0013` (a column + trigger, no new table). 5 tests (**364 total**), including the
+  gateway clearing real credentials from `channel_auth_state`.
+
 ### 2026-09-27 — P4: mark-read + open any thread
 - **Unread count now resets.** It was incremented on every inbound and cleared nowhere, so the
   badge only ever grew. Opening a thread (fetching its messages) now zeroes it, and there is an

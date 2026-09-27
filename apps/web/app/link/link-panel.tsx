@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { beginLink, pollLink } from '@/app/actions';
+import { beginLink, pollLink, unlinkNumber } from '@/app/actions';
 import type { LinkStatus } from '@/app/actions';
 import type { LinkMode } from '@/lib/crm';
 
@@ -30,6 +30,20 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinked, setUnlinked] = useState(false);
+
+  /** Unlinks the number, clearing its stored credentials so a fresh link can show a new QR. */
+  const unlink = useCallback(async () => {
+    setUnlinking(true);
+    setError(null);
+    const result = await unlinkNumber(senderId);
+    setUnlinking(false);
+    if (!result.ok) { setError(result.error ?? 'Could not unlink.'); return; }
+    setActive(false);
+    setStatus(null);
+    setUnlinked(true);
+  }, [senderId]);
 
   const expired = remaining !== null && remaining <= 0 && status?.state !== 'connected';
 
@@ -139,6 +153,29 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
             </button>
           </div>
         </div>
+      )}
+
+      {!active && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => { void unlink(); }}
+            disabled={unlinking}
+            className="text-[11px] text-muted underline underline-offset-2 hover:text-danger disabled:opacity-50"
+          >
+            {unlinking ? 'Unlinking…' : alreadyOpen ? 'Unlink this number' : 'Reset / unlink (clears stored credentials)'}
+          </button>
+          <p className="mt-1 text-[11px] text-muted">
+            Use this if the number looks linked but is not receiving — it logs out and clears the
+            stored credentials so linking again shows a fresh QR.
+          </p>
+        </div>
+      )}
+
+      {unlinked && (
+        <p className="mt-2 text-xs text-accent">
+          ✓ Unlinked. Link it again above to scan a fresh QR.
+        </p>
       )}
 
       {error !== null && <p className="mt-2 text-xs text-danger">{error}</p>}

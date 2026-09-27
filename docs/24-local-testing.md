@@ -326,6 +326,15 @@ If sends work and **nothing ever arrives**, check the gateway log for `failed to
 message` / `Bad MAC` before suspecting the application. That is D-14, and it looks like a
 half-working link rather than a broken one.
 
+**To recover such a number, unlink it first.** A re-link cannot show a fresh QR while the corrupt
+credentials are stored — Baileys only issues a QR when there are none. The **Unlink** button on
+the Numbers page (or `POST /api/v1/senders/:id/unlink`) has the gateway log out and clear them;
+then link again for a clean QR.
+
+```bash
+curl -s -X POST localhost:3000/api/v1/senders/<sender-id>/unlink -H "Authorization: Bearer $KEY"
+```
+
 ---
 
 ## Running the tests instead

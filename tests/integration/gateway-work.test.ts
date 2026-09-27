@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { createDatabase, type Database } from '@crm/db';
+import { createDatabase, PostgresAuthStateStore, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { createLogger } from '@crm/shared';
 import { storeInboundMessage } from '@crm/core';
 import {
-  applyConnectionEvent, handleLinkRequest, handleSend, markAllSessionsClosed, restoreSessions,
-  sweepPendingWork
+  applyConnectionEvent, handleLinkRequest, handleUnlinkRequest, handleSend,
+  markAllSessionsClosed, restoreSessions, sweepPendingWork
 } from '../../apps/gateway/src/work.js';
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
@@ -165,6 +165,41 @@ describe('handleLinkRequest', () => {
     const row = (after as unknown as Array<{ e: string | null; c: unknown }>)[0]!;
     expect(row.e).toContain('refused');
     expect(row.c).toBeNull();
+  });
+});
+
+describe('handleUnlinkRequest', () => {
+  it('clears stored credentials and returns the sender to awaiting-link', async () => {
+    // A number that looks linked (session open, status active) with stored credentials — the
+    // exact shape of a corrupt session that can send but not receive (D-14).
+    const authStore = new PostgresAuthStateStore(db, kms);
+    await authStore.set(senderId, 'creds', new TextEncoder().encode('corrupt'));
+    const provider = new FakeChannelProvider({}, authStore);
+
+    const rows = await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, connection_state, unlink_requested_at)
+      VALUES (${senderId}, 'open', now()) RETURNING id`);
+    const sessionId = (rows as unknown as Array<{ id: string }>)[0]!.id;
+
+    await handleUnlinkRequest(ctxWith(provider), sessionId);
+
+    // The credentials are gone — this is what lets a re-link show a fresh QR.
+    expect(await authStore.get(senderId, 'creds')).toBeNull();
+
+    const cs = (await db.execute(sql`
+      SELECT connection_state AS s, unlink_requested_at AS u FROM channel_session WHERE id = ${sessionId}`)
+    ) as unknown as Array<{ s: string; u: string | null }>;
+    expect(cs[0]!.s).toBe('closed');
+    expect(cs[0]!.u).toBeNull();
+
+    const si = (await db.execute(sql`SELECT status FROM sender_identity WHERE id = ${senderId}`)
+    ) as unknown as Array<{ status: string }>;
+    expect(si[0]!.status).toBe('linking');
+  });
+
+  it('is a no-op for an unknown session id', async () => {
+    const provider = new FakeChannelProvider();
+    await expect(handleUnlinkRequest(ctxWith(provider), randomUUID())).resolves.toBeUndefined();
   });
 
   it('CONTRACT DIVERGENCE: the fake accepts a pairing-code link with no phone; baileys rejects it', async () => {
