@@ -81,6 +81,27 @@ export interface Message {
   mediaUnavailable: boolean;
 }
 
+/** One internal note on a thread. Mirrors `GET /api/v1/conversations/:id/notes`. */
+export interface Note {
+  id: string;
+  body: string;
+  /** User ids @-referenced in the body. Stored for future notifications; not acted on yet. */
+  mentions: string[];
+  authorUserId: string | null;
+  authorName: string | null;
+  createdAt: string;
+}
+
+/** One saved reply. Mirrors `GET /api/v1/canned-replies`. */
+export interface CannedReply {
+  id: string;
+  shortcut: string;
+  /** May contain `{{name}}` placeholders, substituted from the contact when inserted. */
+  body: string;
+  locale: string;
+  updatedAt: string;
+}
+
 /** A WhatsApp number, linked or not. Mirrors `GET /api/v1/senders`. */
 export interface Sender {
   id: string;
@@ -235,6 +256,24 @@ export async function listMessages(conversationId: string): Promise<Message[]> {
 /** Lists the org's WhatsApp numbers, so the UI can explain when none is linked. */
 export async function listSenders(): Promise<Sender[]> {
   return request<Sender[]>('/senders');
+}
+
+/** Lists a thread's internal notes, oldest first. */
+export async function listNotes(conversationId: string): Promise<Note[]> {
+  return request<Note[]>(`/conversations/${encodeURIComponent(conversationId)}/notes`);
+}
+
+/** Adds an internal note to a thread. Never sent to the contact. */
+export async function addNote(conversationId: string, body: string): Promise<Note> {
+  return request<Note>(`/conversations/${encodeURIComponent(conversationId)}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ body })
+  });
+}
+
+/** Lists the org's saved replies for the composer's picker. */
+export async function listCannedReplies(): Promise<CannedReply[]> {
+  return request<CannedReply[]>('/canned-replies');
 }
 
 /**

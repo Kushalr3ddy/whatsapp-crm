@@ -39,7 +39,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**341 tests in 25 files · 81 source files · 20 of 35 specced tables · 12 migrations · 69 commits.**
+**348 tests in 26 files · 82 source files · 22 of 35 specced tables · 13 migrations · 71 commits.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -74,6 +74,14 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   `conversation.status_changed`). The web list has mine/unassigned/all + open/closed/any tabs,
   and the thread header an assignee dropdown and resolve/reopen. **No new tables** — reused
   columns already on `conversation`.
+- **Notes and canned replies (P4, chunk 2)**: `internal_note` and `canned_reply` tables (migration
+  0012, RLS forced, granted to `crm_app`). `POST/GET /conversations/:id/notes` — a note lives in
+  `internal_note`, never `message`, so it cannot enter the send path the gateway reads; that is
+  what makes "a note is never transmitted" (AC-4) true by construction, proved by a test.
+  `GET/POST /canned-replies` — saved replies, unique shortcut per org. The thread interleaves
+  notes with messages on one timeline; the composer has a Reply/Note toggle and a saved-reply
+  picker that substitutes `{{name}}`. **Attachments also now render** in the thread as a download
+  link, served through a web-side `/media/:id` proxy that forwards the session.
 - **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
   transfer starts so an abandoned download still counts. Inbox listing is deliberately not
   audited.
@@ -326,12 +334,12 @@ firing zero times. It is not our bug and it needs a re-link, which needs the pho
    `media` object on a message — a download link and a filename is the whole job. Then
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
    stop being text-only.
-3. **Finish P4** — chunk 1 (assignment + status + filters) has landed; `assignee_user_id` is now
-   populated and the inbox can be divided by owner. Remaining: attachments in the thread UI (the
-   API serves them; the UI still says "not downloaded"), notes, canned replies, search, and
-   realtime + collision detection. `conversation_participant` (`docs/05-data-model.md`) is what
-   powers collision detection: knowing someone else is already in a thread, so two people do not
-   answer the same candidate fifteen seconds apart.
+3. **Finish P4** — chunks 1 and 2 have landed: assignment + status + filters, attachments in the
+   thread, internal notes, and canned replies. Remaining: **realtime + collision detection**
+   (the big one — WebSocket, live inbound, presence), **search**, snooze, priority, the Meta
+   window countdown and keyboard shortcuts. `conversation_participant` (`docs/05-data-model.md`)
+   is what powers collision detection: knowing someone else is already in a thread, so two people
+   do not answer the same candidate fifteen seconds apart.
 4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
    contract suite like storage now has.
 5. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health

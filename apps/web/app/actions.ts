@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
-import { queueReply, startLink, getLinkState, updateConversation, CrmApiError } from '@/lib/crm';
+import { queueReply, startLink, getLinkState, updateConversation, addNote, CrmApiError } from '@/lib/crm';
 import type { LinkMode } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
@@ -24,6 +24,25 @@ export async function sendReply(conversationId: string, body: string): Promise<S
 
   try {
     await queueReply(conversationId, text);
+  } catch (error) {
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
+
+  revalidatePath('/inbox');
+  return { ok: true };
+}
+
+/**
+ * Adds an internal note to a thread, then refreshes so it appears in place. A note is never
+ * sent to the contact — it lives in a different table the send path never reads.
+ */
+export async function saveNote(conversationId: string, body: string): Promise<SendResult> {
+  const text = body.trim();
+  if (text === '') return { ok: false, error: 'Nothing to add.' };
+
+  try {
+    await addNote(conversationId, text);
   } catch (error) {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     return { ok: false, error: 'Could not reach the API.' };

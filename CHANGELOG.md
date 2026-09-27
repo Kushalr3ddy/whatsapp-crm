@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-27 — P4 chunk 2: internal notes + canned replies
+- **New tables** `internal_note` and `canned_reply` (migration `0012`, RLS forced + granted to
+  `crm_app`, verified on both databases).
+- `POST` / `GET /conversations/:id/notes` — team-only notes. A note lives in `internal_note`,
+  never `message`, so it can't enter the send path — "a note is never transmitted" (AC-4) is true
+  by construction, with a test asserting it. Optional `mentions` (uuid[]) stored for later.
+- `GET` / `POST /canned-replies` — saved replies, `shortcut` unique per org (duplicate → 409).
+- Web: notes interleave with messages on one timeline (distinct styling); composer has a
+  Reply/Note toggle and a saved-reply picker that substitutes `{{name}}` from the contact.
+- 7 new tests (348 total); verified live against the dev DB, including AC-4.
+
 ### 2026-09-27 — P4: attachments in the thread UI
 - Received attachments now render in the thread as a download link (filename + type + size)
   instead of the old "not downloaded" placeholder; a media message whose bytes never arrived says
@@ -102,32 +113,29 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 ## To do (top = next)
 
 ### Quick wins / P4 continuation
-1. **P4 chunk 2 — notes + canned replies.** *New tables:* `conversation_note`, `canned_reply`.
-   Endpoints `POST /conversations/:id/notes`, `GET /canned-replies`. Notes never reach a provider
-   (AC-4). Canned replies substitute contact variables (AC-5).
-2. **Outbound media** — send path must carry a file; `OutboundContent` must stop being text-only.
-3. **P4 chunk 3 — realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2), presence + typing /
+1. **Outbound media** — send path must carry a file; `OutboundContent` must stop being text-only.
+2. **P4 chunk 3 — realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2), presence + typing /
    collision detection (AC-3). *New table:* `conversation_participant`. Live assignment push.
-4. **P4 chunk 4 — search** over message bodies + contact fields (AC-7). Needs the blind-index /
+3. **P4 chunk 4 — search** over message bodies + contact fields (AC-7). Needs the blind-index /
    trigram decision on encrypted columns.
-5. **P4 leftovers** — snooze (*new column* `snooze_until` + a scheduler, AC-6), priority (*new
+4. **P4 leftovers** — snooze (*new column* `snooze_until` + a scheduler, AC-6), priority (*new
    column*), Meta 24-hour window countdown + template-only composer (AC-9), keyboard shortcuts
    (AC-10).
 
 ### Other feature work
-6. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
+5. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
    contact can only be created by an inbound message, a one-off send, or a CSV import.
-7. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
+6. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
    suite like storage has.
-8. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
-9. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
+7. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
+8. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
 
 ### Hardening / deployment
-10. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
-    be backed up separately from the database** — losing it loses every linked number and message.
-11. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
+9. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
+   be backed up separately from the database** — losing it loses every linked number and message.
+10. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
     replicas each count separately.
-12. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
+11. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
 
 ---
 

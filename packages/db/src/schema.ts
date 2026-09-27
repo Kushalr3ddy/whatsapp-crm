@@ -372,6 +372,43 @@ export const message = pgTable('message', {
 ]);
 
 /**
+ * A team-only note inside a conversation. **Never sent to the contact** — it exists so agents
+ * can leave context for each other, and a test asserts a note cannot reach a provider (F3 AC-4).
+ * `authorUserId` is nullable so a note survives the author leaving; `mentions` records the user
+ * ids @-referenced in the body, captured from the first note so notifications can be built on it
+ * later without backfilling.
+ */
+export const internalNote = pgTable('internal_note', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').notNull()
+    .references(() => conversation.id, { onDelete: 'cascade' }),
+  authorUserId: uuid('author_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  body: text('body').notNull(),
+  mentions: uuid('mentions').array().notNull().default(sql`'{}'::uuid[]`),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('internal_note_conversation_idx').on(t.conversationId, t.createdAt)
+]);
+
+/**
+ * A saved reply an agent can insert. `shortcut` is what they type to find it, unique per org;
+ * `body` may hold `{{variable}}` placeholders substituted from the contact when it is used;
+ * `locale` lets the same reply exist in more than one language later.
+ */
+export const cannedReply = pgTable('canned_reply', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  shortcut: text('shortcut').notNull(),
+  body: text('body').notNull(),
+  locale: text('locale').notNull().default('en'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  uniqueIndex('canned_reply_org_shortcut_uidx').on(t.orgId, t.shortcut)
+]);
+
+/**
  * One stored attachment.
  *
  * Separate from `message` rather than columns on it because the same file can arrive twice —

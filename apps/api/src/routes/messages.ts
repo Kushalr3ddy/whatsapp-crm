@@ -53,6 +53,22 @@ const patchConversation = z.object({
 });
 
 /**
+ * Body for an internal note. `mentions` is optional and holds the user ids @-referenced in the
+ * body — stored for a later notifications feature, not acted on yet.
+ */
+const createNote = z.object({
+  body: z.string().min(1).max(4096),
+  mentions: z.array(z.string().uuid()).max(50).optional()
+});
+
+/** Body for a saved reply. `shortcut` is unique per org; `locale` defaults to `en`. */
+const createCannedReply = z.object({
+  shortcut: z.string().min(1).max(64),
+  body: z.string().min(1).max(4096),
+  locale: z.string().min(2).max(10).optional()
+});
+
+/**
  * Conversations and messages.
  *
  * `POST /messages` **queues**, it does not send. The socket lives in the gateway, and more
@@ -228,6 +244,107 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
       return;
     }
     res.json({ data: result.row });
+  });
+
+  /** Lists a thread's internal notes, oldest first, with the author's name resolved. */
+  router.get('/conversations/:id/notes', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+    const rows = await req.tenant!((tx) => tx.execute(sql`
+      SELECT n.id, n.body, n.mentions, n.author_user_id AS "authorUserId",
+             au.display_name AS "authorName", n.created_at AS "createdAt"
+      FROM internal_note n
+      LEFT JOIN app_user au ON au.id = n.author_user_id
+      WHERE n.conversation_id = ${String(req.params.id)} AND n.org_id = ${req.crm!.orgId}
+      ORDER BY n.created_at ASC
+      LIMIT 500`));
+    res.json({ data: rows });
+  });
+
+  /**
+   * Adds an internal note to a thread.
+   *
+   * A note lives in `internal_note`, never `message`, so it cannot enter the send path — the
+   * gateway only ever reads `message`. That is what makes "a note is never transmitted" true by
+   * construction rather than by a check that could be forgotten (F3, AC-4). The conversation is
+   * verified in-org first so a note cannot be pinned to another tenant's thread through its FK,
+   * which does not carry the org.
+   */
+  router.post('/conversations/:id/notes', requireUuidParam('id'), requireScope('conversations:write'),
+    async (req: Request, res: Response) => {
+    const parsed = createNote.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+        (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const { body, mentions } = parsed.data;
+
+    const result = await req.tenant!(async (tx) => {
+      const found = (await tx.execute(sql`
+        SELECT 1 FROM conversation WHERE id = ${conversationId} AND org_id = ${orgId}`)
+      ) as unknown as unknown[];
+      if (found.length === 0) return { notFound: true as const };
+
+      // Build the uuid[] literal explicitly. A bound empty JS array has no type for Postgres to
+      // infer, so it cannot cast to uuid[] — spelling the array out avoids that entirely.
+      const mentionsSql = mentions === undefined || mentions.length === 0
+        ? sql`'{}'::uuid[]`
+        : sql`ARRAY[${sql.join(mentions.map((m) => sql`${m}`), sql`, `)}]::uuid[]`;
+      const inserted = (await tx.execute(sql`
+        INSERT INTO internal_note (org_id, conversation_id, author_user_id, body, mentions)
+        VALUES (${orgId}, ${conversationId}, ${req.crm!.userId}, ${body}, ${mentionsSql})
+        RETURNING id, body, mentions, author_user_id AS "authorUserId", created_at AS "createdAt"`)
+      ) as unknown as Array<Record<string, unknown>>;
+      return { row: inserted[0]! };
+    });
+
+    if ('notFound' in result) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    res.status(201).json({ data: result.row });
+  });
+
+  /** Lists the org's saved replies, most recently updated first. */
+  router.get('/canned-replies', requireScope('conversations:read'), async (req: Request, res: Response) => {
+    const rows = await req.tenant!((tx) => tx.execute(sql`
+      SELECT id, shortcut, body, locale, updated_at AS "updatedAt"
+      FROM canned_reply WHERE org_id = ${req.crm!.orgId}
+      ORDER BY updated_at DESC
+      LIMIT 200`));
+    res.json({ data: rows });
+  });
+
+  /**
+   * Creates a saved reply. `shortcut` is unique per org — a duplicate is a 409 rather than a
+   * silent overwrite, because two replies answering to the same shortcut is an ambiguity the
+   * agent should resolve, not a race for the database to pick a winner of.
+   */
+  router.post('/canned-replies', requireScope('conversations:write'), async (req: Request, res: Response) => {
+    const parsed = createCannedReply.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+        (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const { shortcut, body, locale } = parsed.data;
+
+    const inserted = (await req.tenant!((tx) => tx.execute(sql`
+      INSERT INTO canned_reply (org_id, shortcut, body, locale)
+      VALUES (${orgId}, ${shortcut}, ${body}, ${locale ?? 'en'})
+      ON CONFLICT (org_id, shortcut) DO NOTHING
+      RETURNING id, shortcut, body, locale, updated_at AS "updatedAt"`))
+    ) as unknown as Array<Record<string, unknown>>;
+
+    if (inserted.length === 0) {
+      res.status(409).json(problem(req, 409, 'SHORTCUT_TAKEN',
+        `A saved reply with the shortcut "${shortcut}" already exists.`));
+      return;
+    }
+    res.status(201).json({ data: inserted[0] });
   });
 
   /** Returns one thread, oldest first, with bodies decrypted for display. */
