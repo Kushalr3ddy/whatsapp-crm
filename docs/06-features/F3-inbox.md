@@ -7,6 +7,39 @@
 The screen agents live in all day. It has to feel as fast as WhatsApp Web, or nothing else in
 the product matters. Competitive bar is Respond.io.
 
+## What each piece is, in plain words
+
+The parts of the inbox and what they are for. Status as of this writing in brackets.
+
+- **Assignment** *(built)* — giving a conversation an owner, so a team knows who is handling whom
+  instead of everyone facing one undifferentiated pile. Set from a dropdown in the thread header;
+  `conversation.assignee_user_id` holds it.
+- **Status** *(built)* — a conversation is **open** (live, needs attention) or **closed** (dealt
+  with, archived). "Resolve" closes it, "Reopen" brings it back. Keeps the working list to what is
+  actually live.
+- **Filters** *(built)* — narrow the list instead of scrolling everything: by owner
+  (**Mine / Unassigned / All**) and by status (**Open / Closed / Any**). "My open threads" is the
+  everyday view. Server-side on `GET /conversations`, mirrored by the tabs in the UI.
+- **Attachments** *(built)* — files sent or received in a thread (a PDF, an image). Shown as a
+  download link with filename, type and size. Always served as a download, never rendered inline,
+  so a booby-trapped file cannot execute from our origin (see `09-security.md` and the media notes
+  in `24-local-testing.md`).
+- **Internal notes** *(built)* — team-only comments inside a thread that the contact never sees —
+  "spoke on call, sending CV tomorrow". How two agents hand a thread off. They live in
+  `internal_note`, a table the send path never reads, so a note can never be transmitted (AC-4).
+- **Canned replies** *(built)* — saved message templates with a `shortcut`. Insert one and its
+  `{{name}}` placeholder is filled from the contact, so an agent does not retype the same opener.
+- **Thread lock** *(built)* — once a thread is assigned, only that owner may reply until they
+  resolve or reassign it; replying otherwise is `409`. An admin overrides, and an API key (an
+  integration, not a person) is exempt. A deliberately simple stand-in for collision detection.
+- **Presence, typing, collision detection** *(deferred, D-17)* — showing that a colleague is
+  viewing or typing in a thread. Needs a realtime channel; the thread lock covers the "don't both
+  reply" case simply for now.
+- **Live inbound** *(deferred, blocked by D-14)* — a new incoming message appearing in under a
+  second without a refresh. The inbox polls every 5 s today.
+- **Search, snooze, priority, Meta 24-hour window UI, keyboard shortcuts** *(deferred — search is
+  open; snooze / Meta-window / keyboard are pinned as D-18)*.
+
 ## User stories
 
 - As an agent I see conversations assigned to me, unassigned, and everything, and switch fast.
