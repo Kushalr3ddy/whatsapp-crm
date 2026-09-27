@@ -98,15 +98,19 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
   // Once it has expired there is nothing left to poll for.
   useEffect(() => { if (expired) setActive(false); }, [expired]);
 
-  if (alreadyOpen && status === null) {
-    return <p className="mt-3 text-xs text-accent">Connected. Nothing to do.</p>;
-  }
-
+  // Connected either on load (the row says the socket is open) or after a link this session.
+  // Note this is exactly the state a corrupt D-14 session sits in — it looks connected because
+  // sending works — so the Unlink button below must stay reachable here, not be hidden.
+  const connected = (alreadyOpen && status === null) || status?.state === 'connected';
   const showChallenge = active && !expired && status?.state === 'challenge_ready';
 
   return (
     <div className="mt-3">
-      {!active && status?.state !== 'connected' && (
+      {connected && status === null && (
+        <p className="text-xs text-accent">Connected. If it stops receiving, use Unlink below to reset it.</p>
+      )}
+
+      {!active && !connected && (
         <div className="flex flex-col gap-2">
           <div className="flex gap-1.5">
             {(['qr', 'pairing_code'] as const).map((m) => (
