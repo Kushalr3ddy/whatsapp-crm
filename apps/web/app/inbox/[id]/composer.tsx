@@ -25,10 +25,19 @@ function substitute(body: string, contactName: string | null): string {
  * because a send can be refused and a message that then vanishes is worse than a short wait.
  */
 export function Composer(
-  { conversationId, to, cannedReplies, contactName }:
-  { conversationId: string; to: string | null; cannedReplies: CannedReply[]; contactName: string | null }
+  { conversationId, to, cannedReplies, contactName, replyLocked, lockedBy }:
+  {
+    conversationId: string; to: string | null; cannedReplies: CannedReply[];
+    contactName: string | null;
+    /** True when the thread is assigned to another agent and I am not an admin — reply is blocked. */
+    replyLocked: boolean;
+    /** Who holds the thread, for the lock notice. Null when not locked. */
+    lockedBy: string | null;
+  }
 ) {
-  const [mode, setMode] = useState<'reply' | 'note'>('reply');
+  // A locked thread opens in note mode: an internal note is always allowed (it is not sent to
+  // the contact), only the reply to the contact is held by whoever has the thread.
+  const [mode, setMode] = useState<'reply' | 'note'>(replyLocked ? 'note' : 'reply');
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -36,6 +45,7 @@ export function Composer(
   /** Sends the current text down whichever path the mode selects, keeping it on a refusal. */
   function submit() {
     if (text.trim() === '' || pending) return;
+    if (mode === 'reply' && replyLocked) return;
     const body = text;
     setError(null);
     startTransition(async () => {
@@ -64,7 +74,7 @@ export function Composer(
   /** Inserts a saved reply's body, with contact variables filled in, and returns to the box. */
   function insertCanned(id: string) {
     const reply = cannedReplies.find((c) => c.id === id);
-    if (reply === undefined) return;
+    if (reply === undefined || replyLocked) return;
     setMode('reply');
     setText((current) => current + substitute(reply.body, contactName));
   }
@@ -75,12 +85,20 @@ export function Composer(
     <form onSubmit={onSubmit} className="border-t border-border bg-surface px-5 py-3">
       {error !== null && <p className="mb-2 text-xs text-danger">{error}</p>}
 
+      {replyLocked && (
+        <p className="mb-2 rounded-md border border-border bg-canvas px-2.5 py-1.5 text-[11px] text-muted">
+          Assigned to <span className="font-medium text-ink">{lockedBy}</span> — reassign it to yourself,
+          or ask an admin, to reply. You can still add an internal note.
+        </p>
+      )}
+
       <div className="mb-2 flex items-center gap-2">
         <div className="flex overflow-hidden rounded-md border border-border text-xs">
           <button
             type="button"
-            onClick={() => { setMode('reply'); }}
-            className={`px-2.5 py-1 font-medium ${isNote ? 'text-muted' : 'bg-accent text-white'}`}
+            onClick={() => { if (!replyLocked) setMode('reply'); }}
+            disabled={replyLocked}
+            className={`px-2.5 py-1 font-medium disabled:opacity-40 ${isNote ? 'text-muted' : 'bg-accent text-white'}`}
           >
             Reply
           </button>

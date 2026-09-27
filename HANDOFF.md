@@ -39,7 +39,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**348 tests in 26 files · 82 source files · 22 of 35 specced tables · 13 migrations · 71 commits.**
+**353 tests in 27 files · 82 source files · 22 of 35 specced tables · 13 migrations · 72 commits.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -82,6 +82,12 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   notes with messages on one timeline; the composer has a Reply/Note toggle and a saved-reply
   picker that substitutes `{{name}}`. **Attachments also now render** in the thread as a download
   link, served through a web-side `/media/:id` proxy that forwards the session.
+- **Thread lock (P4)**: a thread assigned to one agent can only be replied to by that agent until
+  they resolve or reassign it — replying otherwise is `409 THREAD_ASSIGNED`. Signed-in agents only:
+  an **admin overrides**, an **API key is exempt** (an integration is not a person claiming a
+  thread). Server-enforced in `POST /messages`; the composer mirrors it and still allows a note. A
+  deliberately simple stand-in for presence/collision, which is **pinned as D-17**; snooze, the
+  Meta-window UI and keyboard shortcuts are **pinned as D-18**.
 - **Read auditing (D-13)**: `conversation.read` and `media.downloaded`, written before the
   transfer starts so an abandoned download still counts. Inbox listing is deliberately not
   audited.
@@ -302,10 +308,12 @@ download is tested; the download itself has never met a real WhatsApp file.
 
 ## What landed most recently, and what it cost
 
-Most recent first: **P4 inbox chunk 1** — conversation assignment, status and list filters
-(commit `4474697`), reusing columns already on `conversation` so no migration; verified with 11
-integration tests, but the authenticated web click-through was not eye-verified (it needs a
-signed-in session, and the account password was not to hand).
+Most recent first, all P4 inbox: **thread lock** (assignment-based, admin override) → **notes +
+canned replies** (migration 0012, tables `internal_note` and `canned_reply`) → **attachments in
+the thread UI** (a web-side `/media/:id` proxy) → **assignment, status and list filters** (commit
+`4474697`). The whole P4 UI was finally **eye-verified in the browser** this round — filters,
+assignee + resolve, attachments as download links, the Reply/Note toggle and a note round-trip —
+signing in as the dev admin account.
 
 Before that, six pieces in order: **row-level security on the request path** → **media** →
 **send pacing (P6 layers 1–2)** → **CSV import (P5)** → **campaigns (P7)**, plus two small defect
@@ -334,12 +342,12 @@ firing zero times. It is not our bug and it needs a re-link, which needs the pho
    `media` object on a message — a download link and a filename is the whole job. Then
    **outbound** media, which needs the send path to carry a file and `OutboundContent` to
    stop being text-only.
-3. **Finish P4** — chunks 1 and 2 have landed: assignment + status + filters, attachments in the
-   thread, internal notes, and canned replies. Remaining: **realtime + collision detection**
-   (the big one — WebSocket, live inbound, presence), **search**, snooze, priority, the Meta
-   window countdown and keyboard shortcuts. `conversation_participant` (`docs/05-data-model.md`)
-   is what powers collision detection: knowing someone else is already in a thread, so two people
-   do not answer the same candidate fifteen seconds apart.
+3. **Finish P4** — landed: assignment + status + filters, attachments in the thread, internal
+   notes, canned replies, and the thread lock. Remaining and still open: **search** (needs the
+   blind-index decision) and the two small endpoints `GET /conversations/:id` and
+   `POST /conversations/:id/read`. Deferred: **live inbound + presence/collision** is **D-17**
+   (the big WebSocket lift, and live inbound is anyway blocked by D-14); snooze, the Meta-window
+   countdown and keyboard shortcuts are **D-18**.
 4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
    contract suite like storage now has.
 5. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health

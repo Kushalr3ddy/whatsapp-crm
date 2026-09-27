@@ -431,23 +431,49 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
     // Replying into an existing thread. No phone is involved, so no normalisation applies —
     // the conversation already knows which identity it belongs to, phone or privacy address.
     if (conversationId !== undefined) {
-      const replied = await req.tenant!((tx) => tx.execute(sql`
-        INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                             body_enc, body_hmac, sent_by)
-        SELECT ${orgIdEarly}, v.id, 'outbound', 'queued', 'text',
-               ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
-               ${kms.blindIndex(body)}, 'api'
-        FROM conversation v
-        WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}
-        RETURNING id, conversation_id AS "conversationId", status`));
+      // The thread lock: a thread assigned to one agent is theirs to answer until they release
+      // it, so two people cannot reply to the same contact at once (a light stand-in for the
+      // presence/collision work parked in D-17). It applies only to signed-in agents — an admin
+      // overrides it, and an API key is an integration, not a person claiming a thread, so
+      // neither is bound by it.
+      const result = await req.tenant!(async (tx) => {
+        const conv = (await tx.execute(sql`
+          SELECT assignee_user_id AS "assigneeUserId" FROM conversation
+          WHERE id = ${conversationId} AND org_id = ${orgIdEarly}`)
+        ) as unknown as Array<{ assigneeUserId: string | null }>;
+        if (conv.length === 0) return { notFound: true as const };
 
-      const row = (replied as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
-      if (!row) {
+        const ctx = req.crm!;
+        const lockedToSomeoneElse = conv[0]!.assigneeUserId !== null
+          && conv[0]!.assigneeUserId !== ctx.userId;
+        if (ctx.kind === 'session' && ctx.role !== 'admin' && lockedToSomeoneElse) {
+          return { locked: true as const };
+        }
+
+        const inserted = (await tx.execute(sql`
+          INSERT INTO message (org_id, conversation_id, direction, status, content_type,
+                               body_enc, body_hmac, sent_by)
+          SELECT ${orgIdEarly}, v.id, 'outbound', 'queued', 'text',
+                 ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
+                 ${kms.blindIndex(body)}, 'api'
+          FROM conversation v
+          WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}
+          RETURNING id, conversation_id AS "conversationId", status`)
+        ) as unknown as Array<{ id: string; conversationId: string; status: string }>;
+        return { row: inserted[0]! };
+      });
+
+      if ('notFound' in result) {
         // 404 rather than 403: confirming a conversation exists in another tenant is a leak.
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
         return;
       }
-      res.status(202).json({ data: row });
+      if ('locked' in result) {
+        res.status(409).json(problem(req, 409, 'THREAD_ASSIGNED',
+          'This thread is assigned to another agent. Reassign it to yourself, or ask an admin, to reply.'));
+        return;
+      }
+      res.status(202).json({ data: result.row });
       return;
     }
 

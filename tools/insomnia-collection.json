@@ -112,7 +112,7 @@
       "settingSendCookies": true,
       "body": {
         "mimeType": "application/json",
-        "text": "{\n  \"orgId\": \"{{ _.org_id }}\",\n  \"name\": \"insomnia\",\n  \"scopes\": [\n    \"conversations:read\",\n    \"messages:send\",\n    \"senders:read\",\n    \"senders:write\"\n  ],\n  \"rateLimitPerMin\": 120\n}"
+        "text": "{\n  \"orgId\": \"{{ _.org_id }}\",\n  \"name\": \"insomnia\",\n  \"scopes\": [\n    \"conversations:read\",\n    \"conversations:write\",\n    \"messages:send\",\n    \"senders:read\",\n    \"senders:write\"\n  ],\n  \"rateLimitPerMin\": 120\n}"
       }
     },
     {
@@ -735,6 +735,106 @@
       ],
       "authentication": {},
       "metaSortKey": 8,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_notes_add",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}/notes",
+      "name": "add an internal note \u2192 201",
+      "description": "A note lives in internal_note, never message \u2014 the gateway only reads message, so a note is never sent to the contact (AC-4). authorUserId is null for a key (not a person).",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 6,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"body\": \"called, sending CV tomorrow\"\n}"
+      }
+    },
+    {
+      "_id": "r_notes_list",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}/notes",
+      "name": "list a thread's notes",
+      "description": "Oldest first, with the author's name resolved.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 7,
+      "settingStoreCookies": true,
+      "settingSendCookies": true
+    },
+    {
+      "_id": "r_canned_add",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/canned-replies",
+      "name": "add a saved reply \u2192 201",
+      "description": "shortcut is unique per org \u2014 sending this twice is a 409 SHORTCUT_TAKEN. {{name}} is substituted from the contact when the reply is inserted in the composer.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 8,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"shortcut\": \"greet\",\n  \"body\": \"Hi {{name}}, thanks for reaching out.\"\n}"
+      }
+    },
+    {
+      "_id": "r_canned_list",
+      "_type": "request",
+      "parentId": "grp_inbox",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/canned-replies",
+      "name": "list saved replies",
+      "description": "Most recently updated first.",
+      "method": "GET",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 9,
       "settingStoreCookies": true,
       "settingSendCookies": true
     }

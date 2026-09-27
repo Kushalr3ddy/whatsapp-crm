@@ -1,7 +1,7 @@
 import {
-  listConversations, listMessages, listUsers, listNotes, listCannedReplies, CrmApiError
+  listConversations, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
 } from '@/lib/crm';
-import type { Message, OrgUser, Note, CannedReply } from '@/lib/crm';
+import type { Message, OrgUser, Note, CannedReply, Me } from '@/lib/crm';
 import { Composer } from './composer';
 import { ThreadControls } from './thread-controls';
 
@@ -147,12 +147,21 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     failure = error instanceof CrmApiError ? `${error.code}: ${error.message}` : 'Could not reach the API.';
   }
 
-  const [conversationList, users, cannedReplies] = await Promise.all([
+  const [conversationList, users, cannedReplies, me] = await Promise.all([
     listConversations().catch(() => []),
     listUsers().catch((): OrgUser[] => []),
-    listCannedReplies().catch((): CannedReply[] => [])
+    listCannedReplies().catch((): CannedReply[] => []),
+    getMe().catch((): Me | null => null)
   ]);
   const conversation = conversationList.find((c) => c.id === id);
+
+  // The thread lock, mirrored from the server guard in POST /messages: a thread assigned to
+  // another agent is read-only to me unless I am an admin. Kept identical to the API so the
+  // composer never offers a send the server would refuse.
+  const lockedByOther = conversation !== undefined
+    && conversation.assigneeUserId !== null
+    && conversation.assigneeUserId !== me?.userId
+    && me?.role !== 'admin';
 
   // Messages and notes share one timeline, sorted by when they happened, so a note sits in the
   // thread at the moment it was written rather than in a separate list divorced from context.
@@ -216,6 +225,8 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
         to={conversation?.contactPhone ?? null}
         cannedReplies={cannedReplies}
         contactName={conversation?.contactName ?? null}
+        replyLocked={lockedByOther}
+        lockedBy={lockedByOther ? conversation?.assigneeName ?? 'another agent' : null}
       />
     </>
   );

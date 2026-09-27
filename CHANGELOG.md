@@ -13,6 +13,20 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-27 — P4: thread lock (assignment-based, admin override)
+- Replying into a thread assigned to another agent → **409 `THREAD_ASSIGNED`**. The assignee
+  replies fine, an **admin overrides**, and an **API key is exempt** (an integration is not a
+  person claiming a thread). Server-enforced in `POST /messages`; the composer mirrors it
+  (Reply disabled, "reassign to reply", note still allowed).
+- A deliberately simple stand-in for presence/collision (**D-17**) — no new table, reuses
+  `assignee_user_id`.
+- 5 new tests (**353 total**). Browser-verified the whole P4 UI end to end (filters, assignee +
+  resolve, attachments as download links, Reply/Note toggle, note round-trip).
+- Docs: testing doc ([docs/24-local-testing.md](docs/24-local-testing.md)) gained an inbox section
+  covering every P4 endpoint + refusals; Insomnia collection gained notes/canned-reply requests
+  and `conversations:write` on the minted key. Pinned **D-17** (presence/typing) and **D-18**
+  (snooze, Meta-window UI, keyboard shortcuts).
+
 ### 2026-09-27 — P4 chunk 2: internal notes + canned replies
 - **New tables** `internal_note` and `canned_reply` (migration `0012`, RLS forced + granted to
   `crm_app`, verified on both databases).
@@ -114,28 +128,31 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ### Quick wins / P4 continuation
 1. **Outbound media** — send path must carry a file; `OutboundContent` must stop being text-only.
-2. **P4 chunk 3 — realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2), presence + typing /
-   collision detection (AC-3). *New table:* `conversation_participant`. Live assignment push.
-3. **P4 chunk 4 — search** over message bodies + contact fields (AC-7). Needs the blind-index /
-   trigram decision on encrypted columns.
-4. **P4 leftovers** — snooze (*new column* `snooze_until` + a scheduler, AC-6), priority (*new
-   column*), Meta 24-hour window countdown + template-only composer (AC-9), keyboard shortcuts
-   (AC-10).
+2. **P4 realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2) — blocked by **D-14** (inbound
+   dead). Presence + typing / collision detection (AC-3) is **pinned as D-17** — do it in the
+   same slice as live inbound so the transport is paid for once. *New table:* `conversation_participant`.
+3. **P4 search** over message bodies + contact fields (AC-7). Needs the blind-index / trigram
+   decision on encrypted columns.
+4. **P4 small gaps** — `GET /conversations/{id}` (single-thread fetch), `POST /conversations/{id}/read`.
+5. **P4 leftovers — PINNED as D-18** (not required now): snooze (AC-6), Meta 24-hour window UI
+   (AC-9, needs P8), keyboard shortcuts (AC-10). Priority flag also deferred.
+
+> Presence/typing/collision → **D-17**. Snooze/Meta-window/keyboard → **D-18**.
 
 ### Other feature work
-5. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
+6. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
    contact can only be created by an inbound message, a one-off send, or a CSV import.
-6. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
+7. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
    suite like storage has.
-7. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
-8. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
+8. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
+9. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
 
 ### Hardening / deployment
-9. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
-   be backed up separately from the database** — losing it loses every linked number and message.
-10. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
+10. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
+    be backed up separately from the database** — losing it loses every linked number and message.
+11. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
     replicas each count separately.
-11. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
+12. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
 
 ---
 

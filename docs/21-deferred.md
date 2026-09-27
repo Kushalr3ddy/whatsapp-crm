@@ -523,3 +523,70 @@ this is the half that has to be said out loud to a human before they link a numb
 
 **Cost of deferring:** low while the only users are the operator's own staff, and sharp the day
 someone else's data arrives — acceptance cannot be backdated, so a gap is permanent.
+
+---
+
+## D-17 · Presence, typing indicators and collision detection (F3 realtime)
+
+**What:** the live parts of the shared inbox — showing that another agent is *viewing* a thread,
+that they are *typing*, and by extension collision detection (two people not answering the same
+contact at once). F3's AC-3. Distinct from **live inbound** (a new message appearing without a
+refresh), which is a separate concern and is anyway blocked by **D-14**.
+
+**Why parked:** it needs a transport the project does not have yet — a WebSocket (or SSE) channel
+and a `conversation_participant` table — and its value is highest with several agents online at
+once, which is not today's shape. The inbox already refreshes every 5 s by polling
+(`apps/web/app/inbox/auto-refresh.tsx`), which is enough for one or two people.
+
+**What brings it back — any one of these:**
+
+1. **More than a couple of agents working one inbox**, where "did someone already reply?" starts
+   to actually happen rather than being hypothetical.
+2. **Live inbound being built** — once a realtime channel exists for new messages, presence and
+   typing are cheap to add on the same channel, so they should land together rather than twice.
+3. A concrete complaint of two agents double-replying.
+
+**How hard later (so it is not re-guessed):** **moderate**, and most of the cost is the transport,
+not the feature.
+
+| Piece | Effort |
+|---|---|
+| `conversation_participant` table (`conversation_id`, `user_id`, `role`, `last_read_at`) + RLS | small — same pattern as `internal_note` (migration 0012) |
+| A realtime transport (WS/SSE) the API and web share | **the real cost** — a new long-lived connection type; note the in-process-state caveat in `HANDOFF.md` (several replicas would each hold their own presence set, so this wants the shared cache layer from P9, or a Postgres `LISTEN/NOTIFY` fan-out like the gateway already uses) |
+| Presence heartbeat + "viewing"/"typing" UI | small once the channel exists |
+
+Because #2 makes presence nearly free once live inbound has a channel, the leaning is **not to
+build presence on its own** — do it in the same slice as live inbound (which waits on **D-14**),
+so the transport is paid for once.
+
+**Cost of deferring:** none technically. The only loss is two agents occasionally replying to the
+same contact, which polling's 5 s window narrows but does not close.
+
+---
+
+## D-18 · Inbox niceties: snooze, the Meta 24-hour window UI, keyboard shortcuts
+
+**What:** three F3 acceptance criteria deferred as not-needed-now.
+
+| Item | AC | What it is |
+|---|---|---|
+| **Snooze** | AC-6 | Hide a thread until a chosen time, then re-open it. Needs a `snooze_until` column and something to un-hide it on schedule. |
+| **Meta 24-hour window countdown + template-only composer** | AC-9 | WhatsApp's *official* API only allows free-form replies within 24 h of the contact's last message; after that only approved templates. The UI would show the countdown and lock the composer. |
+| **Keyboard shortcuts** | AC-10 | Hotkeys for reply / assign / resolve / next-previous thread. |
+
+**Why parked:** none is load-bearing for the CRM working. Snooze is a workflow convenience; keyboard
+shortcuts are a power-user speed-up; and the **Meta window UI is meaningless until the Meta Cloud API
+adapter exists** — that is **P8 / D-5 territory**, and Baileys (the only transport today) has no such
+window. Kushal called all three not required for now.
+
+**What brings it back:**
+
+1. **Snooze** — an operator asking to defer threads to "tomorrow" as a routine.
+2. **Meta window UI** — the Meta adapter (P8) landing; build it *with* that adapter, not before.
+3. **Keyboard shortcuts** — enough daily inbox volume that mouse-driving becomes the bottleneck.
+
+**How hard later:** snooze is **small** (one column + a sweep query, reusing the same pattern as the
+rest of the inbox); keyboard shortcuts are **small** and pure front-end; the Meta window UI is
+**small on its own** but gated behind the much larger Meta adapter.
+
+**Cost of deferring:** none — all three are additive and touch no existing behaviour.

@@ -66,7 +66,7 @@ ORG=$(npm run --silent admin -- whoami | awk '/^  [0-9a-f-]{36}/{print $1; exit}
 curl -s -X POST localhost:3000/api/v1/admin/keys \
   -H "Authorization: Bearer $BOOT" -H 'Content-Type: application/json' \
   -d "{\"orgId\":\"$ORG\",\"name\":\"local testing\",
-       \"scopes\":[\"conversations:read\",\"messages:send\",\"senders:read\",\"senders:write\"]}"
+       \"scopes\":[\"conversations:read\",\"conversations:write\",\"messages:send\",\"senders:read\",\"senders:write\"]}"
 ```
 
 The secret comes back **once** and is never stored in a form anyone can read back. Keep it in a
@@ -84,8 +84,11 @@ one with its first admin, and prints a generated password.
 ## Or use Insomnia
 
 `tools/insomnia-collection.json` imports as a collection with everything below already set up —
-including the refusals that must stay refused (401, 403, 422, 404) and a group for exercising
-the pacing gate. Fill in `base_url`, `bootstrap_key` and `org_key` in the environment.
+the inbox group (filters, assignment, notes, canned replies), the refusals that must stay refused
+(401, 403, 422, 404) and a group for exercising the pacing gate. Fill in `base_url`,
+`bootstrap_key`, `org_key` in the environment, plus `conversation_id` and `user_id` for the inbox
+requests. The key minted by "mint an org key" now carries `conversations:write`, which the
+assignment, notes and canned-reply writes need.
 
 **The pacing group queues real messages.** With the gateway running and a number linked they
 are actually sent, so point `test_recipient` at a number you control.
@@ -120,6 +123,90 @@ curl -s localhost:3000/api/v1/conversations -H "Authorization: Bearer $BOOT"
 # no credential — 401, with a message identical to a wrong credential's
 curl -s localhost:3000/api/v1/conversations
 ```
+
+---
+
+## Inbox: filters, assignment, notes, canned replies (P4)
+
+The shared-inbox slice. All the writes here need the **`conversations:write`** scope (already in
+the key minted above).
+
+### Filters and members
+
+```bash
+# filter the list: assignee = me | unassigned | <user-id>, status = open | closed
+curl -s "localhost:3000/api/v1/conversations?status=open&assignee=unassigned" \
+  -H "Authorization: Bearer $KEY"
+
+# org members, for the assignee picker
+curl -s localhost:3000/api/v1/users -H "Authorization: Bearer $KEY"
+```
+
+`assignee=me` needs a signed-in user, so with a **key** it is a 422 — a key has no identity.
+
+### Assign and resolve
+
+```bash
+CONV=<conversation-id>
+USER=$(curl -s localhost:3000/api/v1/users -H "Authorization: Bearer $KEY" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"][0]["id"])')
+
+# assign  ·  resolve/close  ·  unassign (explicit null)
+curl -s -X PATCH localhost:3000/api/v1/conversations/$CONV \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d "{\"assigneeUserId\":\"$USER\"}"
+curl -s -X PATCH localhost:3000/api/v1/conversations/$CONV \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{"status":"closed"}'
+curl -s -X PATCH localhost:3000/api/v1/conversations/$CONV \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{"assigneeUserId":null}'
+```
+
+Deliberate refusals: an empty body is **422**; a `assigneeUserId` who is not an org member is
+**422 `NOT_A_MEMBER`**; another tenant's conversation is **404**. Each change that actually moves
+writes an audit row (`conversation.assigned`, `conversation.status_changed`).
+
+### Internal notes
+
+```bash
+# add a note — never sent to the contact; it lives in internal_note, not message
+curl -s -X POST localhost:3000/api/v1/conversations/$CONV/notes \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"body":"called, sending CV tomorrow"}'
+
+# list a thread's notes
+curl -s localhost:3000/api/v1/conversations/$CONV/notes -H "Authorization: Bearer $KEY"
+```
+
+The guarantee worth checking: after adding a note, the **messages** endpoint is unchanged — a
+note never appears there, so it can never be sent (F3 AC-4).
+
+```bash
+curl -s localhost:3000/api/v1/conversations/$CONV/messages -H "Authorization: Bearer $KEY"
+```
+
+### Canned replies
+
+```bash
+# create one — shortcut is unique per org, so a repeat is 409 SHORTCUT_TAKEN
+curl -s -X POST localhost:3000/api/v1/canned-replies \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"shortcut":"greet","body":"Hi {{name}}, thanks for reaching out."}'
+
+curl -s localhost:3000/api/v1/canned-replies -H "Authorization: Bearer $KEY"
+```
+
+`{{name}}` is substituted from the contact when the reply is inserted in the composer, not on
+the server.
+
+### The thread lock
+
+A thread assigned to one agent can only be replied to by that agent until they resolve or
+reassign it — a light stand-in for presence/collision (parked as **D-17**). It applies to
+**signed-in agents only**: an admin overrides it, and an **API key is exempt** (an integration is
+not a person claiming a thread), so it **cannot be exercised with a bearer key** — a key's reply
+always succeeds. To see the 409, sign in as a non-admin agent in the web UI and open a thread
+assigned to someone else; the composer disables Reply and offers a note instead. It is covered by
+`tests/integration/thread-lock.test.ts`.
 
 ---
 
