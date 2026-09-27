@@ -17,6 +17,9 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes 
 **To load contacts in** — [07 Ingestion](07-ingestion.md) (the design) →
 [25 Ingestion guide](25-ingestion-guide.md) (the sources, deduping and a walkthrough)
 
+**To understand linking** — [26 Linking lifecycle](26-linking-lifecycle.md) (how the gateway,
+the database and the phone stay in sync, and why "connected" is not "receiving")
+
 **To deploy or operate it** — [13 Deployment](13-deployment.md) →
 [19 Capacity](19-capacity.md) → [14 Runbooks](14-runbooks.md) →
 [09 Security](09-security.md) → [22 Encryption](22-encryption.md) →
@@ -52,6 +55,7 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes 
 | [23 Authentication](23-auth.md) | The three credentials, the login flow, session forwarding, CSRF, and what guards what |
 | [24 Testing it by hand](24-local-testing.md) | Start the stack, get a key, exercise every endpoint, read the headers that matter |
 | [25 Ingestion guide](25-ingestion-guide.md) | Every source, how deduping works at both layers, and a hands-on walkthrough |
+| [26 Linking lifecycle](26-linking-lifecycle.md) | How the gateway, database and phone stay in sync on link status; the command channel; why "connected" ≠ "receiving" (D-14) |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 | [ADRs](adr/) | Decisions that would be expensive to reverse, and why |
 
