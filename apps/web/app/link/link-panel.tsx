@@ -156,16 +156,16 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
       )}
 
       {!active && (
-        <div className="mt-2">
+        <div className="mt-3 border-t border-border pt-3">
           <button
             type="button"
             onClick={() => { void unlink(); }}
             disabled={unlinking}
-            className="text-[11px] text-muted underline underline-offset-2 hover:text-danger disabled:opacity-50"
+            className="rounded-lg border border-danger/50 px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50"
           >
-            {unlinking ? 'Unlinking…' : alreadyOpen ? 'Unlink this number' : 'Reset / unlink (clears stored credentials)'}
+            {unlinking ? 'Unlinking…' : 'Unlink / reset this number'}
           </button>
-          <p className="mt-1 text-[11px] text-muted">
+          <p className="mt-1.5 text-[11px] text-muted">
             Use this if the number looks linked but is not receiving — it logs out and clears the
             stored credentials so linking again shows a fresh QR.
           </p>
