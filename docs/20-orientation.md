@@ -26,7 +26,7 @@ Three things it does:
 
 ## 2. The numbering schemes (what all those codes mean)
 
-Five different prefixes appear throughout these documents. They are not related to each other.
+Several different prefixes appear throughout these documents. They are not related to each other.
 
 ### `M1`, `M29`, `M30` … — **M is for Mistake**
 
@@ -73,13 +73,6 @@ In [`02-requirements.md`](02-requirements.md). **FR** = functional requirement (
 software must *do*). **NFR** = non-functional (how well it must do it — speed, uptime,
 security). **CON** = a constraint imposed from outside that we cannot negotiate, like Meta's
 pricing or WhatsApp's rules.
-
-### `ADR-0001`, `ADR-0002` — Architecture Decision Records
-
-In [`adr/`](adr/). One file per decision that would be expensive to reverse, recording *why* it
-was made and what was rejected. They are never edited after the fact — a later decision
-**supersedes** an earlier one, so the reasoning trail stays intact. ADR-0003 chose Fastify;
-ADR-0004 replaced it with Express and explains what changed.
 
 ### `AC-1`, `TC-2.4` — acceptance criteria and test cases
 

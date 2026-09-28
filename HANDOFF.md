@@ -207,8 +207,8 @@ whole API surface including the refusals that must stay refused.
 
 | | Decision |
 |---|---|
-| ADR-0002 | Baileys pinned **exactly** to `6.7.24`, not 7.x |
-| ADR-0003/4 | **Express 5**, not NestJS, not Fastify |
+| — | Baileys pinned **exactly** to `6.7.24`, not 7.x (`docs/10-stack.md`, D-5) |
+| — | **Express 5**, not NestJS, not Fastify (`docs/10-stack.md`) |
 | — | **Next.js 15** App Router for the UI (`docs/04-architecture.md`) |
 | — | Drizzle for **schema + migrations only**; queries are raw SQL through the `sql` tag |
 | — | Single-tenant deploy on a **multi-tenant-ready** schema: `org_id` + RLS from migration 1 |
@@ -320,7 +320,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 - **Run a command as written before handing it over.**
 - **Verify the exit code before committing.**
 - **Do not change the runtime floor** (`engines`) to make something work. A dependency is
-  smaller and more reversible than a Node version bump; that would be an ADR.
+  smaller and more reversible than a Node version bump; that would be a much bigger decision.
 - Kill child processes and clean up test fixtures when finished.
 
 ---

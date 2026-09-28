@@ -130,11 +130,13 @@ shared  →  nothing
 - Session state lives in `HANDOFF.md` (the current snapshot) and `CHANGELOG.md` (the running
   work ledger), not in `CONTEXT.md` — that file is retired.
 
-## ADRs
+## Recording decisions
 
-`docs/adr/ADR-NNNN-short-title.md` for any decision that would be expensive to reverse or that
-someone will later ask "why on earth" about. Format: Context · Options · Decision ·
-Consequences · Status. An ADR is never edited after acceptance; it is superseded by a new one.
+A decision that would be expensive to reverse, or that someone will later ask "why on earth"
+about, is written down **in the doc it belongs to** — the stack choice in `10-stack.md`, a
+parked decision in `21-deferred.md`, a data-model call in `05-data-model.md` — with the *why*
+and what was rejected, not just the outcome. Keep the reasoning next to the thing it is about,
+so there is one place to look and nothing to cross-reference.
 
 ## Tests
 

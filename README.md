@@ -267,4 +267,4 @@ everything from zero: the technology, the jargon, and what all the `M`/`P`/`F` c
 
 ## Licence
 
-Undecided — see [ADR-0001](docs/adr/ADR-0001-licence.md).
+Undecided — see [D-3 in deferred decisions](docs/21-deferred.md).

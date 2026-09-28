@@ -13,6 +13,18 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-28 — Docs: retire the ADRs, fold the reasoning inline
+- The four `docs/adr/` files (licence, Baileys version, Fastify-over-NestJS, Express-over-Fastify)
+  were formal decision records whose reasoning already lived, in plain language, in the docs they
+  belong to. `ADR` read as unexplained jargon scattered across HANDOFF, the stack doc, the roadmap
+  and more, so: **the four files are deleted and every `ADR` reference stripped from the active docs.**
+- The *why* is preserved where it belongs: the Express-over-Fastify-over-NestJS reasoning stays in
+  `10-stack.md`; the Baileys `6.7.24` pin (incl. the "use the unscoped package" note) in `10-stack.md`
+  + D-5; the licence question in D-3 + the roadmap. `11-conventions.md` now says decisions are
+  recorded in the doc they belong to, not in a separate ADR file.
+- **`CONTEXT.md` left untouched** — it is the retired, append-only session log, and its ADR
+  mentions are accurate history of when those files existed. Rewriting it would falsify the record.
+
 ### 2026-09-28 — Docs: sync stale "not built / broken" claims to current reality
 - A full read-through of `docs/` (46 files) against the code turned up a batch of claims that
   were true when written and have since been overtaken. Fixed:
@@ -28,7 +40,7 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
     end to end against a real file).
   - **08-antiban** — the "capped harder / D-14" caveat now reflects D-14 closed and the rule
     unblocked.
-  - **10-stack** — Baileys "TBD, ADR needed" → `6.7.24` pinned (ADR-0002).
+  - **10-stack** — Baileys "TBD" → `6.7.24` pinned, with the reasoning kept inline.
 - **Group C:** `25-ingestion-guide.md` said Excel was **built** in its top box but **not built**
   in the diagram, §3.2, the summary table and "build next" — reconciled all four to built; same
   for `07-ingestion`'s dedup table.
@@ -185,7 +197,10 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 ## Done, by phase
 
 ### P0 · Design — ✅
-- 42 design docs (`docs/`), ADRs, prior-art mistake catalogue (M1–M31), roadmap, orientation.
+- 42 design docs (`docs/`), prior-art mistake catalogue (M1–M31), roadmap, orientation. (The
+  four decision records that lived in `docs/adr/` were later folded into the relevant docs — the
+  stack choices into `10-stack.md`, licence + Baileys version into `21-deferred.md` — and the
+  `ADR` jargon dropped, 2026-09-28.)
 
 ### P1 · Skeleton — ⚠️ partial (marked done, is not)
 - Express 5 app, boot-time Zod config gate, forward-only migrations, CI.

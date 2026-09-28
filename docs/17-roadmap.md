@@ -42,8 +42,8 @@ Nothing is "done" until its exit criteria are met.
 
 | # | Decision | Blocks | Status |
 |---|---|---|---|
-| 1 | **Licence** — AGPL-3.0 (protects against a hosted competitor) vs MIT (maximum adoption) | Nothing technical; needed before public release | ADR-0001, open |
-| 2 | **Baileys version to pin** — 7.x is a release candidate (`7.0.0-rc14`) with breaking changes; last stable Nov 2025 | P3 | ADR-0002, open |
+| 1 | **Licence** — AGPL-3.0 (protects against a hosted competitor) vs MIT (maximum adoption) | Nothing technical; needed before public release | Open (see D-3) |
+| 2 | **Baileys version to pin** — 7.x is a release candidate (`7.0.0-rc14`) with breaking changes; last stable Nov 2025 | P3 | **Decided: `6.7.24`** (see 10-stack, D-5) |
 | 3 | **Meta onboarding** — who owns the WhatsApp Business Account, when Business Verification starts (it gates the messaging tiers) | P8 | Not a code decision; open |
 | 4 | **Direct Cloud API vs a BSP** — direct is cheaper with no markup; a BSP simplifies onboarding | P8 | Open, follows #3 |
 | 5 | **Does F12 ship in V2** or stay a seam indefinitely | Nothing in V1 | Open |

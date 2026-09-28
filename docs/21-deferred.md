@@ -91,7 +91,7 @@ captured. Hence keeping the table from the start.
 
 ---
 
-## D-3 · Licence (ADR-0001)
+## D-3 · Licence
 
 **Why parked:** it changes nothing technical.
 
@@ -118,7 +118,7 @@ just another producer writing into the same outbox, so every safety gate already
 
 ---
 
-## D-5 · Baileys 7.x (ADR-0002)
+## D-5 · Baileys 7.x
 
 **Why parked:** pinned to `6.7.24`, the stable line. 7.x has sat in release-candidate status
 across twelve iterations.
@@ -647,8 +647,8 @@ all of the above — so SQLite is not wanted for the primary mode. It only makes
 
 **What brings it back:** a concrete need to ship a single-machine install (a customer who will
 not run Postgres). At that point this is its own track — likely a `DbDriver` port with a Postgres
-adapter (RLS + NOTIFY) and a SQLite adapter (app-level scoping + polling), decided in an ADR,
-since it changes the security model.
+adapter (RLS + NOTIFY) and a SQLite adapter (app-level scoping + polling), decided deliberately
+and recorded here, since it changes the security model.
 
 **Cost of deferring:** none today. It grows with every feature that reaches for a Postgres-only
 capability without a fallback in mind — so new isolation/notify logic should stay behind the

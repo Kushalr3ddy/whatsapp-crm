@@ -2,7 +2,7 @@
 
 **New here? Start with [20 · Orientation](20-orientation.md).** It explains the project, the
 technology and every piece of jargon from zero — no knowledge of TypeScript, Node, Postgres or
-WhatsApp's API assumed. It also decodes the `M`, `P`, `F`, `FR` and `ADR` codes used throughout.
+WhatsApp's API assumed. It also decodes the `M`, `P`, `F` and `FR` codes used throughout.
 
 ## Reading order
 
@@ -57,7 +57,6 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 | [25 Ingestion guide](25-ingestion-guide.md) | Every source, how deduping works at both layers, and a hands-on walkthrough |
 | [26 Linking lifecycle](26-linking-lifecycle.md) | How the gateway, database and phone stay in sync on link status; the command channel; why "connected" ≠ "receiving" (D-14) |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
-| [ADRs](adr/) | Decisions that would be expensive to reverse, and why |
 
 ## Not in here
 

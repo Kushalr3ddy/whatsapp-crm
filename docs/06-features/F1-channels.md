@@ -84,8 +84,8 @@ GET    /api/v1/senders/{id}/health         state, risk score, recent risk events
 
 ## Open questions
 
-- Pin which Baileys version? 7.x is a release candidate (`7.0.0-rc14`) with breaking changes;
-  last stable was Nov 2025. → ADR needed.
+- Pin which Baileys version? **Decided: `6.7.24`, pinned exactly** — 7.x is still a release
+  candidate (`7.0.0-rc14`) with breaking changes. See `10-stack.md` and D-5.
 - Proxy binding per sender (each number egressing from its own IP) — V2, but does it change
   the `sender_identity` schema? Probably `proxy_ref` now, unused.
 - Meta: direct Cloud API vs a BSP. Direct is cheaper and has no markup; a BSP simplifies

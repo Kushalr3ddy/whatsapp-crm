@@ -26,12 +26,12 @@ problem is thinner) · Rust (wrong cost/benefit here).
 across both codebases. The part that is load-bearing, package boundaries, is enforced by lint
 rather than by the package manager. *Rejected:* pnpm + Turborepo (better caching, but another
 tool to install and learn — revisit if build times hurt) · Nx (more power than needed) ·
-polyrepo (version skew between API and UI for no gain). See ADR-0003.
+polyrepo (version skew between API and UI for no gain).
 
 ## API framework
 
-**Express 5 + Zod.** See [ADR-0004](adr/ADR-0004-express-over-fastify.md) (which supersedes
-[ADR-0003](adr/ADR-0003-fastify-over-nestjs.md), which had superseded an earlier choice of NestJS).
+**Express 5 + Zod.** (The framework choice moved twice: NestJS → Fastify → Express. Express
+won for the reasons below; the reasoning is recorded here rather than in a separate file.)
 
 Express 5 specifically, because it forwards rejected promises from async handlers to the error
 middleware — in Express 4 an async handler that throws hangs the request instead of answering it.
@@ -138,16 +138,16 @@ all three means the config validated at boot is the same shape as the config doc
 |---|---|---|
 | Node | 22 LTS | |
 | PostgreSQL | 16 | |
-| **Baileys** | **`6.7.24`, pinned exactly (ADR-0002)** | 7.x is still a release candidate (`7.0.0-rc14`) with breaking changes; `6.7.24` is the maintained stable line, published the same day. Keep the adapter surface thin so an upgrade is contained. |
+| **Baileys** | **`6.7.24`, pinned exactly** | 7.x is still a release candidate (`7.0.0-rc14`) with breaking changes; `6.7.24` is the maintained stable line, published the same day (evidence it is not abandoned). Use the **unscoped** `baileys` package (more downloads → breakages fixed sooner), not `@whiskeysockets/baileys`. Keep the adapter surface thin so an upgrade is contained. See [D-5](21-deferred.md) for when to revisit. |
 
 ## Decisions worth revisiting later
 
 - **Drizzle vs Prisma** — if the team turns out to prefer Prisma's ergonomics and RLS is
   handled another way.
 - **Express vs NestJS** — revisit if the API surface outgrows legible manual wiring, or a team
-  forms and enforced structure becomes worth its learning cost (ADR-0003, ADR-0004).
+  forms and enforced structure becomes worth its learning cost.
 - **pg-boss in `lean`** — if maintaining two queue drivers turns out to cost more than the
   ~80 MB it saves.
 
-Each would be an ADR. None is load-bearing on the architecture, because all three sit behind
-boundaries the rest of the system does not see.
+Each is a deliberate, reversible choice. None is load-bearing on the architecture, because all
+three sit behind boundaries the rest of the system does not see.
