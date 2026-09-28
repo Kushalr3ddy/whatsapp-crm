@@ -280,12 +280,14 @@ file /tmp/got.bin      # says HTML — and it was still served as an inert downl
 Another tenant's attachment answers **404**, not 403 — saying "forbidden" would confirm it
 exists.
 
-### The gap to know about
+### Verified end to end (2026-09-28)
 
-**The download step has never met a real WhatsApp file.** Storing, typing, serving and auditing
-are all tested; the one link from provider to bytes is not, because inbound is currently broken
-(**D-14** in [`21 · Deferred`](21-deferred.md)). The fixtures above exercise every layer except
-that one.
+**The download step has now met a real WhatsApp file.** After D-14 was closed (inbound
+re-linked), an inbound image was downloaded through the socket, typed from its magic bytes as
+`image/jpeg`, stored under an unguessable key, and the bytes on disk matched the bytes received.
+Storing, typing, serving and auditing were already tested; the one link from provider to bytes
+is now proven too. The `[TEST DATA]` fixtures below remain for a keep-linked-number-free way to
+exercise the media route.
 
 ---
 
@@ -317,9 +319,9 @@ It **generates and prints** the password rather than taking one as an argument �
 ends up in shell history and in the process list. Running it also ends every session on that
 account.
 
-The inbox does not render attachments yet. A message that arrived with a file shows as an empty
-bubble; the API has been carrying `media` on every message since media landed, and wiring it
-into the UI is the next piece of work.
+The inbox renders attachments as a download link (filename, type, size), served through a
+web-side `/media/:id` proxy that forwards your session to the API. A media message whose bytes
+could not be fetched says "attachment could not be fetched" instead.
 
 ---
 
@@ -330,8 +332,10 @@ npm run wa:link
 ```
 
 QR or pairing code. **Read [`08 · Anti-ban`](08-antiban.md) first if you are pointing this at a
-number you care about** — Baileys is unofficial, a ban has no appeal, and there is still no rate
-limiting, warmup or pacing anywhere in the send path.
+number you care about** — Baileys is unofficial and a ban has no appeal. Send-pacing now exists
+(warmup ramp, per minute/hour/day ceilings, jitter — anti-ban layers 1–2), so a burst is capped;
+but layers 3–6 (typing simulation, circadian pacing, contact-graph gates, health scoring) are
+not built, so this is a floor, not safety.
 
 Two things that have cost time before, both now handled but worth recognising:
 
@@ -341,8 +345,9 @@ Two things that have cost time before, both now handled but worth recognising:
   one, which is how an unaccounted-for tenant ended up in the database.
 
 If sends work and **nothing ever arrives**, check the gateway log for `failed to decrypt
-message` / `Bad MAC` before suspecting the application. That is D-14, and it looks like a
-half-working link rather than a broken one.
+message` / `Bad MAC` before suspecting the application. This was **D-14** (now closed — resolved
+by the unlink→re-link recovery below); a corrupt companion session looks like a half-working
+link rather than a broken one, so if the symptom recurs, the fix is the same.
 
 **To recover such a number, unlink it first.** A re-link cannot show a fresh QR while the corrupt
 credentials are stored — Baileys only issues a QR when there are none. The **Unlink** button on

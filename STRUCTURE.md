@@ -1,7 +1,10 @@
 # Repository structure
 
-What belongs where. As of P1, `packages/shared`, `packages/db` and `apps/api` carry code;
-the rest are scaffolded and empty, waiting for their phase (`docs/17-roadmap.md`).
+What belongs where. `packages/shared`, `packages/db`, `packages/core`, `channels/baileys`,
+`providers/{storage,kms}`, and `apps/{api,gateway,web}` carry code; the remaining packages
+(`worker`, `sdk`, `antiban` as its own package, the other channels, ingestion connectors and
+the rest of the provider drivers) are scaffolded and waiting for their phase
+(`docs/17-roadmap.md`).
 
 ```
 apps/

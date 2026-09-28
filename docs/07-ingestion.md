@@ -97,7 +97,7 @@ protection. Conflating them is how a live sheet either re-imports forever or sto
 
 | Source | Shape | What stops a duplicate |
 |---|---|---|
-| `csv` `excel` `jsonl` | A file someone uploads | **Content hash**, as above. Built for `csv` |
+| `csv` `excel` `jsonl` | A file someone uploads | **Content hash**, as above. Built for `csv` and `excel` |
 | `s3-folder` | Files, discovered rather than uploaded | Content hash, per object |
 | `gsheets` | A live document that changes under you | **Cursor**, not a hash. Hashing works only to skip an *unchanged* sheet; once a cell moves the hash is new while 900 rows are not |
 | `rest` | A paginated pull | **Cursor** — `updated_since`, or the provider's page token |

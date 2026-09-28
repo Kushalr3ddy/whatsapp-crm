@@ -408,14 +408,11 @@ watch `status` move `queued → sent → delivered → read`.
 
 With no number linked it returns `409 NO_ACTIVE_SENDER`, and the message is **not** queued.
 
-### Known rough edges
+### Formerly rough edges — now fixed
 
-Both are recorded rather than fixed:
+Both were recorded here as known bugs and have since been fixed:
 
-- **A malformed UUID returns `500`.** `GET /api/v1/conversations/not-a-uuid/messages` reaches
-  Postgres, the cast throws, and it surfaces as `INTERNAL_ERROR`. User input should never
-  produce a 500 — this belongs as a `422`, or a `404` to match the "404 not 403 on foreign ids"
-  rule in [09 · Security](09-security.md).
-- **Problem bodies carry `"status": 0`.** The `problem()` helper hardcodes it while the real
-  code goes in the HTTP status line; `auth.ts` builds its own objects correctly with `401`. So
-  `body.status` disagrees between routes. RFC 7807 says that member is the HTTP status code.
+- **A malformed UUID now returns `422`, not `500`.** Path parameters are validated before they
+  reach Postgres, so a bad id is a clean validation error rather than an `INTERNAL_ERROR`.
+- **Problem bodies now carry the real HTTP status.** The `problem()` helper no longer emits
+  `"status": 0`; `body.status` matches the HTTP status line, as RFC 7807 requires.

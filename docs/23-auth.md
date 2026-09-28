@@ -231,8 +231,12 @@ query that follows still filters by the org those lookups return.
 | Gap | Consequence |
 |---|---|
 | **Self-service password reset** | Administrator-initiated only: `npm run admin -- password`. Needs the email driver, which is an empty directory |
-| **`audit_log`** | "Who did this?" is not yet answerable. The columns exist on several tables; nothing writes a trail |
 | **TOTP / MFA** | V2 in `09-security.md`. Note the secret would live in `app_user.mfa_secret_enc` — another thing `ENCRYPTION_KEY` controls |
 | **OIDC driver** | Needs an IdP configured per deployment. The port exists so this is a driver swap, not a rewrite; authorisation stays local either way |
-| **Rate limiting** | Only **login** is throttled, and in-process — several replicas would each count separately. `api_key.rate_limit_per_min` is stored and enforced nowhere (P9) |
-| **Per-user permissions below role** | `admin` and `agent` only. `conversation.assignee_user_id` is populated by nothing yet |
+| **Multi-replica rate limiting** | Per-key rate limiting **is** enforced now, and login throttling too — but both are **in-process**, so several replicas would each count separately (the shared limiter is P9) |
+| **Per-user permissions below role** | Still `admin` and `agent` only. Assignment now works — `conversation.assignee_user_id` is set and drives the thread lock — but there is no finer-grained per-user permission model yet |
+
+> **Now built** (was listed here before): the `audit_log` writes a trail on every state change,
+> authentication and admin action, plus reads (`conversation.read`, `media.downloaded`);
+> per-key API rate limiting is enforced; and conversation assignment populates
+> `assignee_user_id`. See `CHANGELOG.md`.

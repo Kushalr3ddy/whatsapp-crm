@@ -138,7 +138,7 @@ all three means the config validated at boot is the same shape as the config doc
 |---|---|---|
 | Node | 22 LTS | |
 | PostgreSQL | 16 | |
-| **Baileys** | **TBD — ADR needed** | 7.x is a release candidate (`7.0.0-rc14`) with breaking changes; the last stable release was Nov 2025. Pin exactly; keep the adapter surface thin so an upgrade is contained. |
+| **Baileys** | **`6.7.24`, pinned exactly (ADR-0002)** | 7.x is still a release candidate (`7.0.0-rc14`) with breaking changes; `6.7.24` is the maintained stable line, published the same day. Keep the adapter surface thin so an upgrade is contained. |
 
 ## Decisions worth revisiting later
 

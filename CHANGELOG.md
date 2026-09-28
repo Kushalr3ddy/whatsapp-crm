@@ -13,7 +13,25 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
-### 2026-09-28 — Docs: fix four contradictions found cross-checking docs vs code
+### 2026-09-28 — Docs: sync stale "not built / broken" claims to current reality
+- A full read-through of `docs/` (46 files) against the code turned up a batch of claims that
+  were true when written and have since been overtaken. Fixed:
+  - **README** status banner ("P1 complete, no WhatsApp yet") and test count (169 → ~375);
+    now points at `HANDOFF.md`/`CHANGELOG.md`, not the retired `CONTEXT.md`.
+  - **STRUCTURE.md** "as of P1, only shared/db/api carry code" → lists what actually carries code.
+  - **20-orientation** phase table (P3 done, P4 mostly, P5/P7 first slices, P6 layers 1–2), the
+    "prototype = finish P3" note, and the `npm run dev` "only /health" line.
+  - **23-auth** "Not built" table — removed `audit_log` (built), corrected rate-limiting (per-key
+    now enforced, in-process caveat remains) and assignment (`assignee_user_id` now populated).
+  - **15-api** "Known rough edges" — both bugs (malformed-UUID 500, `status: 0`) are fixed.
+  - **24-local-testing** — attachments render, pacing exists, and D-14 is closed (media verified
+    end to end against a real file).
+  - **08-antiban** — the "capped harder / D-14" caveat now reflects D-14 closed and the rule
+    unblocked.
+  - **10-stack** — Baileys "TBD, ADR needed" → `6.7.24` pinned (ADR-0002).
+- **Group C:** `25-ingestion-guide.md` said Excel was **built** in its top box but **not built**
+  in the diagram, §3.2, the summary table and "build next" — reconciled all four to built; same
+  for `07-ingestion`'s dedup table.
 - **`ENCRYPTION_KEK` typo** in `13-deployment.md` → `ENCRYPTION_KEY` (a deploy following the doc
   would set the wrong var and crash at boot). Confirmed `APP_SECRET` / `PUBLIC_URL` /
   `DATABASE_URL` all match `packages/shared/src/config.ts`.

@@ -52,12 +52,13 @@ below (M13) are an optimisation for later, not a prerequisite.
 ⬜ **Layers 3–6 are not built**: no typing simulation, no circadian pacing, no contact-graph
 multipliers, no health scoring, no recovery orchestration.
 
-⬜ **The "never received an inbound message is capped harder" rule is deliberately not
-implemented yet.** It is correct, and it is specced below — but inbound is currently broken
-(**D-14**), so every sender looks outbound-only and the rule would cap the entire system at 20
-sends a day. It lands with D-14, not before. **This is worth understanding rather than working
-around: bulk sending from a number that receives nothing is exactly the pattern the graph
-heuristics punish, so the risk is real even though the gate is not enforcing it.**
+⬜ **The "never received an inbound message is capped harder" rule is specced but not yet
+implemented.** It *was* blocked by D-14 (inbound dead, so every sender looked outbound-only and
+the rule would have capped the whole system at 20 sends a day). **D-14 is now closed** — inbound
+works again — so the signal it depends on (`last_inbound_at`, reply ratio) is real and the rule
+is unblocked. It lands with contact-graph gates (layer 4/5). **Worth understanding rather than
+working around: bulk sending from a number that receives nothing is exactly the pattern the
+graph heuristics punish, so the risk is real even though the gate is not enforcing it yet.**
 
 ## Layer 1 — Warmup
 

@@ -49,16 +49,18 @@ Build phases, in [`17-roadmap.md`](17-roadmap.md). The order work happens in.
 | | | Status |
 |---|---|---|
 | **P0** | Write the design | done |
-| **P1** | Skeleton — server boots, database migrates | done |
-| **P2** | Contacts, tags, deduplication | partly |
-| **P3** | **Channels — the Baileys adapter. First code that touches WhatsApp** | in progress |
-| **P4** | Inbox (the screen agents use) | |
-| **P5** | Data import (spreadsheets and other sources) | |
-| **P6** | The anti-ban engine | |
-| P7–P12 | Campaigns, official API, public API, automation, hardening, release | |
+| **P1** | Skeleton — server boots, database migrates | mostly (no compose file yet) |
+| **P2** | Contacts, tags, deduplication | mostly |
+| **P3** | **Channels — the Baileys adapter. First code that touches WhatsApp** | **done** — link, send, receive, media all verified |
+| **P4** | Inbox (the screen agents use) | mostly (search + realtime left) |
+| **P5** | Data import (spreadsheets and other sources) | first slice (CSV + Excel) |
+| **P6** | The anti-ban engine | layers 1–2 of 6 (warmup, ceilings, jitter) |
+| P7 | Campaigns | first slice |
+| P8–P12 | Official Meta API, public API, automation, hardening, release | not started |
 
-**A working prototype means finishing P3.** Everything after it is building on top of a thing
-that already talks to WhatsApp.
+**P3 is done — the prototype talks to WhatsApp**, verified end to end against a real phone
+(link, send, receive, media). Everything since is built on top of that: the inbox, import,
+campaigns and send-pacing.
 
 ### `F1`, `F2` … — **F is for Feature module**
 
@@ -297,8 +299,8 @@ cat package.json            # or just read it
 
 | | What it does |
 |---|---|
-| `npm run dev` | Starts the **API server** on port 3000. Currently only `/health` and `/ready`. |
-| `npm run wa:link` | Starts the **WhatsApp linking tool** and shows a QR code. This is the WhatsApp part. |
+| `npm run dev` | Starts the **API server** on port 3000 — the full API (inbox, senders, messages, import, campaigns, auth, admin). |
+| `npm run gateway` | Starts the **WhatsApp gateway** — owns the sockets; nothing sends or receives without it. Linking is done from the web UI at `/link`. |
 
 Then open `http://localhost:3000/ready` — it should report the database as `ok`.
 
@@ -324,4 +326,4 @@ a way that is hard to trace.
 | Know why each technology was chosen | [`10-stack.md`](10-stack.md) |
 | Write code that fits in | [`11-conventions.md`](11-conventions.md) |
 | Understand the ban-avoidance engine | [`08-antiban.md`](08-antiban.md) |
-| Know what is built and what is next | [`17-roadmap.md`](17-roadmap.md) and [`../CONTEXT.md`](../CONTEXT.md) |
+| Know what is built and what is next | [`17-roadmap.md`](17-roadmap.md), [`../HANDOFF.md`](../HANDOFF.md) and [`../CHANGELOG.md`](../CHANGELOG.md) |

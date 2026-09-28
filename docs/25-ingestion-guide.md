@@ -27,7 +27,7 @@ Every source, built or planned, funnels into the same pipeline. Only the leftmos
   ────────                   ───────────────────────────         ──────
 
   ✅ csv    ─┐
-  ⬜ excel  ─┤
+  ✅ excel  ─┤
   ⬜ jsonl  ─┤   ┌──────────┐                                  ┌──────────┐
   ⬜ s3     ─┼──▶│ EXTRACT  │  rows out of whatever it is      │ contact  │
              │   └────┬─────┘                                  │          │
@@ -184,23 +184,21 @@ limit anywhere in this API (M3).
 
 Limits: 20 MB, `Content-Type: text/csv` or `text/plain`.
 
-### 3.2 `excel` — ⬜ not built
+### 3.2 `excel` — ✅ built
 
 Same shape as CSV in every respect that matters: it is a file, so **layer 1 is the content
-hash**, identically.
+hash**, identically. The upload endpoint detects a spreadsheet by its bytes, reads it, converts
+to CSV, and feeds the exact same dry-run/commit/dedup pipeline. Uses `exceljs` — the CSV reader
+is hand-written (RFC 4180 is small and fully specified), but XLSX is a zip of XML parts with
+shared string tables, styles and a date system, so hand-writing it would be reckless.
 
-The only real work is parsing, and it needs **a dependency** (`xlsx` or `exceljs`) — which is a
-deliberate decision rather than an oversight. The CSV reader is hand-written because the RFC
-4180 grammar is small and fully specified; the XLSX format is a zip of XML parts with shared
-string tables, styles and a date system, and hand-writing that would be reckless.
-
-Two gotchas that will bite whoever builds it:
+Two gotchas that were handled in the build, worth knowing:
 
 - **Excel dates are numbers.** `45678` is a date serial, and there are two epochs (1900 and
   1904). Getting this wrong silently shifts every date by four years.
 - **A phone number is not a number.** Excel will happily hand you `9.8765e9` or strip a leading
-  zero. Read cells as **text** wherever an identity column is involved, or normalisation gets
-  a corrupted value and layer 2 stops recognising people.
+  zero. Every cell is read as its **displayed text**, so a phone stored as a number survives as
+  its digits and normalisation gets a clean value.
 
 ### 3.3 `gsheets` — ⬜ not built
 
@@ -321,7 +319,7 @@ webhook endpoint is an open write path into your contact database.
 | Source | Layer 1 (whole batch) | Layer 2 (per person) | Built |
 |---|---|---|---|
 | `csv` | content hash | identity rules | ✅ |
-| `excel` | content hash | identity rules | ⬜ |
+| `excel` | content hash | identity rules | ✅ |
 | `jsonl` | content hash | identity rules | ⬜ |
 | `s3-folder` | content hash per object | identity rules | ⬜ |
 | `gsheets` | snapshot hash *(skip-if-unchanged only)* | identity rules | ⬜ |
@@ -503,11 +501,11 @@ spreadsheet and changing the contact database are different acts and are recorde
 
 ## 6 · What to build next, in order
 
-1. **`excel`** — same dedup, same pipeline, needs an xlsx parser dependency. The most asked for.
-2. **`POST /contacts`** — not a file at all, but it is how JobPortal pushes one candidate over
-   HTTP, and `contacts:write` already exists as an enforceable scope with nothing behind it.
-3. **`webhook`** — the same push, generalised, with HMAC and idempotency.
-4. **The `SourceConnector` port and its contract suite** — worth doing once there are three
+✅ **Done since this list was written:** `excel` (built with exceljs) and **`POST /contacts`**
+(the single-person HTTP route JobPortal uses; `contacts:write` now guards it).
+
+1. **`webhook`** — a record pushed one at a time, generalised, with HMAC and idempotency.
+2. **The `SourceConnector` port and its contract suite** — worth doing once there are three
    sources, not before. Two implementations do not prove an abstraction.
-5. **Scheduled syncs** — cursors, overlap protection, per-source concurrency. Needs the
+3. **Scheduled syncs** — cursors, overlap protection, per-source concurrency. Needs the
    `QueueDriver` port (⬜).

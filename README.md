@@ -4,10 +4,13 @@ A generic, self-hostable conversation and outreach platform for WhatsApp — sha
 contacts, campaigns, automation, and a real API — that runs on one small VPS and costs
 nothing to operate.
 
-> **Status: P1 (skeleton) complete.** The design lives in `docs/`; the skeleton boots, the
-> database migrates with tenant isolation enforced, and CI is green. No WhatsApp yet — that
-> is P3. Build phases are tracked in [`docs/17-roadmap.md`](docs/17-roadmap.md); the running
-> log of decisions is [`CONTEXT.md`](CONTEXT.md).
+> **Status: early build, moving fast.** WhatsApp is live end to end — link a number, send,
+> receive, and media, all verified against a real phone. Working first slices exist for the
+> shared inbox (assignment, status, filters, notes, canned replies, thread lock, attachments),
+> CSV/Excel import, campaigns, and send-pacing (anti-ban layers 1–2). Not built: the Meta Cloud
+> API, anti-ban layers 3–6, templates, webhooks, deployment. Build phases are tracked in
+> [`docs/17-roadmap.md`](docs/17-roadmap.md); current state and the work ledger are
+> [`HANDOFF.md`](HANDOFF.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What it is
 
@@ -191,7 +194,7 @@ More requests to try by hand, with real responses, in
 ### Checking it still works
 
 ```bash
-npm run check        # typecheck (server + web) + lint + 169 tests
+npm run check        # typecheck (server + web) + lint + ~375 tests
 ```
 
 `npm run` lists every script. [20 · Orientation](docs/20-orientation.md) explains the stack and
