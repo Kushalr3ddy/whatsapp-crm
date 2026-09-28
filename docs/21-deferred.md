@@ -700,3 +700,27 @@ the data to diff is already produced; this is the review UI and the merge-choice
 
 **Cost of deferring:** low. The current precedence (a sparse row cannot overwrite richer data,
 M9) is a safe default; this replaces "safe default" with "user's explicit choice".
+
+---
+
+## D-23 · Inbox search (F3 AC-7)
+
+**What:** search across message bodies and contact fields — the last substantial P4 inbox piece.
+
+**Why parked:** not blocking, and it carries a real **design decision** that should be made
+deliberately rather than in passing: message bodies are **encrypted at rest** (`body_enc`), so
+plaintext cannot be indexed. The two options —
+
+| Option | What it buys | Cost |
+|---|---|---|
+| **Blind index** (deterministic HMAC per token/word, already have `kms.blindIndex`) | exact-term match over encrypted bodies without decrypting | no partial/fuzzy match; tokenisation choices leak some structure |
+| **`pg_trgm` / full-text on decrypted text** | fuzzy, partial, ranked | requires a searchable plaintext copy — reopens "why is it encrypted at all" |
+
+Contact fields (name, external ref) are not encrypted and can use `pg_trgm` directly regardless;
+the decision is really about the message bodies.
+
+**What brings it back:** an operator needing to find an old thread by its content often enough
+that scrolling is the bottleneck. Kushal asked to keep it as a reminder (2026-09-28).
+
+**Cost of deferring:** none — additive, and contact-field search can land first without touching
+the encrypted-body question.

@@ -188,8 +188,8 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 2. **P4 realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2) — blocked by **D-14** (inbound
    dead). Presence + typing / collision detection (AC-3) is **pinned as D-17** — do it in the
    same slice as live inbound so the transport is paid for once. *New table:* `conversation_participant`.
-3. **P4 search** over message bodies + contact fields (AC-7). Needs the blind-index / trigram
-   decision on encrypted columns. **The last substantial P4 piece.**
+3. **P4 search — PINNED as D-23** (message bodies + contact fields, AC-7). The last substantial
+   P4 piece; parked because it needs the blind-index vs trigram decision on encrypted bodies.
 4. **P4 leftovers — PINNED as D-18** (not required now): snooze (AC-6), Meta 24-hour window UI
    (AC-9, needs P8), keyboard shortcuts (AC-10). Priority flag also deferred.
 
