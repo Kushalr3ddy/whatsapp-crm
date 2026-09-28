@@ -348,23 +348,28 @@ firing zero times. It is not our bug and it needs a re-link, which needs the pho
 
 ## Next
 
-1. ~~A `POST /contacts` route~~ — **landed.** `contacts:write` now creates a contact (phone/email
-   + optional `customFields`/`externalRef`, the host-app hook); an identity that already names
-   someone is a 409, not a silent merge. See `CHANGELOG.md`.
-2. **Show attachments in the inbox** — **landed** (thread renders the `media` object as a
-   download link through a web-side `/media/:id` proxy). Still to do: **outbound** media, which
-   needs the send path to carry a file and `OutboundContent` to
-   stop being text-only.
-3. **Finish P4** — landed: assignment + status + filters, attachments in the thread, internal
-   notes, canned replies, the thread lock, mark-read and open-any-thread. Remaining and still open:
-   **search** (needs the blind-index decision) — the last substantial P4 piece. Deferred: **live
-   inbound + presence/collision** is **D-17**
-   (the big WebSocket lift, and live inbound is anyway blocked by D-14); snooze, the Meta-window
-   countdown and keyboard shortcuts are **D-18**.
-4. **Close out P1** — a compose file, and the `email` and `secrets` drivers, each with a
-   contract suite like storage now has.
-5. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health
-   scoring. Layers 1–2 exist; a campaign is capped but still sends at a machine's rhythm.
-6. **Deployment**, which is also when the production database gets decided. Note:
-   **`ENCRYPTION_KEY` must be backed up separately from the database** — losing it means losing
-   every linked number and every stored message, permanently.
+**The plan Kushal set (2026-09-28), in order:**
+
+1. **Close D-14 — needs the phone, this is the immediate action.** The `kushal test number` is
+   now fully unlinked (credentials cleared, the recovery worked), so it is ready for a clean
+   re-link: **Numbers → Link this number → scan the QR** with the phone that owns the number.
+   Then send a message *to* it from another phone. If it arrives, inbound is alive and D-14 can
+   be closed (verify media end-to-end too, then delete the `[TEST DATA]` fixtures). `npm run
+   dev:all` was left running for this. How linking stays in sync: `docs/26-linking-lifecycle.md`.
+2. **Then P6 anti-ban layers 3–6** — typing simulation, circadian pacing, contact-graph gates,
+   health scoring. Layers 1–2 exist (warmup, ceilings, jitter); a campaign is capped but still
+   sends at a machine's rhythm. **Start this after D-14 is confirmed done.**
+
+**Deferred / parked (not now):**
+- **Search** — pinned **D-23** (the last substantial P4 piece; needs the blind-index vs trigram
+  call on encrypted bodies). Kept as a reminder.
+- **P1 close-out** (compose file, `email`/`secrets` drivers) — deliberately left for now.
+- **Outbound media** — send path is text-only; `OutboundContent` must carry a file.
+- **D-17** live inbound + presence/collision (WebSocket, and inbound is D-14-blocked) · **D-18**
+  snooze/Meta-window/keyboard · **D-19** rich templates · **D-20** SQLite · **D-21** full import
+  wizard · **D-22** row-level dedup.
+- **Deployment** — where the production database is decided. **`ENCRYPTION_KEY` must be backed up
+  separately from the database** — losing it loses every linked number and every stored message.
+
+**One loose end:** an untracked `whatsapp-crm (local)-*.yaml` (Kushal's Insomnia export) sits in
+the repo root, left alone pending a decision to delete / gitignore / keep.
