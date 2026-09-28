@@ -32,7 +32,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
 | P4 | Inbox — list/thread/composer, **assignment + status + filters** | **partial** |
 | P5 | Ingestion — CSV import | **first slice** |
-| P6 | Anti-ban — warmup, rate ceilings, jitter | **layers 1–2 of 6** |
+| P6 | Anti-ban — warmup, ceilings, jitter, circadian pacing, contact-graph gates | **health scoring left** |
 | P7 | Campaigns — bulk send, paced | **first slice** |
 | P8 | Meta Cloud API | not started |
 
@@ -133,9 +133,9 @@ defects and gotchas; the changelog covers what has been built and what is left, 
 
 No **outbound** media — receiving and serving work; sending a file does not · no encryption at
 rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
-no message templates (a campaign carries a plain body) · **no anti-ban layers 3–6** — no typing
-simulation, circadian pacing, contact-graph gates or health scoring · no Meta adapter · no
-deployment.
+no message templates (a campaign carries a plain body) · **anti-ban: warmup, ceilings, jitter,
+circadian pacing and contact-graph gates are built; health scoring, recovery and typing
+simulation (D-24) are not** · no Meta adapter · no deployment.
 
 ---
 
@@ -145,10 +145,13 @@ Baileys is unofficial and violates WhatsApp's Terms of Service. A banned number 
 appeal. **Pacing now exists** — warmup, per minute/hour/day ceilings and jitter, enforced at the
 one point every send passes through — so a burst is capped rather than sent.
 
-That is a floor, not safety. Layers 3–6 are unbuilt (circadian pacing, contact-graph gates,
-health scoring, recovery — **typing simulation is now parked as D-24**), so a campaign is capped
-but still sends at a machine's rhythm. Bulk from a fresh number remains the riskiest thing this
-system can do until those layers exist.
+That is now more than a floor. **Circadian pacing** (sends follow a day/night curve, silent
+overnight) and **contact-graph gates** (stranger sends paced 2.5×, new-stranger volume capped at
+5/hour · 20/day) are also built. What is still unbuilt: **health scoring** (auto-degrade a number
+on bad signals) and **recovery orchestration**; **typing simulation** is parked as D-24. So a
+campaign is capped, timed like a human, and cautious with strangers — but nothing yet pulls a
+number back automatically when its health slips, so bulk from a fresh number still warrants a
+close eye.
 
 ---
 
@@ -364,15 +367,18 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
 
 ## Next
 
-**The plan Kushal set, updated 2026-09-28:**
+**The plan Kushal set, updated 2026-09-29:**
 
 1. ~~Close D-14~~ — **done.** Inbound alive, media verified end to end.
-2. **P6 anti-ban layers 3–6 — this is the next build.** Circadian pacing, contact-graph gates,
-   health scoring. (**Typing simulation is now D-24**, set aside — so it is *not* part of this
-   round.) Layers 1–2 exist (warmup, ceilings, jitter); a campaign is capped but still sends at a
-   machine's rhythm. The `sender_identity.status` states this engine writes —
-   `quarantined`/`retired` — were just standardised in the docs (see the recent doc pass), so the
-   naming is settled before the engine produces them.
+2. ~~Circadian pacing~~ — **done** (day/night send curve, silent overnight; `SEND_TIMEZONE`).
+3. ~~Contact-graph gates~~ — **done** (relationship delay multipliers + new-stranger throttle).
+4. **Health scoring is the next P6 build.** Roll the signals the other layers produce (inbound
+   rate, send failures, warmup age, delivery ratio) into a per-sender `risk_score`, and let it
+   **act** — auto-degrade / pause a number before it is banned, and (the trap this project keeps
+   hitting) be able to **recover** it, not just degrade it. It consumes everything above, so it
+   comes last. The `sender_identity.status` states it will write — `quarantined`/`retired` — are
+   already settled in the docs; the columns (`health` jsonb, `risk_score`) already exist.
+   (**Typing simulation stays parked as D-24.**)
 
 **Deferred / parked (not now):**
 - **Search** — pinned **D-23** (the last substantial P4 piece; needs the blind-index vs trigram
