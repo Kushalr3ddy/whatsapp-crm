@@ -381,11 +381,13 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
 5. **P6 is essentially complete.** What is left in the engine is optional: the **per-incident
    recovery schedules** (Layer 6 timed pause/resume ramps — the status recovery works, the timed
    schedules do not) and **typing simulation** (D-24). Neither blocks anything.
-6. **The next real build is a choice** — no longer P6. Options: **P8 Meta Cloud API adapter** (the
-   official transport for business-critical sends), **outbound media** (send path is text-only),
-   **P4 search** (D-23), or **P1 close-out** (compose file, `email`/`secrets` drivers). Ask Kushal
-   which. A **sender-health UI panel** (surface the new `risk_score`/relationship data) is also a
-   small, high-visibility win now that the data exists.
+6. ~~Sender-health UI panel~~ — **done.** Each card on `/link` shows the band badge, risk score,
+   delivery/sent/failed evidence and the replied-vs-no-reply breakdown; `GET /senders` carries the
+   `health` jsonb + relationship counts. Data eye-verified against the real dev DB; the logged-in
+   visual is still worth a glance (needs the dev password to sign in).
+7. **The next real build is a choice.** Options: **P8 Meta Cloud API adapter** (official transport
+   for business-critical sends), **outbound media** (send path is text-only), **P4 search** (D-23),
+   or **P1 close-out** (compose file, `email`/`secrets` drivers). Ask Kushal which.
 
 **Deferred / parked (not now):**
 - **Search** — pinned **D-23** (the last substantial P4 piece; needs the blind-index vs trigram

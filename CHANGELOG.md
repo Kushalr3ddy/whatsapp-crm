@@ -13,6 +13,19 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Sender-health panel in the Numbers page
+- Surfaces what the anti-ban engine is doing to each number, so an operator sees *why* it was
+  degraded or quarantined instead of a bare status. On each card on `/link`: a colour-coded band
+  badge (Healthy / Degraded / Quarantined), the `risk_score`, the scorer's evidence (delivery %,
+  sent and failed in the last 24h), and the relationship breakdown (contacts who replied vs. those
+  we have only messaged, plus a reply rate).
+- `GET /senders` now also returns the `health` jsonb evidence and per-sender `knownContacts` /
+  `contactedContacts` counts. No new endpoint, no new table — the Numbers page already fetched
+  `/senders`. Added a `--color-warning` theme token (light + dark) for the degraded badge.
+- Verified end to end against the real dev DB: the live response shows the `kushal test number`
+  as `active`, risk 0, delivery 100%, **7 replied · 2 no reply**, with `health.computedAt` proving
+  the gateway sweep scored it. Server + web typecheck clean, 412 tests green, web build serves.
+
 ### 2026-09-29 — P6 health scoring (the closed loop) — anti-ban engine layers built
 - The other layers are open-loop rules; this watches the **outcomes** and acts on them
   (`packages/core/src/health.ts`, run in the gateway sweep). It reads delivery ratio, failure

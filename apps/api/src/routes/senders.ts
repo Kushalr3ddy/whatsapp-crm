@@ -35,12 +35,29 @@ export function sendersRouter(): Router {
       SELECT si.id, si.label, si.provider, si.phone_e164 AS "phoneE164", si.status,
              si.risk_score AS "riskScore", si.warmup_started_at AS "warmupStartedAt",
              si.last_inbound_at AS "lastInboundAt",
+             -- The health scorer's evidence (band, delivery ratio, counts), for the health panel.
+             si.health AS health,
              cs.connection_state AS "connectionState", cs.disconnect_reason AS "disconnectReason",
              cs.last_connected_at AS "lastConnectedAt",
              -- Whether credentials are stored: the truth of "is this number linked", independent
              -- of the live socket. A corrupt session can be connected but this is the one that
              -- says there is something to unlink, and drives the button state in the UI.
-             EXISTS (SELECT 1 FROM channel_auth_state a WHERE a.sender_identity_id = si.id) AS linked
+             EXISTS (SELECT 1 FROM channel_auth_state a WHERE a.sender_identity_id = si.id) AS linked,
+             -- Relationship breakdown for the health panel: contacts who have replied vs. those
+             -- we have only messaged. A healthy number has replies; outbound-only is the risky shape.
+             (SELECT count(*)::int FROM conversation v
+                WHERE v.sender_identity_id = si.id
+                  AND EXISTS (SELECT 1 FROM message m
+                              WHERE m.conversation_id = v.id AND m.direction = 'inbound')
+             ) AS "knownContacts",
+             (SELECT count(*)::int FROM conversation v
+                WHERE v.sender_identity_id = si.id
+                  AND NOT EXISTS (SELECT 1 FROM message m
+                                  WHERE m.conversation_id = v.id AND m.direction = 'inbound')
+                  AND EXISTS (SELECT 1 FROM message m
+                              WHERE m.conversation_id = v.id AND m.direction = 'outbound'
+                                AND m.sent_at IS NOT NULL)
+             ) AS "contactedContacts"
       FROM sender_identity si
       LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
       WHERE si.org_id = ${req.crm!.orgId}

@@ -72,7 +72,7 @@ export default async function LinkPage() {
   );
 }
 
-/** One number's card: its label and live state, with the link/unlink panel underneath. */
+/** One number's card: its label and live state, the health panel, and the link/unlink panel. */
 function SenderCard({ sender }: { sender: Sender }) {
   return (
     <li className="rounded-xl border border-border bg-surface p-4">
@@ -80,16 +80,91 @@ function SenderCard({ sender }: { sender: Sender }) {
         <div>
           <p className="text-sm font-medium">{sender.label ?? 'Unnamed sender'}</p>
           <p className="mt-0.5 text-xs text-muted">
-            {sender.phoneE164 ?? 'no number yet'} · status <code>{sender.status}</code> · socket{' '}
+            {sender.phoneE164 ?? 'no number yet'} · socket{' '}
             <code>{sender.connectionState ?? 'none'}</code>
           </p>
         </div>
       </div>
+      <HealthPanel sender={sender} />
       <LinkPanel
         senderId={sender.id}
         alreadyOpen={sender.connectionState === 'open'}
         linked={sender.linked}
       />
     </li>
+  );
+}
+
+/** The colour and label for a sender's health status. */
+function statusBadge(status: string): { label: string; cls: string } {
+  switch (status) {
+    case 'active':
+      return { label: 'Healthy', cls: 'text-accent border-accent/40 bg-accent-soft' };
+    case 'degraded':
+      return { label: 'Degraded', cls: 'text-warning border-warning/40 bg-warning-soft' };
+    case 'quarantined':
+      return { label: 'Quarantined', cls: 'text-danger border-danger/50' };
+    case 'linking':
+      return { label: 'Linking', cls: 'text-muted border-border' };
+    default:
+      return { label: status, cls: 'text-muted border-border' };
+  }
+}
+
+/** One labelled figure in the health panel's stat row. */
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-surface px-2 py-1.5">
+      <dt className="text-muted">{label}</dt>
+      <dd className="mt-0.5 tabular-nums font-medium text-ink">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * The sender-health panel: the risk band the scorer assigned, the evidence behind it (delivery,
+ * recent sends, failures) and the relationship breakdown (who has replied). This surfaces what
+ * the anti-ban engine's health scoring (docs/08-antiban.md) is doing to each number, so an
+ * operator can see *why* a number was degraded or quarantined rather than trusting a bare status.
+ */
+function HealthPanel({ sender }: { sender: Sender }) {
+  const badge = statusBadge(sender.status);
+  const scored = sender.health.band !== undefined;
+  const totalTalkedTo = sender.knownContacts + sender.contactedContacts;
+  const replyRate = totalTalkedTo > 0
+    ? Math.round((sender.knownContacts / totalTalkedTo) * 100)
+    : null;
+  const delivery = sender.health.deliveryRatio;
+
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-canvas p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
+          {badge.label}
+        </span>
+        <span className="text-xs text-muted">
+          risk <span className="tabular-nums text-ink">{sender.riskScore}</span>/100
+        </span>
+      </div>
+
+      {scored ? (
+        <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+          <Stat label="Delivery" value={delivery !== undefined ? `${String(Math.round(delivery * 100))}%` : '—'} />
+          <Stat label="Sent · 24h" value={String(sender.health.sentRecent ?? 0)} />
+          <Stat label="Failed · 24h" value={String(sender.health.failedRecent ?? 0)} />
+        </dl>
+      ) : (
+        <p className="mt-2 text-xs text-muted">
+          Not scored yet — the gateway scores each number as it runs.
+        </p>
+      )}
+
+      <p className="mt-2 text-xs text-muted">
+        Contacts: <span className="font-medium text-ink">{sender.knownContacts}</span> replied
+        {' · '}
+        <span className="font-medium text-ink">{sender.contactedContacts}</span> no reply
+        {replyRate !== null && <> · <span className="tabular-nums">{replyRate}%</span> reply rate</>}
+      </p>
+    </div>
   );
 }

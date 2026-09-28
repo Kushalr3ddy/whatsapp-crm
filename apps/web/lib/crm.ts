@@ -102,6 +102,20 @@ export interface CannedReply {
   updatedAt: string;
 }
 
+/**
+ * The health scorer's evidence, stored on `sender_identity.health` (docs/08-antiban.md). Empty
+ * (`{}`) until the number has been scored at least once, so every field is optional.
+ */
+export interface SenderHealth {
+  score?: number;
+  band?: 'low' | 'medium' | 'high' | 'critical';
+  deliveryRatio?: number;
+  sentRecent?: number;
+  deliveredRecent?: number;
+  failedRecent?: number;
+  computedAt?: string;
+}
+
 /** A WhatsApp number, linked or not. Mirrors `GET /api/v1/senders`. */
 export interface Sender {
   id: string;
@@ -109,9 +123,20 @@ export interface Sender {
   provider: string;
   /** The number itself. Null until a link completes — WhatsApp reports it, we do not set it. */
   phoneE164: string | null;
-  /** The *business* status (`active`, `disabled`). Says nothing about whether it can send. */
+  /**
+   * The *business* status the health scorer drives: `active` (healthy), `degraded` (elevated
+   * risk, throttled), `quarantined` (sends held), or `linking`. Says nothing on its own about
+   * whether the socket is up — that is `connectionState`.
+   */
   status: string;
+  /** 0–100 risk score from the health scorer; the band lives in `health`. */
   riskScore: number;
+  /** The scorer's evidence behind `riskScore` and `status`. */
+  health: SenderHealth;
+  /** Contacts on this number who have replied — a real two-way relationship. */
+  knownContacts: number;
+  /** Contacts we have messaged who have never replied — the outbound-only, riskier shape. */
+  contactedContacts: number;
   /**
    * The live socket state: `open`, `connecting`, `closed`, or null when the number has never
    * been linked at all. This — not `status` — decides whether a message can actually go out.

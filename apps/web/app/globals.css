@@ -23,6 +23,8 @@
   --color-accent: #1f7a5a;
   --color-accent-soft: #e7f4ef;
   --color-danger: #b42318;
+  --color-warning: #a6620b;
+  --color-warning-soft: #fbeeda;
 }
 
 @layer base {
@@ -41,6 +43,8 @@
     --color-accent: #3fb489;
     --color-accent-soft: #14312a;
     --color-danger: #f97066;
+    --color-warning: #f0b866;
+    --color-warning-soft: #3a2e14;
     color-scheme: dark;
   }
 
@@ -54,6 +58,8 @@
       --color-accent: #3fb489;
       --color-accent-soft: #14312a;
       --color-danger: #f97066;
+      --color-warning: #f0b866;
+      --color-warning-soft: #3a2e14;
       color-scheme: dark;
     }
   }
