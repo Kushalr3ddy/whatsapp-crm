@@ -61,6 +61,13 @@ Required in every deploy: `DATABASE_URL`, `APP_SECRET`, `ENCRYPTION_KEY`, `PUBLI
 Everything else has a documented default. **A missing required secret is a hard crash with a
 readable message, never a silent random fallback.**
 
+> **⚠️ `SEND_TIMEZONE` is set explicitly, not inferred from the host or cloud region.** Circadian
+> pacing ([`08-antiban.md`](08-antiban.md)) reads the number's local day from this value, not from
+> the server clock. **If you move a deployment to a cloud region in a different timezone, or a
+> number starts serving a different region, set `SEND_TIMEZONE` to the number's real local zone** —
+> otherwise the overnight quiet window lands on the wrong hours (silent during the local working
+> day, sending at local 3 a.m.), which is the exact pattern the pacing exists to avoid.
+
 ### Key `org_setting` defaults
 
 | Setting | Default | Editable |
