@@ -98,10 +98,10 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
   // Once it has expired there is nothing left to poll for.
   useEffect(() => { if (expired) setActive(false); }, [expired]);
 
-  // Connected either on load (the row says the socket is open) or after a link this session.
-  // Note this is exactly the state a corrupt D-14 session sits in — it looks connected because
-  // sending works — so the Unlink button below must stay reachable here, not be hidden.
-  const connected = (alreadyOpen && status === null) || status?.state === 'connected';
+  // Connected either on load (the row says the socket is open) or after a link this session —
+  // but once unlinked this session, no longer, so the panel flips to the link controls. The
+  // `alreadyOpen` prop is a stale snapshot from page load; `unlinked` overrides it.
+  const connected = !unlinked && ((alreadyOpen && status === null) || status?.state === 'connected');
   const showChallenge = active && !expired && status?.state === 'challenge_ready';
 
   return (
@@ -159,7 +159,7 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
         </div>
       )}
 
-      {!active && (
+      {!active && !unlinked && (
         <div className="mt-3 border-t border-border pt-3">
           <button
             type="button"
