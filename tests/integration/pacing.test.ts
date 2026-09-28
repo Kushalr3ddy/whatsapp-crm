@@ -4,7 +4,10 @@ import { sql } from 'drizzle-orm';
 import { createDatabase, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
-import { checkSendAllowance, dailyCeiling, humanDelayMs } from '@crm/core';
+import {
+  checkSendAllowance, dailyCeiling, humanDelayMs,
+  circadianActivity, circadianDelayMs, localHour
+} from '@crm/core';
 import { createLogger } from '@crm/shared';
 import { handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
 
@@ -294,5 +297,77 @@ describe('the gate in the send path', () => {
       WHERE conversation_id = ${conversationId} AND status = 'queued'`);
     // The rest are still there, waiting, rather than sent or lost.
     expect((remaining as unknown as Array<{ n: number }>)[0]!.n).toBe(6);
+  });
+});
+
+describe('circadian pacing (the daily rhythm)', () => {
+  it('is full speed through the working day and dead in the small hours', () => {
+    expect(circadianActivity(14)).toBe(1);    // 2 p.m.
+    expect(circadianActivity(10)).toBe(1);    // 10 a.m.
+    expect(circadianActivity(3)).toBe(0);     // 3 a.m. — dead
+    expect(circadianActivity(4.5)).toBe(0);   // still dead
+  });
+
+  it('tapers and ramps smoothly, with no step at a round hour', () => {
+    // Half-way points of the evening taper (22→02) and morning ramp (06→09) sit near 0.5, and the
+    // value moves continuously across each boundary rather than snapping.
+    expect(circadianActivity(0)).toBeCloseTo(0.5, 2);    // midnight, mid-taper
+    expect(circadianActivity(7.5)).toBeCloseTo(0.5, 2);  // mid morning-ramp
+    expect(circadianActivity(21.99)).toBeGreaterThan(0.99);   // still daytime
+    expect(circadianActivity(22.5)).toBeLessThan(1);          // just into the taper
+    expect(circadianActivity(22.5)).toBeGreaterThan(0.8);     // but only just
+  });
+
+  it('wraps midnight and normalises out-of-range hours', () => {
+    expect(circadianActivity(26)).toBe(circadianActivity(2));
+    expect(circadianActivity(-1)).toBe(circadianActivity(23));
+  });
+
+  it('reads the local hour in a timezone via the platform Intl database', () => {
+    // 2026-06-01T08:30:00Z is 14:00 in IST (UTC+5:30); midnight UTC is 05:30 IST.
+    expect(localHour(new Date('2026-06-01T08:30:00Z'), 'Asia/Kolkata')).toBeCloseTo(14, 5);
+    expect(localHour(new Date('2026-06-01T00:00:00Z'), 'Asia/Kolkata')).toBeCloseTo(5.5, 5);
+  });
+
+  it('stretches the pause as the day winds down, capped', () => {
+    expect(circadianDelayMs(2000, 1)).toBe(2000);       // full day: unchanged
+    expect(circadianDelayMs(2000, 0.5)).toBe(4000);     // half: roughly doubled
+    expect(circadianDelayMs(4000, 0.1)).toBe(15_000);   // deep shoulder: capped, not unbounded
+  });
+
+  const warm = { ...limits, warmupStartedAt: new Date(Date.now() - 30 * 86_400_000) };
+
+  it('defers a send overnight even when every ceiling has room', async () => {
+    // 03:00 IST = 2026-06-01T21:30:00Z. Nothing has been sent, so layers 1–2 would allow it —
+    // the daily rhythm is the only thing holding it back.
+    const at3amIST = new Date('2026-06-01T21:30:00Z');
+    const decision = await checkSendAllowance(
+      db, senderId, { ...warm, circadianTimezone: 'Asia/Kolkata' }, at3amIST
+    );
+
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) {
+      expect(decision.reason).toBe('circadian');
+      expect(decision.retryAfterMs).toBeGreaterThan(0);
+    }
+  });
+
+  it('sends during the day, with a pause at least the base minimum', async () => {
+    // 14:00 IST = 2026-06-01T08:30:00Z.
+    const at2pmIST = new Date('2026-06-01T08:30:00Z');
+    const decision = await checkSendAllowance(
+      db, senderId, { ...warm, circadianTimezone: 'Asia/Kolkata' }, at2pmIST
+    );
+
+    expect(decision.allowed).toBe(true);
+    if (decision.allowed) expect(decision.delayMs).toBeGreaterThanOrEqual(1500);
+  });
+
+  it('is opt-in: with no timezone, the same 3 a.m. send is allowed', async () => {
+    // Proof that circadian pacing does not touch layers 1–2 for a caller that does not ask for
+    // it — which is why the rest of this suite passes unchanged.
+    const at3amIST = new Date('2026-06-01T21:30:00Z');
+    const decision = await checkSendAllowance(db, senderId, warm, at3amIST);
+    expect(decision.allowed).toBe(true);
   });
 });

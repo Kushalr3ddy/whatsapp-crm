@@ -13,6 +13,25 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-28 — P6 circadian pacing (the daily-rhythm layer)
+- Layers 1–2 cap *how much* a number sends; this shapes *when*. A number sending at a steady rate
+  at 3 a.m. is a clear bot signal, so the send cadence now follows a daily cosine curve: full speed
+  09:00–22:00, tapering to dead 02:00–06:00, ramping back by 09:00, read against the number's
+  timezone.
+- It is the **last gate** in `checkSendAllowance` (`packages/core/src/pacing.ts`): once a send is
+  within every layer 1–2 ceiling, overnight it is **deferred** (reason `circadian`, left queued
+  like any paced message, with a retry hint for when the number "wakes up"); through the day the
+  jittered pause is **stretched** so the shoulders of the day send more slowly than midday.
+- **Opt-in and backward-compatible:** applies only when a timezone is set, so layers 1–2 behave
+  exactly as before for every other caller — proved by a test, and by the existing pacing suite
+  passing unchanged. New config: `SEND_TIMEZONE` (default `Asia/Kolkata`, IANA-validated at boot)
+  and `SEND_CIRCADIAN` (default on). Local hour comes from the platform `Intl` database — **no new
+  dependency**. Campaigns are gated automatically, since their sends still pass through this gate.
+- Pure, unit-tested curve (`circadianActivity`), delay stretch (`circadianDelayMs`) and timezone
+  reader (`localHour`), plus integration tests that a 3 a.m. send defers and a 2 p.m. send goes.
+  8 new tests (**383 total**). No migration — the timezone is config, not schema (per-org
+  timezone via `org_setting` is a later refinement).
+
 ### 2026-09-28 — Docs: retire the ADRs, fold the reasoning inline
 - The four `docs/adr/` files (licence, Baileys version, Fastify-over-NestJS, Express-over-Fastify)
   were formal decision records whose reasoning already lived, in plain language, in the docs they

@@ -47,7 +47,12 @@ export interface WorkContext {
    * without a code change, and so tests can drive it to its limits in a few sends rather than
    * fifteen hundred.
    */
-  readonly limits: { readonly perMinute: number; readonly perDay: number };
+  readonly limits: {
+    readonly perMinute: number;
+    readonly perDay: number;
+    /** Circadian pacing timezone, or null to leave the send cadence flat (layers 1–2 only). */
+    readonly circadianTimezone?: string | null;
+  };
   /**
    * Waits before a send. Injected so tests do not spend real seconds on jitter — production
    * passes a real sleep, and skipping it entirely would defeat the point of the jitter.
@@ -199,7 +204,8 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       perMinute: ctx.limits.perMinute,
       perDay: ctx.limits.perDay,
       dailyCapOverride: job.dailyCapOverride,
-      warmupStartedAt: job.warmupStartedAt === null ? null : new Date(job.warmupStartedAt)
+      warmupStartedAt: job.warmupStartedAt === null ? null : new Date(job.warmupStartedAt),
+      circadianTimezone: ctx.limits.circadianTimezone ?? null
     });
 
     if (!pacing.allowed) {

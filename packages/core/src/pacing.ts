@@ -45,6 +45,12 @@ export interface PacingLimits {
   readonly dailyCapOverride: number | null;
   /** When this sender started warming up. Null means it has never been through warmup. */
   readonly warmupStartedAt: Date | null;
+  /**
+   * The number's local timezone (IANA, e.g. `Asia/Kolkata`) for circadian pacing. **Opt-in:**
+   * null or absent leaves the gate as layers 1–2 alone, which is why every test that is not
+   * about circadian pacing keeps passing without change.
+   */
+  readonly circadianTimezone?: string | null;
 }
 
 /** Whether a send may proceed, and if not, why and for how long. */
@@ -53,7 +59,7 @@ export type PacingDecision =
   | {
       readonly allowed: false;
       /** Machine-readable, so the caller can log and the dispatcher can branch. */
-      readonly reason: 'per_minute' | 'per_hour' | 'per_day' | 'warmup';
+      readonly reason: 'per_minute' | 'per_hour' | 'per_day' | 'warmup' | 'circadian';
       readonly detail: string;
       /** Roughly when it is worth trying again. Never a promise, always a floor. */
       readonly retryAfterMs: number;
@@ -97,6 +103,93 @@ export function humanDelayMs(random: () => number = Math.random): number {
   const gauss = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 
   return Math.round(Math.min(DELAY_MAX_MS, Math.max(DELAY_MIN_MS, mid + gauss * sigma)));
+}
+
+/*
+ * Circadian pacing — P6 anti-ban, the daily-rhythm layer (docs/08-antiban.md).
+ *
+ * Layers 1–2 cap how *much* a number sends; this shapes *when*. A real person messages through
+ * the day and sleeps at night, so a number sending at a steady rate around the clock — busy at
+ * 3 a.m. — is one of the clearest "this is a bot" signals WhatsApp reads. So the cadence follows
+ * a daily curve: full speed through the day, tapering in the evening, effectively silent
+ * overnight, ramping back up in the morning. The transitions are raised-cosine, never steps,
+ * because a hard on/off at a round hour is itself a fingerprint.
+ *
+ * Opt-in: it applies only when `PacingLimits.circadianTimezone` is set.
+ */
+
+/** Below this activity a number is treated as "asleep": sends are deferred to the morning. */
+const CIRCADIAN_QUIET_THRESHOLD = 0.15;
+
+/** Never stretch a pause past this, however slow the hour — an hours-long gap helps nobody. */
+const CIRCADIAN_MAX_DELAY_MS = 15_000;
+
+/** Floor on the activity used to stretch a delay, so a shoulder-of-the-day pause stays sane. */
+const CIRCADIAN_DELAY_FLOOR = 0.2;
+
+/**
+ * How "awake" a number should be at a given local hour, 0 (asleep) … 1 (full daytime).
+ *
+ * The schedule from docs/08-antiban.md: full speed 09:00–22:00, tapering to nothing 22:00→02:00,
+ * dead 02:00–06:00, ramping back 06:00→09:00. Taper and ramp are raised-cosine so there is no
+ * detectable step at any boundary. `hour` is a float in [0, 24), e.g. 14.5 for 14:30.
+ */
+export function circadianActivity(hour: number): number {
+  const h = ((hour % 24) + 24) % 24;              // normalise into [0, 24)
+  if (h >= 9 && h < 22) return 1;                 // daytime plateau
+  if (h >= 2 && h < 6) return 0;                  // dead of night
+  if (h >= 6 && h < 9) {                          // morning ramp, 0 → 1
+    const t = (h - 6) / 3;
+    return 0.5 * (1 - Math.cos(Math.PI * t));
+  }
+  // Evening taper 22:00 → 02:00 (wraps midnight), 1 → 0.
+  const wrapped = h < 2 ? h + 24 : h;             // 22 … 26
+  const t = (wrapped - 22) / 4;
+  return 0.5 * (1 + Math.cos(Math.PI * t));
+}
+
+/**
+ * The local hour, as a float (e.g. 22.75 for 22:45), at `now` in an IANA timezone.
+ *
+ * Uses the platform `Intl` timezone database rather than a dependency or a fixed UTC offset, so
+ * daylight saving and every zone are the runtime's problem, not ours. (India has no DST, but the
+ * mechanism must not assume that.)
+ */
+export function localHour(now: Date, timezone: string): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false
+  }).formatToParts(now);
+  const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+  const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  // Some engines render midnight as '24'; fold it back to 0.
+  return (hh % 24) + mm / 60;
+}
+
+/**
+ * Stretches a base inter-send pause as the day winds down, so the shoulders of the day (early
+ * morning, late evening) send more slowly than midday without a second rate track. At full
+ * daytime activity the pause is unchanged; as activity falls the gap grows, capped so it never
+ * becomes an unbounded wait.
+ */
+export function circadianDelayMs(baseMs: number, activity: number): number {
+  const scaled = baseMs / Math.max(activity, CIRCADIAN_DELAY_FLOOR);
+  return Math.round(Math.min(CIRCADIAN_MAX_DELAY_MS, scaled));
+}
+
+/**
+ * Milliseconds until this number is "awake" again, when a send is deferred overnight.
+ *
+ * Scans forward in 10-minute steps rather than inverting the cosine — cheap, exact enough for a
+ * retry hint (the gate treats it as a floor, never a promise), and correct across the midnight
+ * wrap and any timezone.
+ */
+function circadianRetryMs(now: Date, timezone: string): number {
+  const step = 10 * 60 * 1000;
+  for (let ms = step; ms <= 24 * 60 * 60 * 1000; ms += step) {
+    const at = localHour(new Date(now.getTime() + ms), timezone);
+    if (circadianActivity(at) >= CIRCADIAN_QUIET_THRESHOLD) return ms;
+  }
+  return 60 * 60 * 1000;                           // unreachable given the schedule; never 0
 }
 
 /** What the sender has actually sent recently, straight from the message table. */
@@ -148,7 +241,25 @@ export async function checkSendAllowance(
     };
   }
 
-  return { allowed: true, delayMs: humanDelayMs() };
+  // Circadian pacing is the last gate: only once a send is within every ceiling does the time of
+  // day get a say. Overnight it defers the send to the morning; through the day it stretches the
+  // jittered pause so the shoulders of the day are slower than midday. Opt-in — off when no
+  // timezone is set, which is how layers 1–2 behave unchanged for every non-circadian caller.
+  const delayMs = humanDelayMs();
+  if (limits.circadianTimezone) {
+    const activity = circadianActivity(localHour(now, limits.circadianTimezone));
+    if (activity < CIRCADIAN_QUIET_THRESHOLD) {
+      return {
+        allowed: false, reason: 'circadian',
+        detail: `outside sending hours: circadian activity ${activity.toFixed(2)} `
+          + `(${limits.circadianTimezone})`,
+        retryAfterMs: circadianRetryMs(now, limits.circadianTimezone)
+      };
+    }
+    return { allowed: true, delayMs: circadianDelayMs(delayMs, activity) };
+  }
+
+  return { allowed: true, delayMs };
 }
 
 /**

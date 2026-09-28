@@ -49,8 +49,16 @@ save — which would silently hand a developer an unlimited sender. The database
 what was sent and when, so it is the only source that cannot lie. The cache-driver buckets
 below (M13) are an optimisation for later, not a prerequisite.
 
-⬜ **Layers 3–6 are not built**: no typing simulation, no circadian pacing, no contact-graph
-multipliers, no health scoring, no recovery orchestration.
+✅ **Circadian pacing is built** (also in `packages/core/src/pacing.ts`, same gate). Once a send
+is within every layer 1–2 ceiling, the time of day gets a say: overnight it is deferred to the
+morning (reason `circadian`, left queued like any paced message), and through the day the
+jittered pause is stretched so the shoulders of the day send more slowly than midday. The curve
+is a smooth cosine — full speed 09:00–22:00, tapering to dead 02:00–06:00, ramping back by 09:00
+— read against the number's timezone (`SEND_TIMEZONE`, default IST; `SEND_CIRCADIAN=false` turns
+it off). It is opt-in per sender, so it never changes what layers 1–2 do on their own.
+
+⬜ **The rest of layers 3–6 are not built**: no typing simulation (parked as D-24), no
+contact-graph multipliers, no health scoring, no recovery orchestration.
 
 ⬜ **The "never received an inbound message is capped harder" rule is specced but not yet
 implemented.** It *was* blocked by D-14 (inbound dead, so every sender looked outbound-only and
@@ -87,9 +95,10 @@ A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" 
 
 - **Typing**: 45 WPM ± 15 σ, with think-pauses of 0.8–3.5 s at ~8% probability per 10
   characters. `composing` → `paused` → send, computed from the message length.
-- **Circadian pacing**: fast 09:00–22:00, slow 22:00–02:00, near-dead 02:00–06:00, with a
-  smooth cosine transition rather than steps. Uses the org timezone, and the recipient's
-  inferred timezone where known.
+- **Circadian pacing** ✅ **built** (see "What is built" above): fast 09:00–22:00, slow
+  22:00–02:00, near-dead 02:00–06:00, with a smooth cosine transition rather than steps. Uses the
+  configured send timezone (`SEND_TIMEZONE`); the recipient's inferred timezone is a future
+  refinement, not built yet.
 - **Read behaviour**: mark-as-read after a 10–60 minute delay. Instant reads at 4 a.m. are a
   classic tell.
 - **Background entropy**: every 2–6 hours, presence noise — a typing indicator for 3–8 s then

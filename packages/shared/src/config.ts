@@ -49,8 +49,25 @@ const configSchema = z.object({
   // an unsafe value by anyone, including an admin.
   DEFAULT_COUNTRY: z.string().length(2).default('IN'),
   SEND_RATE_PER_MINUTE: z.coerce.number().int().positive().max(20).default(8),
-  SEND_RATE_PER_DAY: z.coerce.number().int().positive().max(2000).default(1500)
+  SEND_RATE_PER_DAY: z.coerce.number().int().positive().max(2000).default(1500),
+  // Circadian pacing (docs/08-antiban.md): shape *when* a number sends across the day, not only
+  // how much. `SEND_TIMEZONE` is the number's local day — single-tenant India defaults to IST;
+  // `SEND_CIRCADIAN=false` turns the day/night curve off and leaves layers 1–2 unchanged.
+  SEND_TIMEZONE: z.string().default('Asia/Kolkata').refine(isValidTimezone, {
+    message: 'must be a valid IANA timezone, e.g. Asia/Kolkata'
+  }),
+  SEND_CIRCADIAN: z.enum(['true', 'false']).default('true').transform((v) => v === 'true')
 });
+
+/** True when the string names a timezone this runtime's Intl database recognises. */
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** The validated, fully-typed configuration for this process. */
 export type Config = z.infer<typeof configSchema>;

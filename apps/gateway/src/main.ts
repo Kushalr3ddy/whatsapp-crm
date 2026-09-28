@@ -56,7 +56,10 @@ async function main(): Promise<void> {
     decrypt: (cipher) => new TextDecoder().decode(kms.decrypt(cipher)),
     // The anti-ban ceilings. Configurable per deployment, but a ceiling either way — nothing
     // in the send path can raise them (docs/08-antiban.md).
-    limits: { perMinute: config.SEND_RATE_PER_MINUTE, perDay: config.SEND_RATE_PER_DAY },
+    limits: {
+      perMinute: config.SEND_RATE_PER_MINUTE, perDay: config.SEND_RATE_PER_DAY,
+      circadianTimezone: config.SEND_CIRCADIAN ? config.SEND_TIMEZONE : null
+    },
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
     kms,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
