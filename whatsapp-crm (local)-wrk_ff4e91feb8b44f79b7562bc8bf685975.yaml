@@ -1,0 +1,581 @@
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: whatsapp-crm (local)
+meta:
+  id: wrk_ff4e91feb8b44f79b7562bc8bf685975
+  created: 1790350246401
+  modified: 1790350246401
+  description: ""
+collection:
+  - name: 0 · Health
+    meta:
+      id: fld_5d849a77977c480eb31a935d962e0433
+      created: 0
+      modified: 0
+      sortKey: -100
+      description: No authentication. Prove the process and database are up.
+    children:
+      - url: "{{ _.base_url }}/../../health"
+        name: health — process is alive
+        meta:
+          id: req_0894d793549849778bca9d475f31d667
+          created: 0
+          modified: 1790350260224
+          isPrivate: false
+          description: Must not touch the database. A database blip must never look like a
+            dead process.
+          sortKey: 1
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/../../ready"
+        name: ready — database reachable
+        meta:
+          id: req_84a3f915b32546c2b1d92dd0f695db13
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: ""
+          sortKey: 2
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: 2 · Data
+    meta:
+      id: fld_61df9a4f8a9f4b2fa483bb26f611f36e
+      created: 0
+      modified: 0
+      sortKey: -80
+      description: ""
+    children:
+      - url: "{{ _.base_url }}/conversations"
+        name: list conversations
+        meta:
+          id: req_1ea1eb90a3ec48dd9ae6af912f25bbe6
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: ""
+          sortKey: 1
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/conversations/{{ _.conversation_id }}/messages"
+        name: read a thread
+        meta:
+          id: req_8527f9ff03e444309efa92980bab35b9
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: Writes a conversation.read audit row (D-13). Carries `media` and
+            `mediaUnavailable`.
+          sortKey: 2
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/media/{{ _.media_id }}"
+        name: download an attachment
+        meta:
+          id: req_def8e25036d14593a5d9a740cae5229b
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: >-
+            Check the HEADERS, not the bytes. All four must be present:
+              Content-Type            from the file's magic bytes, never its name
+              Content-Disposition     attachment, always — never inline
+              X-Content-Type-Options  nosniff
+              Cache-Control           private, no-store
+
+            Writes a media.downloaded audit row before any byte moves.
+          sortKey: 4
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/senders"
+        name: list senders
+        meta:
+          id: req_df76146ac1e24b12b5a0838dbd25926f
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: ""
+          sortKey: 3
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: 1 · Credentials
+    meta:
+      id: fld_8316884e658e414583567dec3828c5db
+      created: 0
+      modified: 0
+      sortKey: -90
+      description: Two kinds, not interchangeable. The bootstrap key provisions and is
+        REFUSED on every data route.
+    children:
+      - url: "{{ _.base_url }}/auth/me"
+        name: who am I
+        meta:
+          id: req_165ad77556894898b7e6f86cbfc6e565
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: ""
+          sortKey: 2
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/admin/keys"
+        name: mint an org key (bootstrap)
+        meta:
+          id: req_710662ba2de946028f4e52c969830061
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: >-
+            The secret is returned ONCE. Paste it into the org_key environment
+            variable.
+
+
+            rateLimitPerMin is optional; omit for the default of 120, 0 for
+            unlimited.
+          sortKey: 1
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "orgId": "{{ _.org_id }}",
+              "name": "insomnia",
+              "scopes": [
+                "conversations:read",
+                "messages:send",
+                "senders:read",
+                "senders:write"
+              ],
+              "rateLimitPerMin": 120
+            }
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.bootstrap_key }}
+          - name: Content-Type
+            value: application/json
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/auth/login"
+        name: sign in (session + CSRF cookies)
+        meta:
+          id: req_c362b5842a7344d98cac3aa133bbb801
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: Cookie auth. Non-GET requests afterwards must echo the crm_csrf
+            cookie in an x-csrf-token header — that is the double-submit check.
+          sortKey: 3
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "email": "you@example.com",
+              "password": "..."
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: 5 · Send pacing (P6) — READ THIS FIRST
+    meta:
+      id: fld_8a94712b67734f8d82b69e8999aea075
+      created: 0
+      modified: 0
+      sortKey: -50
+      description: >-
+        These queue REAL messages. With the gateway running and a number linked
+        they will be SENT to whoever test_recipient names. Use a number you
+        control.
+
+
+        The gate is in the gateway, not the API, so the API always answers 202.
+        What pacing changes is WHEN the gateway drains the queue — and whether
+        it drains it at all.
+    children:
+      - url: "{{ _.base_url }}/messages"
+        name: queue one message → 202
+        meta:
+          id: req_1b7150ffe48b4cc9a58b485ed20cb0bf
+          created: 0
+          modified: 1790515920246
+          isPrivate: false
+          description: >-
+            202 means ACCEPTED, not sent. The gateway decides when it actually
+            goes.
+
+
+            Then poll the thread: status goes queued → sent → delivered → read.
+          sortKey: 1
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "to": "{{ _.test_recipient }}",
+              "body": "hello from whatsapp-crm"
+            }
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+          - name: Content-Type
+            value: application/json
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/conversations/{{ _.conversation_id }}/messages"
+        name: poll the thread to watch statuses move
+        meta:
+          id: req_5648be4f1ffe40639ed1f6a021ccdc55
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: There is currently NO API that says why a message is still queued —
+            paced and 'sender disconnected' look identical from here. Only the
+            gateway log distinguishes them. That gap is recorded in HANDOFF.md.
+          sortKey: 4
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/messages"
+        name: queue a burst, then watch it drain slowly
+        meta:
+          id: req_5a2356dbb7ff477392b3b885494697d6
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: >-
+            Send this 10+ times quickly, then poll the thread.
+
+
+            WITHOUT pacing every one would go at machine speed — which is how a
+            number is lost permanently.
+
+
+            WITH pacing you should see:
+              · a 1.5-4s gap between each send (Gaussian, not a fixed interval)
+              · no more than SEND_RATE_PER_MINUTE (default 8) in any minute
+              · the rest sitting at status 'queued' — NOT failed
+
+            A paced message is left queued on purpose: early is not wrong, and
+            failing it would lose it. Watch the gateway log for 'send paced'.
+          sortKey: 3
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "to": "{{ _.test_recipient }}",
+              "body": "burst test"
+            }
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+          - name: Content-Type
+            value: application/json
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/messages"
+        name: reply into an existing thread → 202
+        meta:
+          id: req_8f97e76f857c48868d4e213656576f36
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: For a contact with no phone number — a WhatsApp privacy address
+            (@lid) has none, and `to` could never name them.
+          sortKey: 2
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "conversationId": "{{ _.conversation_id }}",
+              "body": "reply"
+            }
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+          - name: Content-Type
+            value: application/json
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: 3 · Things that must be refused
+    meta:
+      id: fld_996595203c2d416f83f7b783b1fa6cf9
+      created: 0
+      modified: 0
+      sortKey: -70
+      description: Every one of these is a deliberate answer. If any of them changes,
+        something regressed.
+    children:
+      - url: "{{ _.base_url }}/conversations"
+        name: bootstrap key on a data route → 403
+        meta:
+          id: req_314efe8ff4904a12a0c0d672df123cd5
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: BOOTSTRAP_KEY_SCOPE. One shared secret with full data access is the
+            hole that per-org keys exist to close.
+          sortKey: 2
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.bootstrap_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/media/00000000-0000-4000-8000-00000000dead"
+        name: another tenant's attachment → 404, not 403
+        meta:
+          id: req_3c9143f06720488b8ca9070d861fdcb0
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: 404 rather than 403 on purpose. Saying 'forbidden' would confirm
+            the file exists.
+          sortKey: 4
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/conversations"
+        name: no credential → 401
+        meta:
+          id: req_5e93c4026a114e35880045f5ba28b5d7
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: Identical body to a WRONG credential. Distinguishing them confirms
+            to an attacker that their key format was right.
+          sortKey: 1
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/conversations/not-a-uuid/messages"
+        name: check body.status matches the status line
+        meta:
+          id: req_74745ec854384624aeef673caa9f91bd
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: 'Two routers used to hardcode "status": 0 in the body while the
+            real code went out on the status line. body.status must equal the
+            HTTP status on every route.'
+          sortKey: 5
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/conversations/not-a-uuid/messages"
+        name: malformed id → 422, not 500
+        meta:
+          id: req_e00dbaf1408e4ff7af26b85cde4257db
+          created: 0
+          modified: 0
+          isPrivate: false
+          description: "Used to be a 500: the value reached Postgres, the uuid cast raised
+            22P02, and a caller's typo surfaced as INTERNAL_ERROR."
+          sortKey: 3
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: 4 · Rate limiting (per key)
+    meta:
+      id: fld_a7d1511fa56f45229274a974bf0a6a88
+      created: 0
+      modified: 0
+      sortKey: -60
+      description: Mint a key with rateLimitPerMin=3, point it at this, and send it
+        four times.
+    children:
+      - url: "{{ _.base_url }}/senders"
+        name: burn the key's per-minute limit → 429
+        meta:
+          id: req_9bc219f6dfa1464d827f4669dadc100e
+          created: 0
+          modified: 1790515882752
+          isPrivate: false
+          description: >-
+            Send repeatedly. Watch RateLimit-Remaining count down, then a 429
+            RATE_LIMITED with Retry-After.
+
+
+            In-process for now: with several replicas each counts separately
+            (P9).
+          sortKey: 1
+        method: GET
+        headers:
+          - name: Authorization
+            value: Bearer {{ _.org_key }}
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_786e707da3a4b12dad715e51629eddeab85acacd
+    created: 1790350246831
+    modified: 1790350246831
+environments:
+  name: Base Environment
+  meta:
+    id: env_169da89c63414f1c8fb9df5b3d3f1d45
+    created: 0
+    modified: 1790513712356
+    isPrivate: false
+  data:
+    base_url: http://localhost:3000/api/v1
+    bootstrap_key: 6405e5ada5c2c72e53a188d21f3627dd583c005eadae3af82ef155259ac0314b
+    org_key: PASTE THE crm_live_... SECRET FROM MINT A KEY
+    org_id: ""
+    conversation_id: ""
+    media_id: ""
+    sender_id: ""
+    test_recipient: "+919964122631"
+    "": ""
