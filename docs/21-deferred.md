@@ -724,3 +724,39 @@ that scrolling is the bottleneck. Kushal asked to keep it as a reminder (2026-09
 
 **Cost of deferring:** none — additive, and contact-field search can land first without touching
 the encrypted-body question.
+
+---
+
+## D-24 · Typing simulation (P6 anti-ban layer 3)
+
+**What:** making an outbound send *look* human — emit a `composing` presence update to WhatsApp,
+wait a realistic beat proportional to the message length, then send. The bot-behaviour half of
+anti-ban, distinct from the pure pacing of layers 1–2 (warmup, ceilings, jitter, all built).
+
+**Not to be confused with D-17.** D-17 is *agent* presence/typing in the shared inbox — showing a
+teammate that a colleague is typing. This is the **sender** simulating typing at the WhatsApp
+peer. Same word, opposite direction: D-17 is a human being shown to a human; this is a machine
+pretending to a machine.
+
+**Why parked:** Kushal set it aside (2026-09-28) to look at the rest of P6 layers 3–6 first. It is
+gateway-side (the socket lives in `apps/gateway`), and it wants to land alongside the other
+behavioural layers so the send path's human-rhythm logic is designed once, not bolted on in
+pieces. Layers 1–2 already cap a burst; typing simulation is polish on *how* each individual send
+looks, which matters less than the layers that decide *whether* and *when* to send at all.
+
+**What brings it back — any one of:**
+
+1. **Deciding to build P6 layers 3–6 as a slice** — typing simulation is the cheapest of the four
+   and the natural first or last touch on the send path.
+2. A real signal that instant, zero-delay sends are a ban vector for this number (health scoring,
+   layer 6, would surface it).
+3. Circadian pacing (layer 4) landing — once sends follow a daily rhythm, per-send typing is the
+   obvious finish so a send inside an active window also *looks* live.
+
+**How hard later:** **small.** Baileys exposes `sendPresenceUpdate('composing', jid)`; the work is
+a length-proportional delay with jitter (reuse the Gaussian jitter already written for layer 2)
+inserted at the one send chokepoint in the gateway, plus a test that the presence fires and the
+delay is bounded. No schema change, no new table.
+
+**Cost of deferring:** none — additive, touches only the gateway's send path, and layers 1–2
+already provide the actual burst protection.

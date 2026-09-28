@@ -13,6 +13,20 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-28 — D-14 closed: inbound alive, media verified end to end
+- The `kushal test number` was re-linked (fresh QR) and a message sent **to** it from another
+  phone. **Inbound works again** — dead since 2026-09-20, it was a corrupt companion session, not
+  our code, and the unlink→re-link recovery fixed it exactly as designed.
+- Verified three ways, not by trusting the UI: 5 inbound rows landed right after the re-link;
+  **zero** `Bad MAC` / decrypt failures in the gateway log (was 17 frames failing before);
+  `messages.upsert` fired and logged `inbound message stored` ×5.
+- **Media proven against a real WhatsApp file for the first time** — the thing D-14 blocked. An
+  inbound image stored as a genuine JPEG (1126×600, 49,408 bytes), `image/jpeg` typed from magic
+  bytes, sha256 set, under an unguessable org-scoped key; bytes-on-disk matched bytes-in. Only gap
+  is `scanned_at` (antivirus = D-11, out of scope).
+- **Not yet done** (deliberately held): the `[TEST DATA]` fixtures are still in the dev DB — they
+  can be deleted now that real media is proven, pending the call. No commit yet.
+
 ### 2026-09-28 — Numbers page: archive unlinked numbers, DB-driven unlink button
 - **No delete** (a number with conversations can't be safely removed — FK `restrict`, and it
   would lose history). Instead, an unlinked number that was connected before is kept at the
@@ -209,7 +223,8 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 ### Other feature work
 5. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
    suite like storage has.
-6. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
+6. **P6 layers 3–6** — circadian pacing, contact-graph gates, health scoring. (Typing simulation
+   is now **pinned as D-24** — set aside 2026-09-28.)
 7. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
 
 ### Hardening / deployment
@@ -223,7 +238,7 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Blockers (detail in `HANDOFF.md`)
 
-- **Inbound messages dead since 2026-09-20** (`Bad MAC` on every frame) — parked as **D-14**.
-  Blocks the only end-to-end proof that media works against a real WhatsApp file. Needs a re-link,
-  which needs the phone.
-- **Test data in the dev DB** (`[TEST DATA - DO NOT TOUCH] …`) — left in place until D-14 closes.
+- ~~**Inbound messages dead since 2026-09-20**~~ — **CLOSED 2026-09-28 (D-14).** Re-linked, inbound
+  verified, media proven end to end against a real WhatsApp file. See *Latest*.
+- **Test data in the dev DB** (`[TEST DATA - DO NOT TOUCH] …`) — D-14 is now closed, so these are
+  safe to delete; still present pending the call.
