@@ -1,9 +1,10 @@
-# Handoff — state as of 2026-09-27
+# Handoff — state as of 2026-09-28
 
-A point-in-time snapshot for picking this up in a new session. For *how the project got here*
-read [`CONTEXT.md`](CONTEXT.md), the append-only session log. For *what it is*, read
-[`docs/20-orientation.md`](docs/20-orientation.md), which explains the project and the whole
-stack assuming no prior knowledge.
+A point-in-time snapshot for picking this up in a new session. For *what has been built and what
+is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
+is*, read [`docs/20-orientation.md`](docs/20-orientation.md), which explains the project and the
+whole stack assuming no prior knowledge. (`CONTEXT.md` is **retired** — it is no longer
+maintained; `HANDOFF.md` + `CHANGELOG.md` replace it.)
 
 ---
 
@@ -34,6 +35,9 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P6 | Anti-ban — warmup, rate ceilings, jitter | **layers 1–2 of 6** |
 | P7 | Campaigns — bulk send, paced | **first slice** |
 | P8 | Meta Cloud API | not started |
+
+**D-14 is CLOSED (2026-09-28).** Inbound is alive again after a re-link, and media was verified
+end to end against a real WhatsApp file for the first time — see *What landed most recently*.
 
 **P1 is marked done but is not.** `infra/compose/` holds only a `.gitkeep`, so
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
@@ -141,11 +145,10 @@ Baileys is unofficial and violates WhatsApp's Terms of Service. A banned number 
 appeal. **Pacing now exists** — warmup, per minute/hour/day ceilings and jitter, enforced at the
 one point every send passes through — so a burst is capped rather than sent.
 
-That is a floor, not safety. Layers 3–6 are unbuilt (typing simulation, circadian pacing,
-contact-graph gates, health scoring, recovery), and the rule capping a number that has never
-*received* anything is deliberately deferred with **D-14** — which means **bulk from a number
-with no inbound is still the riskiest thing this system can do**, and that is exactly the
-number we have.
+That is a floor, not safety. Layers 3–6 are unbuilt (circadian pacing, contact-graph gates,
+health scoring, recovery — **typing simulation is now parked as D-24**), so a campaign is capped
+but still sends at a machine's rhythm. Bulk from a fresh number remains the riskiest thing this
+system can do until those layers exist.
 
 ---
 
@@ -165,9 +168,9 @@ npm run admin -- org --name "Hiring Studios" --slug hiring-studios --email you@e
 **There is deliberate test data in the dev database.** One contact,
 `[TEST DATA - DO NOT TOUCH] media demo +919999000001` (`source = 'test_fixture'`), with two
 messages and two `media_asset` rows named `[TEST] …`, plus their files under `./storage`. They
-exist so the media endpoint can be exercised without a live WhatsApp file, which D-14 currently
-prevents. Left in place on purpose — delete them only when D-14 is closed and media has been
-verified against a real attachment. `npm run admin -- whoami` lists
+existed so the media endpoint could be exercised without a live WhatsApp file. **D-14 is now
+closed and media is proven against a real attachment, so these are safe to delete** — still
+present pending the call. `npm run admin -- whoami` lists
 organisations; `npm run admin -- password --email developer@hiringstudios.com` sets a new
 password and ends every session on the account.
 
@@ -215,9 +218,9 @@ whole API surface including the refusals that must stay refused.
 | — | The `.env` `API_KEY` is a **bootstrap credential**: provisioning only, refused on data |
 | — | The UI **forwards the user's session**; it holds no machine credential |
 
-Parked decisions with trigger conditions: **D-1 … D-16** in [`docs/21-deferred.md`](docs/21-deferred.md).
-**D-14 blocks the only end-to-end proof that media works** — everything downstream of the
-download is tested; the download itself has never met a real WhatsApp file.
+Parked decisions with trigger conditions: **D-1 … D-24** in [`docs/21-deferred.md`](docs/21-deferred.md).
+**D-14 (dead inbound) is now closed** — media has been verified end to end against a real
+WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ---
 
@@ -226,7 +229,7 @@ download is tested; the download itself has never met a real WhatsApp file.
 | Where | Problem |
 |---|---|
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
-| **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end. **A recovery path now exists** — the Unlink button (or `POST /senders/:id/unlink`) clears the corrupt credentials so a fresh QR can be scanned; closing D-14 is now a re-link away, but still needs the phone. **The `kushal test number` sender has now been unlinked** (credentials cleared, status `linking`) from exercising that path — so it needs a fresh QR scan to work again. How linking stays in sync across the gateway, DB and phone is written up in [`docs/26-linking-lifecycle.md`](docs/26-linking-lifecycle.md). |
+| ~~The linked number receives nothing~~ | **RESOLVED 2026-09-28 (D-14).** Inbound was dead 2026-09-20 → 2026-09-28 (`Bad MAC` on every frame — a corrupt companion session, not our code). The unlink→re-link recovery fixed it: after a fresh QR scan, 5 inbound rows landed, zero decrypt failures, and media was verified end to end against a real JPEG. Kept in the table as a signpost; the recovery path (`POST /senders/:id/unlink` + a web Unlink button) and the gateway/DB/phone sync are written up in [`docs/26-linking-lifecycle.md`](docs/26-linking-lifecycle.md). |
 | Pacing has no window | A message held back by the anti-ban gate is indistinguishable from one whose sender is disconnected — both sit at `queued`, and only the gateway log says which. Fine for one operator, wrong for campaigns, where "why has this not gone?" is the first question asked |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
@@ -308,8 +311,10 @@ download is tested; the download itself has never met a real WhatsApp file.
 - **Commit and push straight to `main`. Never create branches.**
 - **Never add a `Co-Authored-By` trailer** or any AI attribution. Casual lowercase subject,
   substantive body.
-- **Step by step, feature by feature**, with an explicit go-ahead before large work.
-- **Append to `CONTEXT.md` every session.** No exceptions.
+- **Step by step, feature by feature**, with an explicit go-ahead before large work. **Always
+  ask** before building, deleting, or making a scope call.
+- **Keep `CHANGELOG.md` (work ledger) and `HANDOFF.md` (state snapshot) current each session.**
+  `CONTEXT.md` is retired — do not append to it.
 - Every class, function, exported constant and type carries a 1–4 line comment saying what it
   is and *why* — lint-enforced.
 - **Run a command as written before handing it over.**
@@ -322,7 +327,18 @@ download is tested; the download itself has never met a real WhatsApp file.
 
 ## What landed most recently, and what it cost
 
-Most recent first, all P4 inbox: **thread lock** (assignment-based, admin override) → **notes +
+**Most recent (2026-09-28): D-14 closed + a documentation-consistency pass.** The `kushal test
+number` was re-linked from a fresh QR and inbound came back to life — 5 rows landed, **zero**
+`Bad MAC` failures (was 17 frames failing), and an inbound image stored as a genuine JPEG
+(1126×600, 49,408 bytes, `image/jpeg` from magic bytes, sha256 set, bytes-on-disk matching): the
+first end-to-end proof that media works against a real WhatsApp file. Then four doc contradictions
+were fixed — `ENCRYPTION_KEK`→`ENCRYPTION_KEY` typo in `13-deployment.md`; the Git conventions in
+`11-conventions.md` rewritten to match reality (straight to main, no branches, no AI attribution,
+CONTEXT.md retired); `sender_identity.status` standardised on
+`linking/active/degraded/quarantined/retired`; and the feature index de-overclaimed
+(F2/F4/F5/F6/F7/F8 → ⚠️ partial). Typing simulation was parked as **D-24**.
+
+Before that, all P4 inbox: **thread lock** (assignment-based, admin override) → **notes +
 canned replies** (migration 0012, tables `internal_note` and `canned_reply`) → **attachments in
 the thread UI** (a web-side `/media/:id` proxy) → **assignment, status and list filters** (commit
 `4474697`). The whole P4 UI was finally **eye-verified in the browser** this round — filters,
@@ -339,35 +355,34 @@ is worth repeating for anything safety-critical: disabling the RLS role switch f
 tests, disabling the pacing gate fails two, and removing the campaign ceiling fails two more —
 including the one that hands the gateway ten messages with a ceiling of four.
 
-**What was tried and could not be finished:** verifying media end to end against a real
-WhatsApp file. Inbound has been dead since 20 September (**D-14**) and the diagnosis is
-complete — 17 frames delivered on reconnect, every one failing `Bad MAC`, `messages.upsert`
-firing zero times. It is not our bug and it needs a re-link, which needs the phone.
+**Now finished:** verifying media end to end against a real WhatsApp file — the thing D-14
+blocked. Inbound was dead 20–28 September (`Bad MAC` on every frame, not our bug); the
+unlink→re-link recovery cleared the corrupt session and a fresh QR brought it back. Proven, not
+assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
 
 ---
 
 ## Next
 
-**The plan Kushal set (2026-09-28), in order:**
+**The plan Kushal set, updated 2026-09-28:**
 
-1. **Close D-14 — needs the phone, this is the immediate action.** The `kushal test number` is
-   now fully unlinked (credentials cleared, the recovery worked), so it is ready for a clean
-   re-link: **Numbers → Link this number → scan the QR** with the phone that owns the number.
-   Then send a message *to* it from another phone. If it arrives, inbound is alive and D-14 can
-   be closed (verify media end-to-end too, then delete the `[TEST DATA]` fixtures). `npm run
-   dev:all` was left running for this. How linking stays in sync: `docs/26-linking-lifecycle.md`.
-2. **Then P6 anti-ban layers 3–6** — typing simulation, circadian pacing, contact-graph gates,
-   health scoring. Layers 1–2 exist (warmup, ceilings, jitter); a campaign is capped but still
-   sends at a machine's rhythm. **Start this after D-14 is confirmed done.**
+1. ~~Close D-14~~ — **done.** Inbound alive, media verified end to end.
+2. **P6 anti-ban layers 3–6 — this is the next build.** Circadian pacing, contact-graph gates,
+   health scoring. (**Typing simulation is now D-24**, set aside — so it is *not* part of this
+   round.) Layers 1–2 exist (warmup, ceilings, jitter); a campaign is capped but still sends at a
+   machine's rhythm. The `sender_identity.status` states this engine writes —
+   `quarantined`/`retired` — were just standardised in the docs (see the recent doc pass), so the
+   naming is settled before the engine produces them.
 
 **Deferred / parked (not now):**
 - **Search** — pinned **D-23** (the last substantial P4 piece; needs the blind-index vs trigram
   call on encrypted bodies). Kept as a reminder.
 - **P1 close-out** (compose file, `email`/`secrets` drivers) — deliberately left for now.
 - **Outbound media** — send path is text-only; `OutboundContent` must carry a file.
-- **D-17** live inbound + presence/collision (WebSocket, and inbound is D-14-blocked) · **D-18**
-  snooze/Meta-window/keyboard · **D-19** rich templates · **D-20** SQLite · **D-21** full import
-  wizard · **D-22** row-level dedup.
+- **`[TEST DATA]` fixtures** — now safe to delete (media proven); still in the dev DB pending the call.
+- **D-17** live inbound + presence/collision (WebSocket) · **D-18** snooze/Meta-window/keyboard ·
+  **D-19** rich templates · **D-20** SQLite · **D-21** full import wizard · **D-22** row-level
+  dedup · **D-24** typing simulation.
 - **Deployment** — where the production database is decided. **`ENCRYPTION_KEY` must be backed up
   separately from the database** — losing it loses every linked number and every stored message.
 
