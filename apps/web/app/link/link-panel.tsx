@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { beginLink, pollLink, unlinkNumber } from '@/app/actions';
 import type { LinkStatus } from '@/app/actions';
 import type { LinkMode } from '@/lib/crm';
@@ -22,7 +23,10 @@ function countdown(seconds: number): string {
  * number is **not linked** rather than leaving a dead QR on screen looking hopeful. Polling
  * stops at that point: continuing would be asking the API about an attempt that cannot succeed.
  */
-export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; alreadyOpen: boolean }) {
+export function LinkPanel(
+  { senderId, alreadyOpen, linked }: { senderId: string; alreadyOpen: boolean; linked: boolean }
+) {
+  const router = useRouter();
   const [mode, setMode] = useState<LinkMode>('qr');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState<LinkStatus | null>(null);
@@ -31,19 +35,23 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
   const [active, setActive] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [unlinking, setUnlinking] = useState(false);
-  const [unlinked, setUnlinked] = useState(false);
 
-  /** Unlinks the number, clearing its stored credentials so a fresh link can show a new QR. */
+  /**
+   * Unlinks the number. The gateway clears the stored credentials asynchronously, so this does
+   * not flip the button itself — it re-reads the server (`router.refresh`), and the button greys
+   * out once the database shows the credentials gone (`linked` becomes false). Refreshed twice
+   * because the gateway acts a moment after the request is accepted.
+   */
   const unlink = useCallback(async () => {
     setUnlinking(true);
     setError(null);
     const result = await unlinkNumber(senderId);
-    setUnlinking(false);
-    if (!result.ok) { setError(result.error ?? 'Could not unlink.'); return; }
+    if (!result.ok) { setUnlinking(false); setError(result.error ?? 'Could not unlink.'); return; }
     setActive(false);
     setStatus(null);
-    setUnlinked(true);
-  }, [senderId]);
+    router.refresh();
+    setTimeout(() => { router.refresh(); setUnlinking(false); }, 1500);
+  }, [senderId, router]);
 
   const expired = remaining !== null && remaining <= 0 && status?.state !== 'connected';
 
@@ -98,10 +106,11 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
   // Once it has expired there is nothing left to poll for.
   useEffect(() => { if (expired) setActive(false); }, [expired]);
 
-  // Connected either on load (the row says the socket is open) or after a link this session —
-  // but once unlinked this session, no longer, so the panel flips to the link controls. The
-  // `alreadyOpen` prop is a stale snapshot from page load; `unlinked` overrides it.
-  const connected = !unlinked && ((alreadyOpen && status === null) || status?.state === 'connected');
+  // Connected means linked AND the socket is open — on load from the row, or after a link this
+  // session. A number with no stored credentials (`linked` false) is never connected, so the
+  // panel shows the link controls; `linked` comes straight from the database, so it is right
+  // after a refresh rather than relying on session state.
+  const connected = linked && ((alreadyOpen && status === null) || status?.state === 'connected');
   const showChallenge = active && !expired && status?.state === 'challenge_ready';
 
   return (
@@ -159,27 +168,22 @@ export function LinkPanel({ senderId, alreadyOpen }: { senderId: string; already
         </div>
       )}
 
-      {!active && !unlinked && (
+      {!active && (
         <div className="mt-3 border-t border-border pt-3">
           <button
             type="button"
             onClick={() => { void unlink(); }}
-            disabled={unlinking}
-            className="rounded-lg border border-danger/50 px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50"
+            disabled={!linked || unlinking}
+            className="rounded-lg border border-danger/50 px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:border-border disabled:text-muted disabled:hover:bg-transparent"
           >
-            {unlinking ? 'Unlinking…' : 'Unlink / reset this number'}
+            {!linked ? 'Already unlinked' : unlinking ? 'Unlinking…' : 'Unlink / reset this number'}
           </button>
           <p className="mt-1.5 text-[11px] text-muted">
-            Use this if the number looks linked but is not receiving — it logs out and clears the
-            stored credentials so linking again shows a fresh QR.
+            {linked
+              ? 'Use this if the number looks linked but is not receiving — it logs out and clears the stored credentials so linking again shows a fresh QR.'
+              : 'No stored credentials — nothing to unlink. Its conversations stay in the inbox; link it again above to reconnect.'}
           </p>
         </div>
-      )}
-
-      {unlinked && (
-        <p className="mt-2 text-xs text-accent">
-          ✓ Unlinked. Link it again above to scan a fresh QR.
-        </p>
       )}
 
       {error !== null && <p className="mt-2 text-xs text-danger">{error}</p>}

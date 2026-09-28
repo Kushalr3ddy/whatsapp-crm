@@ -119,6 +119,12 @@ export interface Sender {
   connectionState: 'open' | 'connecting' | 'closed' | null;
   disconnectReason: string | null;
   lastConnectedAt: string | null;
+  /**
+   * Whether credentials are stored — the truth of "is this number linked", independent of the
+   * live socket. Drives the Unlink button (nothing to unlink when false) and sorts an unlinked
+   * number that was connected before into the "previously linked" group.
+   */
+  linked: boolean;
 }
 
 /** What the API returns when a request fails: RFC 7807, plus our stable `code`. */

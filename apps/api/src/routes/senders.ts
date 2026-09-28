@@ -36,7 +36,11 @@ export function sendersRouter(): Router {
              si.risk_score AS "riskScore", si.warmup_started_at AS "warmupStartedAt",
              si.last_inbound_at AS "lastInboundAt",
              cs.connection_state AS "connectionState", cs.disconnect_reason AS "disconnectReason",
-             cs.last_connected_at AS "lastConnectedAt"
+             cs.last_connected_at AS "lastConnectedAt",
+             -- Whether credentials are stored: the truth of "is this number linked", independent
+             -- of the live socket. A corrupt session can be connected but this is the one that
+             -- says there is something to unlink, and drives the button state in the UI.
+             EXISTS (SELECT 1 FROM channel_auth_state a WHERE a.sender_identity_id = si.id) AS linked
       FROM sender_identity si
       LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
       WHERE si.org_id = ${req.crm!.orgId}

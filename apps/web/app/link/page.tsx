@@ -28,6 +28,12 @@ export default async function LinkPage() {
 
   if (expired) redirect('/login?next=/link');
 
+  // A number is "previously linked" once it has no stored credentials but was connected before —
+  // keep it, at the bottom, so its conversations stay reachable and it can be linked again. A
+  // number that was never connected is just new, and belongs with the active ones to be linked.
+  const active = senders.filter((s) => s.linked || s.lastConnectedAt === null);
+  const previouslyLinked = senders.filter((s) => !s.linked && s.lastConnectedAt !== null);
+
   return (
     <main className="mx-auto max-w-2xl px-5 py-8">
       <header className="mb-6">
@@ -47,21 +53,43 @@ export default async function LinkPage() {
       )}
 
       <ul className="flex flex-col gap-3">
-        {senders.map((s) => (
-          <li key={s.id} className="rounded-xl border border-border bg-surface p-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">{s.label ?? 'Unnamed sender'}</p>
-                <p className="mt-0.5 text-xs text-muted">
-                  {s.phoneE164 ?? 'no number yet'} · status <code>{s.status}</code> · socket{' '}
-                  <code>{s.connectionState ?? 'none'}</code>
-                </p>
-              </div>
-            </div>
-            <LinkPanel senderId={s.id} alreadyOpen={s.connectionState === 'open'} />
-          </li>
-        ))}
+        {active.map((s) => <SenderCard key={s.id} sender={s} />)}
       </ul>
+
+      {previouslyLinked.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-sm font-semibold text-muted">Previously linked numbers</h2>
+          <p className="mt-0.5 mb-3 text-xs text-muted">
+            Unlinked, kept so their conversations stay reachable in the inbox. Link one again to
+            reconnect it.
+          </p>
+          <ul className="flex flex-col gap-3 opacity-80">
+            {previouslyLinked.map((s) => <SenderCard key={s.id} sender={s} />)}
+          </ul>
+        </section>
+      )}
     </main>
+  );
+}
+
+/** One number's card: its label and live state, with the link/unlink panel underneath. */
+function SenderCard({ sender }: { sender: Sender }) {
+  return (
+    <li className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">{sender.label ?? 'Unnamed sender'}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {sender.phoneE164 ?? 'no number yet'} · status <code>{sender.status}</code> · socket{' '}
+            <code>{sender.connectionState ?? 'none'}</code>
+          </p>
+        </div>
+      </div>
+      <LinkPanel
+        senderId={sender.id}
+        alreadyOpen={sender.connectionState === 'open'}
+        linked={sender.linked}
+      />
+    </li>
   );
 }

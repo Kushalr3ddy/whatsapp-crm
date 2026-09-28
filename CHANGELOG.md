@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-28 — Numbers page: archive unlinked numbers, DB-driven unlink button
+- **No delete** (a number with conversations can't be safely removed — FK `restrict`, and it
+  would lose history). Instead, an unlinked number that was connected before is kept at the
+  bottom under **"Previously linked numbers"**, so its conversations stay reachable in the inbox;
+  it can be linked again to reconnect.
+- **The unlink button now reads its state from the database.** `GET /senders` returns a `linked`
+  flag (are credentials stored?); when false the button greys out to **"Already unlinked"**.
+  After clicking unlink the panel re-fetches the server so the button reflects the gateway having
+  cleared the credentials — no more stale "still there after clicking". No new table.
+- 1 test for the flag (**375 total**). Verified in the browser.
+
 ### 2026-09-28 — `POST /contacts`
 - The one way to add a single person over HTTP — until now a contact could only appear from an
   inbound message, a one-off send, or an import, so `contacts:write` was an enforceable scope with

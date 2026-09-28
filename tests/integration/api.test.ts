@@ -491,3 +491,27 @@ describe('unlinking a sender', () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe('the linked flag on GET /senders', () => {
+  it('reflects whether stored credentials exist, not the socket state', async () => {
+    const s = await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${orgId}, 'baileys', 'flag', 'active') RETURNING id`);
+    const senderId = (s as unknown as Array<{ id: string }>)[0]!.id;
+
+    const before = await request(app).get('/api/v1/senders').set(...auth());
+    const unlinkedRow = (before.body.data as Array<{ id: string; linked: boolean }>)
+      .find((x) => x.id === senderId);
+    expect(unlinkedRow?.linked).toBe(false);
+
+    // A stored credential is what "linked" means.
+    await db.execute(sql`
+      INSERT INTO channel_auth_state (sender_identity_id, key, value_enc)
+      VALUES (${senderId}, 'creds', ${Buffer.from('x')})`);
+
+    const after = await request(app).get('/api/v1/senders').set(...auth());
+    const linkedRow = (after.body.data as Array<{ id: string; linked: boolean }>)
+      .find((x) => x.id === senderId);
+    expect(linkedRow?.linked).toBe(true);
+  });
+});
