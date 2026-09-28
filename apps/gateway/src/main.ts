@@ -60,6 +60,12 @@ async function main(): Promise<void> {
       perMinute: config.SEND_RATE_PER_MINUTE, perDay: config.SEND_RATE_PER_DAY,
       circadianTimezone: config.SEND_CIRCADIAN ? config.SEND_TIMEZONE : null
     },
+    contactGraph: config.CONTACT_GRAPH_GATES
+      ? {
+          newContactsPerHour: config.NEW_CONTACTS_PER_HOUR,
+          newContactsPerDay: config.NEW_CONTACTS_PER_DAY
+        }
+      : null,
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
     kms,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))

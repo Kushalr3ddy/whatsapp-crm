@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { setTenant, type Database, type Transaction } from '@crm/db';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
-  markMessageFailed, markMessageSent, checkSendAllowance,
+  markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
   dispatchCampaign, reconcileCampaign, dailyCeiling
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
@@ -14,6 +14,8 @@ interface QueuedSend {
   readonly orgId: string;
   readonly senderIdentityId: string;
   readonly senderPhone: string | null;
+  /** Who the message is to, for the contact-graph gate's relationship lookup. */
+  readonly contactId: string;
   readonly recipientValue: string;
   readonly recipientKind: string;
   readonly bodyEnc: Uint8Array | null;
@@ -53,6 +55,14 @@ export interface WorkContext {
     /** Circadian pacing timezone, or null to leave the send cadence flat (layers 1–2 only). */
     readonly circadianTimezone?: string | null;
   };
+  /**
+   * Contact-graph caps on starting new stranger conversations, or null to skip the relationship
+   * gate entirely. Opt-in like circadian pacing so tests that do not exercise it are unaffected.
+   */
+  readonly contactGraph?: {
+    readonly newContactsPerHour: number;
+    readonly newContactsPerDay: number;
+  } | null;
   /**
    * Waits before a send. Injected so tests do not spend real seconds on jitter — production
    * passes a real sleep, and skipping it entirely would defeat the point of the jitter.
@@ -166,6 +176,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
            si.warmup_started_at AS "warmupStartedAt",
            si.daily_cap_override AS "dailyCapOverride",
+           v.contact_id AS "contactId",
            ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
     FROM message m
     JOIN conversation v   ON v.id = m.conversation_id
@@ -221,9 +232,35 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       return;
     }
 
+    // ── the contact-graph gate ───────────────────────────────────────────────────────
+    // Who the message is going to. A stranger send waits longer than a reply, and starting too
+    // many brand-new conversations too fast is refused outright — cold-blasting a fresh list is
+    // one of the top ban signals (docs/08-antiban.md). Opt-in; skipped when unconfigured.
+    let delayMs = pacing.delayMs;
+    if (ctx.contactGraph) {
+      const graph = await checkContactGraph(
+        ctx.db, job.senderIdentityId, job.contactId, ctx.contactGraph
+      );
+      if (!graph.allowed) {
+        // Left queued like any paced message — a stranger held back by the new-contact throttle
+        // has not failed, it is waiting its turn.
+        ctx.logger.warn(
+          {
+            messageId, senderId: job.senderIdentityId, contactId: job.contactId,
+            reason: graph.reason, retryAfterMs: graph.retryAfterMs
+          },
+          `send paced: ${graph.detail}`
+        );
+        return;
+      }
+      // Stretch the pause by the relationship multiplier, capped so a stranger at a slow hour is
+      // paced, not parked for a minute. The base delay is already circadian-scaled.
+      delayMs = Math.min(30_000, Math.round(delayMs * graph.delayMultiplier));
+    }
+
     // The jittered pause. Deliberately before the send rather than after, so a burst arriving
     // at once is spread out rather than going at once and then waiting.
-    if (ctx.sleep) await ctx.sleep(pacing.delayMs);
+    if (ctx.sleep) await ctx.sleep(delayMs);
 
     const result = await ctx.provider.send(
       { id: job.senderIdentityId, phoneE164: job.senderPhone ?? '' },

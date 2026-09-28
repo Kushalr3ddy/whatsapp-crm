@@ -57,8 +57,20 @@ is a smooth cosine — full speed 09:00–22:00, tapering to dead 02:00–06:00,
 — read against the number's timezone (`SEND_TIMEZONE`, default IST; `SEND_CIRCADIAN=false` turns
 it off). It is opt-in per sender, so it never changes what layers 1–2 do on their own.
 
-⬜ **The rest of layers 3–6 are not built**: no typing simulation (parked as D-24), no
-contact-graph multipliers, no health scoring, no recovery orchestration.
+✅ **Contact-graph gates are built** (`packages/core/src/contact-graph.ts`, called from
+`handleSend` alongside the pacing gate). Every send is classified by relationship from real
+message history — **known** (they have replied), **contacted** (we have messaged, no reply yet),
+**stranger** (no contact either way) — which stretches the pause by 1.0× / 1.8× / 2.5×. On top of
+that, a **new-contact throttle** caps how many brand-new strangers a number may *start* messaging
+(`NEW_CONTACTS_PER_HOUR` / `_PER_DAY`, default 5 / 20); a stranger over the cap is left queued
+(reason `new_contact_throttle`), while known and already-contacted recipients are never throttled.
+Opt-in like circadian (`CONTACT_GRAPH_GATES=false` disables it), and campaigns are gated for free
+since their sends pass through the same point.
+
+⬜ **The rest of layers 3–6 are not built**: no typing simulation (parked as D-24), no health
+scoring, no recovery orchestration. Two refinements to what *is* built are also still open: the
+reply-ratio floor before the new-contact allowance grows, and inferring the *recipient's*
+timezone rather than only the sender's.
 
 ⬜ **The "never received an inbound message is capped harder" rule is specced but not yet
 implemented.** It *was* blocked by D-14 (inbound dead, so every sender looked outbound-only and
@@ -106,19 +118,19 @@ A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" 
 - **Body variation**: spintax plus per-recipient variables, and the dispatcher **refuses** to
   send byte-identical bodies to more than N recipients within a window.
 
-## Layer 4 — Contact-graph gates
+## Layer 4 — Contact-graph gates ✅ built (see "What is built" above)
 
 Delay multiplier by relationship:
 
-| Relationship | Multiplier |
-|---|---|
-| Known contact (has replied before) | 1.0× |
-| Handshake complete | 1.3× |
-| Handshake sent | 1.8× |
-| **Stranger** | **2.5×** |
+| Relationship | Multiplier | Built as |
+|---|---|---|
+| Known contact (has replied before) | 1.0× | `known` |
+| Handshake complete | 1.3× | folded into `known` (a reply is a reply) |
+| Handshake sent | 1.8× | `contacted` |
+| **Stranger** | **2.5×** | `stranger` |
 
-New-contact throttle: **5/hour, 20/day**, with a rolling minimum **~30% reply ratio** from new
-contacts required before the allowance grows.
+New-contact throttle: **5/hour, 20/day** ✅ enforced. The rolling minimum **~30% reply ratio**
+from new contacts before the allowance grows is **not yet built** — a refinement on top of the cap.
 
 Group operations (V2, but the limits belong here): ~3 adds and ~2 creates per 10 minutes;
 a **12-hour lurk period** after joining a group before posting.

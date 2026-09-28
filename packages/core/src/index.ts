@@ -36,6 +36,11 @@ export {
 } from './pacing.js';
 
 export {
+  checkContactGraph, classifyRelationship, relationshipDelayMultiplier,
+  type Relationship, type ContactGraphLimits, type ContactGraphDecision
+} from './contact-graph.js';
+
+export {
   runImport,
   type ImportMapping, type ImportSummary, type RowOutcome, type Transform, type TenantWork
 } from './ingestion.js';

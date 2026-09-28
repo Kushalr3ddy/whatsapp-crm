@@ -56,7 +56,12 @@ const configSchema = z.object({
   SEND_TIMEZONE: z.string().default('Asia/Kolkata').refine(isValidTimezone, {
     message: 'must be a valid IANA timezone, e.g. Asia/Kolkata'
   }),
-  SEND_CIRCADIAN: z.enum(['true', 'false']).default('true').transform((v) => v === 'true')
+  SEND_CIRCADIAN: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // Contact-graph gates (docs/08-antiban.md): how many brand-new strangers one number may START
+  // messaging per hour / day. Cold-blasting a fresh list is a top ban signal; these cap it.
+  NEW_CONTACTS_PER_HOUR: z.coerce.number().int().positive().max(100).default(5),
+  NEW_CONTACTS_PER_DAY: z.coerce.number().int().positive().max(500).default(20),
+  CONTACT_GRAPH_GATES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true')
 });
 
 /** True when the string names a timezone this runtime's Intl database recognises. */

@@ -13,6 +13,30 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — P6 contact-graph gates (the relationship layer)
+- Messaging strangers who have never interacted with you is, by WhatsApp's own detection, one of
+  the two strongest ban signals. Layers 1–2 cap total volume and circadian shapes the time of day;
+  this gates by **who** the message is going to, read from real message history
+  (`packages/core/src/contact-graph.ts`, called from `handleSend`).
+- **Relationship delay multiplier:** `known` (they have replied) 1.0× · `contacted` (we messaged,
+  no reply) 1.8× · `stranger` (no contact either way) 2.5× — a cold send is paced more cautiously
+  than a live conversation.
+- **New-contact throttle:** a hard cap on how many brand-new strangers one number may *start*
+  messaging (`NEW_CONTACTS_PER_HOUR` / `_PER_DAY`, default 5 / 20). A stranger over the cap is left
+  queued (reason `new_contact_throttle`); known and already-contacted recipients are never
+  throttled — the cap is on new conversations, not replies. This is the gate that actually stops a
+  fresh list being blasted, which no per-minute rate limit does on its own.
+- **Opt-in and backward-compatible** (`CONTACT_GRAPH_GATES=false` disables it): with no config the
+  send path is layers 1–2 alone, so the existing suites pass unchanged. Counts come from the
+  `message` table (restart-safe, like the other layers); campaigns are gated for free since their
+  sends flow through the same point. No migration — relationship is derived, not stored.
+- Pure classification + multiplier functions and the DB-backed `checkContactGraph`, with tests for
+  each relationship, the hourly and daily throttle, "a known contact still gets through when the
+  stranger cap is hit", and the send-path integration. 11 new tests (**394 total**).
+- The **timezone warning** also landed: `SEND_TIMEZONE` is set explicitly, not inferred from the
+  host/cloud region — documented in `.env.example` and `13-deployment.md` so a region move does not
+  silently point the overnight quiet window at the wrong hours.
+
 ### 2026-09-28 — P6 circadian pacing (the daily-rhythm layer)
 - Layers 1–2 cap *how much* a number sends; this shapes *when*. A number sending at a steady rate
   at 3 a.m. is a clear bot signal, so the send cadence now follows a daily cosine curve: full speed
