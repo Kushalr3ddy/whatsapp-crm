@@ -16,6 +16,7 @@ import { sendersRouter } from './routes/senders.js';
 import { messagesRouter } from './routes/messages.js';
 import { mediaRouter } from './routes/media.js';
 import { importsRouter } from './routes/imports.js';
+import { contactsRouter } from './routes/contacts.js';
 import { campaignsRouter } from './routes/campaigns.js';
 
 /**
@@ -152,6 +153,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));
   api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES));
+  api.use('/contacts', contactsRouter(deps.config.DEFAULT_COUNTRY));
   api.use('/campaigns', campaignsRouter({
     perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY
   }));

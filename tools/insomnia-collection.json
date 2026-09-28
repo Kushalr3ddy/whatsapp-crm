@@ -900,6 +900,35 @@
       "metaSortKey": 50,
       "settingStoreCookies": true,
       "settingSendCookies": true
+    },
+    {
+      "_id": "r_contact_create",
+      "_type": "request",
+      "parentId": "grp_data",
+      "modified": 0,
+      "created": 0,
+      "url": "{{ _.base_url }}/contacts",
+      "name": "create a contact",
+      "description": "Adds one person over HTTP (contacts:write). At least one of phone/email; externalRef carries the host app's id. Same number again \u2192 409 CONTACT_EXISTS.",
+      "method": "POST",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{ _.org_key }}"
+        },
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": 40,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"displayName\": \"Priya Sharma\",\n  \"phone\": \"+919876500001\",\n  \"externalRef\": { \"candidateId\": \"cand_42\" }\n}"
+      }
     }
   ]
 }

@@ -39,7 +39,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**367 tests in 28 files · 86 source files · 22 of 35 specced tables · 14 migrations · 81 commits.**
+**374 tests in 29 files · 87 source files · 22 of 35 specced tables · 14 migrations · 82 commits.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -111,6 +111,10 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   identity rules, phone normalisation on the way in, a per-row ledger, and a dry run that is the
   default. A sparse file cannot overwrite a name that is already there. The UI does the **simple**
   mapping (pick phone/name/email); the full wizard is **D-21**, row-level dedup **D-22**.
+- **Contact creation over HTTP**: `POST /contacts` (`contacts:write`) — the single-person route
+  the host app uses. Phone/email (at least one), optional `customFields` and `externalRef` (the
+  candidate-id hook). Phone through the one normaliser; an identity that already names someone is
+  a `409 CONTACT_EXISTS`, never a silent merge; identities scoped per org.
 - **Send pacing (P6 layers 1–2)**: warmup ramp (20/36/65/117/210/378/680 then steady), per
   minute · hour · day ceilings, and a Gaussian-jittered 1.5–4 s pause before each send. Counted
   from the `message` table, so it survives restarts and replicas. A paced message is left
@@ -125,10 +129,9 @@ defects and gotchas; the changelog covers what has been built and what is left, 
 
 No **outbound** media — receiving and serving work; sending a file does not · no encryption at
 rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
-**no way to create a contact except an inbound message or a CSV import** — `contacts:write` is
-an enforceable scope with nothing behind it · no message templates (a campaign carries a plain
-body) · **no anti-ban layers 3–6** — no typing simulation, circadian pacing, contact-graph
-gates or health scoring · no Meta adapter · no deployment.
+no message templates (a campaign carries a plain body) · **no anti-ban layers 3–6** — no typing
+simulation, circadian pacing, contact-graph gates or health scoring · no Meta adapter · no
+deployment.
 
 ---
 
@@ -345,13 +348,12 @@ firing zero times. It is not our bug and it needs a re-link, which needs the pho
 
 ## Next
 
-1. **A `POST /contacts` route.** `contacts:write` is an enforceable scope with nothing behind
-   it, so a contact can only be created by an inbound message, a one-off send, or a CSV
-   import. Anything that wants to add one person over HTTP has no way to. Small, and it
-   unblocks every other source.
-2. **Show attachments in the inbox.** The API serves them and the UI does not yet render the
-   `media` object on a message — a download link and a filename is the whole job. Then
-   **outbound** media, which needs the send path to carry a file and `OutboundContent` to
+1. ~~A `POST /contacts` route~~ — **landed.** `contacts:write` now creates a contact (phone/email
+   + optional `customFields`/`externalRef`, the host-app hook); an identity that already names
+   someone is a 409, not a silent merge. See `CHANGELOG.md`.
+2. **Show attachments in the inbox** — **landed** (thread renders the `media` object as a
+   download link through a web-side `/media/:id` proxy). Still to do: **outbound** media, which
+   needs the send path to carry a file and `OutboundContent` to
    stop being text-only.
 3. **Finish P4** — landed: assignment + status + filters, attachments in the thread, internal
    notes, canned replies, the thread lock, mark-read and open-any-thread. Remaining and still open:

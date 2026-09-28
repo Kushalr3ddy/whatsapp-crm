@@ -13,6 +13,18 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-28 — `POST /contacts`
+- The one way to add a single person over HTTP — until now a contact could only appear from an
+  inbound message, a one-off send, or an import, so `contacts:write` was an enforceable scope with
+  nothing behind it. This is what it now guards.
+- Body: `displayName?`, `phone?`, `email?`, `customFields?`, and **`externalRef?`** — the hook the
+  job portal uses to carry its candidate id, so the two systems join without this one knowing
+  anything about candidates. At least one of phone/email required.
+- Phone goes through the one normaliser (a number written any way is one contact, M8; a landline
+  is stored but not required to be WhatsApp-reachable). A create never silently merges: if an
+  identity already names someone it's **409 `CONTACT_EXISTS`** with the existing id. Identities
+  scoped per org. No new table. 7 tests (**374 total**).
+
 ### 2026-09-28 — Unlink button fixes + linking-lifecycle doc
 - The Unlink control was easy to miss (styled as grey fine print) and was **hidden exactly when
   a number was connected** — the D-14 case where you most need it. Now it's a visible bordered
@@ -184,19 +196,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 > Presence/typing/collision → **D-17**. Snooze/Meta-window/keyboard → **D-18**.
 
 ### Other feature work
-5. **`POST /contacts`** — `contacts:write` is an enforceable scope with nothing behind it; a
-   contact can only be created by an inbound message, a one-off send, or a CSV import.
-6. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
+5. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
    suite like storage has.
-7. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
-8. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
+6. **P6 layers 3–6** — typing simulation, circadian pacing, contact-graph gates, health scoring.
+7. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
 
 ### Hardening / deployment
-9. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
+8. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
    be backed up separately from the database** — losing it loses every linked number and message.
-10. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
-    replicas each count separately.
-11. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
+9. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
+   replicas each count separately.
+10. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
 
 ---
 

@@ -223,6 +223,24 @@ assigned to someone else; the composer disables Reply and offers a note instead.
 
 ---
 
+## Creating a contact
+
+The single-person route the host app uses (`contacts:write`). At least one of `phone` / `email`;
+`externalRef` carries the host app's own id.
+
+```bash
+curl -s -X POST localhost:3000/api/v1/contacts \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"displayName":"Priya","phone":"09876500001","externalRef":{"candidateId":"cand_42"}}'
+```
+
+The phone comes back normalised to `+919876500001` (a number written any way is one contact).
+Posting the **same** number again — however formatted — is a **409 `CONTACT_EXISTS`** with the
+existing id, not a silent merge. Neither phone nor email → **422**; an unparseable phone →
+**422 `PHONE_*`**.
+
+---
+
 ## Attachments
 
 Media arrives through the gateway: a file is re-downloaded through the socket that received it,
