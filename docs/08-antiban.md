@@ -67,10 +67,22 @@ that, a **new-contact throttle** caps how many brand-new strangers a number may 
 Opt-in like circadian (`CONTACT_GRAPH_GATES=false` disables it), and campaigns are gated for free
 since their sends pass through the same point.
 
-⬜ **The rest of layers 3–6 are not built**: no typing simulation (parked as D-24), no health
-scoring, no recovery orchestration. Two refinements to what *is* built are also still open: the
-reply-ratio floor before the new-contact allowance grows, and inferring the *recipient's*
-timezone rather than only the sender's.
+✅ **Health scoring is built** (`packages/core/src/health.ts`, run in the gateway sweep). It is
+the closed loop: it watches send outcomes (delivery ratio, failure rate, typed disconnect codes,
+reconnect churn), rolls them into a 0–100 `risk_score` with the evidence stored in
+`sender_identity.health`, and **acts** — a `high` band degrades the number (sends at half speed), a
+`critical` band quarantines it (sends are held, its campaigns skipped), and — the property this
+project has botched three times — it **recovers in both directions**, climbing back to `active`
+through the bands once the signals clear, with hysteresis so a score near a threshold does not
+flap. A quarantined number stays *connected* (it can still receive, which is what lets it recover);
+it just does not send.
+
+⬜ **Still not built**: **typing simulation** (parked as D-24) and **per-incident recovery
+orchestration** — the health scorer recovers a number's *status* both ways, but the incident-class
+pause/resume/ramp schedules in Layer 6 below (e.g. "463 → 24 h pause, resume at 10 %") are not
+built. Two refinements to what *is* built are also open: the reply-ratio floor before the
+new-contact allowance grows, and inferring the *recipient's* timezone rather than only the
+sender's.
 
 ⬜ **The "never received an inbound message is capped harder" rule is specced but not yet
 implemented.** It *was* blocked by D-14 (inbound dead, so every sender looked outbound-only and
@@ -135,7 +147,13 @@ from new contacts before the allowance grows is **not yet built** — a refineme
 Group operations (V2, but the limits belong here): ~3 adds and ~2 creates per 10 minutes;
 a **12-hour lurk period** after joining a group before posting.
 
-## Layer 5 — Health monitoring & adaptive throttle
+## Layer 5 — Health monitoring & adaptive throttle ✅ built (see "What is built" above)
+
+*First slice built from the `message` and `channel_session` rows already recorded; the normalised
+`send_risk_event` table below is a later refinement, and its evidence currently lives in the
+`sender_identity.health` jsonb. The delivery-ratio → speed curve is applied as a status-based
+throttle (degraded = half speed) rather than the continuous scaling shown below — the exact curve
+is the refinement.*
 
 **Delivery tracking.** Sustained delivery below **60%** is a soft-ban signal. Adaptive speed:
 

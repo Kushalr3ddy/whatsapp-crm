@@ -3,7 +3,7 @@ import { setTenant, type Database, type Transaction } from '@crm/db';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
-  dispatchCampaign, reconcileCampaign, dailyCeiling
+  scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -14,6 +14,8 @@ interface QueuedSend {
   readonly orgId: string;
   readonly senderIdentityId: string;
   readonly senderPhone: string | null;
+  /** The sender's health status, so a quarantined number does not send. */
+  readonly senderStatus: string;
   /** Who the message is to, for the contact-graph gate's relationship lookup. */
   readonly contactId: string;
   readonly recipientValue: string;
@@ -174,6 +176,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
   const rows = await ctx.db.execute(sql`
     SELECT m.id AS "messageId", m.org_id AS "orgId", m.body_enc AS "bodyEnc",
            si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
+           si.status AS "senderStatus",
            si.warmup_started_at AS "warmupStartedAt",
            si.daily_cap_override AS "dailyCapOverride",
            v.contact_id AS "contactId",
@@ -203,6 +206,18 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       ctx.logger.warn(
         { messageId, senderId: job.senderIdentityId, state: health.state },
         'sender not connected — leaving message queued'
+      );
+      return;
+    }
+
+    // ── the health gate ─────────────────────────────────────────────────────────────
+    // A quarantined number is the engine's emergency brake: it has tripped enough risk signals
+    // (docs/08-antiban.md, health scoring) that sending more is the last thing it should do.
+    // Leave the message queued so it goes out if the number recovers to active, never fail it.
+    if (job.senderStatus === 'quarantined') {
+      ctx.logger.warn(
+        { messageId, senderId: job.senderIdentityId },
+        'sender quarantined — leaving message queued'
       );
       return;
     }
@@ -258,6 +273,12 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       delayMs = Math.min(30_000, Math.round(delayMs * graph.delayMultiplier));
     }
 
+    // A degraded sender (elevated risk, not yet quarantined) sends at half speed — the adaptive
+    // throttle that gives a struggling number room to recover rather than pushing it to a ban.
+    if (job.senderStatus === 'degraded') {
+      delayMs = Math.min(30_000, delayMs * 2);
+    }
+
     // The jittered pause. Deliberately before the send rather than after, so a burst arriving
     // at once is spread out rather than going at once and then waiting.
     if (ctx.sleep) await ctx.sleep(delayMs);
@@ -299,7 +320,7 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
            si.daily_cap_override AS "dailyCapOverride"
     FROM campaign c
     JOIN sender_identity si ON si.id = c.sender_identity_id
-    WHERE c.status = 'running'
+    WHERE c.status = 'running' AND si.status <> 'quarantined'
     ORDER BY c.started_at ASC
     LIMIT 20`);
 
@@ -384,6 +405,11 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   const sends = (sendRows as unknown as Array<{ id: string }>).map((r) => r.id);
   for (const id of sends) await handleSend(ctx, id);
 
+  // Re-score sender health on the same cadence as the queue, so a number that has started to
+  // struggle is degraded or quarantined — and a recovered one restored to active — before the
+  // next batch of campaign sends is queued against it.
+  await scoreConnectedSenders(ctx.db);
+
   // After sending, not before: a campaign tops the queue up with whatever allowance is left
   // once this sweep's sends have been accounted for.
   await dispatchCampaigns(ctx);
@@ -401,7 +427,7 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
 export async function restoreSessions(ctx: WorkContext): Promise<number> {
   const rows = await ctx.db.execute(sql`
     SELECT si.id, si.phone_e164 AS phone FROM sender_identity si
-    WHERE si.provider = 'baileys' AND si.status IN ('active','degraded')`);
+    WHERE si.provider = 'baileys' AND si.status IN ('active','degraded','quarantined')`);
   const senders = rows as unknown as Array<{ id: string; phone: string | null }>;
 
   let restored = 0;

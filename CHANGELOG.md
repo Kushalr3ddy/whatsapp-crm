@@ -13,6 +13,30 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — P6 health scoring (the closed loop) — anti-ban engine layers built
+- The other layers are open-loop rules; this watches the **outcomes** and acts on them
+  (`packages/core/src/health.ts`, run in the gateway sweep). It reads delivery ratio, failure
+  rate, typed disconnect codes and reconnect churn from the `message` / `channel_session` rows
+  already there, rolls them into a **0–100 `risk_score`**, and stores the *evidence* (not just the
+  number) in `sender_identity.health`.
+- **It acts, both directions.** `high` band → the number is **degraded** (sends at half speed);
+  `critical` → **quarantined** (sends held and left queued, its running campaigns skipped, but the
+  socket stays up so it can still receive). Crucially it **recovers** — a quarantined number climbs
+  back through the bands to `active` once the signals clear, with hysteresis (a `medium` reading
+  holds, full recovery needs `low`) so a score near a threshold does not flap. That both-directions
+  property is the exact trap this project has hit three times (a status that only ever moved one
+  way), so it has a dedicated test.
+- Enforced at the one send chokepoint (`handleSend`): quarantine short-circuits the send, degraded
+  doubles the pause. **No migration** — the score and evidence use the `risk_score` / `health`
+  columns that already exist; the normalised `send_risk_event` table is a later refinement.
+- Pure scoring maths (`computeRiskScore`, `riskBand`, `nextStatus`, `deliveryRatio`) plus the
+  DB-backed `scoreSenderHealth` / `scoreConnectedSenders`, with tests for each band, the volume
+  floor, "a bad disconnect only counts while the socket is down", the full active↔degraded↔
+  quarantined transitions, recovery, and the send-path gate. 18 new tests (**412 total**).
+- **P6 is now essentially complete:** warmup, ceilings, jitter, circadian pacing, contact-graph
+  gates and health scoring are all built. Left: typing simulation (D-24) and the per-incident
+  recovery *schedules* (Layer 6 — status recovery works, the timed pause/resume ramps do not).
+
 ### 2026-09-29 — P6 contact-graph gates (the relationship layer)
 - Messaging strangers who have never interacted with you is, by WhatsApp's own detection, one of
   the two strongest ban signals. Layers 1–2 cap total volume and circadian shapes the time of day;

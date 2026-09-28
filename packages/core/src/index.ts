@@ -41,6 +41,12 @@ export {
 } from './contact-graph.js';
 
 export {
+  computeRiskScore, riskBand, nextStatus, deliveryRatio,
+  scoreSenderHealth, scoreConnectedSenders,
+  type SenderStatus, type RiskBand, type HealthSignals, type HealthResult
+} from './health.js';
+
+export {
   runImport,
   type ImportMapping, type ImportSummary, type RowOutcome, type Transform, type TenantWork
 } from './ingestion.js';
