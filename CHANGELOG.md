@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-28 — Unlink button fixes + linking-lifecycle doc
+- The Unlink control was easy to miss (styled as grey fine print) and was **hidden exactly when
+  a number was connected** — the D-14 case where you most need it. Now it's a visible bordered
+  button, shown even on a connected number, and after unlinking the panel flips to the link
+  controls (so "link it again above" points at a real QR). Verified end to end in the browser.
+- New **[docs/26-linking-lifecycle.md](docs/26-linking-lifecycle.md)**: how the gateway, database
+  and phone stay in sync on link status; the command channel; why "connected" ≠ "receiving".
+- **Note:** the dev `kushal test number` is now genuinely **unlinked** (credentials cleared) from
+  exercising this — it needs a fresh QR scan with the phone to work again. That is the D-14
+  recovery state, not damage.
+
 ### 2026-09-27 — P5: Excel import + an Import tab in the UI
 - **Excel (.xlsx) is now supported**, alongside CSV. The upload endpoint detects a spreadsheet by
   its bytes, reads it with exceljs taking every cell as its **displayed text** (so a phone stored

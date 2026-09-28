@@ -39,7 +39,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**367 tests in 28 files · 86 source files · 22 of 35 specced tables · 14 migrations · 76 commits.**
+**367 tests in 28 files · 86 source files · 22 of 35 specced tables · 14 migrations · 81 commits.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -223,7 +223,7 @@ download is tested; the download itself has never met a real WhatsApp file.
 | Where | Problem |
 |---|---|
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
-| **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end. **A recovery path now exists** — the Unlink button (or `POST /senders/:id/unlink`) clears the corrupt credentials so a fresh QR can be scanned; closing D-14 is now a re-link away, but still needs the phone. |
+| **The linked number receives nothing** | Sends work; inbound has been dead since 2026-09-20 09:12 UTC. Every delivered frame fails to decrypt with `Bad MAC`, and Baileys discards them before `messages.upsert`, so the application sees silence rather than an error. Nothing in our code is at fault. Parked as **D-14**, which carries the full evidence and the triggers — the first being any attempt to verify media end to end. **A recovery path now exists** — the Unlink button (or `POST /senders/:id/unlink`) clears the corrupt credentials so a fresh QR can be scanned; closing D-14 is now a re-link away, but still needs the phone. **The `kushal test number` sender has now been unlinked** (credentials cleared, status `linking`) from exercising that path — so it needs a fresh QR scan to work again. How linking stays in sync across the gateway, DB and phone is written up in [`docs/26-linking-lifecycle.md`](docs/26-linking-lifecycle.md). |
 | Pacing has no window | A message held back by the anti-ban gate is indistinguishable from one whose sender is disconnected — both sit at `queued`, and only the gateway log says which. Fine for one operator, wrong for campaigns, where "why has this not gone?" is the first question asked |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
