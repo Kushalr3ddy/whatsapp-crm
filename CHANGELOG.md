@@ -13,6 +13,21 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-28 — Docs: fix four contradictions found cross-checking docs vs code
+- **`ENCRYPTION_KEK` typo** in `13-deployment.md` → `ENCRYPTION_KEY` (a deploy following the doc
+  would set the wrong var and crash at boot). Confirmed `APP_SECRET` / `PUBLIC_URL` /
+  `DATABASE_URL` all match `packages/shared/src/config.ts`.
+- **`11-conventions.md` Git section rewritten to match reality** — straight to `main`, no feature
+  branches, plain lowercase commit lines (no Conventional-Commits prefix), no AI attribution, and
+  `CONTEXT.md` marked retired in favour of `HANDOFF.md` + `CHANGELOG.md`.
+- **`sender_identity.status` standardised** on `linking / active / degraded / quarantined /
+  retired` (matches the anti-ban engine + audit action `sender.quarantined`); fixed the stray
+  `disabled` in `26-linking-lifecycle.md` and noted that `app_user.status` (`active / disabled`)
+  is a separate table, not a conflict.
+- **Feature index (`06-features/README.md`) de-overclaimed** — F2/F4/F5/F6/F7/F8 were ✅ but are
+  first-slices; marked ⚠️ partial with the deferred remainder noted, and added a status legend.
+  F6 anti-ban in particular is layers 1–2 of 6.
+
 ### 2026-09-28 — D-14 closed: inbound alive, media verified end to end
 - The `kushal test number` was re-linked (fresh QR) and a message sent **to** it from another
   phone. **Inbound works again** — dead since 2026-09-20, it was a corrupt companion session, not

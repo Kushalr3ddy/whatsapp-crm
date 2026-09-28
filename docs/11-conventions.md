@@ -120,12 +120,15 @@ shared  →  nothing
 
 ## Git
 
-- **Conventional Commits**: `feat(campaigns): pause acts on the queue, not the rows`.
-- Branch per change; squash on merge.
-- PR template checklist: does this touch the send path? does it add a bypass? is the comment
-  rule satisfied? does it need a `CONTEXT.md` entry?
-- **Every session appends to `CONTEXT.md`.** No exceptions — that file is how a successor
-  reconstructs intent.
+- **Commits go straight to `main`** — no feature branches, no PR flow while this is a
+  single-maintainer repo. Open a branch only when a change genuinely needs review before it
+  lands.
+- Commit messages are a plain lowercase line saying what changed and why, scoped by a leading
+  area when it helps: `numbers: archive unlinked numbers, drive the unlink button from the db`.
+  No Conventional-Commits `type(scope):` prefix is required.
+- **No AI / `Co-Authored-By` attribution** in commit messages.
+- Session state lives in `HANDOFF.md` (the current snapshot) and `CHANGELOG.md` (the running
+  work ledger), not in `CONTEXT.md` — that file is retired.
 
 ## ADRs
 

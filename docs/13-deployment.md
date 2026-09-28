@@ -57,7 +57,7 @@ One `.env.example` documents **every** variable — typed, marked required/optio
 by driver. It is validated by the same Zod schema the app uses, so `docker compose config`
 catching a mistake and the app crashing at boot are the same check (M17).
 
-Required in every deploy: `DATABASE_URL`, `APP_SECRET`, `ENCRYPTION_KEK`, `PUBLIC_URL`.
+Required in every deploy: `DATABASE_URL`, `APP_SECRET`, `ENCRYPTION_KEY`, `PUBLIC_URL`.
 Everything else has a documented default. **A missing required secret is a hard crash with a
 readable message, never a silent random fallback.**
 

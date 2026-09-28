@@ -29,7 +29,9 @@ Two columns describe a number, and they mean different things — conflating the
   Written by the gateway as the socket opens and closes. This says whether bytes can flow, not
   whether the number is healthy.
 - **`sender_identity.status`** — the **business** state: `linking` / `active` / `degraded` /
-  `disabled`. Whether the app should route sends here at all.
+  `quarantined` / `retired`. Whether the app should route sends here at all. (Don't confuse this
+  with `app_user.status`, which is a separate table using `active` / `disabled` for a person's
+  login — see `05-data-model.md`.)
 
 The credentials themselves are rows in **`channel_auth_state`**, encrypted (see `22-encryption.md`).
 Their *presence* is what makes a number "linked" from our side: the gateway can only restore a
