@@ -169,6 +169,34 @@ Baileys 7.x uses it for encryption maths. It is portable — no platform-specifi
 is tagged `latest`. Our chosen version, `6.7.24`, is tagged `legacy` — which here means "the
 stable line", not "abandoned": both were published sixteen minutes apart.
 
+### And the product's own words
+
+Not tech jargon — the words for what the product actually *does*:
+
+**Contact** — a person you talk to: a name and ways to reach them (phone, email). Nothing about
+your business is baked in (§4).
+
+**Tag** — a plain label you stick on contacts (`vip`, `pune`, `interviewed`). A contact can have
+many. Used to group people.
+
+**Segment** — a saved *audience*. Either **static** (a fixed list of specific people) or
+**dynamic** (a saved filter that re-runs each time, e.g. "tagged `pune` and replied in the last
+30 days"). What a campaign is aimed at.
+
+**Targeting** — choosing *who* a campaign sends to: everyone from an import, an explicit list of
+people you pick, or a segment.
+
+**Campaign** — sending one message to many people, slowly and safely, over hours or days. It
+**freezes** its list of recipients the moment it starts, so the audience can't change mid-run.
+
+**Body variation / spintax** — not sending the exact same text to everyone. `{Hi|Hello} {{name}}`
+fills in each person's name and randomly picks a wording, so 500 messages aren't 500 identical
+copies — which WhatsApp reads as spam.
+
+**Opt-out** — honouring a `STOP` reply: the person is marked do-not-contact and dropped from every
+send, automatically and for good. It protects them, and it protects the number — people who can't
+opt out just block or report it instead, which is what gets a number banned.
+
 ---
 
 ## 4. The one design rule that explains most of the decisions
@@ -204,8 +232,23 @@ This is a deliberate, documented trade-off, not an oversight:
 So the system uses **both**, and decides per message: anything the business depends on (login
 codes, order updates, anything a client sees) goes through the paid official channel. Bulk
 outreach goes through Baileys, wrapped in the safety engine described in
-[`08-antiban.md`](08-antiban.md) — warmup periods, human-like delays, reply-ratio monitoring,
-automatic braking.
+[`08-antiban.md`](08-antiban.md).
+
+**What that engine actually does, in plain terms** — six things, all built, all at the one point
+every message passes through:
+
+1. **Warmup** — a brand-new number starts slow (about 20 messages the first day) and speeds up
+   over a week, like a real new account, instead of blasting on day one.
+2. **Rate limits** — hard caps per minute, hour and day, so it can never send too fast.
+3. **Jitter** — a random, human-like pause before each message, never a robotic fixed interval.
+4. **Circadian pacing** — it follows a day/night rhythm: busy in the daytime, silent overnight.
+   A number that messages at 3 a.m. looks like a bot.
+5. **Contact-graph gates** — it messages people who have replied at full speed, goes slower with
+   strangers, and caps how many brand-new strangers it starts messaging per day. Cold-blasting a
+   list is the fastest way to get banned.
+6. **Health scoring** — it watches how the number is doing (are messages being delivered? did
+   sends fail? did the connection drop badly?) and automatically slows down or pauses a number
+   that looks in trouble — and lets it recover when things improve.
 
 **That engine reduces the risk. It cannot remove it.** Never point this at a number you cannot
 afford to lose.
