@@ -13,6 +13,12 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Near-term priority queue set
+- Flagged **PRIORITY** (near-term build queue, not "someday"): **D-25** outbound media, **D-19**
+  templates, **D-26** body variation (ships with templates), **D-23** inbox search (settle
+  blind-index vs. trigram first; contact-field search can ship without it). Plus **tags + segments**
+  (un-pinned) as the piece that unlocks campaign targeting.
+
 ### 2026-09-29 — Reframe compliance as the operator's responsibility (jurisdiction-neutral)
 - This is a generic, self-hostable tool used worldwide, so it now **bakes in no single
   jurisdiction's compliance regime** (Kushal's call). The India-DPDP-specific framing that read as

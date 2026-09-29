@@ -582,7 +582,11 @@ rest of the inbox); keyboard shortcuts are **small** and pure front-end; the Met
 
 ---
 
-## D-19 · Rich message templates — user-managed, Meta-aligned, with media and import
+## D-19 · Rich message templates — user-managed, Meta-aligned, with media and import — **PRIORITY**
+
+> **Priority (2026-09-29):** in the near-term build queue, not "someday". Body variation (D-26)
+> lands with this.
+
 
 **What:** the grown-up version of canned replies. Today `canned_reply` is a plain
 shortcut + text body with `{{name}}` substitution (built, P4 chunk 2). The richer version is a
@@ -692,7 +696,12 @@ M9) is a safe default; this replaces "safe default" with "user's explicit choice
 
 ---
 
-## D-23 · Inbox search (F3 AC-7)
+## D-23 · Inbox search (F3 AC-7) — **PRIORITY**
+
+> **Priority (2026-09-29):** in the near-term build queue. One thing to settle first: the
+> blind-index vs. trigram decision on encrypted message bodies (below) — contact-field search can
+> ship without waiting on it.
+
 
 **What:** search across message bodies and contact fields — the last substantial P4 inbox piece.
 
@@ -782,17 +791,21 @@ capability, not a defect.
 
 ---
 
-## D-26 · Campaign body variation (spintax + per-recipient) — deferred while the alpha is closed
+## D-26 · Campaign body variation (spintax + per-recipient) — **PRIORITY**
+
+> **Priority (2026-09-29):** in the near-term build queue, and it **lands with templates (D-19)** —
+> body variation is a template feature, so the two ship together.
 
 **What:** stop a campaign sending **byte-identical bodies** to everyone — spintax and
 per-recipient variables so each rendered message differs, and the dispatcher refusing more than N
 identical bodies in a window (`docs/06-features/F4-templates.md`, `08-antiban.md`). It is both a
 template feature and an anti-ban signal.
 
-**Why parked:** the alpha *and* the beta are **closed** (invited, controlled recipients, small
-volumes), so the identical-body ban signal is low-risk for now, and `do_not_contact` plus the
-other anti-ban layers already cap the real exposure. It also rides with templates (**D-19**), so it
-should land there rather than as a bolt-on.
+**Why it was parked (and why it is fine to have waited):** the alpha *and* the beta are **closed**
+(invited, controlled recipients, small volumes), so the identical-body ban signal is low-risk at
+this scale and `do_not_contact` plus the other anti-ban layers cap the real exposure. It is now
+prioritised because it rides with templates (**D-19**), which are prioritised — not because the
+closed-alpha risk changed.
 
 **What brings it back:** opening beyond the closed alpha/beta to real external recipients, or
 campaign volumes large enough that repeated identical text becomes a fingerprint. Lands with D-19.

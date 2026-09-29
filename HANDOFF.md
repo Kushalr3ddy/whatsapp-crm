@@ -385,15 +385,19 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    delivery/sent/failed evidence and the replied-vs-no-reply breakdown; `GET /senders` carries the
    `health` jsonb + relationship counts. Data eye-verified against the real dev DB; the logged-in
    visual is still worth a glance (needs the dev password to sign in).
-7. **The next real build is a choice.** Options: **P8 Meta Cloud API adapter** (official transport
-   for business-critical sends), **outbound media** (send path is text-only), **P4 search** (D-23),
-   or **P1 close-out** (compose file, `email`/`secrets` drivers). Ask Kushal which.
+7. **Near-term priority queue (Kushal, 2026-09-29)** — all P2–P7 alpha core:
+   - **Tags + segments** (un-pinned) — unlocks real campaign targeting; closes the import →
+     target → campaign → inbox loop. The natural next build.
+   - **Outbound media** — **D-25**, high priority (send path is text-only; storage already exists).
+   - **Templates** — **D-19**, priority; **body variation** (**D-26**, spintax/per-recipient) ships
+     with it.
+   - **Inbox search** — **D-23**, priority; settle the blind-index vs. trigram call on encrypted
+     bodies first (contact-field search can ship without it).
+   Legal/compliance is reframed as the operator's job (jurisdiction-neutral); opt-out is **D-27**.
 
 **Deferred / parked (not now):**
-- **Search** — pinned **D-23** (the last substantial P4 piece; needs the blind-index vs trigram
-  call on encrypted bodies). Kept as a reminder.
+- **P8 Meta Cloud API adapter** — beyond the alpha core.
 - **P1 close-out** (compose file, `email`/`secrets` drivers) — deliberately left for now.
-- **Outbound media** — send path is text-only; `OutboundContent` must carry a file.
 - **`[TEST DATA]` fixtures** — now safe to delete (media proven); still in the dev DB pending the call.
 - **D-17** live inbound + presence/collision (WebSocket) · **D-18** snooze/Meta-window/keyboard ·
   **D-19** rich templates · **D-20** SQLite · **D-21** full import wizard · **D-22** row-level
