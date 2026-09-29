@@ -12,7 +12,7 @@ Numbered so everything downstream — features, tests, acceptance criteria — c
 | CON-2 | Meta charges per template message and enforces messaging tiers (250 → 1k → 10k → 100k → unlimited) and a quality rating | The dispatcher must track tier and quality and refuse to exceed them |
 | CON-3 | Meta's 24-hour service window: freeform messages are only legal inside it | Capability declaration per provider; the dispatcher decides template vs freeform, never the caller |
 | CON-4 | Meta webhooks require a 2xx within ~3 s and retry with backoff for up to 7 days | Webhook handler verifies, enqueues, returns. No processing inline. |
-| CON-5 | India's DPDP Act requires affirmative, purpose-separated, timestamped consent, with withdrawal as easy as granting | `consent_record` per purpose; opt-out keywords honoured automatically and irreversibly |
+| CON-5 | Operators are subject to **their own jurisdiction's** messaging/consent law (DPDP, GDPR, TCPA, …) — the product bakes in none of them | Provide jurisdiction-neutral tooling: `do_not_contact`, opt-out handling, audit trail, export/erasure. Enforce no specific regime; compliance is the operator's |
 | CON-6 | Must run entirely on free, self-hostable software | Every paid dependency has a free default driver |
 | CON-7 | Must be operable by one person on one VPS | `lean` preset; no component required that a single operator cannot reason about |
 | CON-8 | Baileys 7.x is currently a release candidate with breaking changes | Pin an exact version; keep the adapter surface thin |
@@ -29,8 +29,8 @@ Numbered so everything downstream — features, tests, acceptance criteria — c
 | FR-5 | Duplicate detection and a merge flow with a preview of what would be overwritten | V1 |
 | FR-6 | Static lists and dynamic segments (saved filters) | V1 |
 | FR-7 | `do_not_contact` flag with reason and timestamp, honoured by every send path | V1 |
-| FR-8 | Consent records per purpose (`marketing` / `transactional` / `otp`) with source, evidence and IP | V1 |
-| FR-9 | Contact export and per-subject data export/erasure (DSAR) | V2 |
+| FR-8 | **Optional** per-contact consent/opt-in record (source, evidence, timestamp) the operator maps to their own jurisdiction — not tied to any regime | V2 |
+| FR-9 | Contact data export and per-contact delete — the mechanism for any "remove my data" request, whatever regime requires it | V2 |
 
 ### Channels & sessions
 | id | Requirement | Pri |

@@ -70,24 +70,29 @@ either/or.
 
 ---
 
-## D-2 · Data residency, DPDP consent enforcement, DLT registration
+## D-2 · Jurisdiction-specific compliance (data residency, consent enforcement, DLT, …)
 
-**What:** hosting, database, storage and any inference inside India; enforced purpose-separated
-consent; DLT registration for SMS.
+**What:** any *region-specific* legal machinery an operator's jurisdiction demands — data residency
+(e.g. India's DPDP requiring in-region hosting), enforced purpose-separated consent, DLT
+registration for SMS, and so on.
 
-**Why parked:** the deployment is **in-house beta only** (decided 2026-09-16). The job portal
-is on the same footing.
+**Not the product's to bake in.** This is a **generic, self-hostable tool used worldwide**
+(2026-09-29 decision), so it ships **no** jurisdiction's compliance regime. Each operator meets
+their own region's rules on their own deployment. The product's job is to provide neutral tooling,
+not to be a DPDP (or GDPR, or TCPA) appliance. See `09-security.md`.
 
-**What brings it back:** the first real user who is not on the team. That is the line — beta
-testing among colleagues is one thing, processing other people's personal data is another.
+**What stays in place regardless — because it is anti-ban, not merely legal:** `do_not_contact`
+(built), opt-out handling (**D-27**), and not blasting non-opted-in purchased lists. A number that
+ignores these gets **banned** whatever the jurisdiction (`08-antiban.md`). An **optional**,
+operator-driven `consent_record` (D-2 no longer mandates it) is available for operators who want a
+paper trail for their own regime.
 
-**What stays in place regardless**, because it protects phone numbers rather than a legal
-position: `do_not_contact`, opt-out keyword handling, and the `consent_record` table. Recording
-consent costs nothing now and is expensive to backfill; enforcement can be switched on later.
+**What brings it back:** an operator (or a future hosted offering) that chooses to target a
+specific jurisdiction and wants first-class support for its rules — at which point it is that
+deployment's concern, layered on, not a core requirement.
 
-**Cost of deferring:** low, provided the tables exist. Retrofitting consent *records* onto
-historical contacts is impossible — you cannot invent evidence of an agreement that was never
-captured. Hence keeping the table from the start.
+**Cost of deferring:** none for the core. The neutral primitives that matter for keeping a number
+alive are already built or pinned as anti-ban work.
 
 ---
 
@@ -486,43 +491,27 @@ the API document claiming an OpenAPI endpoint that did not exist.
 
 ---
 
-## D-16 · The legal surface: terms, privacy policy, and recorded consent
+## D-16 · The legal front door (terms, privacy) — the operator's to provide
 
-**What:** the things a product has to put in front of a person before it may act for them —
-terms and conditions accepted at signup, a privacy policy, and a **record** of who accepted
-which version and when. Distinct from **D-2**, which is the regulatory machinery (data
-residency, DPDP consent enforcement for messaging, DLT registration); this is the front door.
+**What:** the terms and privacy policy a product puts in front of a person, and a record of who
+accepted which version. **This is a generic worldwide tool, so the product ships none of these
+baked in** (2026-09-29 decision) — an operator provides their own, appropriate to their
+jurisdiction and business. If a future hosted/self-service offering needs acceptance tracking, a
+`terms_acceptance(user_id, version, accepted_at, ip)` table is the shape, but it is that
+offering's concern, not the core's.
 
-**Why parked:** there is no signup. Accounts are provisioned with `npm run admin`, by the
-person who owns the deployment, for people they already employ. There is nobody to show terms
-to yet, and terms written before the product's shape settles would be rewritten anyway.
+**What the product keeps regardless — because it is anti-ban honesty, not legal boilerplate:**
+**Baileys is unofficial and using it violates WhatsApp's Terms of Service; a number can be banned
+permanently with no appeal.** This warning must be shown plainly to the operator before they link a
+number — hiding it would be dishonest and useless, since it is *their* number at risk. It already
+appears in `README.md`, `08-antiban.md`, `GETTING_STARTED.md` and the link screen, and it stays
+whatever else is stripped.
 
-**What brings it back — any one of these, and the first is close:**
+**What brings the acceptance-tracking part back:** self-service signup, or a hosted multi-tenant
+offering — i.e. the day someone other than the operator creates an account.
 
-1. **Self-service signup**, or any account created by someone other than the operator.
-2. **The repository going public** (see **D-3**, licence) — a self-hosted product ships terms
-   its operators can adapt, not none at all.
-3. **The first tenant that is not us.** The moment this holds another organisation's contact
-   data, acceptance stops being a formality and becomes the basis for processing it.
-
-**Shape when it arrives, so it is not re-derived:**
-
-| Decision | Leaning |
-|---|---|
-| Where acceptance lives | Its own table — `terms_acceptance(user_id, version, accepted_at, ip)`. **Not a boolean on `app_user`:** a boolean cannot answer "which version did they agree to?", and that is the only question that matters when the terms change |
-| Versioning | Terms are versioned and immutable once published. Re-acceptance is a new row, never an update |
-| Blocking | Unaccepted current terms blocks the app, not the login — someone must be able to sign in to accept them |
-| Audit | `terms.accepted` in the existing `audit_log`, same as every other act |
-
-**The disclosure that is specific to this product, and the reason this is not boilerplate:**
-**Baileys is unofficial and using it violates WhatsApp's Terms of Service.** A number can be
-banned permanently with no appeal. Any terms this project ships must say so plainly to the
-operator — hiding it would be both dishonest and useless, since the operator is the one whose
-number is at risk. `docs/08-antiban.md` already carries the technical half of that sentence;
-this is the half that has to be said out loud to a human before they link a number.
-
-**Cost of deferring:** low while the only users are the operator's own staff, and sharp the day
-someone else's data arrives — acceptance cannot be backdated, so a gap is permanent.
+**Cost of deferring:** none for the core. The one thing that genuinely matters now — the
+ban-risk disclosure — is already surfaced everywhere it needs to be.
 
 ---
 
@@ -817,19 +806,23 @@ yet**, so this is a known soft spot, not a solved one.
 ## D-27 · Opt-out keyword handling (STOP / unsubscribe) — deferred while the alpha is closed
 
 **What:** an inbound `STOP` / `UNSUBSCRIBE` (multi-language) that **automatically and irreversibly**
-sets `do_not_contact` and drops the contact from every pending send (F9, DPDP). Distinct from the
-manual `do_not_contact` flag, which exists — this is the *automatic* honouring of a person's reply.
+sets `do_not_contact` and drops the contact from every pending send. Distinct from the manual
+`do_not_contact` flag, which exists — this is the *automatic* honouring of a person's reply.
 
-**Why parked:** closed alpha/beta with invited recipients who can be handled by hand, and the
-manual `do_not_contact` gate already blocks sends. The legal opt-out obligation bites when real
-external data subjects are involved, which a closed alpha is not.
+**This is anti-ban first, compliance second.** Someone who cannot opt out just blocks or reports
+the number instead, which tanks its quality rating and gets it banned (`08-antiban.md`) — so it
+protects the number, not only a legal position, and is kept as engineering discipline whatever the
+jurisdiction (the product bakes in no specific legal regime — see `09-security.md`).
 
-**What brings it back — any one of:** the first recipient who is not on the team, a public/open
-beta, or DPDP enforcement. At that point it is compliance-critical, not optional.
+**Why parked:** closed alpha/beta with invited recipients who can be opted out by hand, and the
+manual `do_not_contact` gate already blocks sends — so the block/report risk is low at this scale.
+
+**What brings it back:** the first recipient who is not on the team, or a public/open beta — once
+strangers are messaged, an unhandled opt-out becomes a real block/report (ban) risk.
 
 **What exists to build on:** `do_not_contact` / `dnc_reason` / `dnc_at` on `contact`, checked as
 gate zero on every send. This is wiring inbound keyword detection to that gate, not new
 infrastructure.
 
 **Cost of deferring:** low while closed and small; **sharp** the day real strangers are messaged —
-a missed opt-out is a complaint, a ban signal, and a legal exposure all at once.
+a missed opt-out becomes a block/report and a ban signal.

@@ -245,31 +245,27 @@ Lockfile committed · `npm audit` and Renovate/Dependabot · CycloneDX SBOM per 
 base images pinned by digest · non-root container user · read-only root filesystem · dropped
 capabilities · Trivy image scan in CI.
 
-## Compliance
+## Compliance — the operator's responsibility, not the product's
 
-### India — DPDP Act
-The operator is the Data Fiduciary; this software provides the tooling.
+This is a **generic, self-hostable tool used anywhere in the world**, so it bakes in **no single
+jurisdiction's compliance regime**. Whoever runs it is responsible for meeting the rules that apply
+to them — India's DPDP, the EU's GDPR, US TCPA/CCPA, Meta's Business Messaging Policy, or anything
+else — and for their own terms, privacy policy and lawful basis for messaging. The product provides
+**jurisdiction-neutral tooling**; it does not, and cannot, enforce the operator's legal compliance.
 
-| Requirement | How the product supports it |
+| Tool | What it gives the operator |
 |---|---|
-| Affirmative, unambiguous consent | `consent_record` per purpose, with source, evidence, IP, timestamp |
-| Separate consent per purpose | `purpose` enum: `marketing` / `transactional` / `otp` — never one blanket flag |
-| Withdrawal as easy as granting | Opt-out keywords honoured automatically and irreversibly (F9) |
-| Timestamped, auditable records | Immutable `consent_record` + audit log |
-| Erasure on request | DSAR erasure endpoint |
-| Breach notification | Audit trail and alerting support it; the process is the operator's |
+| `do_not_contact` (built) | A hard, un-overridable gate that stops every send to a contact — the mechanism behind any opt-out or suppression list |
+| Opt-out handling (D-27) | Auto-honour a `STOP`-style reply by setting `do_not_contact`, in whatever keywords the operator needs |
+| Audit log | An immutable record of who did what and when, for any "show me what happened" obligation |
+| Retention + export/erasure | Configurable retention and per-contact export/delete, for any "remove my data" request |
 
-### GDPR (if operating in the EU)
-Lawful basis recorded per contact · DSAR export and erasure · data minimisation ·
-processor obligations documented · retention enforced in code, not policy.
-
-### Meta's Business Messaging Policy
-Documented opt-in before messaging · obvious opt-out · template categories used honestly ·
-no sending to purchased lists. The product cannot enforce the operator's honesty, but it
-records what was sent, to whom, under what consent, so an audit is possible.
-
-**Stated plainly in the docs and the UI:** compliance is the operator's responsibility.
-The software makes it possible, not automatic.
+**Some of this is not merely legal — it is anti-ban.** A number that keeps messaging people who
+have blocked or reported it, or that blasts a purchased list of strangers who never opted in, gets
+**banned** regardless of any law ([`08-antiban.md`](08-antiban.md)). So `do_not_contact`, honouring
+opt-outs, and **not** messaging non-opted-in purchased lists are kept as engineering discipline
+whatever the jurisdiction — they protect the number, not just a legal position. What the product
+does everywhere is **record** what was sent, to whom and when, so an audit is possible.
 
 ## Testing
 

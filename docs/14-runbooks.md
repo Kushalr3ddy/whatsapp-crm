@@ -179,7 +179,8 @@ degrades its feature rather than the app.
 2. Revoke all API keys; force re-authentication.
 3. Rotate the KEK and re-wrap DEKs; rotate provider credentials.
 4. Determine scope from `audit_log` and export logs.
-5. Notify per DPDP/GDPR obligations — timelines are legal, not technical.
+5. Notify per **your jurisdiction's** breach obligations (DPDP, GDPR, etc.) — timelines are legal,
+   not technical, and are the operator's responsibility.
 6. Post-mortem, published internally.
 
 ---

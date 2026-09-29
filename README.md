@@ -45,9 +45,11 @@ Read these before deciding to use it.
   of Indian SMBs using unofficial automation hitting at least one ban within 12 months.
   Never point it at a number you cannot afford to lose. Anything your business depends on
   should go through the official Cloud API.
-- **Bulk messaging is regulated.** India's DPDP Act requires affirmative, purpose-separated,
-  timestamped consent and an opt-out that is as easy as opting in. The CRM gives you the
-  tooling; compliance is still yours. See [`docs/09-security.md`](docs/09-security.md).
+- **Bulk messaging is regulated almost everywhere** — consent and an easy opt-out are the norm
+  (India's DPDP, the EU's GDPR, US TCPA, and others). This is a generic tool used worldwide, so it
+  bakes in no single regime: it gives you neutral tooling (do-not-contact, opt-out, an audit trail,
+  data export/delete) and **meeting your own jurisdiction's rules is yours**. See
+  [`docs/09-security.md`](docs/09-security.md).
 - **The official API costs money per template message.** Roughly ₹0.86 marketing and
   ₹0.145 utility/auth in India as of 2026; replies inside the 24-hour service window are free.
 
@@ -255,7 +257,7 @@ everything from zero: the technology, the jargon, and what all the `M`/`P`/`F` c
 | [06 Features](docs/06-features/) | One file per module, F1–F12, with acceptance criteria |
 | [07 Ingestion](docs/07-ingestion.md) | Connector framework, mapping, identity resolution |
 | [08 Anti-ban](docs/08-antiban.md) | The engine, every number in it, and the research behind them |
-| [09 Security](docs/09-security.md) | Threat model, controls, DPDP/GDPR |
+| [09 Security](docs/09-security.md) | Threat model, controls, and why compliance is the operator's |
 | [10 Stack](docs/10-stack.md) | Every technology choice and the alternative that lost |
 | [11 Conventions](docs/11-conventions.md) | Code standards, the comment rule |
 | [12 Testing](docs/12-testing.md) | The pyramid, and the ban-simulation harness |

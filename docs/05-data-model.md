@@ -256,15 +256,18 @@ The user-defined field schema. Turns "add a column" into "add a row", and genera
 | `author_user_id` | uuid FK | Who wrote it. |
 | `created_at` | timestamptz | When. |
 
-## `consent_record` ⬜
+## `consent_record` ⬜ (optional, operator-driven)
 
-Proof of permission, per purpose. India's DPDP requires affirmative, purpose-separated,
-timestamped consent, and withdrawal to be as easy as granting.
+An **optional** record of permission the operator can keep for whatever their own jurisdiction
+requires — the product bakes in no specific regime (see `09-security.md`, compliance is the
+operator's). Immutable rows; a withdrawal writes a new row. `do_not_contact` on `contact` is the
+built, jurisdiction-neutral gate that actually blocks sends; this table is the paper trail behind
+it when an operator chooses to keep one.
 
 | Column | Type | What it is |
 |---|---|---|
 | `id`, `org_id`, `contact_id` | uuid | Row identity, tenant, subject. |
-| `purpose` | text | `marketing` / `transactional` / `otp`. **Separate purposes, never one blanket flag** — agreeing to order updates is not agreeing to promotions. |
+| `purpose` | text | An **operator-defined** purpose label (e.g. `marketing`, `transactional`) rather than a fixed enum — separate purposes so agreeing to one is not agreeing to all. |
 | `status` | text | `granted` / `revoked`. |
 | `source` | text | Where consent came from: `web_form`, `import`, `inbound_message`, `verbal`. |
 | `evidence` | jsonb | The proof itself — form snapshot, message id, the exact wording shown. What makes an audit survivable. |
@@ -689,4 +692,5 @@ Configurable per org, enforced by a nightly job that writes a summary audit row:
 | `media_asset` | 1 year |
 | `message` | indefinite |
 
-DSAR erasure is a separate, immediate path — a subject's request is not a retention policy.
+A per-contact delete request is a separate, immediate path — "remove my data" is not a retention
+policy, whatever jurisdiction the request comes under.

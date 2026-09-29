@@ -13,6 +13,20 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Reframe compliance as the operator's responsibility (jurisdiction-neutral)
+- This is a generic, self-hostable tool used worldwide, so it now **bakes in no single
+  jurisdiction's compliance regime** (Kushal's call). The India-DPDP-specific framing that read as
+  a baked product requirement is reframed to "compliance is the operator's, for their own region"
+  across `09-security.md` (the compliance section rewritten), `02-requirements.md` (CON-5, FR-8/9),
+  `05-data-model.md` (`consent_record` now optional + operator-defined purposes), `F11-admin.md`
+  and `README.md` (DSAR → neutral per-contact export/delete), and the deferred pins **D-2**
+  (jurisdiction-specific compliance) and **D-16** (legal front door).
+- **Kept, because they are anti-ban, not merely legal:** `do_not_contact` (built), opt-out handling
+  (**D-27**, reframed anti-ban-first), not blasting non-opted-in purchased lists, and the
+  Baileys-ban-risk disclosure (README, 08-antiban, GETTING_STARTED, link screen). A number that
+  ignores these gets banned whatever the law, so they stay as engineering discipline.
+- Almost entirely a docs/scope change — the only compliance code was `do_not_contact`, which stays.
+
 ### 2026-09-29 — Pin the campaign safety/compliance items (closed alpha)
 - The alpha and beta are **closed** (invited recipients, small volumes), so the two campaign items
   that only bite with real external audiences are pinned and deferred until wider release:

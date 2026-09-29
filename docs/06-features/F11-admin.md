@@ -28,8 +28,9 @@ packs, routing rules. Note the split: some of these are *policy* an admin may tu
 safety limits in `../08-antiban.md` are **not** editable to an unsafe value.
 
 ### Data & retention
-Retention windows per data class, hard-delete job schedule, DSAR export and erasure, export
-of all org data.
+Retention windows per data class, hard-delete job schedule, per-contact data export and delete
+(the mechanism for any "remove/give me my data" request, whatever regime requires it), export of
+all org data.
 
 ### Providers — `GET /admin/providers`
 Which driver is active for each port, its health, and its last error. This exists so an
@@ -50,8 +51,8 @@ Filter by actor, action, target, date. Read-only; append-only underneath.
 - **AC-6** Never-overridable safety limits are not editable through any admin surface, and a
   test asserts no code path exists.
 - **AC-7** Retention jobs delete on schedule and write a summary audit row.
-- **AC-8** DSAR export returns everything held about a subject; erasure removes it and is
-  irreversible.
+- **AC-8** Per-contact data export returns everything held about a person; delete removes it and
+  is irreversible. (Serves any jurisdiction's access/erasure request; the product mandates none.)
 - **AC-9** Seed and fixture data is synthetic; a CI scan fails on PII-shaped content (M19).
 
 ## Test cases
@@ -63,6 +64,6 @@ Filter by actor, action, target, date. Read-only; append-only underneath.
 | TC-11.3 | Admin attempts to raise a daily cap above the safety ceiling | Rejected; no path exists |
 | TC-11.4 | Change branding | Applied without restart |
 | TC-11.5 | Retention window passes | Data deleted; audit summary row written |
-| TC-11.6 | DSAR erasure | Subject data gone; references nulled, not orphaned |
+| TC-11.6 | Per-contact delete | Contact data gone; references nulled, not orphaned |
 | TC-11.7 | Non-admin hits an admin endpoint | 403; attempt audited |
 | TC-11.8 | Break the email driver, open `/admin/providers` | Shows unhealthy with the last error |
