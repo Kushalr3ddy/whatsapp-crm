@@ -13,6 +13,22 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Tags: label contacts and filter by them
+- New `tag` + `contact_tag` tables (migration `0014`, RLS forced, granted to `crm_app`;
+  `contact_tag` carries `org_id` like every tenant table so RLS scopes it directly, composite PK
+  `(contact_id, tag_id)` makes re-tagging a no-op).
+- **API:** `GET/POST /tags` and `DELETE /tags/:id` (name unique per org → 409 `TAG_EXISTS`;
+  list carries a `contactCount`); `POST /contacts/:id/tags` + `DELETE /contacts/:id/tags/:tagId`
+  (idempotent attach; a tag or contact from another org is a 404, not a foreign-key 500). The
+  contacts list now returns each contact's `tags` and accepts **`?tag=<id>`** to filter to a label.
+- **UI:** the Contacts page grew a tag **filter bar** (with counts), a **new-tag** form, tag
+  **chips** on each contact (click to remove), and an **add-tag** picker — all server-rendered via
+  server actions, no client JS.
+- 9 new API tests (create/dup/list/delete, idempotent attach, filter, detach, cascade-on-delete,
+  cross-org 404) — **427 total**. Eye-verified against the real dev DB (tag created, attached,
+  filtered, rendered on the page). This + contact search is how an operator finds and labels
+  specific people to hand-pick a campaign audience.
+
 ### 2026-09-29 — Contact list + search (find people in the book)
 - **`GET /api/v1/contacts`** (`contacts:read`) — lists contacts newest-first and searches by a
   case-insensitive substring across the **display name and any identity** (phone/email). Contact

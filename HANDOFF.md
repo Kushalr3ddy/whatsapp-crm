@@ -388,11 +388,14 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
 7. **Build queue (Kushal, 2026-09-29)** — all P2–P7 alpha core:
    - ~~**Contact list + search**~~ — **done.** `GET /contacts` (name/phone/email substring, plain
      `ILIKE`, keyset-paginated) + a `/contacts` web page and nav tab. Finds specific imported people.
-   - **Building next (greenlit):** (a) **tags** — label contacts (`tag` + `contact_tag`; migration
-     + attach/detach + show them on the contact list); (b) **per-recipient results** — a searchable
-     view of a campaign's recipients (sent/delivered/skipped-and-why); the data already sits on
-     `campaign_recipient`. Together with contact search these let an operator find people, tag them,
-     hand-pick an audience (campaign `explicitContactIds`), and see what a campaign did.
+   - ~~**Tags**~~ — **done.** `tag` + `contact_tag` (migration 0014, RLS forced), `GET/POST /tags`,
+     `DELETE /tags/:id`, attach/detach on `/contacts/:id/tags`, `?tag=` filter on the contact list,
+     and a Contacts-page filter bar + chips + add/remove + new-tag form (server actions).
+   - **Building next (greenlit):** **per-recipient results** — a searchable view of a campaign's
+     recipients (sent/delivered/skipped-and-why); the data already sits on `campaign_recipient`,
+     it just needs a `GET /campaigns/:id/recipients` endpoint + a view. Then an operator can find
+     people (search), label them (tags), hand-pick an audience (campaign `explicitContactIds`),
+     and see what a campaign did.
    - **Pinned, priority:** **D-19** templates + **D-26** body variation (ship together);
      **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something

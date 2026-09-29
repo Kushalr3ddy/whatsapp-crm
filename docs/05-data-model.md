@@ -240,12 +240,12 @@ The user-defined field schema. Turns "add a column" into "add a row", and genera
 | `required` | bool | Whether a contact can be saved without it. |
 | **`merge_policy`** | text | `overwrite` / `fill_if_empty` / `never` / `append`. **The M9 fix.** The old importer overwrote every mapped field unconditionally, so re-importing a sparser file silently destroyed richer data. Default is `fill_if_empty`. |
 
-## `tag` / `contact_tag` ⬜
+## `tag` / `contact_tag` ✅
 
 | Table | Columns | What it is |
 |---|---|---|
-| `tag` | `id`, `org_id`, `name`, `colour` | A label. Deliberately flat — no hierarchy, no nesting. |
-| `contact_tag` | `contact_id`, `tag_id` | The join. Two columns, composite PK, no surrogate id. |
+| `tag` | `id`, `org_id`, `name`, `colour`, `created_at` | A label. Deliberately flat — no hierarchy, no nesting. `name` is unique per org. |
+| `contact_tag` | `org_id`, `contact_id`, `tag_id`, `created_at` | The join. Composite PK `(contact_id, tag_id)` so re-tagging is a no-op. Carries `org_id` — every tenant table does, so RLS scopes it directly rather than through a join to `tag`. |
 
 ## `contact_note` ⬜
 

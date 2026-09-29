@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { normalisePhone } from '@crm/shared';
 import { requireScope } from '../auth.js';
+import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
 
 /**
@@ -29,9 +30,14 @@ const createContact = z.object({
  */
 const listContactsQuery = z.object({
   q: z.string().trim().min(1).max(100).optional(),
+  /** Narrow to contacts carrying this tag — the "select people by label" path. */
+  tag: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().datetime().optional()
 });
+
+/** Body for attaching a tag to a contact. */
+const attachTag = z.object({ tagId: z.string().uuid() });
 
 /**
  * Creating a contact over HTTP.
@@ -135,9 +141,10 @@ export function contactsRouter(defaultCountry: string): Router {
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
-    const { q, limit, cursor } = parsed.data;
+    const { q, tag, limit, cursor } = parsed.data;
     const orgId = req.crm!.orgId;
     const like = q === undefined ? null : `%${q}%`;
+    const tagId = tag ?? null;
     const before = cursor ?? null;
 
     const rows = await req.tenant!((tx) => tx.execute(sql`
@@ -148,7 +155,13 @@ export function contactsRouter(defaultCountry: string): Router {
                                ORDER BY ci.is_primary DESC)
                FROM contact_identity ci
                WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
-             ), '[]'::json) AS identities
+             ), '[]'::json) AS identities,
+             coalesce((
+               SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'colour', t.colour)
+                               ORDER BY t.name ASC)
+               FROM contact_tag ct JOIN tag t ON t.id = ct.tag_id
+               WHERE ct.contact_id = c.id AND ct.org_id = ${orgId}
+             ), '[]'::json) AS tags
       FROM contact c
       WHERE c.org_id = ${orgId}
         AND c.deleted_at IS NULL
@@ -156,6 +169,9 @@ export function contactsRouter(defaultCountry: string): Router {
              OR c.display_name ILIKE ${like}
              OR EXISTS (SELECT 1 FROM contact_identity ci2
                         WHERE ci2.contact_id = c.id AND ci2.value_normalized ILIKE ${like}))
+        AND (${tagId}::uuid IS NULL
+             OR EXISTS (SELECT 1 FROM contact_tag ct2
+                        WHERE ct2.contact_id = c.id AND ct2.tag_id = ${tagId}::uuid))
         AND (${before}::timestamptz IS NULL OR c.created_at < ${before}::timestamptz)
       ORDER BY c.created_at DESC
       LIMIT ${limit}`));
@@ -165,6 +181,53 @@ export function contactsRouter(defaultCountry: string): Router {
     const nextCursor = data.length === limit ? data[data.length - 1]!.createdAt : null;
     res.json({ data, nextCursor });
   });
+
+  /**
+   * Attaches a tag to a contact. Idempotent — re-applying the same tag is a no-op, not an error,
+   * which is what makes "tag everyone in this view" safe to run twice.
+   */
+  router.post('/:id/tags', requireUuidParam('id'), requireScope('contacts:write'),
+    async (req: Request, res: Response) => {
+      const parsed = attachTag.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+          (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+        return;
+      }
+      const orgId = req.crm!.orgId;
+      // Both the contact and the tag must belong to this org — RLS enforces it, and checking here
+      // turns a would-be foreign-key 500 into a clean 404.
+      const outcome = await req.tenant!(async (tx): Promise<'ok' | 'not_found'> => {
+        const c = await tx.execute(sql`
+          SELECT 1 FROM contact WHERE id = ${req.params.id} AND org_id = ${orgId}
+            AND deleted_at IS NULL`);
+        const t = await tx.execute(sql`
+          SELECT 1 FROM tag WHERE id = ${parsed.data.tagId} AND org_id = ${orgId}`);
+        if ((c as unknown as unknown[]).length === 0 || (t as unknown as unknown[]).length === 0) {
+          return 'not_found';
+        }
+        await tx.execute(sql`
+          INSERT INTO contact_tag (org_id, contact_id, tag_id)
+          VALUES (${orgId}, ${req.params.id}, ${parsed.data.tagId})
+          ON CONFLICT (contact_id, tag_id) DO NOTHING`);
+        return 'ok';
+      });
+      if (outcome === 'not_found') {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such contact or tag.'));
+        return;
+      }
+      res.status(204).end();
+    });
+
+  /** Removes a tag from a contact. A no-op if it was not there. */
+  router.delete('/:id/tags/:tagId', requireUuidParam('id'), requireUuidParam('tagId'),
+    requireScope('contacts:write'), async (req: Request, res: Response) => {
+      await req.tenant!((tx) => tx.execute(sql`
+        DELETE FROM contact_tag
+        WHERE org_id = ${req.crm!.orgId} AND contact_id = ${req.params.id}
+          AND tag_id = ${req.params.tagId}`));
+      res.status(204).end();
+    });
 
   return router;
 }

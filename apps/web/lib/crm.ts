@@ -158,6 +158,14 @@ export interface ContactIdentity {
   value: string;
 }
 
+/** A flat label on contacts. `contactCount` is present when listing tags, absent on a contact. */
+export interface Tag {
+  id: string;
+  name: string;
+  colour: string | null;
+  contactCount?: number;
+}
+
 /** A contact and its ways-to-reach. Mirrors `GET /api/v1/contacts`. */
 export interface Contact {
   id: string;
@@ -167,6 +175,8 @@ export interface Contact {
   doNotContact: boolean;
   createdAt: string;
   identities: ContactIdentity[];
+  /** The tags this contact carries. */
+  tags: Tag[];
 }
 
 /** What the API returns when a request fails: RFC 7807, plus our stable `code`. */
@@ -266,6 +276,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (payload as { data: T }).data;
 }
 
+/**
+ * Like `request`, but for endpoints that answer `204 No Content` (attach/detach, delete). It
+ * shares the auth and error handling but never tries to unwrap a `data` body there is none of.
+ */
+async function requestVoid(path: string, init?: RequestInit): Promise<void> {
+  const auth = await forwardedAuth();
+  const response = await fetch(`${baseUrl()}/api/v1${path}`, {
+    ...init,
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...auth, ...init?.headers }
+  });
+  if (response.status === 401) throw new NotAuthenticatedError();
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => null)) as Partial<ApiProblem> | null;
+    throw new CrmApiError({
+      code: problem?.code ?? 'UNKNOWN',
+      detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
+      status: response.status
+    });
+  }
+}
+
 /** Lists conversations, most recently active first. */
 export async function listConversations(): Promise<Conversation[]> {
   return request<Conversation[]>('/conversations');
@@ -290,9 +322,42 @@ export async function getMe(): Promise<Me> {
  * Lists / searches contacts, newest first. `q` is a case-insensitive substring matched against
  * the display name and any identity (phone/email). Returns the first page; paging is a follow-up.
  */
-export async function listContacts(q?: string): Promise<Contact[]> {
-  const query = q !== undefined && q.trim() !== '' ? `?q=${encodeURIComponent(q.trim())}` : '';
-  return request<Contact[]>(`/contacts${query}`);
+export async function listContacts(opts: { q?: string; tag?: string } = {}): Promise<Contact[]> {
+  const params = new URLSearchParams();
+  if (opts.q !== undefined && opts.q.trim() !== '') params.set('q', opts.q.trim());
+  if (opts.tag !== undefined && opts.tag !== '') params.set('tag', opts.tag);
+  const qs = params.toString();
+  return request<Contact[]>(`/contacts${qs === '' ? '' : `?${qs}`}`);
+}
+
+/** Lists the org's tags with contact counts — for the filter bar and the tag picker. */
+export async function listTags(): Promise<Tag[]> {
+  return request<Tag[]>('/tags');
+}
+
+/** Creates a tag. Throws `CrmApiError` (code `TAG_EXISTS`) if the name is already taken. */
+export async function createTag(name: string, colour?: string): Promise<Tag> {
+  return request<Tag>('/tags', { method: 'POST', body: JSON.stringify({ name, colour }) });
+}
+
+/** Deletes a tag, and its links to every contact. */
+export async function deleteTag(id: string): Promise<void> {
+  return requestVoid(`/tags/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Attaches a tag to a contact. Idempotent. */
+export async function attachTag(contactId: string, tagId: string): Promise<void> {
+  return requestVoid(`/contacts/${encodeURIComponent(contactId)}/tags`, {
+    method: 'POST', body: JSON.stringify({ tagId })
+  });
+}
+
+/** Removes a tag from a contact. */
+export async function detachTag(contactId: string, tagId: string): Promise<void> {
+  return requestVoid(
+    `/contacts/${encodeURIComponent(contactId)}/tags/${encodeURIComponent(tagId)}`,
+    { method: 'DELETE' }
+  );
 }
 
 /**

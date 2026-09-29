@@ -414,6 +414,36 @@ export const cannedReply = pgTable('canned_reply', {
 ]);
 
 /**
+ * A flat label on a contact — `vip`, `pune`, `interviewed`. No hierarchy, no nesting; a contact
+ * can carry many (the join is `contact_tag`). `name` is unique per org, so "pune" is one tag.
+ */
+export const tag = pgTable('tag', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  // A UI-only colour for the chip. Nothing depends on it.
+  colour: text('colour'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  uniqueIndex('tag_org_name_uidx').on(t.orgId, t.name)
+]);
+
+/**
+ * The many-to-many join between a contact and a tag. Carries `org_id` like every tenant table so
+ * row-level security scopes it directly; the composite primary key `(contact_id, tag_id)` makes
+ * applying the same tag to the same contact twice a no-op rather than a duplicate.
+ */
+export const contactTag = pgTable('contact_tag', {
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  contactId: uuid('contact_id').notNull().references(() => contact.id, { onDelete: 'cascade' }),
+  tagId: uuid('tag_id').notNull().references(() => tag.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  primaryKey({ columns: [t.contactId, t.tagId] }),
+  index('contact_tag_tag_idx').on(t.tagId)
+]);
+
+/**
  * One stored attachment.
  *
  * Separate from `message` rather than columns on it because the same file can arrive twice —
