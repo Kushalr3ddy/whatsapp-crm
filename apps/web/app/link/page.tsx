@@ -141,7 +141,7 @@ function RecoveryBanner({ sender }: { sender: Sender }) {
   if (r !== null && r.phase === 'paused') {
     return (
       <div className={danger}>
-        ⚠ Cooling off after a {INCIDENT_LABEL[r.incident]} — sending is paused
+        Cooling off after a {INCIDENT_LABEL[r.incident]} — sending is paused
         {r.resumesAt !== null && <>, resumes {untilLabel(r.resumesAt)}</>}.
       </div>
     );
@@ -156,7 +156,7 @@ function RecoveryBanner({ sender }: { sender: Sender }) {
     );
   }
   if (sender.status === 'quarantined') {
-    return <div className={danger}>⚠ Quarantined — sending is held until its health recovers.</div>;
+    return <div className={danger}>Quarantined — sending is held until its health recovers.</div>;
   }
   if (sender.status === 'degraded') {
     return <div className={warn}>Elevated risk — sending at reduced speed while it recovers.</div>;
