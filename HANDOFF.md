@@ -32,7 +32,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
 | P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments | **partial** (search + realtime left) |
 | P5 | Ingestion — CSV **+ Excel** import | **first slice** |
-| P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring | **✅ mostly** (recovery schedules + typing sim D-24 left) |
+| P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring, **typing sim** | **✅ mostly** (per-incident recovery schedules left) |
 | P7 | Campaigns — bulk send, paced (API only, **no UI** — see Known defects) | **first slice** |
 | P8 | Meta Cloud API | not started |
 
@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**427 tests · 24 of 35 specced tables · 15 migrations (through 0014).**
+**433 tests · 24 of 35 specced tables · 15 migrations (through 0014).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -127,7 +127,9 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   5/hr · 20/day), and **health scoring** (per-sender risk from delivery/failure/disconnect →
   auto-degrade → quarantine, and **recovers both directions** with hysteresis). A **sender-health
   panel** on the Numbers page shows the band, risk score, delivery %, and reply breakdown per
-  number. Left: per-incident recovery *schedules* and typing simulation (**D-24**).
+  number. **Typing simulation (D-24) is now built** — `composing` presence + a length-proportional
+  beat (0.7–8 s) before each send, opt-in via `SEND_TYPING_SIMULATION`. Left: per-incident recovery
+  *schedules* (Layer 6 timed ramps).
 - **Contacts list, search & tags (P2)**: `GET /contacts` lists and searches by name/phone/email
   (plain `ILIKE` — contact fields aren't encrypted, so no blind-index decision); `tag` +
   `contact_tag` tables with `GET/POST /tags`, `DELETE /tags/:id`, attach/detach on
@@ -146,7 +148,7 @@ No **outbound** media — receiving and serving work; sending a file does not ·
 rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
 no message templates (a campaign carries a plain body) · **anti-ban: warmup, ceilings, jitter,
 circadian pacing, contact-graph gates and health scoring are built; per-incident recovery
-schedules and typing simulation (D-24) are not** · no Meta adapter · no deployment.
+schedules are not (typing simulation, D-24, is now built)** · no Meta adapter · no deployment.
 
 ---
 
@@ -160,9 +162,10 @@ That is now well past a floor. **Circadian pacing** (day/night curve, silent ove
 **contact-graph gates** (stranger sends paced 2.5×, new-stranger volume capped at 5/hour · 20/day)
 and **health scoring** (a per-sender risk score that auto-degrades → quarantines a number on bad
 delivery/failure/disconnect signals, and recovers it both ways when they clear) are all built and
-enforced at the one send chokepoint. What is still unbuilt: the **per-incident recovery schedules**
-(Layer 6 timed pause/resume ramps — status recovery works, the timed schedules do not) and
-**typing simulation** (D-24). So a campaign is capped, timed like a human, cautious with strangers,
+enforced at the one send chokepoint, and **typing simulation** (D-24) now makes each send look
+human rather than instant. What is still unbuilt: the **per-incident recovery schedules**
+(Layer 6 timed pause/resume ramps — status recovery works, the timed schedules do not). So a
+campaign is capped, timed like a human, cautious with strangers,
 and a struggling number now brakes and recovers itself — but bulk from a fresh number is still
 inherently risky, since no engine removes the underlying ToS violation.
 
@@ -345,7 +348,21 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-29): P6 anti-ban engine completed + the contacts/tags foundation.**
+**Most recent (2026-09-29): typing simulation (D-24) + a fixture/export cleanup.** Before each
+send the gateway now shows a `composing` "typing…" presence, pauses a beat proportional to the
+message length (`typingDelayMs` in `@crm/core` — Gaussian on the per-char rate, clamped 0.7–8 s),
+then clears it — so a send looks human rather than instant. The `ChannelProvider` port gained an
+optional `typing(sender, to, state)`, implemented by Baileys (`sendPresenceUpdate`) and the fake
+(records calls for tests). Opt-in via `SEND_TYPING_SIMULATION` (default on), cosmetic and
+best-effort — a failed presence never fails the send. The beat is deliberately **compressed**, not
+literal 45-WPM typing time: a 30-second bubble before every send would stall the paced queue for no
+gain (the tell being removed is the *instant* send, not a fast one). 6 new tests (3 unit on the
+delay bounds/variation, 3 in the send path) → **433 total**. Also: the `[TEST DATA]` dev-DB
+fixtures deleted and the stray Insomnia export removed (commit `288c361`). **Next in P6:
+per-incident recovery orchestration** (Layer 6 timed pause/resume ramps + a frontend at-risk
+warning), then D-10 / D-26 / D-28.
+
+**Before that (2026-09-29): P6 anti-ban engine completed + the contacts/tags foundation.**
 Three anti-ban layers landed at the one send chokepoint, each opt-in and tested: **circadian
 pacing** (day/night cosine curve, silent overnight, `SEND_TIMEZONE`), **contact-graph gates**
 (relationship delay 1.0/1.8/2.5× + new-stranger cap 5/hr·20/day), and **health scoring**
@@ -404,9 +421,13 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    signals, written to `risk_score` + `health` jsonb, with status auto-degrading → quarantining
    and **recovering both ways**. Enforced in `handleSend` (quarantine holds sends, degraded halves
    speed), scored in the gateway sweep.
-5. **P6 is essentially complete.** What is left in the engine is optional: the **per-incident
-   recovery schedules** (Layer 6 timed pause/resume ramps — the status recovery works, the timed
-   schedules do not) and **typing simulation** (D-24). Neither blocks anything.
+5. ~~Typing simulation (D-24)~~ — **done (2026-09-29).** `composing` presence + a
+   length-proportional beat (0.7–8 s, Gaussian, clamped) before each send, at the `handleSend`
+   chokepoint; opt-in via `SEND_TYPING_SIMULATION`, best-effort. **P6 now has one piece left:** the
+   **per-incident recovery orchestration** (Layer 6 timed pause/resume/ramp schedules — status
+   recovery works, the timed incident schedules do not). Next up, and it ships **with a frontend
+   at-risk warning + recovery-state display** on the Numbers page (Kushal, 2026-09-29). Then D-10,
+   D-26, D-28 in that order.
 6. ~~Sender-health UI panel~~ — **done.** Each card on `/link` shows the band badge, risk score,
    delivery/sent/failed evidence and the replied-vs-no-reply breakdown; `GET /senders` carries the
    `health` jsonb + relationship counts. Data eye-verified against the real dev DB; the logged-in

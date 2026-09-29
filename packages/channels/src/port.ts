@@ -181,6 +181,16 @@ export interface ChannelProvider {
    */
   send(sender: SenderRef, to: Recipient, content: OutboundContent): Promise<SendResult>;
 
+  /**
+   * Signals that a sender is `composing` (typing) to a recipient, or has `paused`.
+   *
+   * Optional: a transport with no presence concept omits it. Used only by the anti-ban engine's
+   * typing simulation (docs/08-antiban.md, D-24) to make a send look human — an instant,
+   * zero-delay send is a bot tell — so it is cosmetic, never load-bearing. A failure here must
+   * be swallowed by the caller and never fail the send it precedes.
+   */
+  typing?(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void>;
+
   /** Inbound messages, normalised. Consumed by the gateway and republished onto the queue. */
   inbound(): AsyncIterable<NormalisedInboundEvent>;
 

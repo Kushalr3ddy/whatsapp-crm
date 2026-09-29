@@ -77,12 +77,18 @@ through the bands once the signals clear, with hysteresis so a score near a thre
 flap. A quarantined number stays *connected* (it can still receive, which is what lets it recover);
 it just does not send.
 
-⬜ **Still not built**: **typing simulation** (parked as D-24) and **per-incident recovery
-orchestration** — the health scorer recovers a number's *status* both ways, but the incident-class
-pause/resume/ramp schedules in Layer 6 below (e.g. "463 → 24 h pause, resume at 10 %") are not
-built. Two refinements to what *is* built are also open: the reply-ratio floor before the
-new-contact allowance grows, and inferring the *recipient's* timezone rather than only the
-sender's.
+⬜ **Still not built**: **per-incident recovery orchestration** — the health scorer recovers a
+number's *status* both ways, but the incident-class pause/resume/ramp schedules in Layer 6 below
+(e.g. "463 → 24 h pause, resume at 10 %") are not built. Two refinements to what *is* built are
+also open: the reply-ratio floor before the new-contact allowance grows, and inferring the
+*recipient's* timezone rather than only the sender's.
+
+✅ **Typing simulation is now built** (D-24). Before each send the gateway emits a `composing`
+presence, pauses a beat proportional to the message length (Gaussian on the rate, clamped
+0.7–8 s), then clears it — so a send looks human rather than instant. Opt-in via
+`SEND_TYPING_SIMULATION` (default on), cosmetic and best-effort: a failed presence never fails the
+send. The beat is a *compressed* pause, not literal 45-WPM typing time (a 30-second bubble before
+every send would stall a paced queue for no gain).
 
 ⬜ **The "never received an inbound message is capped harder" rule is specced but not yet
 implemented.** It *was* blocked by D-14 (inbound dead, so every sender looked outbound-only and
@@ -117,8 +123,12 @@ A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" 
 
 ## Layer 3 — Human-behaviour simulation
 
-- **Typing**: 45 WPM ± 15 σ, with think-pauses of 0.8–3.5 s at ~8% probability per 10
-  characters. `composing` → `paused` → send, computed from the message length.
+- **Typing** ✅ **built** (D-24): `composing` → beat proportional to the message length (Gaussian
+  on the per-char rate, clamped 0.7–8 s) → `paused` → send, at the one send chokepoint in the
+  gateway. Opt-in via `SEND_TYPING_SIMULATION` (default on). The beat is a compressed, practical
+  pause rather than literal 45-WPM typing time — a half-minute "typing…" bubble before every send
+  would stall the paced queue for no anti-ban gain, since the tell being removed is the *instant*
+  send, not a fast one. Best-effort: a failed presence update never fails the send.
 - **Circadian pacing** ✅ **built** (see "What is built" above): fast 09:00–22:00, slow
   22:00–02:00, near-dead 02:00–06:00, with a smooth cosine transition rather than steps. Uses the
   configured send timezone (`SEND_TIMEZONE`); the recipient's inferred timezone is a future

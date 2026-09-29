@@ -189,6 +189,19 @@ export class BaileysChannelProvider implements ChannelProvider {
     return { providerMessageId: sent.key.id, acceptedAt: new Date() };
   }
 
+  /**
+   * Shows or clears the "typing…" indicator to a recipient (docs/08-antiban.md, D-24).
+   *
+   * Best-effort: presence is cosmetic anti-ban, never correctness, so a closed socket or a
+   * refused update is a silent no-op — the caller must never let it fail the send it precedes.
+   */
+  async typing(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return;
+    const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
+    await conn.socket.sendPresenceUpdate(state, jid);
+  }
+
   /** Inbound messages, normalised so callers never see Baileys' own shapes. */
   inbound(): AsyncIterable<NormalisedInboundEvent> {
     return this.#inbound;

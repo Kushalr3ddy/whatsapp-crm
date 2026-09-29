@@ -725,7 +725,18 @@ the encrypted-body question.
 
 ---
 
-## D-24 · Typing simulation (P6 anti-ban layer 3)
+## D-24 · Typing simulation (P6 anti-ban layer 3) — **LANDED 2026-09-29**
+
+**Built.** Before each send the gateway emits a `composing` presence to the recipient, pauses a
+beat proportional to the message length (`typingDelayMs` in `@crm/core` — Gaussian on the per-char
+rate, clamped 0.7–8 s), then clears it with `paused`, at the one send chokepoint in `handleSend`.
+Opt-in via `SEND_TYPING_SIMULATION` (default on), cosmetic and best-effort — a failed presence
+update is swallowed and never fails the send. The `ChannelProvider` port gained an optional
+`typing(sender, to, state)`, implemented by the Baileys adapter (`sendPresenceUpdate`) and the
+fake (records the calls so a test can assert `composing` fired before the send). The beat is a
+**compressed** pause, not literal 45-WPM typing time: a 30-second "typing…" bubble before every
+send would stall the paced queue for no anti-ban gain, since the tell being removed is the
+*instant* send, not a fast one. Original note kept below for the reasoning.
 
 **What:** making an outbound send *look* human — emit a `composing` presence update to WhatsApp,
 wait a realistic beat proportional to the message length, then send. The bot-behaviour half of

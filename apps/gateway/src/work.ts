@@ -3,7 +3,7 @@ import { setTenant, type Database, type Transaction } from '@crm/db';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
-  scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling
+  scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -65,6 +65,13 @@ export interface WorkContext {
     readonly newContactsPerHour: number;
     readonly newContactsPerDay: number;
   } | null;
+  /**
+   * Emit a `composing` presence and pause a human-like beat before each send (docs/08-antiban.md,
+   * D-24). Opt-in like circadian and the contact-graph gate, so tests that do not exercise it are
+   * unaffected and add no real delay. Cosmetic anti-ban — a failure to signal presence never fails
+   * the send.
+   */
+  readonly typingSimulation?: boolean;
   /**
    * Waits before a send. Injected so tests do not spend real seconds on jitter — production
    * passes a real sleep, and skipping it entirely would defeat the point of the jitter.
@@ -283,13 +290,31 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
     // at once is spread out rather than going at once and then waiting.
     if (ctx.sleep) await ctx.sleep(delayMs);
 
-    const result = await ctx.provider.send(
-      { id: job.senderIdentityId, phoneE164: job.senderPhone ?? '' },
-      job.recipientKind === 'phone'
-        ? { phoneE164: job.recipientValue }
-        : { phoneE164: '', providerAddress: job.recipientValue },
-      { kind: 'freeform', body: ctx.decrypt(job.bodyEnc) }
-    );
+    const senderRef = { id: job.senderIdentityId, phoneE164: job.senderPhone ?? '' };
+    const recipient = job.recipientKind === 'phone'
+      ? { phoneE164: job.recipientValue }
+      : { phoneE164: '', providerAddress: job.recipientValue };
+    const body = ctx.decrypt(job.bodyEnc);
+
+    // ── typing simulation ─────────────────────────────────────────────────────────────
+    // Show the "typing…" bubble and pause a beat proportional to the message length before
+    // sending, so the send looks human rather than instant (docs/08-antiban.md, D-24). Opt-in,
+    // and strictly cosmetic: presence is best-effort, so a failure to signal it is swallowed and
+    // never fails the send it precedes.
+    if (ctx.typingSimulation && ctx.provider.typing) {
+      try {
+        await ctx.provider.typing(senderRef, recipient, 'composing');
+        if (ctx.sleep) await ctx.sleep(typingDelayMs(body.length));
+        await ctx.provider.typing(senderRef, recipient, 'paused');
+      } catch (presenceError) {
+        ctx.logger.warn(
+          { messageId, senderId: job.senderIdentityId, err: String(presenceError) },
+          'typing presence failed — sending anyway'
+        );
+      }
+    }
+
+    const result = await ctx.provider.send(senderRef, recipient, { kind: 'freeform', body });
     await markMessageSent(ctx.db, messageId, result.providerMessageId);
     ctx.logger.info({ messageId, providerMessageId: result.providerMessageId }, 'message sent');
   } catch (error) {

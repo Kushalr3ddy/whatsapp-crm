@@ -61,7 +61,11 @@ const configSchema = z.object({
   // messaging per hour / day. Cold-blasting a fresh list is a top ban signal; these cap it.
   NEW_CONTACTS_PER_HOUR: z.coerce.number().int().positive().max(100).default(5),
   NEW_CONTACTS_PER_DAY: z.coerce.number().int().positive().max(500).default(20),
-  CONTACT_GRAPH_GATES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true')
+  CONTACT_GRAPH_GATES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // Typing simulation (docs/08-antiban.md, D-24): emit a "typing…" presence and pause a beat
+  // proportional to the message length before each send, so a send looks human rather than
+  // instant. Cosmetic anti-ban; `SEND_TYPING_SIMULATION=false` turns it off (e.g. to send faster).
+  SEND_TYPING_SIMULATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true')
 });
 
 /** True when the string names a timezone this runtime's Intl database recognises. */

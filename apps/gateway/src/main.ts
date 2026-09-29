@@ -66,6 +66,8 @@ async function main(): Promise<void> {
           newContactsPerDay: config.NEW_CONTACTS_PER_DAY
         }
       : null,
+    // Make each send look human — a "typing…" beat before it lands (docs/08-antiban.md, D-24).
+    typingSimulation: config.SEND_TYPING_SIMULATION,
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
     kms,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))

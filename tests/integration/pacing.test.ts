@@ -6,7 +6,7 @@ import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import {
   checkSendAllowance, dailyCeiling, humanDelayMs,
-  circadianActivity, circadianDelayMs, localHour
+  circadianActivity, circadianDelayMs, localHour, typingDelayMs
 } from '@crm/core';
 import { createLogger } from '@crm/shared';
 import { handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
@@ -216,6 +216,34 @@ describe('the delay between sends', () => {
     const nearMid = samples.filter((d) => Math.abs(d - mid) < 400).length / samples.length;
     const nearEdges = samples.filter((d) => d < 1900 || d > 3600).length / samples.length;
     expect(nearMid).toBeGreaterThan(nearEdges);
+  });
+});
+
+describe('typing simulation (how long to look like typing)', () => {
+  it('stays inside the clamped window whatever the length', () => {
+    // Even an empty body waits the floor (no instant send — that is the tell we avoid), and a
+    // very long body is capped rather than parking the send behind a minute of fake typing.
+    const lengths = [0, 1, 20, 200, 5000];
+    for (const len of lengths) {
+      const samples = Array.from({ length: 200 }, () => typingDelayMs(len));
+      expect(Math.min(...samples)).toBeGreaterThanOrEqual(700);
+      expect(Math.max(...samples)).toBeLessThanOrEqual(8000);
+    }
+  });
+
+  it('takes longer for a longer message, on average', () => {
+    const avg = (len: number): number => {
+      const s = Array.from({ length: 300 }, () => typingDelayMs(len));
+      return s.reduce((a, b) => a + b, 0) / s.length;
+    };
+    // A short reply hits the floor; a mid-length body sits above it — length drives the beat.
+    expect(avg(150)).toBeGreaterThan(avg(5));
+  });
+
+  it('is not a fixed interval', () => {
+    // A constant typing time is as much a fingerprint as a constant send interval (M10).
+    const samples = Array.from({ length: 500 }, () => typingDelayMs(120));
+    expect(new Set(samples).size).toBeGreaterThan(50);
   });
 });
 

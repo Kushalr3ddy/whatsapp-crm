@@ -126,6 +126,56 @@ describe('handleSend', () => {
   });
 });
 
+describe('typing simulation in the send path (D-24)', () => {
+  it('shows "typing…" before the send and clears it after, when enabled', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const id = await queueOutbound('a message worth typing');
+
+    const slept: number[] = [];
+    await handleSend(
+      { ...ctxWith(provider), typingSimulation: true, sleep: async (ms) => { slept.push(ms); } },
+      id
+    );
+
+    // composing fired, then paused — and the message still went out.
+    expect(provider.typingCalls.map((c) => c.state)).toEqual(['composing', 'paused']);
+    expect(provider.typingCalls[0]!.to.phoneE164).toBe('+919876511111');
+    expect(provider.sent).toHaveLength(1);
+    expect((await statusOf(id)).status).toBe('sent');
+
+    // One of the sleeps is the typing beat, and it is inside the clamped window.
+    expect(slept.some((ms) => ms >= 700 && ms <= 8000)).toBe(true);
+  });
+
+  it('does not signal typing when the simulation is off (the default)', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const id = await queueOutbound('no typing here');
+
+    await handleSend(ctxWith(provider), id);   // ctxWith leaves typingSimulation unset
+
+    expect(provider.typingCalls).toHaveLength(0);
+    expect(provider.sent).toHaveLength(1);
+  });
+
+  it('sends anyway when signalling presence throws', async () => {
+    // Presence is cosmetic; a failure to show "typing…" must never lose the message.
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    provider.typing = async () => { throw new Error('presence blew up'); };
+    const id = await queueOutbound('resilient send');
+
+    await handleSend(
+      { ...ctxWith(provider), typingSimulation: true, sleep: async () => {} },
+      id
+    );
+
+    expect(provider.sent).toHaveLength(1);
+    expect((await statusOf(id)).status).toBe('sent');
+  });
+});
+
 describe('handleLinkRequest', () => {
   it('writes the challenge back onto the session row', async () => {
     const provider = new FakeChannelProvider();

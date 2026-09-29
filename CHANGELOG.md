@@ -13,6 +13,26 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Typing simulation (P6 anti-ban layer 3, D-24)
+- Before each send, the gateway now shows a `composing` "typing…" presence, pauses a beat
+  proportional to the message length, then clears it with `paused` — so a send looks human rather
+  than instant (an instant send is a documented bot tell).
+- **New pure helper** `typingDelayMs(bodyLength)` in `@crm/core` (`packages/core/src/typing.ts`):
+  Gaussian on the per-character rate, clamped **0.7–8 s**. Deliberately a **compressed** beat, not
+  literal 45-WPM typing time — a 30-second bubble before every send would stall the paced queue for
+  no anti-ban gain.
+- **Port change:** `ChannelProvider` gained an optional `typing(sender, to, state)`. Implemented by
+  the **Baileys** adapter (`sendPresenceUpdate`) and the **fake** (records calls so tests can assert
+  `composing` fired before the send). Best-effort at the `handleSend` chokepoint — a failed presence
+  is swallowed and never fails the send.
+- **Config:** `SEND_TYPING_SIMULATION` (default `true`), wired into the gateway context; opt-in like
+  circadian and the contact-graph gate, so the 427 existing tests are unaffected.
+- 6 new tests (3 unit: delay bounds, length-monotonic, not-a-fixed-interval; 3 in the send path:
+  composing-before-send, off-by-default, send-survives-a-presence-throw) — **433 total.** Typecheck +
+  lint + full suite green.
+- **P6 now has one piece left:** per-incident recovery orchestration (Layer 6 timed
+  pause/resume/ramp schedules), which ships next with a frontend at-risk warning.
+
 ### 2026-09-29 — Housekeeping: nuked the `[TEST DATA]` fixtures and the stray Insomnia export
 - **Deleted the `[TEST DATA]` dev-DB fixtures** (safe since D-14 closed and media is proven against
   a real file): the `test_fixture` contact, its conversation, two messages, two `[TEST]` media

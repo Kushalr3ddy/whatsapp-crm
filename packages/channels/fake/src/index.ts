@@ -56,6 +56,9 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Everything "sent", in order. Assert against this instead of a real account. */
   readonly sent: FakeSentMessage[] = [];
 
+  /** Every typing-presence call, in order, so a test can assert composing fired before the send. */
+  readonly typingCalls: Array<{ senderId: string; to: Recipient; state: 'composing' | 'paused' }> = [];
+
   private readonly health_ = new Map<string, ProviderHealth>();
   private readonly inboundQueue: NormalisedInboundEvent[] = [];
   /** Attachments this fake will hand back, keyed by the ref put on the event. */
@@ -129,6 +132,16 @@ export class FakeChannelProvider implements ChannelProvider {
       providerMessageId, senderId: sender.id, status: 'sent', errorCode: null, at: new Date()
     });
     return { providerMessageId, acceptedAt: new Date() };
+  }
+
+  /**
+   * Records a typing-presence call instead of sending one, so a test can assert the anti-ban
+   * typing simulation (docs/08-antiban.md, D-24) fired `composing` before the send. A disconnected
+   * sender is a silent no-op, exactly as the real adapter treats a closed socket.
+   */
+  async typing(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void> {
+    if (this.health_.get(sender.id)?.state !== 'open') return;
+    this.typingCalls.push({ senderId: sender.id, to, state });
   }
 
   /**

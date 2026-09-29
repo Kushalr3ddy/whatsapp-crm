@@ -40,6 +40,8 @@ export {
   type Relationship, type ContactGraphLimits, type ContactGraphDecision
 } from './contact-graph.js';
 
+export { typingDelayMs } from './typing.js';
+
 export {
   computeRiskScore, riskBand, nextStatus, deliveryRatio,
   scoreSenderHealth, scoreConnectedSenders,
