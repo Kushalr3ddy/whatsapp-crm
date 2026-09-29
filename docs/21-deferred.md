@@ -879,3 +879,44 @@ last-contacted-within-N-days, AND/OR) — a CRM, not a query language.
 
 **Cost of deferring:** none for the near term — hand-pick (search + tags + explicit list) and
 whole-import targeting cover it.
+
+---
+
+## D-29 · An anti-ban "advisory mode" — warn but do not enforce
+
+**What:** an operator toggle that keeps the anti-ban engine **computing and surfacing** its
+signals — the at-risk / cooling-off banners, the pacing reasons, the health score — but stops it
+**enforcing** them. In advisory mode a send is not held, paced, capped, or paused: it goes out, and
+the operator watches the warnings and accepts the risk themselves. Today every gate blocks; this
+would make (most of) them advisory.
+
+**Why parked — and it is *resisted*, not merely unbuilt.** The whole engine exists because a
+Baileys number is unofficial and a ban is permanent with no appeal (`08-antiban.md`), and the design
+draws a deliberate line: the hard gates — per-sender daily cap, rate/burst, warmup ceiling — are
+*"overridable by nobody, including an admin, with no code path to do so"*, because *"an override
+would be used the first time someone is in a hurry, which is exactly when the ceiling matters"*
+(the `daily_cap_override` comment in `pacing.ts`, which may only *lower* a limit). Advisory mode is
+precisely that code path. It is defensible for someone who **knowingly** accepts the risk — a
+throwaway number, a test, or an official Meta number where the ban risk does not apply — but it is a
+loaded footgun, so it is a deliberate decision to make carefully rather than a quick flag.
+
+**Non-negotiable if it is ever built:**
+- **`do_not_contact` and missing marketing consent stay HARD even in advisory mode.** They protect
+  the *recipient*, not the number — a person who cannot be un-messaged is a compliance and
+  block/report problem, not a pacing preference (`08-antiban.md`, the two-classes-of-gate split).
+- **Admin-scoped, audited, and loud.** An `audit_log` row on every toggle, and a persistent
+  "advisory mode — anti-ban is NOT enforced" banner wherever a number or campaign is shown, so it
+  can never be left on by accident.
+- **Scope decided explicitly:** per-sender or per-org `enforcement: 'enforce' | 'advisory'`, checked
+  at each gate in `handleSend` / `dispatchCampaign` — advisory computes the decision, records the
+  warning, then proceeds.
+
+**What brings it back:** a concrete, evidenced operator need to send past a ceiling knowingly; or
+the **Meta Cloud API adapter (P8)** landing — the official channel has no ban risk, so its pacing is
+legitimately looser, and *per-transport policy* is a cleaner home for "looser" than a global
+override bolted onto the Baileys path.
+
+**Cost of deferring:** none — the safe default (enforce) holds, and it is what protects the asset.
+Building it early mostly adds a way to lose a number in a hurry. The **visibility** half an operator
+actually needs already exists: the Numbers-page at-risk / cooling-off banners and the per-recipient
+campaign results show *why* a number is quiet without turning enforcement off.

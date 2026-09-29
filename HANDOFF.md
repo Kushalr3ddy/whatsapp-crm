@@ -522,7 +522,9 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      unpinned + decoupled from D-19), then **D-28**.
    - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
-     simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences).
+     simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences);
+     **D-29** anti-ban **advisory mode** (warn-but-don't-enforce override; pinned 2026-09-29 —
+     resisted by design, `do_not_contact`/consent stay hard, admin-scoped + audited if ever built).
    Legal/compliance reframed as the operator's job (jurisdiction-neutral); opt-out is **D-27**.
 
 **Deferred / parked (not now):**
