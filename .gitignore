@@ -49,3 +49,7 @@ test-results/
 
 # Logs from `npm run dev:all`. Per-run, never useful to anyone else.
 .dev-logs/
+
+# Insomnia workspace auto-exports. The curated collection is tools/insomnia-collection.json.
+*(local)-wrk_*.yaml
+Insomnia_*.yaml
