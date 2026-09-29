@@ -839,3 +839,34 @@ infrastructure.
 
 **Cost of deferring:** low while closed and small; **sharp** the day real strangers are messaged —
 a missed opt-out becomes a block/report and a ban signal.
+
+---
+
+## D-28 · Tags & segments (campaign targeting) — **PRIORITY**
+
+> **Priority (2026-09-29):** near-term build queue and the natural next feature — it closes the
+> import → target → campaign → inbox loop. **Not required for anti-ban** (P6 is complete and
+> independent), so it is scheduled, not blocking.
+
+**What:** the way to aim a campaign at a *group* rather than a hand-pasted list of ids.
+- **Tags** — flat labels on a contact (`vip`, `pune`). Tables `tag` + `contact_tag` (a join).
+- **Segments** — a saved audience: **static** (a frozen list of contacts) or **dynamic** (a saved
+  filter re-evaluated on read, e.g. "tagged `pune` and replied in the last 30 days"). Table
+  `segment` (`kind`, a `definition` jsonb, a cached count).
+- **Campaign targeting** — a campaign takes a `segment_id`; at launch it resolves the segment to
+  contacts and **freezes** them into the recipient list (the snapshot rule already exists).
+
+**The build, in slices (simplest first):**
+1. **Tags** — migration for `tag` + `contact_tag`, API (create/list/delete, attach/detach), UI.
+2. **Static segments** — save a fixed contact list; show its count.
+3. **Dynamic segments** — the meaty part: a small **filter engine** turning a saved filter (jsonb)
+   into a *parameterised* SQL query over an **allowlist** of filterable fields (never string-built —
+   this is the injection-risk part). Keep the filter deliberately small for alpha (has-tag, field
+   equals, replied/not, last-contacted-within-N-days, AND/OR) — a CRM, not a query language.
+4. **Campaign targeting** — resolve a segment to recipients at launch, snapshot them.
+
+**Why pinned:** it is a real multi-part build and Kushal wants each slice confirmed before it
+starts. All tables are already specced in `05-data-model.md`.
+
+**Cost of deferring:** campaign targeting stays a hand-pasted list of contact ids until this
+lands — usable, but crude.

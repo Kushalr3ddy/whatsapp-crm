@@ -16,8 +16,9 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 ### 2026-09-29 — Near-term priority queue set
 - Flagged **PRIORITY** (near-term build queue, not "someday"): **D-25** outbound media, **D-19**
   templates, **D-26** body variation (ships with templates), **D-23** inbox search (settle
-  blind-index vs. trigram first; contact-field search can ship without it). Plus **tags + segments**
-  (un-pinned) as the piece that unlocks campaign targeting.
+  blind-index vs. trigram first; contact-field search can ship without it), and **tags + segments**
+  now pinned as **D-28** (campaign targeting; the four-slice build). Tags/segments is **not** an
+  anti-ban dependency (P6 is complete), so it is scheduled per-slice on Kushal's go-ahead.
 
 ### 2026-09-29 — Reframe compliance as the operator's responsibility (jurisdiction-neutral)
 - This is a generic, self-hostable tool used worldwide, so it now **bakes in no single
