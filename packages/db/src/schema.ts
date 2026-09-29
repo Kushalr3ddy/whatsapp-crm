@@ -593,9 +593,15 @@ export const campaign = pgTable('campaign', {
   senderIdentityId: uuid('sender_identity_id').notNull()
     .references(() => senderIdentity.id, { onDelete: 'restrict' }),
 
-  /** The audience, stated one of two ways. Exactly one is set. */
+  /** The audience, stated one of three ways. Exactly one is set. */
   fromImportRunId: uuid('from_import_run_id').references(() => importRun.id, { onDelete: 'set null' }),
   explicitContactIds: jsonb('explicit_contact_ids'),
+  /**
+   * A tag whose contacts are the audience — resolved at snapshot like an import run, so adding a
+   * contact to the tag after launch never changes who a running campaign is messaging. Nulled if
+   * the tag is later deleted; the frozen `campaign_recipient` rows are unaffected.
+   */
+  fromTagId: uuid('from_tag_id').references(() => tag.id, { onDelete: 'set null' }),
 
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),

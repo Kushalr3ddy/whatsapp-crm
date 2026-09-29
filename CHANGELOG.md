@@ -13,6 +13,25 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Broadcast UI, slice 2: create a campaign, and operate it
+- **Create a campaign from the browser** at `/broadcast/new`: name, message, sender, and an
+  **audience by tag**. Creating makes a draft (sends nothing); the detail page then carries
+  **Start / Pause / Resume / Cancel** controls (server actions over the existing endpoints), and
+  starting freezes the audience and shows the forecast + per-recipient results.
+- **New targeting mode `from_tag_id`** — migration `0015` adds a nullable FK from `campaign` to
+  `tag`; `snapshotAudience` resolves it like an import run, so tagging a contact *after* launch never
+  changes a running audience. `POST /campaigns` now takes exactly one of `fromImportRunId` /
+  `explicitContactIds` / `fromTagId` (422 otherwise, 404 for an unknown tag).
+- **Web:** `/broadcast/new` form (sender + tag pickers with contact counts, empty-state guidance),
+  a "New campaign" button on the list, and start/pause/cancel controls on the detail page — all
+  server actions, no client JS. New `crm.ts` functions: `createCampaign`, `startCampaign`,
+  `pauseCampaign`, `cancelCampaign`.
+- 4 API tests (freeze-the-tagged, post-launch-tag-ignored, unknown-tag-404, exactly-one-of-three
+  audiences) — **442 total.** Root + web typecheck, lint, full suite and `web:build` all green.
+  Not yet eye-verified in a signed-in browser.
+- **Still to add:** import-run and hand-picked-contacts targeting in the UI (both in the API), and
+  a pre-start dry-run preview.
+
 ### 2026-09-29 — Broadcast UI, slice 1: campaigns list + per-recipient results
 - The **Broadcast** tab was a `ComingSoon` placeholder whose warning was **false** ("no rate
   limiting anywhere in the send path" — the whole anti-ban engine exists). Replaced with a real,

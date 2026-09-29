@@ -130,6 +130,12 @@ export async function snapshotAudience(
           -- … or exactly the contacts that were listed. Never "everyone" implicitly.
           OR (cp.explicit_contact_ids IS NOT NULL
               AND cp.explicit_contact_ids @> to_jsonb(c.id::text))
+          -- … or everyone carrying a named tag, resolved here so adding a contact to the tag
+          -- after launch never changes who a running campaign is messaging.
+          OR (cp.from_tag_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM contact_tag ct
+            WHERE ct.tag_id = cp.from_tag_id AND ct.contact_id = c.id AND ct.org_id = ${orgId}
+          ))
         )
     )
     INSERT INTO campaign_recipient (org_id, campaign_id, contact_id, status, skip_reason)

@@ -32,12 +32,20 @@ export default async function BroadcastPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-8">
-      <header className="mb-5">
-        <h1 className="text-lg font-semibold tracking-tight">Broadcast</h1>
-        <p className="mt-1 text-sm text-muted">
-          Send one message to many people, paced by the anti-ban engine so a burst can never go out
-          at once. Open a campaign to see who it reached and who was skipped.
-        </p>
+      <header className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">Broadcast</h1>
+          <p className="mt-1 text-sm text-muted">
+            Send one message to many people, paced by the anti-ban engine so a burst can never go out
+            at once. Open a campaign to see who it reached and who was skipped.
+          </p>
+        </div>
+        <Link
+          href="/broadcast/new"
+          className="shrink-0 rounded-md border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm text-ink hover:bg-accent-soft/70"
+        >
+          New campaign
+        </Link>
       </header>
 
       <p className="mb-5 rounded-lg border border-border bg-accent-soft/40 px-3 py-2 text-xs text-muted">

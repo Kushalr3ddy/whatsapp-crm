@@ -621,3 +621,43 @@ export async function listCampaignRecipients(
     `/campaigns/${encodeURIComponent(id)}/recipients${qs === '' ? '' : `?${qs}`}`
   );
 }
+
+/** How a campaign's audience is chosen. Exactly one field is set — never "everyone" implicitly. */
+export type CampaignTarget =
+  | { fromTagId: string }
+  | { fromImportRunId: string }
+  | { explicitContactIds: string[] };
+
+/**
+ * Creates a draft campaign. Sends nothing and freezes no audience — a draft until started.
+ * Throws `CrmApiError` (`NOT_FOUND`) if the sender or the tag does not belong to the org.
+ */
+export async function createCampaign(
+  input: { name: string; body: string; senderIdentityId: string } & CampaignTarget
+): Promise<{ id: string; status: string }> {
+  return request<{ id: string; status: string }>('/campaigns', {
+    method: 'POST', body: JSON.stringify(input)
+  });
+}
+
+/**
+ * Starts (or resumes) a campaign: freezes the audience on the first start and lets the gateway
+ * begin. Resuming a paused campaign does not re-snapshot. The response carries the forecast.
+ */
+export async function startCampaign(id: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/campaigns/${encodeURIComponent(id)}/start`, { method: 'POST' });
+}
+
+/** Pauses a running campaign. Instant — pending recipients are simply not dispatched. */
+export async function pauseCampaign(id: string): Promise<{ id: string; status: string }> {
+  return request<{ id: string; status: string }>(
+    `/campaigns/${encodeURIComponent(id)}/pause`, { method: 'POST' }
+  );
+}
+
+/** Cancels a campaign for good. Pending recipients become `skipped`, never dropped. */
+export async function cancelCampaign(id: string): Promise<{ id: string; status: string }> {
+  return request<{ id: string; status: string }>(
+    `/campaigns/${encodeURIComponent(id)}/cancel`, { method: 'POST' }
+  );
+}

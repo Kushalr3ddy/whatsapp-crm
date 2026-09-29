@@ -5,6 +5,7 @@ import {
 } from '@/lib/crm';
 import type { CampaignDetail, CampaignRecipient } from '@/lib/crm';
 import { campaignStatusBadge } from '../campaign-status';
+import { startCampaignAction, pauseCampaignAction, cancelCampaignAction } from '../actions';
 
 /** Rendered per request — progress and the status/search filters come live from the query string. */
 export const dynamic = 'force-dynamic';
@@ -69,7 +70,10 @@ export default async function CampaignPage(
                   : <>Draft — not started yet</>}
               </p>
             </div>
-            <StatusBadge status={campaign.status} />
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <StatusBadge status={campaign.status} />
+              <Controls id={id} status={campaign.status} />
+            </div>
           </header>
 
           <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />
@@ -112,6 +116,35 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${badge.cls}`}>
       {badge.label}
     </span>
+  );
+}
+
+/**
+ * The start/pause/cancel controls, shown only where they make sense: a draft can start or be
+ * cancelled, a running campaign can pause or cancel, a paused one can resume or cancel, and a
+ * finished one has none. Each is a plain form posting to a server action — no client JS.
+ */
+function Controls({ id, status }: { id: string; status: string }) {
+  const primary = 'rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-xs text-ink hover:bg-accent-soft/70';
+  const plain = 'rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-accent-soft';
+  const danger = 'rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:border-danger/50 hover:text-danger';
+
+  const button = (action: (fd: FormData) => Promise<void>, label: string, cls: string) => (
+    <form action={action}>
+      <input type="hidden" name="id" value={id} />
+      <button type="submit" className={cls}>{label}</button>
+    </form>
+  );
+
+  if (status === 'completed' || status === 'cancelled') return null;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {status === 'draft' && button(startCampaignAction, 'Start', primary)}
+      {status === 'running' && button(pauseCampaignAction, 'Pause', plain)}
+      {status === 'paused' && button(startCampaignAction, 'Resume', primary)}
+      {button(cancelCampaignAction, 'Cancel', danger)}
+    </div>
   );
 }
 

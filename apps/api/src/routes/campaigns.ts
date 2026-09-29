@@ -14,9 +14,11 @@ const createCampaign = z.object({
   body: z.string().min(1).max(4096),
   senderIdentityId: z.string().uuid(),
   fromImportRunId: z.string().uuid().optional(),
-  explicitContactIds: z.array(z.string().uuid()).min(1).max(50_000).optional()
-}).refine((v) => (v.fromImportRunId === undefined) !== (v.explicitContactIds === undefined), {
-  message: 'state the audience exactly once: either fromImportRunId or explicitContactIds'
+  explicitContactIds: z.array(z.string().uuid()).min(1).max(50_000).optional(),
+  fromTagId: z.string().uuid().optional()
+}).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId]
+  .filter((x) => x !== undefined).length === 1, {
+  message: 'state the audience exactly once: fromImportRunId, explicitContactIds, or fromTagId'
 });
 
 /**
@@ -51,19 +53,30 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
       return;
     }
     const orgId = req.crm!.orgId;
-    const { name, body, senderIdentityId, fromImportRunId, explicitContactIds } = parsed.data;
+    const {
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId
+    } = parsed.data;
 
     const created = await req.tenant!(async (tx) => {
       const sender = await tx.execute(sql`
         SELECT id FROM sender_identity WHERE id = ${senderIdentityId} AND org_id = ${orgId}`);
-      if ((sender as unknown as unknown[]).length === 0) return null;
+      if ((sender as unknown as unknown[]).length === 0) return { error: 'no_sender' as const };
+
+      // A tag audience must name a tag that exists in this org — a clean 404 rather than a
+      // foreign-key 500, and it stops a campaign being created against a tag from another org.
+      if (fromTagId !== undefined) {
+        const t = await tx.execute(sql`
+          SELECT id FROM tag WHERE id = ${fromTagId} AND org_id = ${orgId}`);
+        if ((t as unknown as unknown[]).length === 0) return { error: 'no_tag' as const };
+      }
 
       const rows = await tx.execute(sql`
         INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                              explicit_contact_ids, status)
+                              explicit_contact_ids, from_tag_id, status)
         VALUES (${orgId}, ${name}, ${body}, ${senderIdentityId}, ${fromImportRunId ?? null},
                 ${explicitContactIds === undefined
-                  ? null : JSON.stringify(explicitContactIds)}::jsonb, 'draft')
+                  ? null : JSON.stringify(explicitContactIds)}::jsonb,
+                ${fromTagId ?? null}, 'draft')
         RETURNING id`);
       const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
       await writeAudit(tx, {
@@ -71,14 +84,15 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
         targetType: 'campaign', targetId: id, after: { name, senderIdentityId },
         ip: req.ip ?? null, requestId: String(req.id)
       });
-      return id;
+      return { id };
     });
 
-    if (created === null) {
-      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such sender.'));
+    if ('error' in created) {
+      const detail = created.error === 'no_tag' ? 'No such tag.' : 'No such sender.';
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', detail));
       return;
     }
-    res.status(201).json({ data: { id: created, status: 'draft' } });
+    res.status(201).json({ data: { id: created.id, status: 'draft' } });
   });
 
   /**

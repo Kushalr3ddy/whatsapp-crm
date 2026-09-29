@@ -138,6 +138,63 @@ describe('creating one', () => {
   });
 });
 
+describe('targeting by tag', () => {
+  /** Tags the given contacts with a fresh tag, and returns the tag id. */
+  const tagContacts = async (name: string, ids: string[]): Promise<string> => {
+    const tagId = (await db.execute(sql`
+      INSERT INTO tag (org_id, name) VALUES (${orgId}, ${name}) RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    for (const c of ids) {
+      await db.execute(sql`
+        INSERT INTO contact_tag (org_id, contact_id, tag_id) VALUES (${orgId}, ${c}, ${tagId})`);
+    }
+    return tagId;
+  };
+
+  it('freezes exactly the tagged contacts as the audience', async () => {
+    const tagId = await tagContacts('vip', contactIds.slice(0, 3));
+    const created = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'to the vips', body: 'hello vip', senderIdentityId: senderId, fromTagId: tagId });
+    expect(created.status).toBe(201);
+
+    const started = await request(app)
+      .post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+    // Only the three tagged, reachable contacts — not the whole book, not the untagged rest.
+    expect(started.body.data.progress).toMatchObject({ total: 3, pending: 3, skipped: 0 });
+  });
+
+  it('adding a contact to the tag after launch does not change the frozen audience', async () => {
+    const tagId = await tagContacts('cohort', contactIds.slice(0, 2));
+    const created = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'cohort blast', body: 'hi', senderIdentityId: senderId, fromTagId: tagId });
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+
+    // Tag a third contact only AFTER the snapshot — it must not join the run.
+    await db.execute(sql`
+      INSERT INTO contact_tag (org_id, contact_id, tag_id) VALUES (${orgId}, ${contactIds[5]!}, ${tagId})`);
+    const r = await request(app).get(`/api/v1/campaigns/${created.body.data.id}`).set(...auth());
+    expect(r.body.data.progress.total).toBe(2);
+  });
+
+  it('404s for a tag that does not exist', async () => {
+    const r = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({
+        name: 'x', body: 'y', senderIdentityId: senderId,
+        fromTagId: '00000000-0000-4000-8000-0000000000cc'
+      });
+    expect(r.status).toBe(404);
+  });
+
+  it('still insists the audience is stated exactly once, now across three modes', async () => {
+    const tagId = await tagContacts('dupe', contactIds.slice(0, 1));
+    const twoModes = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({
+        name: 'x', body: 'y', senderIdentityId: senderId,
+        fromTagId: tagId, explicitContactIds: contactIds
+      });
+    expect(twoModes.status).toBe(422);
+  });
+});
+
 describe('starting one', () => {
   it('freezes the audience and reports an unreachable contact rather than dropping it', async () => {
     const created = await create();

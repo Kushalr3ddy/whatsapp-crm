@@ -33,7 +33,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments | **partial** (search + realtime left) |
 | P5 | Ingestion — CSV **+ Excel** import | **first slice** |
 | P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring, **typing sim** | **✅ mostly** (per-incident recovery schedules left) |
-| P7 | Campaigns — bulk send, paced; **Broadcast UI slice 1** (list + per-recipient results); create/controls UI still to build | **first slice** |
+| P7 | Campaigns — bulk send, paced; **Broadcast UI** (create by tag · start/pause/cancel · per-recipient results); import/hand-pick targeting + dry-run UI still to add | **first slice** |
 | P8 | Meta Cloud API | not started |
 
 **D-14 is CLOSED (2026-09-28).** Inbound is alive again after a re-link, and media was verified
@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**438 tests · 24 of 35 specced tables · 15 migrations (through 0014).**
+**442 tests · 24 of 35 specced tables · 16 migrations (through 0015).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -107,10 +107,13 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   gateway converts recipients into messages **only as fast as the anti-ban ceiling allows**.
   Recipients are the queue, so pausing is instant and a campaign cannot bury an agent's reply.
   The start response forecasts how many days it will take. Cancelled recipients are marked
-  skipped with a reason, never dropped. A **Broadcast web page** (slice 1) lists campaigns and
-  shows **per-recipient results** — status filter + name/number search, progress tiles, forecast,
-  the message body — via `GET /campaigns/:id/recipients`. Create/target/start and pause/resume
-  controls in the UI are still to build (API-only today).
+  skipped with a reason, never dropped. **Targeting: an import run, an explicit contact list, or a
+  tag** (`from_tag_id`, migration 0015, resolved at snapshot). A **Broadcast web page** now lists
+  campaigns, **creates** one (name, message, sender, audience-by-tag), runs the
+  **start/pause/resume/cancel** controls, and shows **per-recipient results** (status filter +
+  name/number search, progress tiles, forecast, message body) via `GET /campaigns/:id/recipients`.
+  UI targeting is tag-only for now (import/hand-pick exist in the API); a pre-start dry-run preview
+  is still to add.
 - **Import — CSV and Excel (P5, first slice)**: upload → dry run → commit, now with a web
   **Import tab** and **.xlsx** support (exceljs, cells read as displayed text so a numeric phone
   survives; converted to CSV and fed the one pipeline). **Content-hash dedup**, so the same file
@@ -257,7 +260,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
-| **Campaigns UI — partial** (slice 1 landed 2026-09-29) | The **Broadcast** tab is now a real page: it lists campaigns and drills into one to show **per-recipient results** (status filter + name/number search, progress tiles, forecast, the message body) — backed by the new `GET /campaigns/:id/recipients`. The old `ComingSoon` placeholder and its **false warning** ("no rate limiting anywhere") are gone. **Still to build (slices 2–3):** a **create → target → forecast** flow and **start/pause/resume/cancel controls** in the UI (those actions are API-only today). D-26 body variation lands in the compose step later. |
+| **Campaigns UI — mostly there** (slices 1–2 landed 2026-09-29) | The **Broadcast** tab is a real, operable page: list campaigns → **create** one (name, message, sender, **audience by tag**) → **start / pause / resume / cancel** → **per-recipient results** (status filter + name/number search, progress tiles, forecast, message body). Backed by `GET /campaigns/:id/recipients` and a new **`from_tag_id`** targeting mode (migration 0015, resolved at snapshot). The old placeholder and its **false warning** are gone. **Still to add:** whole-import and hand-picked-contacts targeting *in the UI* (both exist in the API); a **pre-start dry-run preview** (today the forecast lands on start, not before); **D-26** body variation in the compose step. |
 
 ---
 
@@ -351,7 +354,19 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-29): Broadcast UI, slice 1 — the campaigns list + per-recipient results.**
+**Most recent (2026-09-29): Broadcast UI, slice 2 — create a campaign, and operate it.**
+The Broadcast tab can now run a campaign end to end from the browser: **`/broadcast/new`** creates a
+draft (name, message, sender, **audience by tag**), the detail page carries **Start / Pause / Resume
+/ Cancel** controls (server actions over the existing endpoints), and starting freezes the audience
+and shows the forecast + per-recipient results. New targeting mode **`from_tag_id`** (migration
+0015, a nullable FK to `tag`, resolved in `snapshotAudience` like an import run — so tagging someone
+*after* launch never changes a running audience); the create endpoint now accepts exactly one of
+`fromImportRunId` / `explicitContactIds` / `fromTagId`, with a 404 for an unknown tag. 4 API tests
+(freeze-the-tagged, post-launch-tag-ignored, unknown-tag-404, exactly-one-of-three) → **442 total**;
+root+web typecheck, lint, full suite and `web:build` green. **Not** eye-verified signed-in (dev
+password). **Still to add:** import/hand-pick targeting *in the UI*, and a pre-start dry-run preview.
+
+**Before that (2026-09-29): Broadcast UI, slice 1 — the campaigns list + per-recipient results.**
 The Broadcast tab was a `ComingSoon` placeholder whose warning was **false** (it claimed "no rate
 limiting anywhere" while the whole engine exists). It is now a real, read-only page: a **campaign
 list** (`/broadcast`) and a **campaign detail** (`/broadcast/[id]`) with progress tiles that double
@@ -456,12 +471,12 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      and a Contacts-page filter bar + chips + add/remove + new-tag form (server actions).
    - ~~**Per-recipient results**~~ — **done (2026-09-29), as Broadcast UI slice 1.**
      `GET /campaigns/:id/recipients` + the `/broadcast` list and `/broadcast/[id]` results view.
-   - **Broadcast UI — in progress (Kushal, 2026-09-29):** building the campaigns frontend in
-     slices. **Slice 1 done** (list + per-recipient results, and the false-warning placeholder
-     removed). **Slice 2 next:** create → target (whole import / picked contacts / by tag) →
-     dry-run forecast → start. **Slice 3:** pause/resume/cancel controls + live status. D-26 body
-     variation lands in the compose step; **D-10** (where broadcast output lives vs the inbox) is
-     decided by building this.
+   - **Broadcast UI — mostly built (Kushal, 2026-09-29):** the campaigns frontend, in slices.
+     **Slices 1–2 done:** list · create (by tag) · start/pause/resume/cancel · per-recipient
+     results; the false-warning placeholder is gone. **Remaining, smaller:** import-run and
+     hand-picked-contacts targeting *in the UI* (both already in the API), and a **pre-start
+     dry-run preview** (today the forecast lands on start, not before). **D-10** (broadcast output
+     vs the inbox) is effectively settled by the separate Broadcast surface.
    - **Then, the agreed order:** finish **P6 recovery orchestration** (Layer 6 timed schedules +
      the frontend at-risk warning), then **D-10**, **D-26**, **D-28**.
    - **Pinned, priority:** **D-19** templates + **D-26** body variation (ship together);
