@@ -51,6 +51,12 @@ export interface PacingLimits {
    * about circadian pacing keeps passing without change.
    */
   readonly circadianTimezone?: string | null;
+  /**
+   * Layer 6 recovery scaling (docs/08-antiban.md): a fraction in (0, 1] that a recovering number's
+   * daily ceiling is multiplied by while it ramps back up. Absent or 1 means no recovery scaling.
+   * Like `dailyCapOverride` it can only *lower* the ceiling, so it cannot be abused to send faster.
+   */
+  readonly recoveryCapFraction?: number;
 }
 
 /** Whether a send may proceed, and if not, why and for how long. */
@@ -78,12 +84,30 @@ export function dailyCeiling(limits: PacingLimits, lastSentAt: Date | null, now:
 
   // Never warmed up, or dormant long enough to start again.
   const dormant = lastSentAt !== null && now.getTime() - lastSentAt.getTime() > DORMANT_MS;
-  if (limits.warmupStartedAt === null || dormant) return Math.min(steady, WARMUP_RAMP[0]!);
+  const base = (limits.warmupStartedAt === null || dormant)
+    ? Math.min(steady, WARMUP_RAMP[0]!)
+    : warmupCeiling(steady, limits.warmupStartedAt, now);
 
-  const days = Math.floor((now.getTime() - limits.warmupStartedAt.getTime()) / 86_400_000);
+  return applyRecovery(base, limits.recoveryCapFraction);
+}
+
+/** The warmup ceiling for a number that started warming at `startedAt`. The override may lower it. */
+function warmupCeiling(steady: number, startedAt: Date, now: Date): number {
+  const days = Math.floor((now.getTime() - startedAt.getTime()) / 86_400_000);
   if (days >= WARMUP_RAMP.length) return steady;
-  // Still ramping. The override may lower this too, but nothing may raise it.
   return Math.min(steady, WARMUP_RAMP[Math.max(0, days)]!);
+}
+
+/**
+ * Scales a computed ceiling by the Layer 6 recovery fraction when one is in force.
+ *
+ * Only ever lowers (the fraction is ≤ 1), and never to zero while ramping: a recovering number is
+ * meant to send a *little*, and the full hold is the pause phase, enforced separately by the
+ * dispatcher — not by starving the ceiling here.
+ */
+function applyRecovery(ceiling: number, fraction: number | undefined): number {
+  if (fraction === undefined || fraction >= 1) return ceiling;
+  return Math.max(1, Math.floor(ceiling * fraction));
 }
 
 /**

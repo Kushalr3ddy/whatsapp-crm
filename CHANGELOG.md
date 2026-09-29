@@ -13,6 +13,26 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — P6 recovery orchestration (Layer 6): the anti-ban engine is complete
+- Beyond the health scorer's both-ways *status* recovery, a typed incident now starts a **timed**
+  response: **463** timelock → 24 h pause, resume at 10 % of cap, +15 %/week; **429** rate overlimit
+  → 4 h, 25 %, +25 %/week; **delivery-collapse soft ban** → 48 h, 5 %, +10 %/week. A 401 hard ban
+  stays on the unlink→re-link path (indistinguishable from a user unlink at the socket).
+- **Schema:** migration `0016` adds three `sender_identity` columns (`recovery_incident`,
+  `recovery_started_at`, `recovery_until`). New `@crm/core` module `recovery.ts` — `recoveryState`
+  (pure: phase + cap fraction from the columns + fixed schedule) and `beginRecovery` (the one writer,
+  guarded so a storm of the same signal never resets the pause).
+- **Enforcement:** the pause is a full hold at the `handleSend` chokepoint (message left queued,
+  never failed); the ramp is a `recoveryCapFraction` handed to the pacing gate, which can only lower
+  the daily ceiling (never below 1 — the pause is the full stop). Detection wired where the signals
+  already surface: 463/429 in `applyConnectionEvent`, soft ban in the health sweep.
+- **UI:** `GET /senders` derives the recovery phase/fraction server-side (raw columns hidden); the
+  Numbers page shows a per-number at-risk / cooling-off banner (pause + resume time, the reduced-cap
+  ramp, or a plain degraded/quarantined reason) — the frontend warning that was asked for.
+- 11 new tests (recovery-state phases/ramp/clear, ceiling scaling, send-path hold, 463 opens a
+  recovery, the no-reset guard, soft-ban open, senders derivation) — **458 total.** Typecheck, lint,
+  suite and `web:build` green. **All six anti-ban layers are now built.**
+
 ### 2026-09-29 — Broadcast UI: the last two targeting modes (import + hand-pick)
 - **Target a whole import.** New `GET /imports` lists committed, non-superseded runs with a
   `contactCount` (distinct people created/updated); the new-campaign form now offers an **audience

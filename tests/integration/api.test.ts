@@ -89,6 +89,23 @@ describe('authentication', () => {
     expect(r.status).toBe(200);
   });
 
+  it('derives Layer 6 recovery state onto each sender, hiding the raw columns', async () => {
+    await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status, recovery_incident, recovery_until)
+      VALUES (${orgId}, 'baileys', 'cooling', 'active', 'rate_429', now() + interval '3 hours')`);
+
+    const r = await request(app).get('/api/v1/senders').set(...auth());
+    const sender = (r.body.data as Array<{
+      label: string; recovery: { incident: string; phase: string } | null;
+      recoveryUntil?: unknown; recoveryIncident?: unknown;
+    }>).find((s) => s.label === 'cooling')!;
+
+    // The client gets the derived phase, not the raw schedule inputs.
+    expect(sender.recovery).toMatchObject({ incident: 'rate_429', phase: 'paused' });
+    expect(sender.recoveryUntil).toBeUndefined();
+    expect(sender.recoveryIncident).toBeUndefined();
+  });
+
   it('serves a second org without complaint, because the key names its own tenant', async () => {
     // This used to be a 409 MULTIPLE_ORGS. The org was resolved by `SELECT id FROM org LIMIT 2`
     // and a config-level key could not say which tenant it meant, so a second org broke the

@@ -77,11 +77,17 @@ through the bands once the signals clear, with hysteresis so a score near a thre
 flap. A quarantined number stays *connected* (it can still receive, which is what lets it recover);
 it just does not send.
 
-⬜ **Still not built**: **per-incident recovery orchestration** — the health scorer recovers a
-number's *status* both ways, but the incident-class pause/resume/ramp schedules in Layer 6 below
-(e.g. "463 → 24 h pause, resume at 10 %") are not built. Two refinements to what *is* built are
-also open: the reply-ratio floor before the new-contact allowance grows, and inferring the
-*recipient's* timezone rather than only the sender's.
+✅ **Per-incident recovery orchestration is now built** (Layer 6 below). Beyond the scorer's
+both-ways *status* recovery, a typed incident now starts a **timed** response: a **463** timelock →
+24 h pause then resume at 10 % of cap, +15 %/week; a **429** rate overlimit → 4 h then 25 %,
++25 %/week; a **delivery-collapse soft ban** → 48 h then 5 %, +10 %/week. State lives in three
+`sender_identity` columns (`recovery_incident`, `recovery_started_at`, `recovery_until`, migration
+0016); everything else is computed by `recoveryState` in `@crm/core`. The pause is a full hold at
+the send chokepoint (message left queued, never failed), the ramp is a fraction that only *lowers*
+the daily ceiling, and the Numbers page shows an at-risk / cooling-off banner per number. A 401 hard
+ban stays on the existing unlink→re-link path rather than auto-retiring, because a genuine ban and a
+user unlink are indistinguishable at the socket. Two refinements to what *is* built remain open: the
+reply-ratio floor before the new-contact allowance grows, and inferring the *recipient's* timezone.
 
 ✅ **Typing simulation is now built** (D-24). Before each send the gateway emits a `composing`
 presence, pauses a beat proportional to the message length (Gaussian on the rate, clamped

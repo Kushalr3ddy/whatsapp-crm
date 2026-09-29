@@ -213,6 +213,28 @@ describe('scoring a real sender and moving its status', () => {
     expect(result?.status).toBe('active');
     expect(result?.statusChanged).toBe(true);
   });
+
+  it('opens a soft-ban recovery when delivery collapses (Layer 6)', async () => {
+    const { senderId, conversationId } = await makeSender('active');
+    await messages(conversationId, { sent: 12, delivered: 0 });   // ratio 0 with enough volume
+    await scoreSenderHealth(db, senderId);
+
+    const row = (await db.execute(sql`
+      SELECT recovery_incident AS i, recovery_until AS u
+      FROM sender_identity WHERE id = ${senderId}`) as unknown as Array<{ i: string | null; u: string | null }>)[0]!;
+    expect(row.i).toBe('soft_ban');
+    expect(new Date(row.u!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('does not open a recovery while delivery is healthy', async () => {
+    const { senderId, conversationId } = await makeSender('active');
+    await messages(conversationId, { sent: 2, delivered: 18 });
+    await scoreSenderHealth(db, senderId);
+
+    const row = (await db.execute(sql`
+      SELECT recovery_incident AS i FROM sender_identity WHERE id = ${senderId}`) as unknown as Array<{ i: string | null }>)[0]!;
+    expect(row.i).toBeNull();
+  });
 });
 
 describe('the health gate in the send path', () => {

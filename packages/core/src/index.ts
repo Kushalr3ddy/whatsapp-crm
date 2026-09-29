@@ -43,6 +43,11 @@ export {
 export { typingDelayMs } from './typing.js';
 
 export {
+  recoveryState, openRecovery, beginRecovery, isRecoveryIncident,
+  type RecoveryIncident, type RecoveryRow, type RecoveryState
+} from './recovery.js';
+
+export {
   computeRiskScore, riskBand, nextStatus, deliveryRatio,
   scoreSenderHealth, scoreConnectedSenders,
   type SenderStatus, type RiskBand, type HealthSignals, type HealthResult

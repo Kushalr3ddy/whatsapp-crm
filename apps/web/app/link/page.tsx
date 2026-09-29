@@ -111,6 +111,59 @@ function statusBadge(status: string): { label: string; cls: string } {
   }
 }
 
+/** Human labels for the recovery incident classes (docs/08-antiban.md, Layer 6). */
+const INCIDENT_LABEL: Record<'timelock_463' | 'rate_429' | 'soft_ban', string> = {
+  timelock_463: '463 reachout timelock',
+  rate_429: '429 rate limit',
+  soft_ban: 'suspected soft ban'
+};
+
+/** A rough "resumes in ~Xh/Xm" from an ISO timestamp, for the recovery pause banner. */
+function untilLabel(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return 'shortly';
+  const hours = Math.round(ms / 3_600_000);
+  if (hours >= 1) return `~${String(hours)}h`;
+  return `~${String(Math.max(1, Math.round(ms / 60_000)))}m`;
+}
+
+/**
+ * The at-risk / recovery banner: the prominent "this number is in trouble" line the status badge
+ * alone does not give. A timed recovery (Layer 6) is shown first — a pause with its resume time, or
+ * the reduced-cap ramp — then, failing that, a plain degraded/quarantined explanation so an
+ * operator is never left guessing why a number has gone quiet (the "pacing has no window" gap).
+ */
+function RecoveryBanner({ sender }: { sender: Sender }) {
+  const danger = 'mt-2 rounded-md border border-danger/50 px-2.5 py-1.5 text-xs text-danger';
+  const warn = 'mt-2 rounded-md border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-xs text-warning';
+  const r = sender.recovery;
+
+  if (r !== null && r.phase === 'paused') {
+    return (
+      <div className={danger}>
+        ⚠ Cooling off after a {INCIDENT_LABEL[r.incident]} — sending is paused
+        {r.resumesAt !== null && <>, resumes {untilLabel(r.resumesAt)}</>}.
+      </div>
+    );
+  }
+  if (r !== null && r.phase === 'ramping') {
+    return (
+      <div className={warn}>
+        Recovering after a {INCIDENT_LABEL[r.incident]} — sending at{' '}
+        <span className="tabular-nums">{Math.round(r.capFraction * 100)}%</span> of its cap, ramping
+        back up.
+      </div>
+    );
+  }
+  if (sender.status === 'quarantined') {
+    return <div className={danger}>⚠ Quarantined — sending is held until its health recovers.</div>;
+  }
+  if (sender.status === 'degraded') {
+    return <div className={warn}>Elevated risk — sending at reduced speed while it recovers.</div>;
+  }
+  return null;
+}
+
 /** One labelled figure in the health panel's stat row. */
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -146,6 +199,8 @@ function HealthPanel({ sender }: { sender: Sender }) {
           risk <span className="tabular-nums text-ink">{sender.riskScore}</span>/100
         </span>
       </div>
+
+      <RecoveryBanner sender={sender} />
 
       {scored ? (
         <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">

@@ -6,7 +6,7 @@ import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import {
   checkSendAllowance, dailyCeiling, humanDelayMs,
-  circadianActivity, circadianDelayMs, localHour, typingDelayMs
+  circadianActivity, circadianDelayMs, localHour, typingDelayMs, recoveryState
 } from '@crm/core';
 import { createLogger } from '@crm/shared';
 import { handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
@@ -244,6 +244,53 @@ describe('typing simulation (how long to look like typing)', () => {
     // A constant typing time is as much a fingerprint as a constant send interval (M10).
     const samples = Array.from({ length: 500 }, () => typingDelayMs(120));
     expect(new Set(samples).size).toBeGreaterThan(50);
+  });
+});
+
+describe('recovery orchestration (Layer 6)', () => {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+
+  it('reports no recovery when nothing is set', () => {
+    const s = recoveryState({ incident: null, recoveryUntil: null });
+    expect(s).toMatchObject({ phase: 'none', capFraction: 1 });
+  });
+
+  it('holds sends entirely during the pause window', () => {
+    const now = new Date('2026-02-01T12:00:00Z');
+    const until = new Date(now.getTime() + 10 * HOUR);          // still cooling off
+    const s = recoveryState({ incident: 'timelock_463', recoveryUntil: until }, now);
+    expect(s.phase).toBe('paused');
+    expect(s.capFraction).toBe(0);
+    expect(s.resumesAt?.toISOString()).toBe(until.toISOString());
+  });
+
+  it('resumes at the incident fraction and ramps up weekly, then clears', () => {
+    const until = new Date('2026-02-01T00:00:00Z');            // pause already lifted
+    // 463: resume 10%, +15%/week.
+    const atResume = new Date(until.getTime() + HOUR);
+    expect(recoveryState({ incident: 'timelock_463', recoveryUntil: until }, atResume))
+      .toMatchObject({ phase: 'ramping', capFraction: 0.1 });
+    const oneWeek = new Date(until.getTime() + 7 * DAY + HOUR);
+    expect(recoveryState({ incident: 'timelock_463', recoveryUntil: until }, oneWeek).capFraction)
+      .toBeCloseTo(0.25, 5);
+    // 0.10 + 6×0.15 = 1.0 → fully recovered, so it reports none again.
+    const sixWeeks = new Date(until.getTime() + 6 * 7 * DAY + HOUR);
+    expect(recoveryState({ incident: 'timelock_463', recoveryUntil: until }, sixWeeks).phase)
+      .toBe('none');
+  });
+
+  it('scales the daily ceiling down by the recovery fraction, never below 1, never up', () => {
+    const warm = { perMinute: 8, perDay: 1500, dailyCapOverride: null,
+      warmupStartedAt: new Date('2026-01-01T00:00:00Z') };                 // long warmed
+    const now = new Date('2026-03-01T00:00:00Z');
+    const full = dailyCeiling(warm, null, now);
+    expect(full).toBe(1500);
+    expect(dailyCeiling({ ...warm, recoveryCapFraction: 0.1 }, null, now)).toBe(150);
+    // A tiny fraction still leaves room for at least one send (the pause is the full hold).
+    expect(dailyCeiling({ ...warm, recoveryCapFraction: 0.0001 }, null, now)).toBe(1);
+    // A fraction of 1 (or absent) changes nothing.
+    expect(dailyCeiling({ ...warm, recoveryCapFraction: 1 }, null, now)).toBe(1500);
   });
 });
 

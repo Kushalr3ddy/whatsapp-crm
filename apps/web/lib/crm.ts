@@ -150,6 +150,17 @@ export interface Sender {
    * number that was connected before into the "previously linked" group.
    */
   linked: boolean;
+  /**
+   * Layer 6 recovery state, or null when the number is not recovering. `paused` = cooling off and
+   * sending nothing until `resumesAt`; `ramping` = sending at `capFraction` of its cap, climbing
+   * back weekly. Distinct from `status` — a number can be `active` yet paused by a recent incident.
+   */
+  recovery: {
+    incident: 'timelock_463' | 'rate_429' | 'soft_ban';
+    phase: 'paused' | 'ramping';
+    capFraction: number;
+    resumesAt: string | null;
+  } | null;
 }
 
 /** One way to reach a contact — a phone or email. */

@@ -403,3 +403,67 @@ describe('connection state', () => {
     expect(row.lastConnectedAt).toEqual(connectedAt);
   });
 });
+
+describe('recovery orchestration in the send path (Layer 6)', () => {
+  it('holds a queued send while the sender is in a recovery pause', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    // Cooling off after a 463: pause not yet lifted.
+    await db.execute(sql`
+      UPDATE sender_identity
+      SET recovery_incident = 'timelock_463', recovery_until = now() + interval '10 hours'
+      WHERE id = ${senderId}`);
+
+    const id = await queueOutbound('during the recovery pause');
+    await handleSend(ctxWith(provider), id);
+
+    // Held exactly like a quarantined sender — left queued, never failed.
+    expect(provider.sent).toHaveLength(0);
+    expect((await statusOf(id)).status).toBe('queued');
+  });
+
+  it('sends once the pause has lifted (ramping phase)', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    // Pause lifted an hour ago; now ramping at a reduced cap, which is well above one send.
+    await db.execute(sql`
+      UPDATE sender_identity
+      SET recovery_incident = 'timelock_463', recovery_until = now() - interval '1 hour'
+      WHERE id = ${senderId}`);
+
+    const id = await queueOutbound('ramping back up');
+    await handleSend(ctxWith(provider), id);
+    expect(provider.sent).toHaveLength(1);
+    expect((await statusOf(id)).status).toBe('sent');
+  });
+
+  it('opens a timed recovery when a 463 timelock disconnect arrives', async () => {
+    await applyConnectionEvent(ctxWith(new FakeChannelProvider()), {
+      senderId, state: 'closed', reason: 'reachout_timelock', at: new Date()
+    });
+
+    const rows = await db.execute(sql`
+      SELECT recovery_incident AS i, recovery_until AS u FROM sender_identity WHERE id = ${senderId}`);
+    const row = (rows as unknown as Array<{ i: string | null; u: string | null }>)[0]!;
+    expect(row.i).toBe('timelock_463');
+    expect(new Date(row.u!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('does not reset the pause when the same incident fires again while cooling off', async () => {
+    const ctx = ctxWith(new FakeChannelProvider());
+    await applyConnectionEvent(ctx, {
+      senderId, state: 'closed', reason: 'reachout_timelock', at: new Date()
+    });
+    const first = (await db.execute(sql`
+      SELECT recovery_until AS u FROM sender_identity WHERE id = ${senderId}`) as unknown as Array<{ u: string }>)[0]!.u;
+
+    await applyConnectionEvent(ctx, {
+      senderId, state: 'closed', reason: 'reachout_timelock', at: new Date()
+    });
+    const second = (await db.execute(sql`
+      SELECT recovery_until AS u FROM sender_identity WHERE id = ${senderId}`) as unknown as Array<{ u: string }>)[0]!.u;
+
+    // The guard makes the second event a no-op — the pause is not perpetually reset.
+    expect(second).toEqual(first);
+  });
+});

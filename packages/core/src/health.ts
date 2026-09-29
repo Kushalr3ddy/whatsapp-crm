@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
+import { beginRecovery } from './recovery.js';
 
 /**
  * Sender health scoring — P6 anti-ban, the feedback loop (docs/08-antiban.md).
@@ -209,6 +210,14 @@ export async function scoreSenderHealth(
         status = ${status},
         updated_at = now()
     WHERE id = ${senderIdentityId}`);
+
+  // Layer 6: a sustained delivery collapse is a suspected soft ban, so open a timed recovery on top
+  // of the status change (docs/08-antiban.md). Only meaningful once there is enough volume to judge
+  // the ratio — a new number with three undelivered sends is not soft-banned. `beginRecovery` is a
+  // no-op if the number is already cooling off, so this cannot re-arm the pause every sweep.
+  if (signals.sentRecent >= MIN_SENDS_TO_SCORE && ratio < DELIVERY_POOR) {
+    await beginRecovery(db, senderIdentityId, 'soft_ban', now);
+  }
 
   return { riskScore: score, band, deliveryRatio: ratio, status, statusChanged: moveTo !== null };
 }

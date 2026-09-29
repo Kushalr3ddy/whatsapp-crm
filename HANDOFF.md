@@ -32,8 +32,8 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
 | P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments | **partial** (search + realtime left) |
 | P5 | Ingestion — CSV **+ Excel** import | **first slice** |
-| P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring, **typing sim** | **✅ mostly** (per-incident recovery schedules left) |
-| P7 | Campaigns — bulk send, paced; **Broadcast UI** (create by tag · start/pause/cancel · per-recipient results); import/hand-pick targeting + dry-run UI still to add | **first slice** |
+| P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring, typing sim, **recovery orchestration** | **✅ complete** (all six layers + Layer 6 recovery) |
+| P7 | Campaigns — bulk send, paced; **Broadcast UI complete** (create by tag/import/hand-pick · dry-run preview · start/pause/resume/cancel · per-recipient results) | **first slice** |
 | P8 | Meta Cloud API | not started |
 
 **D-14 is CLOSED (2026-09-28).** Inbound is alive again after a re-link, and media was verified
@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**447 tests · 24 of 35 specced tables · 16 migrations (through 0015).**
+**458 tests · 24 of 35 specced tables · 17 migrations (through 0016).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -134,9 +134,12 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   5/hr · 20/day), and **health scoring** (per-sender risk from delivery/failure/disconnect →
   auto-degrade → quarantine, and **recovers both directions** with hysteresis). A **sender-health
   panel** on the Numbers page shows the band, risk score, delivery %, and reply breakdown per
-  number. **Typing simulation (D-24) is now built** — `composing` presence + a length-proportional
-  beat (0.7–8 s) before each send, opt-in via `SEND_TYPING_SIMULATION`. Left: per-incident recovery
-  *schedules* (Layer 6 timed ramps).
+  number. **Typing simulation (D-24)** — `composing` presence + a length-proportional beat
+  (0.7–8 s) before each send, opt-in via `SEND_TYPING_SIMULATION`. **Recovery orchestration (Layer
+  6)** — a typed incident (463 → 24 h/10 %/+15 %; 429 → 4 h/25 %/+25 %; delivery-collapse soft ban →
+  48 h/5 %/+10 %) starts a timed pause then a weekly-ramping cap, stored in three `sender_identity`
+  columns (migration 0016) and derived by `recoveryState`; the Numbers page shows a cooling-off /
+  at-risk banner per number. **All six layers are now complete.**
 - **Contacts list, search & tags (P2)**: `GET /contacts` lists and searches by name/phone/email
   (plain `ILIKE` — contact fields aren't encrypted, so no blind-index decision); `tag` +
   `contact_tag` tables with `GET/POST /tags`, `DELETE /tags/:id`, attach/detach on
@@ -257,7 +260,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 |---|---|
 | **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
 | ~~The linked number receives nothing~~ | **RESOLVED 2026-09-28 (D-14).** Inbound was dead 2026-09-20 → 2026-09-28 (`Bad MAC` on every frame — a corrupt companion session, not our code). The unlink→re-link recovery fixed it: after a fresh QR scan, 5 inbound rows landed, zero decrypt failures, and media was verified end to end against a real JPEG. Kept in the table as a signpost; the recovery path (`POST /senders/:id/unlink` + a web Unlink button) and the gateway/DB/phone sync are written up in [`docs/26-linking-lifecycle.md`](docs/26-linking-lifecycle.md). |
-| Pacing has no window | A message held back by the anti-ban gate is indistinguishable from one whose sender is disconnected — both sit at `queued`, and only the gateway log says which. Fine for one operator, wrong for campaigns, where "why has this not gone?" is the first question asked |
+| Pacing has no window (partly addressed) | A message held back by the anti-ban gate still sits at `queued` like a disconnected sender's. **Now partly surfaced:** the Numbers page shows a per-number at-risk / cooling-off banner (recovery pause + resume time, degraded/quarantined reason), and a campaign's per-recipient view shows pending/skipped states — so "why has this not gone?" is answerable at the number and campaign level. What's still missing is a per-*message* "held by pacing vs sender down" indicator in the thread |
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
@@ -355,8 +358,23 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-29): Broadcast UI — the last two targeting modes, so it is now
-feature-complete for the alpha.** **By import:** `GET /imports` lists committed, non-superseded
+**Most recent (2026-09-29): P6 recovery orchestration (Layer 6) — the anti-ban engine is now
+complete.** A typed incident starts a **timed** response beyond the scorer's status recovery: a
+**463** timelock → 24 h pause then 10 % of cap, +15 %/week; a **429** → 4 h then 25 %, +25 %/week; a
+delivery-collapse **soft ban** → 48 h then 5 %, +10 %/week. State is three `sender_identity` columns
+(migration 0016); `recoveryState` in `@crm/core` derives the phase and cap fraction from them, so
+nothing is kept in sync. The **pause** is a full hold at the send chokepoint (queued, never failed),
+the **ramp** scales the daily ceiling and can only lower it, and detection is wired where the signals
+already surface: 463/429 in `applyConnectionEvent`, soft ban in the health sweep. A guard makes a
+storm of the same signal a no-op so the pause never perpetually resets. The **Numbers page** shows a
+per-number at-risk / cooling-off banner (pause + resume time, or the reduced-cap ramp, or a plain
+degraded/quarantined reason) — the frontend warning Kushal asked for. `GET /senders` derives the
+state server-side and hides the raw columns. 401 hard ban deliberately stays on the unlink→re-link
+path, not auto-retire (a ban and a user unlink look identical at the socket). 11 new tests → **458
+total**; typecheck/lint/suite/`web:build` green. **Next: D-26 body variation.**
+
+**Before that (2026-09-29): Broadcast UI — the last two targeting modes, feature-complete for the
+alpha.** **By import:** `GET /imports` lists committed, non-superseded
 runs with a `contactCount`, and the new-campaign form offers audience by **tag OR import** (two
 selects, exactly one). **Hand-picked:** the Contacts page grew a checkbox per row (disabled for
 do-not-contact) and a "Campaign from checked contacts" panel that creates a draft with
@@ -497,9 +515,11 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      (tag / import / hand-picked) · dry-run preview · start/pause/resume/cancel · per-recipient
      results; the false-warning placeholder is gone. **D-10** (broadcast output vs the inbox) is
      settled by the separate Broadcast surface.
-   - **Now on to (agreed order):** **P6 recovery orchestration** (Layer 6 timed schedules + the
-     frontend at-risk warning), then **D-26 body variation** (unpinned 2026-09-29 — built on its
-     own now, **no longer gated behind D-19 templates**), then **D-28**.
+   - ~~**P6 recovery orchestration**~~ — **done (2026-09-29).** Layer 6 timed pause/ramp schedules
+     (463/429/soft-ban) + the Numbers-page at-risk / cooling-off banner. The anti-ban engine is now
+     complete (all six layers).
+   - **Now on to:** **D-26 body variation** (spintax + per-recipient vars on the campaign body;
+     unpinned + decoupled from D-19), then **D-28**.
    - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
      simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences).

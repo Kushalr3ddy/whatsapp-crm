@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
+import { recoveryState } from '@crm/core';
 import { requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
@@ -35,6 +36,8 @@ export function sendersRouter(): Router {
       SELECT si.id, si.label, si.provider, si.phone_e164 AS "phoneE164", si.status,
              si.risk_score AS "riskScore", si.warmup_started_at AS "warmupStartedAt",
              si.last_inbound_at AS "lastInboundAt",
+             -- Layer 6 recovery state, turned into a phase/fraction below for the health panel.
+             si.recovery_incident AS "recoveryIncident", si.recovery_until AS "recoveryUntil",
              -- The health scorer's evidence (band, delivery ratio, counts), for the health panel.
              si.health AS health,
              cs.connection_state AS "connectionState", cs.disconnect_reason AS "disconnectReason",
@@ -62,7 +65,26 @@ export function sendersRouter(): Router {
       LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
       WHERE si.org_id = ${req.crm!.orgId}
       ORDER BY si.created_at ASC`));
-    res.json({ data: rows });
+
+    // Turn the two raw recovery columns into the derived phase/fraction the UI shows, so the client
+    // never re-implements the Layer 6 schedule. The raw columns are dropped from the response.
+    const data = (rows as unknown as Array<Record<string, unknown> & {
+      recoveryIncident: string | null; recoveryUntil: string | null;
+    }>).map(({ recoveryIncident, recoveryUntil, ...sender }) => {
+      const state = recoveryState({
+        incident: recoveryIncident,
+        recoveryUntil: recoveryUntil === null ? null : new Date(recoveryUntil)
+      });
+      return {
+        ...sender,
+        recovery: state.phase === 'none' ? null : {
+          incident: state.incident, phase: state.phase,
+          capFraction: state.capFraction,
+          resumesAt: state.resumesAt === null ? null : state.resumesAt.toISOString()
+        }
+      };
+    });
+    res.json({ data });
   });
 
   /** Creates a sender. It exists but is not connected until it has been linked. */

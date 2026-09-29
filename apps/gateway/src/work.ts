@@ -3,7 +3,8 @@ import { setTenant, type Database, type Transaction } from '@crm/db';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
-  scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs
+  scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
+  recoveryState, beginRecovery, type RecoveryIncident
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -24,6 +25,9 @@ interface QueuedSend {
   /** Pacing inputs, read with the job so the gate costs no extra round trip. */
   readonly warmupStartedAt: string | null;
   readonly dailyCapOverride: number | null;
+  /** Layer 6 recovery state, read with the job: the incident class and when its pause ends. */
+  readonly recoveryIncident: string | null;
+  readonly recoveryUntil: string | null;
 }
 
 /** A pending request from the API to link a number. */
@@ -186,6 +190,8 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            si.status AS "senderStatus",
            si.warmup_started_at AS "warmupStartedAt",
            si.daily_cap_override AS "dailyCapOverride",
+           si.recovery_incident AS "recoveryIncident",
+           si.recovery_until AS "recoveryUntil",
            v.contact_id AS "contactId",
            ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
     FROM message m
@@ -229,6 +235,26 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       return;
     }
 
+    // ── the recovery gate (Layer 6) ───────────────────────────────────────────────────
+    // A number cooling off after a typed incident (463/429/soft-ban) is held entirely until its
+    // pause lifts, then sends at a reduced daily cap that ramps back weekly. The pause is a hold,
+    // exactly like quarantine (message left queued, never failed); the ramp is a fraction handed
+    // to the pacing gate below, which can only lower the ceiling (docs/08-antiban.md).
+    const recovery = recoveryState({
+      incident: job.recoveryIncident,
+      recoveryUntil: job.recoveryUntil === null ? null : new Date(job.recoveryUntil)
+    });
+    if (recovery.phase === 'paused') {
+      ctx.logger.warn(
+        {
+          messageId, senderId: job.senderIdentityId,
+          incident: recovery.incident, resumesAt: recovery.resumesAt?.toISOString()
+        },
+        'sender in recovery pause — leaving message queued'
+      );
+      return;
+    }
+
     // ── the anti-ban gate ────────────────────────────────────────────────────────────
     // Nothing reaches a provider without passing this. It is the only thing between a loop
     // and a permanently banned number, and it is a ceiling rather than a target
@@ -238,7 +264,9 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       perDay: ctx.limits.perDay,
       dailyCapOverride: job.dailyCapOverride,
       warmupStartedAt: job.warmupStartedAt === null ? null : new Date(job.warmupStartedAt),
-      circadianTimezone: ctx.limits.circadianTimezone ?? null
+      circadianTimezone: ctx.limits.circadianTimezone ?? null,
+      // While ramping out of a recovery, the daily ceiling is scaled down to this fraction.
+      ...(recovery.phase === 'ramping' ? { recoveryCapFraction: recovery.capFraction } : {})
     });
 
     if (!pacing.allowed) {
@@ -511,16 +539,37 @@ export async function applyConnectionEvent(
 
   if (event.state === 'logged_out') {
     // Terminal: the number was unlinked from the phone. Say so rather than leaving it looking
-    // active, which would keep the dispatcher queueing sends that can never leave.
+    // active, which would keep the dispatcher queueing sends that can never leave. Deliberately
+    // *not* auto-retired: a genuine 401 ban and a user-initiated unlink look identical at the
+    // socket, and retiring a number the operator just unlinked would be wrong (docs/08-antiban.md).
     await ctx.db.execute(sql`
       UPDATE sender_identity SET status = 'linking', updated_at = now()
       WHERE id = ${event.senderId}`);
+  }
+
+  // Layer 6: a typed reachout-timelock (463) or rate overlimit (429) starts a timed recovery — a
+  // pause then a ramped-back cap. `beginRecovery` is a no-op if the number is already cooling off,
+  // so a burst of the same disconnect does not perpetually reset the pause (docs/08-antiban.md).
+  const incident = recoveryIncidentFor(event.reason);
+  if (incident !== null) {
+    await beginRecovery(ctx.db, event.senderId, incident, event.at);
+    ctx.logger.warn(
+      { senderId: event.senderId, reason: event.reason, incident },
+      'recovery opened for connection incident'
+    );
   }
 
   ctx.logger.info(
     { senderId: event.senderId, state: event.state, reason: event.reason },
     'connection state changed'
   );
+}
+
+/** Maps a disconnect reason to the recovery incident it triggers, or null when it triggers none. */
+function recoveryIncidentFor(reason: NormalisedConnectionEvent['reason']): RecoveryIncident | null {
+  if (reason === 'reachout_timelock') return 'timelock_463';
+  if (reason === 'rate_limited') return 'rate_429';
+  return null;
 }
 
 /**

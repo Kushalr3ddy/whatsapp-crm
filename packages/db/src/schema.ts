@@ -249,6 +249,15 @@ export const senderIdentity = pgTable('sender_identity', {
   riskScore: integer('risk_score').notNull().default(0),
   dailyCapOverride: integer('daily_cap_override'),
 
+  // Layer 6 recovery orchestration (docs/08-antiban.md). A typed incident (a 463 timelock, a 429
+  // rate overlimit, or a delivery-collapse soft ban) starts a *timed* recovery: sends are held
+  // fully until `recovery_until`, then resume at a fraction of the cap that ramps back up weekly.
+  // Distinct from `status` (which reacts to live signals) — this is the timed pause/ramp the
+  // status recovery does not do. All null when the number is not in recovery.
+  recoveryIncident: text('recovery_incident'),
+  recoveryStartedAt: timestamp('recovery_started_at', { withTimezone: true }),
+  recoveryUntil: timestamp('recovery_until', { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
