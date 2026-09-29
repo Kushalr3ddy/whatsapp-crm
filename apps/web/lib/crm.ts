@@ -408,6 +408,21 @@ export async function listTags(): Promise<Tag[]> {
   return request<Tag[]>('/tags');
 }
 
+/** One committed import run, as a campaign audience option. Mirrors a row of `GET /imports`. */
+export interface ImportRun {
+  id: string;
+  filename: string | null;
+  status: string;
+  createdAt: string;
+  /** Distinct people the run created or updated — the size of the audience it would become. */
+  contactCount: number;
+}
+
+/** Lists committed, non-superseded import runs — the ones a campaign can target. */
+export async function listImportRuns(): Promise<ImportRun[]> {
+  return request<ImportRun[]>('/imports');
+}
+
 /** Creates a tag. Throws `CrmApiError` (code `TAG_EXISTS`) if the name is already taken. */
 export async function createTag(name: string, colour?: string): Promise<Tag> {
   return request<Tag>('/tags', { method: 'POST', body: JSON.stringify({ name, colour }) });

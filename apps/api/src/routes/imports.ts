@@ -219,6 +219,27 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
       res.json({ data: summary });
     });
 
+  /**
+   * Lists committed import runs, newest first — the ones a campaign can target as an audience.
+   *
+   * Superseded runs (re-imported over) are left out: their contacts belong to the newer run, so
+   * targeting the old one would message an audience nobody would recognise. `contactCount` is the
+   * distinct people it created or updated — the size of the audience it would become.
+   */
+  router.get('/', requireScope('contacts:read'), async (req: Request, res: Response) => {
+    const rows = await req.tenant!((tx) => tx.execute(sql`
+      SELECT ir.id, ir.filename, ir.status, ir.created_at AS "createdAt",
+             (SELECT count(DISTINCT r.contact_id)::int FROM import_row r
+              WHERE r.import_run_id = ir.id AND r.outcome IN ('created', 'updated')) AS "contactCount"
+      FROM import_run ir
+      WHERE ir.org_id = ${req.crm!.orgId}
+        AND ir.status = 'committed'
+        AND ir.superseded_at IS NULL
+      ORDER BY ir.created_at DESC
+      LIMIT 100`));
+    res.json({ data: rows });
+  });
+
   /** The run, its summary, and the rows that went wrong. */
   router.get('/:id', requireUuidParam('id'), requireScope('contacts:read'),
     async (req: Request, res: Response) => {

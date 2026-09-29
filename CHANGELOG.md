@@ -13,6 +13,23 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Broadcast UI: the last two targeting modes (import + hand-pick)
+- **Target a whole import.** New `GET /imports` lists committed, non-superseded runs with a
+  `contactCount` (distinct people created/updated); the new-campaign form now offers an **audience
+  by tag OR by import** (two selects, pick one — the create action enforces exactly one).
+- **Hand-pick specific contacts.** The **Contacts page** grew a checkbox per row (disabled for
+  do-not-contact people) and a "Campaign from checked contacts" panel (name, message, number) that
+  creates a draft with `explicitContactIds` and jumps to it. Checkboxes belong to the panel's form
+  by the HTML `form=` attribute, so no nested-form is needed (rows already carry tag forms). Tags
+  remain the better tool for a *reusable* audience; this is for an ad-hoc "these people, now".
+- Web: `crm.ts` gains `listImportRuns` + `ImportRun`; `createCampaignFromSelectionAction` on the
+  contacts page; the create action accepts tag or import.
+- 2 API tests for the imports list (committed-only with counts; superseded hidden) — **447 total.**
+  Root + web typecheck, lint, full suite and `web:build` green. UI not eye-verified signed-in.
+- **The Broadcast UI is now feature-complete for the alpha:** create (by tag / import / hand-pick)
+  → dry-run preview → start/pause/resume/cancel → per-recipient results. D-26 body variation is
+  the remaining compose-step enhancement, pinned separately.
+
 ### 2026-09-29 — Broadcast UI: pre-start dry-run preview (F5 AC-1)
 - A draft's page now shows a **dry run** before you commit: "would message N people · K skipped
   (no number) · T in the audience", plus the forecast — computed **without writing** a single

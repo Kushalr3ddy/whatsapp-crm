@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { listContacts, listTags, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { Contact, Tag } from '@/lib/crm';
-import { createTagAction, attachTagAction, detachTagAction } from './actions';
+import { listContacts, listTags, listSenders, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { Contact, Tag, Sender } from '@/lib/crm';
+import {
+  createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
+} from './actions';
 
 /** Rendered per request — the search term and tag filter come from the query string. */
 export const dynamic = 'force-dynamic';
@@ -15,20 +17,22 @@ export const dynamic = 'force-dynamic';
  * of an imported book, which is the raw material for hand-picking a campaign audience.
  */
 export default async function ContactsPage(
-  { searchParams }: { searchParams: Promise<{ q?: string; tag?: string }> }
+  { searchParams }: { searchParams: Promise<{ q?: string; tag?: string; campaignError?: string }> }
 ) {
-  const { q, tag } = await searchParams;
+  const { q, tag, campaignError } = await searchParams;
   const query = typeof q === 'string' ? q : '';
   const activeTag = typeof tag === 'string' ? tag : '';
 
   let contacts: Contact[] = [];
   let tags: Tag[] = [];
+  let senders: Sender[] = [];
   let failure: string | null = null;
   let expired = false;
   try {
-    [contacts, tags] = await Promise.all([
+    [contacts, tags, senders] = await Promise.all([
       listContacts({ q: query, tag: activeTag }),
-      listTags()
+      listTags(),
+      listSenders()
     ]);
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
@@ -78,6 +82,10 @@ export default async function ContactsPage(
       )}
 
       {contacts.length > 0 && (
+        <CampaignFromSelection senders={senders} error={campaignError} />
+      )}
+
+      {contacts.length > 0 && (
         <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
           {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} />)}
         </ul>
@@ -86,7 +94,8 @@ export default async function ContactsPage(
       {contacts.length > 0 && (
         <p className="mt-3 text-xs text-muted">
           Showing {contacts.length} contact{contacts.length === 1 ? '' : 's'}
-          {contacts.length >= 50 ? ' (first page)' : ''}.
+          {contacts.length >= 50 ? ' (first page)' : ''}. Check people above to hand-pick a
+          campaign audience.
         </p>
       )}
     </main>
@@ -143,6 +152,74 @@ function NewTagForm() {
   );
 }
 
+/**
+ * The hand-pick campaign panel: check contacts in the list, fill a name/message/number here, and
+ * create a draft aimed at exactly those people. The row checkboxes belong to this form by their
+ * `form="pick-campaign"` attribute, so they need not be nested inside it (the rows already carry
+ * their own tag forms, and forms cannot nest). Tags are the better tool for a *reusable* audience;
+ * this is for an ad-hoc "these specific people, right now".
+ */
+function CampaignFromSelection(
+  { senders, error }: { senders: Sender[]; error: string | undefined }
+) {
+  const errMsg = error === 'missing'
+    ? 'Check at least one contact, and fill in a name, a message and a number.'
+    : error !== undefined ? 'Could not create the campaign. Try again.' : null;
+
+  return (
+    <details className="mb-4 rounded-xl border border-border bg-surface" open={error !== undefined}>
+      <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium">
+        Campaign from checked contacts
+      </summary>
+      <div className="border-t border-border px-4 py-3">
+        {errMsg !== null && <p className="mb-2 text-sm text-danger">{errMsg}</p>}
+        {senders.length === 0 ? (
+          <p className="text-sm text-muted">Link a WhatsApp number first, on the Numbers tab.</p>
+        ) : (
+          <form
+            id="pick-campaign" action={createCampaignFromSelectionAction}
+            className="flex flex-col gap-3"
+          >
+            <input
+              name="name" required maxLength={200} placeholder="Campaign name…"
+              aria-label="Campaign name"
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+            />
+            <textarea
+              name="body" required maxLength={4096} rows={3} placeholder="Message to send…"
+              aria-label="Campaign message"
+              className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            />
+            <select
+              name="senderIdentityId" required defaultValue="" aria-label="Send from"
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+            >
+              <option value="" disabled>Send from…</option>
+              {senders.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label ?? 'number'}{s.phoneE164 !== null ? ` · ${s.phoneE164}` : ''}
+                  {s.status !== 'active' ? ` (${s.status})` : ''}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                className="rounded-md border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm text-ink hover:bg-accent-soft/70"
+              >
+                Create draft from checked
+              </button>
+              <span className="text-xs text-muted">
+                Uses the contacts checked below; do-not-contact people can&apos;t be picked.
+              </span>
+            </div>
+          </form>
+        )}
+      </div>
+    </details>
+  );
+}
+
 /** One row: the contact, their details, their tag chips (each removable), and an add-tag picker. */
 function ContactRow({ contact, allTags }: { contact: Contact; allTags: Tag[] }) {
   const phone = contact.identities.find((i) => i.kind === 'phone')?.value;
@@ -150,11 +227,20 @@ function ContactRow({ contact, allTags }: { contact: Contact; allTags: Tag[] }) 
   const detail = [phone, email].filter((v) => v !== undefined).join(' · ');
   const attached = new Set(contact.tags.map((t) => t.id));
   const available = allTags.filter((t) => !attached.has(t.id));
+  // A do-not-contact person cannot be messaged, so they cannot be picked into a campaign.
+  const pickable = !contact.doNotContact;
 
   return (
     <li className="flex flex-col gap-2 px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {/* Belongs to the campaign form by its `form` id, so no nested-form is needed. */}
+          <input
+            type="checkbox" name="contactId" value={contact.id} form="pick-campaign"
+            disabled={!pickable} aria-label={`Select ${contact.displayName ?? 'contact'}`}
+            className="size-4 shrink-0 accent-accent disabled:opacity-30"
+          />
+          <div className="min-w-0">
           <p className="truncate text-sm font-medium">
             {contact.displayName ?? phone ?? email ?? 'Unnamed contact'}
           </p>
@@ -162,6 +248,7 @@ function ContactRow({ contact, allTags }: { contact: Contact; allTags: Tag[] }) 
             {detail === '' ? 'no contact details' : detail}
             {contact.source !== null && <> · from {contact.source}</>}
           </p>
+          </div>
         </div>
         {contact.doNotContact && (
           <span className="shrink-0 rounded-md border border-danger/50 px-2 py-0.5 text-[11px] text-danger">

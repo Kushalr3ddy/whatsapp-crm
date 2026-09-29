@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { listSenders, listTags, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { Sender, Tag } from '@/lib/crm';
+import {
+  listSenders, listTags, listImportRuns, CrmApiError, NotAuthenticatedError
+} from '@/lib/crm';
+import type { Sender, Tag, ImportRun } from '@/lib/crm';
 import { createCampaignAction } from '../actions';
 
 /** Rendered per request — the sender and tag pickers reflect live data. */
@@ -10,8 +12,8 @@ export const dynamic = 'force-dynamic';
 /** Turns a create error code from the redirect back into a human sentence. */
 function errorMessage(code: string): string {
   switch (code) {
-    case 'missing': return 'Fill in every field — a name, a message, a number and an audience tag.';
-    case 'NOT_FOUND': return 'That number or tag no longer exists. Pick another.';
+    case 'missing': return 'Fill in a name, a message, a number, and exactly one audience — a tag or an import.';
+    case 'NOT_FOUND': return 'That number, tag or import no longer exists. Pick another.';
     case 'VALIDATION_FAILED': return 'The message is too long, or a field was invalid.';
     default: return 'Could not create the campaign. Try again.';
   }
@@ -32,10 +34,11 @@ export default async function NewCampaignPage(
 
   let senders: Sender[] = [];
   let tags: Tag[] = [];
+  let imports: ImportRun[] = [];
   let failure: string | null = null;
   let expired = false;
   try {
-    [senders, tags] = await Promise.all([listSenders(), listTags()]);
+    [senders, tags, imports] = await Promise.all([listSenders(), listTags(), listImportRuns()]);
   } catch (e) {
     if (e instanceof NotAuthenticatedError) expired = true;
     failure = e instanceof CrmApiError
@@ -44,8 +47,8 @@ export default async function NewCampaignPage(
   }
   if (expired) redirect('/login?next=/broadcast/new');
 
-  // A campaign needs a number to send from and a tag to aim at. Say which is missing.
-  const canSend = senders.length > 0 && tags.length > 0;
+  // A campaign needs a number to send from and an audience — a tag or an import — to aim at.
+  const canSend = senders.length > 0 && (tags.length > 0 || imports.length > 0);
 
   return (
     <main className="mx-auto max-w-xl px-5 py-8">
@@ -68,7 +71,7 @@ export default async function NewCampaignPage(
         <p className="text-sm text-muted">
           {senders.length === 0
             ? 'Link a WhatsApp number first, on the Numbers tab.'
-            : 'Create a tag first, on the Contacts tab, and label the people you want to reach — a campaign aims at a tag.'}
+            : 'No audience yet — tag some contacts on the Contacts tab, or import a spreadsheet on the Import tab. A campaign aims at a tag or an import.'}
         </p>
       )}
 
@@ -111,23 +114,49 @@ export default async function NewCampaignPage(
             </select>
           </label>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Audience — everyone tagged</span>
-            <select
-              name="fromTagId" required defaultValue=""
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
-            >
-              <option value="" disabled>Choose a tag…</option>
-              {tags.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}{t.contactCount !== undefined ? ` · ${t.contactCount} contacts` : ''}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs text-muted">
-              Frozen when the campaign starts — adding to the tag later won&apos;t change the run.
-            </span>
-          </label>
+          <fieldset className="flex flex-col gap-2 rounded-md border border-border px-3 py-3">
+            <legend className="px-1 text-sm font-medium">Audience</legend>
+            <p className="text-xs text-muted">
+              Choose <em>one</em> — everyone carrying a tag, or everyone from an import. To pick
+              specific people instead, select them on the Contacts tab. Frozen when the campaign
+              starts, so changes afterwards won&apos;t alter the run.
+            </p>
+
+            {tags.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-muted">Everyone tagged</span>
+                <select
+                  name="fromTagId" defaultValue=""
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                >
+                  <option value="">— no tag —</option>
+                  {tags.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.contactCount !== undefined ? ` · ${t.contactCount} contacts` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {imports.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-muted">Everyone from an import</span>
+                <select
+                  name="fromImportRunId" defaultValue=""
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                >
+                  <option value="">— no import —</option>
+                  {imports.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.filename ?? 'import'} · {r.contactCount} contacts ·{' '}
+                      {new Date(r.createdAt).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </fieldset>
 
           <div className="flex items-center gap-2 pt-1">
             <button

@@ -6,6 +6,7 @@ import {
   createCampaign, startCampaign, pauseCampaign, cancelCampaign,
   CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
+import type { CampaignTarget } from '@/lib/crm';
 
 /**
  * Runs one campaign control (start/pause/cancel) on the server, then refreshes that campaign's
@@ -33,14 +34,21 @@ export async function createCampaignAction(formData: FormData): Promise<void> {
   const body = String(formData.get('body') ?? '').trim();
   const senderIdentityId = String(formData.get('senderIdentityId') ?? '');
   const fromTagId = String(formData.get('fromTagId') ?? '');
+  const fromImportRunId = String(formData.get('fromImportRunId') ?? '');
 
-  if (name === '' || body === '' || senderIdentityId === '' || fromTagId === '') {
+  // The audience is a tag or an import, exactly one. The form offers both selects with a "none"
+  // default; picking neither or both is a mistake worth a clear message rather than an API error.
+  const chosen: CampaignTarget[] = [];
+  if (fromTagId !== '') chosen.push({ fromTagId });
+  if (fromImportRunId !== '') chosen.push({ fromImportRunId });
+
+  if (name === '' || body === '' || senderIdentityId === '' || chosen.length !== 1) {
     redirect('/broadcast/new?error=missing');
   }
 
   let id: string;
   try {
-    const created = await createCampaign({ name, body, senderIdentityId, fromTagId });
+    const created = await createCampaign({ name, body, senderIdentityId, ...chosen[0]! });
     id = created.id;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');

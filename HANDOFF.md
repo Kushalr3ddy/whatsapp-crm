@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**445 tests · 24 of 35 specced tables · 16 migrations (through 0015).**
+**447 tests · 24 of 35 specced tables · 16 migrations (through 0015).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -108,12 +108,13 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   Recipients are the queue, so pausing is instant and a campaign cannot bury an agent's reply.
   The start response forecasts how many days it will take. Cancelled recipients are marked
   skipped with a reason, never dropped. **Targeting: an import run, an explicit contact list, or a
-  tag** (`from_tag_id`, migration 0015, resolved at snapshot). A **Broadcast web page** now lists
-  campaigns, **creates** one (name, message, sender, audience-by-tag), runs the
-  **start/pause/resume/cancel** controls, and shows **per-recipient results** (status filter +
-  name/number search, progress tiles, forecast, message body) via `GET /campaigns/:id/recipients`.
-  A draft shows a **pre-start dry-run preview** (`GET /campaigns/:id/preview`) — who it would reach
-  and how long, without freezing. UI targeting is tag-only for now (import/hand-pick exist in the API).
+  tag** (`from_tag_id`, migration 0015, resolved at snapshot) — all three now reachable from the UI.
+  A **Broadcast web page** lists campaigns, **creates** one (name, message, sender, audience by
+  **tag / import / hand-picked contacts**), shows a **pre-start dry-run preview**
+  (`GET /campaigns/:id/preview`), runs **start/pause/resume/cancel**, and shows **per-recipient
+  results** (status filter + name/number search, progress tiles, forecast, message body) via
+  `GET /campaigns/:id/recipients`. Hand-pick is on the Contacts page (row checkboxes → "campaign
+  from checked"); the audience-by-import list is `GET /imports`.
 - **Import — CSV and Excel (P5, first slice)**: upload → dry run → commit, now with a web
   **Import tab** and **.xlsx** support (exceljs, cells read as displayed text so a numeric phone
   survives; converted to CSV and fed the one pipeline). **Content-hash dedup**, so the same file
@@ -260,7 +261,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
-| **Campaigns UI — mostly there** (slices 1–2 landed 2026-09-29) | The **Broadcast** tab is a real, operable page: list campaigns → **create** one (name, message, sender, **audience by tag**) → **start / pause / resume / cancel** → **per-recipient results** (status filter + name/number search, progress tiles, forecast, message body). Backed by `GET /campaigns/:id/recipients`, a new **`from_tag_id`** targeting mode (migration 0015, resolved at snapshot), and a **pre-start dry-run preview** (`GET /campaigns/:id/preview`) that shows a draft's would-be audience + forecast without freezing anything. The old placeholder and its **false warning** are gone. **Still to add:** whole-import and hand-picked-contacts targeting *in the UI* (both exist in the API); **D-26** body variation in the compose step. |
+| ~~**Campaigns UI**~~ **— feature-complete for the alpha** (2026-09-29) | The **Broadcast** tab is a real, operable page: list → **create** (name, message, sender, audience by **tag / import / hand-picked contacts**) → **pre-start dry-run preview** → **start / pause / resume / cancel** → **per-recipient results** (status filter + name/number search, progress tiles, forecast, message body). Endpoints: `GET /campaigns/:id/recipients`, `GET /campaigns/:id/preview`, `GET /imports` (audience list), and `from_tag_id` targeting (migration 0015, resolved at snapshot). Hand-pick is on the Contacts page (row checkboxes → "campaign from checked", `form=` association so no nested forms). The old placeholder and its **false warning** are gone. **Only enhancement left:** **D-26** body variation (spintax) in the compose step, pinned separately. |
 
 ---
 
@@ -354,7 +355,19 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-29): Broadcast UI — pre-start dry-run preview (F5 AC-1).** A draft's page now
+**Most recent (2026-09-29): Broadcast UI — the last two targeting modes, so it is now
+feature-complete for the alpha.** **By import:** `GET /imports` lists committed, non-superseded
+runs with a `contactCount`, and the new-campaign form offers audience by **tag OR import** (two
+selects, exactly one). **Hand-picked:** the Contacts page grew a checkbox per row (disabled for
+do-not-contact) and a "Campaign from checked contacts" panel that creates a draft with
+`explicitContactIds` and jumps to it — the checkboxes belong to the panel's form by the HTML
+`form=` attribute, so nothing nests (rows already carry tag forms). 2 API tests (imports list:
+committed-only + counts, superseded hidden) → **447 total**; typecheck/lint/suite/`web:build`
+green. The whole Broadcast loop now works from the browser: create (tag/import/hand-pick) → dry-run
+preview → start/pause/resume/cancel → per-recipient results. Only **D-26** body variation is left,
+pinned. Next: **P6 recovery orchestration** (+ at-risk frontend warnings).
+
+**Before that (2026-09-29): Broadcast UI — pre-start dry-run preview (F5 AC-1).** A draft's page now
 shows what starting *would* do before you commit: "would message N · K skipped (no number) · T in
 the audience", plus the forecast, computed with **no writes**. New `GET /campaigns/:id/preview` +
 core `previewAudience()`, which reuses `snapshotAudience`'s exact audience rule as a reachability
@@ -480,13 +493,12 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      and a Contacts-page filter bar + chips + add/remove + new-tag form (server actions).
    - ~~**Per-recipient results**~~ — **done (2026-09-29), as Broadcast UI slice 1.**
      `GET /campaigns/:id/recipients` + the `/broadcast` list and `/broadcast/[id]` results view.
-   - **Broadcast UI — mostly built (Kushal, 2026-09-29):** the campaigns frontend, in slices.
-     **Done:** list · create (by tag) · start/pause/resume/cancel · per-recipient results ·
-     **pre-start dry-run preview**; the false-warning placeholder is gone. **Remaining, smaller:**
-     import-run and hand-picked-contacts targeting *in the UI* (both already in the API). **D-10**
-     (broadcast output vs the inbox) is effectively settled by the separate Broadcast surface.
-   - **Then, the agreed order:** finish **P6 recovery orchestration** (Layer 6 timed schedules +
-     the frontend at-risk warning), then **D-10**, **D-26**, **D-28**.
+   - ~~**Broadcast UI**~~ — **feature-complete for the alpha (Kushal, 2026-09-29).** list · create
+     (tag / import / hand-picked) · dry-run preview · start/pause/resume/cancel · per-recipient
+     results; the false-warning placeholder is gone. **D-10** (broadcast output vs the inbox) is
+     settled by the separate Broadcast surface. Only **D-26** body variation remains (pinned).
+   - **Now on to (agreed order):** **P6 recovery orchestration** (Layer 6 timed schedules + the
+     frontend at-risk warning), then **D-26**, **D-28**.
    - **Pinned, priority:** **D-19** templates + **D-26** body variation (ship together);
      **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something

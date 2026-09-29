@@ -356,3 +356,32 @@ describe('Excel (.xlsx)', () => {
     expect(r.body.code).toBe('MALFORMED_XLSX');
   });
 });
+
+describe('listing runs to target', () => {
+  it('lists a committed run with its contact count, and hides dry runs', async () => {
+    // A dry run must not appear — it created nobody, so it is not an audience.
+    const dry = await upload(THREE_ROWS);
+    await run(dry.body.data.id, true);
+    // A real commit does.
+    const committed = await upload(THREE_ROWS, '?force=true');
+    await run(committed.body.data.id, false);
+
+    const r = await request(app).get('/api/v1/imports').set(...auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data).toHaveLength(1);
+    expect(r.body.data[0]).toMatchObject({ id: committed.body.data.id, contactCount: 3 });
+  });
+
+  it('hides a run that was superseded by a re-import', async () => {
+    const first = await upload(THREE_ROWS);
+    await run(first.body.data.id, false);
+    // A forced re-import of the same bytes supersedes the first run.
+    const again = await upload(THREE_ROWS, '?force=true');
+    await run(again.body.data.id, false);
+
+    const r = await request(app).get('/api/v1/imports').set(...auth());
+    const ids = (r.body.data as Array<{ id: string }>).map((x) => x.id);
+    expect(ids).toContain(again.body.data.id);
+    expect(ids).not.toContain(first.body.data.id);
+  });
+});
