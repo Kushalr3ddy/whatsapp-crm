@@ -181,12 +181,13 @@ npm run admin -- org --name "Hiring Studios" --slug hiring-studios --email you@e
 **On this machine that is already done.** The org is **Hiring Studios** (`hiring-studios`,
 `5f82ad62-…`) with one admin, `developer@hiringstudios.com`.
 
-**There is deliberate test data in the dev database.** One contact,
-`[TEST DATA - DO NOT TOUCH] media demo +919999000001` (`source = 'test_fixture'`), with two
-messages and two `media_asset` rows named `[TEST] …`, plus their files under `./storage`. They
-existed so the media endpoint could be exercised without a live WhatsApp file. **D-14 is now
-closed and media is proven against a real attachment, so these are safe to delete** — still
-present pending the call. `npm run admin -- whoami` lists
+**The `[TEST DATA]` fixtures are gone (deleted 2026-09-29).** There was one contact,
+`[TEST DATA - DO NOT TOUCH] media demo +919999000001` (`source = 'test_fixture'`), with a
+conversation, two messages, two `media_asset` rows named `[TEST] …` and their stub files under
+`./storage`, kept so the media endpoint could be exercised without a live WhatsApp file. D-14
+closed and media is proven against a real attachment, so they were removed (rows in FK order +
+the blobs and their `.meta` sidecars). The only file left under `storage/.../media/` is the
+genuine D-14 JPEG (`0c764e48-…`, 49,408 bytes). `npm run admin -- whoami` lists
 organisations; `npm run admin -- password --email developer@hiringstudios.com` sets a new
 password and ends every session on the account.
 
@@ -430,12 +431,15 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
 **Deferred / parked (not now):**
 - **P8 Meta Cloud API adapter** — beyond the alpha core.
 - **P1 close-out** (compose file, `email`/`secrets` drivers) — deliberately left for now.
-- **`[TEST DATA]` fixtures** — now safe to delete (media proven); still in the dev DB pending the call.
+- ~~**`[TEST DATA]` fixtures**~~ — **deleted 2026-09-29.** Rows and stub files gone; only the real D-14 JPEG remains.
 - **D-17** live inbound + presence/collision (WebSocket) · **D-18** snooze/Meta-window/keyboard ·
   **D-19** rich templates · **D-20** SQLite · **D-21** full import wizard · **D-22** row-level
   dedup · **D-24** typing simulation.
 - **Deployment** — where the production database is decided. **`ENCRYPTION_KEY` must be backed up
   separately from the database** — losing it loses every linked number and every stored message.
 
-**One loose end:** an untracked `whatsapp-crm (local)-*.yaml` (Kushal's Insomnia export) sits in
-the repo root, left alone pending a decision to delete / gitignore / keep.
+**Both loose ends closed 2026-09-29:** the `[TEST DATA]` fixtures were deleted (above), and the
+stray Insomnia workspace export at the repo root (`whatsapp-crm (local)-wrk_*.yaml`) was removed
+— it was tracked, not untracked as previously noted — with a `.gitignore` rule added so per-workspace
+Insomnia exports can't be committed again (the curated collection stays at
+`tools/insomnia-collection.json`). Committed straight to main (`288c361`).

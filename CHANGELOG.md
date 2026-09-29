@@ -13,6 +13,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Housekeeping: nuked the `[TEST DATA]` fixtures and the stray Insomnia export
+- **Deleted the `[TEST DATA]` dev-DB fixtures** (safe since D-14 closed and media is proven against
+  a real file): the `test_fixture` contact, its conversation, two messages, two `[TEST]` media
+  assets, and the stub blobs + `.meta` sidecars under `storage/`. Removed in FK order in one
+  transaction; the only media file left is the genuine D-14 JPEG (`0c764e48-…`, 49,408 bytes).
+- **Removed the committed Insomnia workspace export** `whatsapp-crm (local)-wrk_*.yaml` from the
+  repo root (it was tracked, not untracked as the handoff had said) and added a `.gitignore` rule
+  so per-workspace exports can't be committed again — the curated collection stays at
+  `tools/insomnia-collection.json`. Commit `288c361`.
+
 ### 2026-09-29 — Handoff refresh for a fresh chat + issue logged
 - Brought `HANDOFF.md`, `CHANGELOG.md` (this by-phase section) and — at Kushal's request —
   `CONTEXT.md` (a consolidated session-026 catch-up entry; the log had been paused since 025)
