@@ -760,3 +760,33 @@ delay is bounded. No schema change, no new table.
 
 **Cost of deferring:** none — additive, touches only the gateway's send path, and layers 1–2
 already provide the actual burst protection.
+
+---
+
+## D-25 · Outbound media (sending files) — **HIGH PRIORITY**
+
+**What:** sending an image or document, not just receiving one. Inbound media is fully built —
+downloaded, typed from magic bytes, stored, served, and shown in the thread — but the **send path
+is text-only**: `POST /messages` takes only a `body`, and `handleSend` calls the provider with
+`{ kind: 'freeform', body }` and no attachment.
+
+**Why pinned rather than built now:** parked only to be scheduled deliberately, **not
+deprioritised — this is the top of the queue.** It is the most visible half-built feature (you can
+receive a CV but not send one back), and it is a contained vertical slice because the hard part —
+storage, typing, unguessable keys, safe serving — already exists for inbound.
+
+**What it takes (so it is not re-derived):**
+- An **upload endpoint** (or multipart on `POST /messages`) that stores the file through the
+  existing `StorageDriver` and creates a `media_asset` row, exactly as inbound does.
+- Carry `media_id` on the queued `message` (the column already exists).
+- Extend the send path: `OutboundContent` / `handleSend` pass the file to `provider.send`, and the
+  Baileys adapter sends it as an image/document. The `ChannelProvider` port's `freeform(text,
+  media?)` already anticipates this — `media?` is declared and unused.
+- The composer in the web inbox gets an attach control.
+
+**What brings it back:** it is the next build once the current one lands. No trigger needed beyond
+scheduling it.
+
+**Cost of deferring:** real but bounded — the product can receive files and not send them, which
+is a visible gap for a CRM whose contacts send CVs. No data is lost by waiting; it is a missing
+capability, not a defect.

@@ -13,8 +13,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Pin outbound media (D-25, high priority); move getting-started to repo root
+- **Outbound media pinned as D-25 and flagged HIGH PRIORITY** — sending files is the top of the
+  queue (inbound media is fully built; the send path is text-only). The pin records exactly what it
+  takes so it can be picked up cold. Inbox **search stays pinned as D-23** (deprioritised, for later).
+- **`docs/27-getting-started.md` moved to `GETTING_STARTED.md` at the repo root** — a run guide
+  belongs beside `README.md`, not inside the numbered design docs. Internal links and both indexes
+  updated; the numbered-docs sequence resumes at the next number after 26.
+
 ### 2026-09-29 — Getting-started doc (clone → running)
-- New **[docs/27-getting-started.md](docs/27-getting-started.md)**: a from-zero runbook (prereqs,
+- New **[GETTING_STARTED.md](GETTING_STARTED.md)** at the repo root: a from-zero runbook (prereqs,
   install, the five `.env` secrets, `db:setup`, provisioning the first org/admin, `dev:all`, sign
   in + link, verify, stop/start, troubleshooting) so anyone can clone and run it. Linked from the
   README and the docs index.

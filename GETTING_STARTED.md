@@ -1,11 +1,11 @@
-# 27 · Getting started — clone to running
+# Getting started — clone to running
 
 The shortest path from a fresh `git clone` to a working instance you can sign into and link a
 number on. Written to be followed top to bottom with no prior knowledge of the project; if a term
-is unfamiliar, [`20-orientation.md`](20-orientation.md) explains the whole stack from zero.
+is unfamiliar, [`20-orientation.md`](docs/20-orientation.md) explains the whole stack from zero.
 
 > **Read this first.** This runs **Baileys**, an unofficial WhatsApp client. Pointing it at a real
-> number can get that number **banned permanently, with no appeal** ([`08-antiban.md`](08-antiban.md)).
+> number can get that number **banned permanently, with no appeal** ([`08-antiban.md`](docs/08-antiban.md)).
 > Use a number you can afford to lose. The anti-ban engine reduces the risk; it cannot remove it.
 
 ---
@@ -63,7 +63,7 @@ default.
 
 > **Back up `ENCRYPTION_KEY` and `ENCRYPTION_INDEX_KEY` now**, in a password manager, somewhere
 > that is **not** the repo and **not** a database backup. A backup holding both the encrypted data
-> and its key is a backup of plaintext. See [`22-encryption.md`](22-encryption.md).
+> and its key is a backup of plaintext. See [`22-encryption.md`](docs/22-encryption.md).
 
 ---
 
@@ -136,7 +136,7 @@ steps 2–5 first (`npm install`, `.env`, `npm run db:setup`, provisioning). Con
    **WhatsApp → Settings → Linked Devices → Link a device**. The QR expires in under a minute —
    click again for a fresh one. Once connected, the card shows the number as healthy.
 3. Open the **Inbox**, pick a conversation, and send. Or over HTTP — see
-   [`24-local-testing.md`](24-local-testing.md) for getting an API key and exercising every endpoint.
+   [`24-local-testing.md`](docs/24-local-testing.md) for getting an API key and exercising every endpoint.
 
 ---
 
@@ -173,16 +173,16 @@ including linked numbers — it asks for confirmation because it is irreversible
 | `port 3000 is already in use` | A previous run is still up. Find it: `ss -ltnp \| grep 3000` |
 | A message stays `queued` forever | The gateway is not running, or no number is linked |
 | Migrations land in the wrong place | There may be a **second Postgres on 5432**; this project uses **5434** |
-| Everything returns empty for a real org | Read the `rls:` line `dev:all` prints — a wrong database role shows up as silence, not an error ([`09-security.md`](09-security.md)) |
+| Everything returns empty for a real org | Read the `rls:` line `dev:all` prints — a wrong database role shows up as silence, not an error ([`09-security.md`](docs/09-security.md)) |
 | `npm run web:build` fails while the UI runs | Both write `apps/web/.next`; stop the dev server first |
-| Sends work but nothing ever arrives | Check the gateway log for `Bad MAC`; unlink and re-link the number ([`26-linking-lifecycle.md`](26-linking-lifecycle.md)) |
+| Sends work but nothing ever arrives | Check the gateway log for `Bad MAC`; unlink and re-link the number ([`26-linking-lifecycle.md`](docs/26-linking-lifecycle.md)) |
 
 One more, easy to hit in the cloud: **`SEND_TIMEZONE` is set explicitly, not read from the server
 region.** If you deploy to a different timezone, set it to the number's real local zone or the
-"quiet overnight" pacing lands on the wrong hours ([`08-antiban.md`](08-antiban.md)).
+"quiet overnight" pacing lands on the wrong hours ([`08-antiban.md`](docs/08-antiban.md)).
 
 ---
 
-**Next:** [`20-orientation.md`](20-orientation.md) explains the stack and every code prefix;
-[`24-local-testing.md`](24-local-testing.md) is the by-hand API walkthrough; [`README.md`](../README.md)
+**Next:** [`20-orientation.md`](docs/20-orientation.md) explains the stack and every code prefix;
+[`24-local-testing.md`](docs/24-local-testing.md) is the by-hand API walkthrough; [`README.md`](README.md)
 is the top-level overview.

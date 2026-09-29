@@ -55,7 +55,7 @@ Read these before deciding to use it.
 
 Verified end to end on 2026-09-19: a real number linked, a real message sent and delivered.
 
-**Fresh clone? [docs/27 · Getting started](docs/27-getting-started.md)** is the full step-by-step
+**Fresh clone? [GETTING_STARTED.md](GETTING_STARTED.md)** is the full step-by-step
 (prerequisites, secrets, database, provisioning, running, troubleshooting). The short version:
 
 ### What you need
@@ -244,7 +244,7 @@ everything from zero: the technology, the jargon, and what all the `M`/`P`/`F` c
 
 | | |
 |---|---|
-| [27 Getting started](docs/27-getting-started.md) | **Run it** — fresh clone to a signed-in instance, step by step |
+| [Getting started](GETTING_STARTED.md) | **Run it** — fresh clone to a signed-in instance, step by step |
 | [20 Orientation](docs/20-orientation.md) | **Start here** — the project and the stack, assuming no prior knowledge |
 | [00 Prior art](docs/00-prior-art.md) | What the previous system got wrong, and the rule each defect became |
 | [01 Vision & scope](docs/01-vision-scope.md) | What this is, who it is for, explicit non-goals |
