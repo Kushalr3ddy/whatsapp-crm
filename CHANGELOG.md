@@ -13,6 +13,15 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Getting-started doc (clone → running)
+- New **[docs/27-getting-started.md](docs/27-getting-started.md)**: a from-zero runbook (prereqs,
+  install, the five `.env` secrets, `db:setup`, provisioning the first org/admin, `dev:all`, sign
+  in + link, verify, stop/start, troubleshooting) so anyone can clone and run it. Linked from the
+  README and the docs index.
+- Records the thing that trips people up: **`dev:all` runs the stack but does not do the one-time
+  setup** — it starts the db + migrates the dev database and starts all three processes, but does
+  not `npm install`, create `.env`, provision the org/admin, or migrate the test database.
+
 ### 2026-09-29 — Sender-health panel in the Numbers page
 - Surfaces what the anti-ban engine is doing to each number, so an operator sees *why* it was
   degraded or quarantined instead of a bare status. On each card on `/link`: a colour-coded band
