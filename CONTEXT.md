@@ -1793,3 +1793,41 @@ written at the time. Its work was `docs/12-testing.md` and `docs/assets/README.m
 commit message (94b4772) carries the reasoning in full.
 
 **Files:** `docs/assets/testers.png`, `CONTEXT.md`
+
+---
+
+## 2026-09-29 · Session 026 · Catch-up: the log resumes (D-14 → anti-ban complete → contacts/tags)
+
+**Decided:** Resume this log at Kushal's request. It was paused after session 025 (2026-09-20)
+when `HANDOFF.md` + `CHANGELOG.md` became the primary record. The work below was **not** written
+per-session, so this is one honest consolidated catch-up, not a backfill pretending each entry was
+written at the time — the same rule the 024c note set. `CHANGELOG.md` holds the per-feature detail;
+this is the delta since session 025.
+
+**Built (2026-09-21 → 2026-09-29), newest last:**
+- **D-14 closed** — the `kushal test number` was re-linked from a fresh QR, inbound came back to
+  life, and media was verified end to end against a real WhatsApp JPEG for the first time.
+- **P4 inbox** filled out earlier in the stretch (assignment/status/filters, internal notes,
+  canned replies, thread lock, attachments in the thread) — see the changelog.
+- **P6 anti-ban engine completed** — circadian pacing, contact-graph gates, and health scoring
+  (all six layers), each opt-in and tested, enforced at the one send chokepoint; a **sender-health
+  panel** on the Numbers page. Health scoring recovers a number's status **both directions** with
+  hysteresis — the trap this project had hit three times.
+- **Contacts** — list + search (`GET /contacts`, plain `ILIKE`) and **tags** (`tag`/`contact_tag`,
+  migration 0014, attach/detach, `?tag=` filter, a Contacts web page).
+- **Compliance reframed** as the operator's responsibility (jurisdiction-neutral), keeping the
+  anti-ban-crucial parts (`do_not_contact`, opt-out, no purchased lists, the ban-risk disclosure).
+- **Docs** — plain-terms explanations into `20-orientation.md`; `GETTING_STARTED.md` moved to the
+  repo root; the four ADRs retired and folded into the docs they belong to.
+
+**Open / next:** **per-recipient results** — the last greenlit item, and the first real piece of a
+campaigns UI. Campaigns have a working API but **no UI**: the Broadcast tab is a stale
+`ComingSoon` placeholder whose warning ("no rate limiting anywhere") is now false. See
+`HANDOFF.md` Known defects. Deferred queue: outbound media (D-25), templates + body variation
+(D-19/D-26), inbox search (D-23), dynamic segments (D-28).
+
+**Why the log paused, honestly:** HANDOFF + CHANGELOG genuinely cover state and the work-ledger
+better for a fast-moving build; this file is now a historical record, updated when Kushal asks.
+
+**Files:** too many to list individually — `CHANGELOG.md` (per feature) and `HANDOFF.md` (current
+state) are authoritative. This entry: `CONTEXT.md`.

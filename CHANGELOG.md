@@ -13,6 +13,15 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Handoff refresh for a fresh chat + issue logged
+- Brought `HANDOFF.md`, `CHANGELOG.md` (this by-phase section) and — at Kushal's request —
+  `CONTEXT.md` (a consolidated session-026 catch-up entry; the log had been paused since 025)
+  current: build state, counts (427 tests, 15 migrations), what works, recent work.
+- **Issue logged** (`HANDOFF.md` Known defects): **campaigns have no UI** — the Broadcast tab is a
+  `ComingSoon` placeholder, so a built feature is invisible, and its warning ("no rate limiting
+  anywhere in the send path") is now false since the whole anti-ban engine exists. Flagged while
+  Kushal was checking out the build.
+
 ### 2026-09-29 — Tags: label contacts and filter by them
 - New `tag` + `contact_tag` tables (migration `0014`, RLS forced, granted to `crm_app`;
   `contact_tag` carries `org_id` like every tenant table so RLS scopes it directly, composite PK
@@ -380,6 +389,9 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 - Row-level security forced on every tenant table from migration 1.
 - `audit_log`: append-only, RLS'd, `UPDATE`/`DELETE` revoked, written in the change's transaction.
 - `npm run admin` CLI for provisioning and support.
+- Contacts: `POST /contacts` (create), `GET /contacts` (list + search by name/phone/email), and
+  **tags** (`tag`/`contact_tag`, attach/detach, `?tag=` filter) with a Contacts web page.
+- ❌ Custom-field definitions, segments (dynamic), pipelines, consent records (optional).
 
 ### P3 · Channels — ✅
 - Baileys adapter: link by QR **or** pairing code, send, receive, delivery receipts, auto-reconnect.
@@ -390,24 +402,29 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ### P4 · Inbox — ⚠️ partial
 - ✅ Conversation list, thread view, composer; message bodies encrypted at rest.
-- ✅ **Chunk 1 (2026-09-25):** assignment, status, list filters (see *Latest*).
-- ❌ Notes, canned replies, realtime/presence, search, snooze, priority, Meta window countdown,
-  keyboard shortcuts, attachments in the thread UI. (See *To do*.)
+- ✅ Assignment, status, list filters; internal notes; canned replies; thread lock; mark-read /
+  open-any-thread; **attachments render in the thread** (web `/media/:id` proxy).
+- ❌ Search (pinned **D-23**), realtime/presence (**D-17**), snooze/Meta-window/keyboard (**D-18**).
 
 ### P5 · Ingestion — ✅ first slice
-- CSV import: upload → dry run → commit. Content-hash dedup; partial unique index + `?force=true`
-  re-import supersedes the old run. Per-row ledger, phone normalisation, sparse-file guard.
-- ❌ Excel, Google Sheets, REST puller, schedules, mapping UI.
+- CSV **and Excel (.xlsx)** import: upload → dry run → commit. Content-hash dedup; partial unique
+  index + `?force=true` re-import supersedes; per-row ledger, phone normalisation, sparse guard;
+  a web Import tab with simple column mapping.
+- ❌ Google Sheets, REST puller, webhook source, schedules, full mapping wizard (**D-21**).
 
-### P6 · Anti-ban — ⚠️ layers 1–2 of 6
-- ✅ Warmup ramp, per minute/hour/day ceilings, Gaussian jitter, counted from the `message` table
-  (survives restarts); an override may only *lower* a ceiling.
-- ❌ Layers 3–6: typing simulation, circadian pacing, contact-graph gates, health scoring, recovery.
+### P6 · Anti-ban — ✅ mostly (all six layers built)
+- ✅ Warmup ramp, per minute/hour/day ceilings, Gaussian jitter (counted from `message`,
+  restart-safe; an override may only *lower* a ceiling); **circadian pacing**; **contact-graph
+  gates**; **health scoring** (auto-degrade → quarantine, recovers both directions); a
+  **sender-health panel** on the Numbers page.
+- ❌ Per-incident recovery *schedules* (timed pause/resume ramps); typing simulation (**D-24**).
 
-### P7 · Campaigns — ✅ first slice
-- Create draft, freeze the audience at start, gateway paces recipients to the anti-ban ceiling,
-  instant pause, day-count forecast, cancelled recipients marked skipped with a reason.
-- ❌ Templates (a campaign carries a plain body).
+### P7 · Campaigns — ✅ first slice (API only, **no UI**)
+- Create draft, freeze the audience at start (target a whole import via `fromImportRunId` or an
+  explicit id list), gateway paces recipients through the full anti-ban engine, instant pause,
+  day-count forecast, cancelled recipients marked skipped with a reason.
+- ❌ **No UI** — the Broadcast tab is a stale "coming soon" placeholder (see `HANDOFF.md` Known
+  defects). ❌ Templates + body variation (**D-19**/**D-26**), per-recipient results view.
 
 ### P8 · Meta Cloud API — ❌ not started
 

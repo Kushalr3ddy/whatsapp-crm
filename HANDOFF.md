@@ -1,10 +1,10 @@
-# Handoff — state as of 2026-09-28
+# Handoff — state as of 2026-09-29
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
 is*, read [`docs/20-orientation.md`](docs/20-orientation.md), which explains the project and the
-whole stack assuming no prior knowledge. (`CONTEXT.md` is **retired** — it is no longer
-maintained; `HANDOFF.md` + `CHANGELOG.md` replace it.)
+whole stack assuming no prior knowledge. (`CONTEXT.md` is a **historical session log**, updated on
+request; `HANDOFF.md` + `CHANGELOG.md` are the primary, always-current record.)
 
 ---
 
@@ -28,12 +28,12 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 |---|---|---|
 | P0 | Docs — 42 files | ✅ |
 | P1 | Skeleton — Express, config gate, migrations, CI | **overstated** |
-| P2 | Core domain — orgs, users, sessions, API keys, RLS | **mostly** |
+| P2 | Core domain — orgs, users, sessions, API keys, RLS; contacts (create, **list + search**), **tags** | **mostly** |
 | P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
-| P4 | Inbox — list/thread/composer, **assignment + status + filters** | **partial** |
-| P5 | Ingestion — CSV import | **first slice** |
+| P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments | **partial** (search + realtime left) |
+| P5 | Ingestion — CSV **+ Excel** import | **first slice** |
 | P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring | **✅ mostly** (recovery schedules + typing sim D-24 left) |
-| P7 | Campaigns — bulk send, paced | **first slice** |
+| P7 | Campaigns — bulk send, paced (API only, **no UI** — see Known defects) | **first slice** |
 | P8 | Meta Cloud API | not started |
 
 **D-14 is CLOSED (2026-09-28).** Inbound is alive again after a re-link, and media was verified
@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**375 tests in 29 files · 87 source files · 22 of 35 specced tables · 14 migrations · 84 commits.**
+**427 tests · 24 of 35 specced tables · 15 migrations (through 0014).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -119,10 +119,21 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   the host app uses. Phone/email (at least one), optional `customFields` and `externalRef` (the
   candidate-id hook). Phone through the one normaliser; an identity that already names someone is
   a `409 CONTACT_EXISTS`, never a silent merge; identities scoped per org.
-- **Send pacing (P6 layers 1–2)**: warmup ramp (20/36/65/117/210/378/680 then steady), per
-  minute · hour · day ceilings, and a Gaussian-jittered 1.5–4 s pause before each send. Counted
-  from the `message` table, so it survives restarts and replicas. A paced message is left
-  queued, never failed. An override may only *lower* a ceiling.
+- **Anti-ban engine (P6, all six layers)** — enforced at the one send chokepoint, counted from
+  the `message` table (restart-safe), a paced message left queued not failed:
+  **warmup** ramp (20/36/65/117/210/378/680 then steady), per minute/hour/day **ceilings**,
+  Gaussian **jitter**, **circadian pacing** (day/night cosine curve, silent overnight,
+  `SEND_TIMEZONE`), **contact-graph gates** (relationship delay 1.0/1.8/2.5×, new-stranger cap
+  5/hr · 20/day), and **health scoring** (per-sender risk from delivery/failure/disconnect →
+  auto-degrade → quarantine, and **recovers both directions** with hysteresis). A **sender-health
+  panel** on the Numbers page shows the band, risk score, delivery %, and reply breakdown per
+  number. Left: per-incident recovery *schedules* and typing simulation (**D-24**).
+- **Contacts list, search & tags (P2)**: `GET /contacts` lists and searches by name/phone/email
+  (plain `ILIKE` — contact fields aren't encrypted, so no blind-index decision); `tag` +
+  `contact_tag` tables with `GET/POST /tags`, `DELETE /tags/:id`, attach/detach on
+  `/contacts/:id/tags`, and a `?tag=` filter on the list. A **Contacts** web page: search box, tag
+  filter bar with counts, chips (click to remove), add-tag picker, new-tag form (server actions).
+  This is how an operator finds and labels specific imported people to hand-pick a campaign audience.
 - **Row-level security on the request path**: every tenant query runs in a transaction with
   `app.org_id` set, and — because the app connects as a role that would otherwise bypass
   policies entirely — drops to the restricted `crm_app` role for the length of that
@@ -239,6 +250,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
+| **Campaigns have no UI** (flagged 2026-09-29) | The **Broadcast** tab is a `ComingSoon` placeholder (`apps/web/app/broadcast/page.tsx`), so a **built** feature is invisible — campaigns have a working API (create/start/pause/cancel, paced by the full anti-ban engine, `fromImportRunId`/`explicitContactIds` targeting). Worse, the placeholder's **warning is now false**: it says *"no rate limiting anywhere in the send path"*, but the entire anti-ban engine (six layers) exists. Needs a real campaigns UI (create → target → forecast → start/pause → per-recipient status) and the stale warning removed. Related: the greenlit **per-recipient results** view is the natural first piece. |
 
 ---
 
@@ -332,7 +344,20 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-28): D-14 closed + a documentation-consistency pass.** The `kushal test
+**Most recent (2026-09-29): P6 anti-ban engine completed + the contacts/tags foundation.**
+Three anti-ban layers landed at the one send chokepoint, each opt-in and tested: **circadian
+pacing** (day/night cosine curve, silent overnight, `SEND_TIMEZONE`), **contact-graph gates**
+(relationship delay 1.0/1.8/2.5× + new-stranger cap 5/hr·20/day), and **health scoring**
+(per-sender risk from delivery/failure/disconnect → auto-degrade → quarantine, recovering both
+directions with hysteresis). A **sender-health panel** surfaces them on the Numbers page. Then the
+contacts side: **contact list + search** (`GET /contacts`, plain `ILIKE`) and **tags** (`tag` +
+`contact_tag`, migration 0014, attach/detach, `?tag=` filter, a Contacts page with filter bar +
+chips + new-tag form). Also: **compliance reframed** as the operator's responsibility
+(jurisdiction-neutral, keeping the anti-ban-crucial `do_not_contact`/opt-out/no-purchased-lists);
+**plain-terms explanations** added to `20-orientation.md`; **`GETTING_STARTED.md`** runbook at the
+repo root. 427 tests. Everything eye-verified against the real dev DB where it had a UI.
+
+**Before that (2026-09-28): D-14 closed + a documentation-consistency pass.** The `kushal test
 number` was re-linked from a fresh QR and inbound came back to life — 5 rows landed, **zero**
 `Bad MAC` failures (was 17 frames failing), and an inbound image stored as a genuine JPEG
 (1126×600, 49,408 bytes, `image/jpeg` from magic bytes, sha256 set, bytes-on-disk matching): the
