@@ -804,8 +804,10 @@ capability, not a defect.
 
 ## D-26 · Campaign body variation (spintax + per-recipient) — **PRIORITY**
 
-> **Priority (2026-09-29):** in the near-term build queue, and it **lands with templates (D-19)** —
-> body variation is a template feature, so the two ship together.
+> **Unpinned (2026-09-29):** promoted into the active build queue and **decoupled from templates
+> (D-19)** — it is built on its own, right after P6 recovery orchestration. Earlier it was pinned to
+> ship with D-19; that coupling is dropped. Spintax + per-recipient variables can layer onto the
+> plain campaign `body` that exists today without waiting for the full template system.
 
 **What:** stop a campaign sending **byte-identical bodies** to everyone — spintax and
 per-recipient variables so each rendered message differs, and the dispatcher refusing more than N

@@ -496,11 +496,11 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    - ~~**Broadcast UI**~~ — **feature-complete for the alpha (Kushal, 2026-09-29).** list · create
      (tag / import / hand-picked) · dry-run preview · start/pause/resume/cancel · per-recipient
      results; the false-warning placeholder is gone. **D-10** (broadcast output vs the inbox) is
-     settled by the separate Broadcast surface. Only **D-26** body variation remains (pinned).
+     settled by the separate Broadcast surface.
    - **Now on to (agreed order):** **P6 recovery orchestration** (Layer 6 timed schedules + the
-     frontend at-risk warning), then **D-26**, **D-28**.
-   - **Pinned, priority:** **D-19** templates + **D-26** body variation (ship together);
-     **D-25** outbound media (high).
+     frontend at-risk warning), then **D-26 body variation** (unpinned 2026-09-29 — built on its
+     own now, **no longer gated behind D-19 templates**), then **D-28**.
+   - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
      simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences).
    Legal/compliance reframed as the operator's job (jurisdiction-neutral); opt-out is **D-27**.
