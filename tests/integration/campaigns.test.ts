@@ -523,3 +523,23 @@ describe('isolation', () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe('body variation on dispatch (D-26)', () => {
+  it('renders spintax and {{name}} into each recipient’s message', async () => {
+    const created = await create(contactIds.slice(0, 3), '{Hi|Hey} {{name}}');
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    await dispatchCampaigns(gatewayCtx());
+
+    const rows = await db.execute(sql`
+      SELECT body_enc AS "bodyEnc" FROM message WHERE campaign_id = ${id}`);
+    const bodies = (rows as unknown as Array<{ bodyEnc: Uint8Array }>)
+      .map((r) => new TextDecoder().decode(kms.decrypt(r.bodyEnc)));
+
+    expect(bodies).toHaveLength(3);
+    // Each is a rendered copy: one of the spintax openers, then the contact's own name.
+    for (const b of bodies) expect(b).toMatch(/^(Hi|Hey) Person [0-9]$/);
+    // And the names differ — the variable was filled per recipient, not left literal.
+    expect(new Set(bodies).size).toBe(3);
+  });
+});

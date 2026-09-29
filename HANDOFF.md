@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**458 tests · 24 of 35 specced tables · 17 migrations (through 0016).**
+**465 tests · 24 of 35 specced tables · 17 migrations (through 0016).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -114,7 +114,9 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   (`GET /campaigns/:id/preview`), runs **start/pause/resume/cancel**, and shows **per-recipient
   results** (status filter + name/number search, progress tiles, forecast, message body) via
   `GET /campaigns/:id/recipients`. Hand-pick is on the Contacts page (row checkboxes → "campaign
-  from checked"); the audience-by-import list is `GET /imports`.
+  from checked"); the audience-by-import list is `GET /imports`. Each recipient's copy is
+  **rendered** at dispatch — **spintax** (`{Hi|Hey}`) + **`{{name}}`** (D-26, `renderBody`) — so a
+  campaign is not 500 identical strings.
 - **Import — CSV and Excel (P5, first slice)**: upload → dry run → commit, now with a web
   **Import tab** and **.xlsx** support (exceljs, cells read as displayed text so a numeric phone
   survives; converted to CSV and fed the one pipeline). **Content-hash dedup**, so the same file
@@ -358,7 +360,19 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-29): P6 recovery orchestration (Layer 6) — the anti-ban engine is now
+**Most recent (2026-09-29): D-26 campaign body variation (spintax + `{{name}}`).** A campaign no
+longer sends byte-identical text to everyone. `renderBody` in `@crm/core` (`body-variation.ts`)
+resolves **spintax** (`{Hi|Hey|Hello}`, nested, resolved first on the operator's template) then
+fills **variables** (`{{name}}` / `{{contact.name}}` from the contact, inserted last so an odd
+display name cannot corrupt the parse); `dispatchCampaign` renders each recipient's copy before
+encrypting it, and both campaign compose UIs hint at the syntax. 7 new tests (spintax pick/nest,
+variable fill, spintax-before-vars safety, per-recipient variance, and an end-to-end dispatch that
+decrypts three messages and checks each is a rendered copy). Still open — the smaller half — is the
+dispatcher's **"refuse >N identical bodies in a window"** guard (moot when spintax is used, unbuilt
+for a no-variation body). Also pinned this round: **D-29** anti-ban advisory mode (warn-but-don't-
+enforce override — resisted by design, so recorded not built).
+
+**Before that (2026-09-29): P6 recovery orchestration (Layer 6) — the anti-ban engine is now
 complete.** A typed incident starts a **timed** response beyond the scorer's status recovery: a
 **463** timelock → 24 h pause then 10 % of cap, +15 %/week; a **429** → 4 h then 25 %, +25 %/week; a
 delivery-collapse **soft ban** → 48 h then 5 %, +10 %/week. State is three `sender_identity` columns
@@ -518,8 +532,10 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    - ~~**P6 recovery orchestration**~~ — **done (2026-09-29).** Layer 6 timed pause/ramp schedules
      (463/429/soft-ban) + the Numbers-page at-risk / cooling-off banner. The anti-ban engine is now
      complete (all six layers).
-   - **Now on to:** **D-26 body variation** (spintax + per-recipient vars on the campaign body;
-     unpinned + decoupled from D-19), then **D-28**.
+   - ~~**D-26 body variation**~~ — **mostly done (2026-09-29).** Spintax + `{{name}}` rendered
+     per recipient at dispatch (`renderBody`); the "refuse N identical bodies" guard is the small
+     remaining half (moot when spintax is used).
+   - **Now on to:** **D-28** dynamic segments (criteria-based audiences), when Kushal wants it.
    - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
      simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences);

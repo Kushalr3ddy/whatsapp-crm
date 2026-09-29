@@ -94,7 +94,9 @@ export default async function NewCampaignPage(
               className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
             />
             <span className="text-xs text-muted">
-              The same text goes to everyone for now. Per-recipient variation is coming.
+              Use <code>{'{{name}}'}</code> for the contact&apos;s name, and{' '}
+              <code>{'{Hi|Hey|Hello}'}</code> to vary the wording — each recipient gets a slightly
+              different message, which is safer than 500 identical sends.
             </span>
           </label>
 

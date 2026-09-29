@@ -13,6 +13,24 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — D-26 campaign body variation (spintax + {{name}}); D-29 pinned
+- A campaign no longer sends byte-identical text. New `@crm/core` module `body-variation.ts` —
+  `renderBody(template, vars)` resolves **spintax** (`{Hi|Hey|Hello}`, nested, inside-out) first on
+  the operator template, then fills **variables** (`{{name}}` / `{{contact.name}}`). Spintax-first
+  is deliberate: the contact's value goes in last, so an odd display name (a stray `{` or `|`)
+  cannot corrupt the parse — at the cost of not supporting a variable *inside* a spintax option.
+- `dispatchCampaign` renders each recipient's copy (joining the contact for its name) before
+  encrypting, so 500 sends are 500 different strings. Both campaign compose UIs (new-campaign form,
+  contacts-page panel) hint at the syntax.
+- **Still open (the smaller half of D-26):** the dispatcher's "refuse >N identical bodies in a
+  window" guard — moot when spintax is used, unbuilt for a no-variation body.
+- 7 new tests (spintax pick/nest/none, variable fill, spintax-before-vars safety, per-recipient
+  variance, end-to-end dispatch decrypting three rendered messages) — **465 total.** Typecheck,
+  lint, suite and `web:build` green.
+- **Pinned D-29 — anti-ban advisory mode** (warn-but-don't-enforce override). Recorded, not built:
+  it is the code path the design deliberately omits, so it needs careful scoping (`do_not_contact`
+  and consent stay hard even in advisory mode, admin-only, audited, loud UI).
+
 ### 2026-09-29 — P6 recovery orchestration (Layer 6): the anti-ban engine is complete
 - Beyond the health scorer's both-ways *status* recovery, a typed incident now starts a **timed**
   response: **463** timelock → 24 h pause, resume at 10 % of cap, +15 %/week; **429** rate overlimit

@@ -6,7 +6,8 @@ import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import {
   checkSendAllowance, dailyCeiling, humanDelayMs,
-  circadianActivity, circadianDelayMs, localHour, typingDelayMs, recoveryState
+  circadianActivity, circadianDelayMs, localHour, typingDelayMs, recoveryState,
+  renderBody, resolveSpintax, fillVariables
 } from '@crm/core';
 import { createLogger } from '@crm/shared';
 import { handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
@@ -278,6 +279,46 @@ describe('recovery orchestration (Layer 6)', () => {
     const sixWeeks = new Date(until.getTime() + 6 * 7 * DAY + HOUR);
     expect(recoveryState({ incident: 'timelock_463', recoveryUntil: until }, sixWeeks).phase)
       .toBe('none');
+  });
+});
+
+describe('campaign body variation (spintax + variables, D-26)', () => {
+  /** A fake random that always picks a fixed index, so a spintax choice is deterministic. */
+  const pick = (index: number, count: number): (() => number) => () => index / count;
+
+  it('resolves a spintax group to one of its options', () => {
+    expect(resolveSpintax('{Hi|Hey|Hello} there', pick(0, 3))).toBe('Hi there');
+    expect(resolveSpintax('{Hi|Hey|Hello} there', pick(2, 3))).toBe('Hello there');
+  });
+
+  it('resolves nested spintax inside-out', () => {
+    expect(resolveSpintax('{Good {morning|day}|Hi}', () => 0)).toBe('Good morning');
+  });
+
+  it('leaves text with no spintax untouched', () => {
+    expect(resolveSpintax('plain text, no braces', () => 0)).toBe('plain text, no braces');
+  });
+
+  it('fills name variables and empties unknown ones', () => {
+    expect(fillVariables('Hi {{name}}', { name: 'Priya' })).toBe('Hi Priya');
+    expect(fillVariables('Hi {{contact.name}}', { name: 'Rahul' })).toBe('Hi Rahul');
+    expect(fillVariables('Hi {{name}}', { name: '' })).toBe('Hi ');
+    expect(fillVariables('{{unknown}} tail', {})).toBe(' tail');
+  });
+
+  it('renders spintax first, then variables — so a name with braces or pipes is safe', () => {
+    // Spintax runs on the operator template; the contact value is inserted into the chosen literal
+    // afterwards, so a display name of "A|B{c}" cannot corrupt the parse.
+    const out = renderBody('{Hi|Hey} {{name}}', { name: 'A|B{c}' }, pick(0, 2));
+    expect(out).toBe('Hi A|B{c}');
+  });
+
+  it('varies the output across recipients', () => {
+    // The whole point: 500 sends are not 500 identical strings.
+    const seen = new Set(
+      Array.from({ length: 200 }, () => renderBody('{Hi|Hey|Hello|Yo} {{name}}', { name: 'x' }))
+    );
+    expect(seen.size).toBeGreaterThan(1);
   });
 
   it('scales the daily ceiling down by the recovery fraction, never below 1, never up', () => {

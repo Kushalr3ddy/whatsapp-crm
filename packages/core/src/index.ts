@@ -42,6 +42,8 @@ export {
 
 export { typingDelayMs } from './typing.js';
 
+export { renderBody, resolveSpintax, fillVariables } from './body-variation.js';
+
 export {
   recoveryState, openRecovery, beginRecovery, isRecoveryIncident,
   type RecoveryIncident, type RecoveryRow, type RecoveryState

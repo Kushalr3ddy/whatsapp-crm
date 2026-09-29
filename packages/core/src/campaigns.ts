@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import { dailyCeiling, type PacingLimits } from './pacing.js';
+import { renderBody } from './body-variation.js';
 import type { TenantWork } from './ingestion.js';
 
 /**
@@ -220,14 +221,17 @@ export async function dispatchCampaign(
 
   return tenant(async (tx) => {
     const rows = await tx.execute(sql`
-      SELECT cr.id, cr.contact_id AS "contactId"
+      SELECT cr.id, cr.contact_id AS "contactId", c.display_name AS "contactName"
       FROM campaign_recipient cr
+      JOIN contact c ON c.id = cr.contact_id AND c.org_id = cr.org_id
       WHERE cr.campaign_id = ${input.campaignId} AND cr.org_id = ${input.orgId}
         AND cr.status = 'pending'
       ORDER BY cr.id
       LIMIT ${input.limit}
-      FOR UPDATE SKIP LOCKED`);
-    const batch = rows as unknown as Array<{ id: string; contactId: string }>;
+      FOR UPDATE OF cr SKIP LOCKED`);
+    const batch = rows as unknown as Array<{
+      id: string; contactId: string; contactName: string | null;
+    }>;
 
     for (const recipient of batch) {
       // One conversation per contact per sender, reused if it exists — a campaign message
@@ -239,12 +243,16 @@ export async function dispatchCampaign(
         RETURNING id`);
       const conversationId = (conv as unknown as Array<{ id: string }>)[0]!.id;
 
+      // Render this recipient's copy: spintax picks a wording, {{name}} is filled from the contact
+      // (docs/21-deferred.md D-26). Each send differs, which is both the point and an anti-ban win.
+      const body = renderBody(input.body, { name: recipient.contactName ?? '' });
+
       const created = await tx.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type,
                              body_enc, body_hmac, sent_by, campaign_id)
         VALUES (${input.orgId}, ${conversationId}, 'outbound', 'queued', 'text',
-                ${Buffer.from(kms.encrypt(new TextEncoder().encode(input.body)))},
-                ${kms.blindIndex(input.body)}, 'system', ${input.campaignId})
+                ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
+                ${kms.blindIndex(body)}, 'system', ${input.campaignId})
         RETURNING id`);
       const messageId = (created as unknown as Array<{ id: string }>)[0]!.id;
 
