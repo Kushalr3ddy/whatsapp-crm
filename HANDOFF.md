@@ -385,15 +385,18 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    delivery/sent/failed evidence and the replied-vs-no-reply breakdown; `GET /senders` carries the
    `health` jsonb + relationship counts. Data eye-verified against the real dev DB; the logged-in
    visual is still worth a glance (needs the dev password to sign in).
-7. **Near-term priority queue (Kushal, 2026-09-29)** — all P2–P7 alpha core:
-   - **Tags + segments** (un-pinned) — unlocks real campaign targeting; closes the import →
-     target → campaign → inbox loop. The natural next build.
-   - **Outbound media** — **D-25**, high priority (send path is text-only; storage already exists).
-   - **Templates** — **D-19**, priority; **body variation** (**D-26**, spintax/per-recipient) ships
-     with it.
-   - **Inbox search** — **D-23**, priority; settle the blind-index vs. trigram call on encrypted
-     bodies first (contact-field search can ship without it).
-   Legal/compliance is reframed as the operator's job (jurisdiction-neutral); opt-out is **D-27**.
+7. **Build queue (Kushal, 2026-09-29)** — all P2–P7 alpha core:
+   - **Building now (greenlit):** (a) **contact list + search** — browse/search imported contacts
+     by name/phone (contact fields aren't encrypted, so no design decision); (b) **tags** — label
+     contacts (`tag` + `contact_tag`); (c) **per-recipient results** — a searchable view of a
+     campaign's recipients (sent/delivered/skipped-and-why); the data already sits on
+     `campaign_recipient`. Together these let an operator find specific imported people, tag them,
+     hand-pick an audience (campaign `explicitContactIds`), and see what a campaign did.
+   - **Pinned, priority:** **D-19** templates + **D-26** body variation (ship together);
+     **D-25** outbound media (high).
+   - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
+     simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences).
+   Legal/compliance reframed as the operator's job (jurisdiction-neutral); opt-out is **D-27**.
 
 **Deferred / parked (not now):**
 - **P8 Meta Cloud API adapter** — beyond the alpha core.

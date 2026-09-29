@@ -13,6 +13,18 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Build queue refined: contact search + tags + per-recipient results greenlit
+- **Building now** (P2–P7 core, greenlit by Kushal): **contact list + search** (browse/search
+  imported contacts by name/phone — contact fields aren't encrypted, so no design decision),
+  **tags** (`tag` + `contact_tag`), and a **searchable per-recipient results** view for campaigns
+  (the data already sits on `campaign_recipient`). Together these cover "find specific imported
+  people → tag → hand-pick an audience → see what the campaign did".
+- **D-28 reduced** from "tags & segments" to just **dynamic segments ("segregation")** and marked
+  *later* — tags + contact search + explicit id lists + whole-import targeting cover the near-term
+  need, so only the criteria-based filter engine stays parked.
+- **D-23** (chat/message-body search) stays pinned — do something simpler first (contact-field
+  search, which is being built, is the simple half). **D-19** templates stay pinned + priority.
+
 ### 2026-09-29 — Near-term priority queue set
 - Flagged **PRIORITY** (near-term build queue, not "someday"): **D-25** outbound media, **D-19**
   templates, **D-26** body variation (ships with templates), **D-23** inbox search (settle
