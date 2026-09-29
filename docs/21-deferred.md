@@ -790,3 +790,46 @@ scheduling it.
 **Cost of deferring:** real but bounded — the product can receive files and not send them, which
 is a visible gap for a CRM whose contacts send CVs. No data is lost by waiting; it is a missing
 capability, not a defect.
+
+---
+
+## D-26 · Campaign body variation (spintax + per-recipient) — deferred while the alpha is closed
+
+**What:** stop a campaign sending **byte-identical bodies** to everyone — spintax and
+per-recipient variables so each rendered message differs, and the dispatcher refusing more than N
+identical bodies in a window (`docs/06-features/F4-templates.md`, `08-antiban.md`). It is both a
+template feature and an anti-ban signal.
+
+**Why parked:** the alpha *and* the beta are **closed** (invited, controlled recipients, small
+volumes), so the identical-body ban signal is low-risk for now, and `do_not_contact` plus the
+other anti-ban layers already cap the real exposure. It also rides with templates (**D-19**), so it
+should land there rather than as a bolt-on.
+
+**What brings it back:** opening beyond the closed alpha/beta to real external recipients, or
+campaign volumes large enough that repeated identical text becomes a fingerprint. Lands with D-19.
+
+**Cost of deferring:** low while sends are small and to a known audience; it grows with volume and
+openness. Worth stating plainly: **the engine's "refuse identical bodies" rule is not enforced
+yet**, so this is a known soft spot, not a solved one.
+
+---
+
+## D-27 · Opt-out keyword handling (STOP / unsubscribe) — deferred while the alpha is closed
+
+**What:** an inbound `STOP` / `UNSUBSCRIBE` (multi-language) that **automatically and irreversibly**
+sets `do_not_contact` and drops the contact from every pending send (F9, DPDP). Distinct from the
+manual `do_not_contact` flag, which exists — this is the *automatic* honouring of a person's reply.
+
+**Why parked:** closed alpha/beta with invited recipients who can be handled by hand, and the
+manual `do_not_contact` gate already blocks sends. The legal opt-out obligation bites when real
+external data subjects are involved, which a closed alpha is not.
+
+**What brings it back — any one of:** the first recipient who is not on the team, a public/open
+beta, or DPDP enforcement. At that point it is compliance-critical, not optional.
+
+**What exists to build on:** `do_not_contact` / `dnc_reason` / `dnc_at` on `contact`, checked as
+gate zero on every send. This is wiring inbound keyword detection to that gate, not new
+infrastructure.
+
+**Cost of deferring:** low while closed and small; **sharp** the day real strangers are messaged —
+a missed opt-out is a complaint, a ban signal, and a legal exposure all at once.

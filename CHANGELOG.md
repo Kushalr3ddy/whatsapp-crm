@@ -13,6 +13,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Pin the campaign safety/compliance items (closed alpha)
+- The alpha and beta are **closed** (invited recipients, small volumes), so the two campaign items
+  that only bite with real external audiences are pinned and deferred until wider release:
+  **D-26 · body variation** (spintax / per-recipient + the anti-ban identical-body rule — a known
+  soft spot, not yet enforced) and **D-27 · opt-out keyword handling** (auto-honour a `STOP` reply;
+  the manual `do_not_contact` gate already exists). Both come back on the first non-team recipient.
+- **Templates** stay pinned as **D-19** (rich templates) — body variation lands with them.
+
 ### 2026-09-29 — Pin outbound media (D-25, high priority); move getting-started to repo root
 - **Outbound media pinned as D-25 and flagged HIGH PRIORITY** — sending files is the top of the
   queue (inbound media is fully built; the send path is text-only). The pin records exactly what it
