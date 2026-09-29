@@ -13,6 +13,19 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Broadcast UI: pre-start dry-run preview (F5 AC-1)
+- A draft's page now shows a **dry run** before you commit: "would message N people · K skipped
+  (no number) · T in the audience", plus the forecast — computed **without writing** a single
+  `campaign_recipient` row. If nobody in the audience has a number, it says so in red rather than
+  letting you start a send to no one.
+- **New endpoint** `GET /campaigns/:id/preview` + core `previewAudience()`, which runs the *same*
+  audience rule as `snapshotAudience` (import run / explicit list / tag) as a COUNT split by
+  reachability — so the preview can't drift from what start actually freezes (a test asserts
+  `preview.reachable === progress.pending` after start).
+- Web: the draft detail page fetches the preview (one extra round trip, drafts only) and renders it
+  in place of the all-zero progress tiles; `crm.ts` gains `previewCampaign` + `CampaignPreview`.
+- 3 API tests (counts-without-freezing, matches-what-start-freezes, 404) — **445 total.**
+
 ### 2026-09-29 — Broadcast UI, slice 2: create a campaign, and operate it
 - **Create a campaign from the browser** at `/broadcast/new`: name, message, sender, and an
   **audience by tag**. Creating makes a draft (sends nothing); the detail page then carries

@@ -223,6 +223,20 @@ export interface CampaignDetail {
   forecast: CampaignForecast;
 }
 
+/** The prospective audience of a draft — a dry run's counts. Mirrors the `preview` route. */
+export interface CampaignPreview {
+  status: string;
+  audience: {
+    /** Everyone the audience rule matches right now. */
+    total: number;
+    /** Of those, how many have a number — the ones that would actually be messaged. */
+    reachable: number;
+    /** The rest: no number, so they would be recorded as skipped, never dropped. */
+    unreachable: number;
+  };
+  forecast: CampaignForecast;
+}
+
 /** One recipient's outcome. Mirrors a row of `GET /api/v1/campaigns/:id/recipients`. */
 export interface CampaignRecipient {
   id: string;
@@ -604,6 +618,14 @@ export async function listCampaigns(): Promise<Campaign[]> {
 /** Fetches one campaign with its live progress and forecast. */
 export async function getCampaign(id: string): Promise<CampaignDetail> {
   return request<CampaignDetail>(`/campaigns/${encodeURIComponent(id)}`);
+}
+
+/**
+ * A dry run: the audience a draft would freeze, and the forecast — computed without writing
+ * anything, so an operator sees who and how long before pressing start.
+ */
+export async function previewCampaign(id: string): Promise<CampaignPreview> {
+  return request<CampaignPreview>(`/campaigns/${encodeURIComponent(id)}/preview`);
 }
 
 /**

@@ -54,6 +54,7 @@ export {
 } from './ingestion.js';
 
 export {
-  campaignProgress, forecast, snapshotAudience, dispatchCampaign, reconcileCampaign,
-  type CampaignProgress, type CampaignForecast
+  campaignProgress, previewAudience, forecast, snapshotAudience, dispatchCampaign,
+  reconcileCampaign,
+  type CampaignProgress, type AudiencePreview, type CampaignForecast
 } from './campaigns.js';

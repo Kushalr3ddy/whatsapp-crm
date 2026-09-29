@@ -1,9 +1,9 @@
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import {
-  getCampaign, listCampaignRecipients, CrmApiError, NotAuthenticatedError
+  getCampaign, listCampaignRecipients, previewCampaign, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { CampaignDetail, CampaignRecipient } from '@/lib/crm';
+import type { CampaignDetail, CampaignRecipient, CampaignPreview } from '@/lib/crm';
 import { campaignStatusBadge } from '../campaign-status';
 import { startCampaignAction, pauseCampaignAction, cancelCampaignAction } from '../actions';
 
@@ -32,6 +32,7 @@ export default async function CampaignPage(
 
   let campaign: CampaignDetail | null = null;
   let recipients: CampaignRecipient[] = [];
+  let preview: CampaignPreview | null = null;
   let failure: string | null = null;
   let expired = false;
   let missing = false;
@@ -40,6 +41,9 @@ export default async function CampaignPage(
       getCampaign(id),
       listCampaignRecipients(id, { status: activeStatus, q: query })
     ]);
+    // A draft has no frozen audience yet, so its progress is all zeros — a dry-run preview is the
+    // useful thing to show before start. One extra round trip, and only for drafts.
+    if (campaign.status === 'draft') preview = await previewCampaign(id);
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
     else if (error instanceof CrmApiError && error.status === 404) missing = true;
@@ -76,7 +80,9 @@ export default async function CampaignPage(
             </div>
           </header>
 
-          <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />
+          {campaign.status === 'draft' && preview !== null
+            ? <DraftPreview preview={preview} />
+            : <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />}
 
           <MessageBody body={campaign.body} />
 
@@ -197,6 +203,42 @@ function ProgressTiles(
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * The dry-run preview shown for a draft: who it would reach and how long, before anything is
+ * frozen. The unreachable count is called out because a tag of contacts with no numbers is a
+ * mistake worth catching before pressing Start, not after.
+ */
+function DraftPreview({ preview }: { preview: CampaignPreview }) {
+  const { audience, forecast } = preview;
+  return (
+    <div className="rounded-lg border border-border bg-surface px-4 py-3">
+      <p className="text-xs font-medium text-muted">Dry run — nothing sent yet</p>
+      <p className="mt-1 text-sm">
+        Would message <span className="font-semibold tabular-nums">{audience.reachable}</span>{' '}
+        {audience.reachable === 1 ? 'person' : 'people'}
+        {audience.unreachable > 0 && (
+          <> · <span className="tabular-nums">{audience.unreachable}</span> skipped (no number)</>
+        )}
+        {' '}· {audience.total} in the audience.
+      </p>
+      {audience.reachable > 0 && (
+        <p className="mt-1 text-xs text-muted">
+          {forecast.daysToFinish === 0
+            ? 'Finishes today'
+            : `About ${forecast.daysToFinish} day${forecast.daysToFinish === 1 ? '' : 's'} to finish`}
+          {' '}at {forecast.allowanceToday}/day
+          {forecast.inWarmup && ' (number still warming up, so the daily cap is low)'}.
+        </p>
+      )}
+      {audience.reachable === 0 && (
+        <p className="mt-1 text-xs text-danger">
+          Nobody in this audience has a number — starting would send to no one. Check the tag.
+        </p>
+      )}
+    </div>
   );
 }
 

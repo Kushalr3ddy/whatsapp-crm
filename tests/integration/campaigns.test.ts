@@ -388,6 +388,56 @@ describe('finishing', () => {
   });
 });
 
+describe('dry-run preview (before start)', () => {
+  /** Tags the given contacts with a fresh tag, and returns the tag id. */
+  const tagContacts = async (name: string, ids: string[]): Promise<string> => {
+    const tagId = (await db.execute(sql`
+      INSERT INTO tag (org_id, name) VALUES (${orgId}, ${name}) RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    for (const c of ids) {
+      await db.execute(sql`
+        INSERT INTO contact_tag (org_id, contact_id, tag_id) VALUES (${orgId}, ${c}, ${tagId})`);
+    }
+    return tagId;
+  };
+
+  it('counts the would-be audience without freezing it, and forecasts the reachable ones', async () => {
+    // Two reachable people plus the one with no number, all tagged.
+    const tagId = await tagContacts('preview', [contactIds[0]!, contactIds[1]!, contactIds[10]!]);
+    const created = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'p', body: 'y', senderIdentityId: senderId, fromTagId: tagId });
+    const id = created.body.data.id as string;
+
+    const r = await request(app).get(`/api/v1/campaigns/${id}/preview`).set(...auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data.audience).toMatchObject({ total: 3, reachable: 2, unreachable: 1 });
+    expect(typeof r.body.data.forecast.daysToFinish).toBe('number');
+
+    // A preview writes nothing — the campaign is still a draft with no recipients frozen.
+    const rows = await db.execute(sql`
+      SELECT count(*)::int AS n FROM campaign_recipient WHERE campaign_id = ${id}`);
+    expect((rows as unknown as Array<{ n: number }>)[0]!.n).toBe(0);
+  });
+
+  it('matches exactly what start then freezes', async () => {
+    const tagId = await tagContacts('exact', contactIds.slice(0, 4));
+    const created = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'p', body: 'y', senderIdentityId: senderId, fromTagId: tagId });
+    const id = created.body.data.id as string;
+
+    const preview = await request(app).get(`/api/v1/campaigns/${id}/preview`).set(...auth());
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    const after = await request(app).get(`/api/v1/campaigns/${id}`).set(...auth());
+    // The preview's reachable count is precisely the pending recipients start creates.
+    expect(preview.body.data.audience.reachable).toBe(after.body.data.progress.pending);
+  });
+
+  it('404s for a campaign that does not exist', async () => {
+    const r = await request(app)
+      .get('/api/v1/campaigns/00000000-0000-4000-8000-0000000000bb/preview').set(...auth());
+    expect(r.status).toBe(404);
+  });
+});
+
 describe('per-recipient results (who it reached, and why not the rest)', () => {
   it('lists every recipient with a status, none silently absent (AC-5)', async () => {
     const created = await create();

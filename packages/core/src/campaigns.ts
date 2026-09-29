@@ -45,6 +45,60 @@ export interface CampaignForecast {
   readonly inWarmup: boolean;
 }
 
+/** The prospective audience of a draft, worked out without freezing it — a dry run's counts. */
+export interface AudiencePreview {
+  /** Everyone the audience rule matches right now. */
+  readonly total: number;
+  /** Of those, how many have a number to reach — the ones that would actually be messaged. */
+  readonly reachable: number;
+  /** The rest — no phone/`wa_*` identity, so they would be recorded as skipped, never dropped. */
+  readonly unreachable: number;
+}
+
+/**
+ * Counts the audience a draft *would* freeze, without writing a single `campaign_recipient` row.
+ *
+ * The dry run (F5 AC-1): it runs the exact same audience rule as {@link snapshotAudience} — import
+ * run, explicit list, or tag — but as a COUNT split by reachability, so an operator sees who and
+ * how many before committing to start. Because it shares the rule, the preview cannot drift from
+ * what start actually snapshots.
+ */
+export async function previewAudience(
+  tx: Transaction, orgId: string, campaignId: string
+): Promise<AudiencePreview> {
+  const rows = await tx.execute(sql`
+    WITH audience AS (
+      SELECT c.id AS contact_id,
+             EXISTS (
+               SELECT 1 FROM contact_identity ci
+               WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
+                 AND ci.kind IN ('phone', 'wa_jid', 'wa_lid')
+             ) AS reachable
+      FROM campaign cp
+      JOIN contact c ON c.org_id = cp.org_id
+      WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}
+        AND (
+          (cp.from_import_run_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM import_row ir
+            WHERE ir.import_run_id = cp.from_import_run_id
+              AND ir.contact_id = c.id AND ir.outcome IN ('created', 'updated')
+          ))
+          OR (cp.explicit_contact_ids IS NOT NULL
+              AND cp.explicit_contact_ids @> to_jsonb(c.id::text))
+          OR (cp.from_tag_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM contact_tag ct
+            WHERE ct.tag_id = cp.from_tag_id AND ct.contact_id = c.id AND ct.org_id = ${orgId}
+          ))
+        )
+    )
+    SELECT count(*)::int AS total,
+           count(*) FILTER (WHERE reachable)::int AS reachable,
+           count(*) FILTER (WHERE NOT reachable)::int AS unreachable
+    FROM audience`);
+  const row = (rows as unknown as AudiencePreview[])[0];
+  return row ?? { total: 0, reachable: 0, unreachable: 0 };
+}
+
 /** Counts every recipient of a campaign by status. */
 export async function campaignProgress(
   tx: Transaction, orgId: string, campaignId: string

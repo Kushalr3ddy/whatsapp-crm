@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import {
-  campaignProgress, forecast, snapshotAudience, writeAudit, AUDIT
+  campaignProgress, previewAudience, forecast, snapshotAudience, writeAudit, AUDIT
 } from '@crm/core';
 import { auditActor, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
@@ -213,6 +213,49 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
         // The sender's pacing state fed the forecast; it is not the caller's business.
         const { warmupStartedAt: _w, dailyCapOverride: _d, ...rest } = campaign;
         return { ...rest, progress, forecast: outlook };
+      });
+
+      if (data === null) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such campaign.'));
+        return;
+      }
+      res.json({ data });
+    });
+
+  /**
+   * A dry run: the audience a draft *would* freeze, and how long it would take — without writing
+   * anything (F5 AC-1). This is the number an operator needs **before** pressing start, not after.
+   * Reachable vs unreachable is split out so a low reachable count (a tag of contacts with no
+   * numbers) is visible up front rather than a surprise in the results.
+   */
+  router.get('/:id/preview', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+
+      const data = await req.tenant!(async (tx) => {
+        const rows = await tx.execute(sql`
+          SELECT c.status, c.sender_identity_id AS "senderIdentityId",
+                 si.warmup_started_at AS "warmupStartedAt",
+                 si.daily_cap_override AS "dailyCapOverride"
+          FROM campaign c
+          JOIN sender_identity si ON si.id = c.sender_identity_id
+          WHERE c.id = ${id} AND c.org_id = ${orgId}`);
+        const campaign = (rows as unknown as Array<{
+          status: string; senderIdentityId: string;
+          warmupStartedAt: string | null; dailyCapOverride: number | null;
+        }>)[0];
+        if (!campaign) return null;
+
+        const audience = await previewAudience(tx, orgId, id);
+        // Only the reachable contacts would actually be messaged, so that is what the forecast paces.
+        const outlook = await forecast(tx, campaign.senderIdentityId, audience.reachable, {
+          perMinute: limits.perMinute, perDay: limits.perDay,
+          dailyCapOverride: campaign.dailyCapOverride,
+          warmupStartedAt: campaign.warmupStartedAt === null
+            ? null : new Date(campaign.warmupStartedAt)
+        });
+        return { status: campaign.status, audience, forecast: outlook };
       });
 
       if (data === null) {
