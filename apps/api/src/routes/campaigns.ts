@@ -20,6 +20,19 @@ const createCampaign = z.object({
 });
 
 /**
+ * Query for listing a campaign's recipients. `status` narrows to one terminal/pending state, `q`
+ * is a case-insensitive substring on the contact's name or an identity, and `cursor` is the last
+ * recipient id seen — keyset paging on the row id, which is a stable total order without needing a
+ * timestamp column on `campaign_recipient`.
+ */
+const listRecipientsQuery = z.object({
+  status: z.enum(['pending', 'queued', 'sent', 'failed', 'skipped']).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().uuid().optional()
+});
+
+/**
  * Campaigns — a bulk send, and the controls for stopping one.
  *
  * **Creating a campaign sends nothing.** It is a draft until started, starting only freezes the
@@ -193,6 +206,66 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
         return;
       }
       res.json({ data });
+    });
+
+  /**
+   * Lists a campaign's recipients — the per-recipient results view (F5 AC-5).
+   *
+   * Every recipient of a started campaign is here in a terminal or pending state, never silently
+   * absent: `sent`/`failed` with the message's own delivery status, `skipped` with the reason it
+   * was not messaged (`dnc`, `cancelled`, unreachable). Filterable by status and searchable by the
+   * contact's name or number, so "who did this actually reach, and why not the rest?" is answerable.
+   */
+  router.get('/:id/recipients', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+      const parsed = listRecipientsQuery.safeParse(req.query);
+      if (!parsed.success) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+          (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+        return;
+      }
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+      const { status, q, limit, cursor } = parsed.data;
+      const like = q === undefined ? null : `%${q}%`;
+      const statusFilter = status ?? null;
+      const after = cursor ?? null;
+
+      const result = await req.tenant!(async (tx) => {
+        // A missing campaign is a 404, not an empty list — the same shape as GET /:id.
+        const exists = await tx.execute(sql`
+          SELECT 1 FROM campaign WHERE id = ${id} AND org_id = ${orgId}`);
+        if ((exists as unknown as unknown[]).length === 0) return null;
+
+        return tx.execute(sql`
+          SELECT cr.id, cr.status, cr.skip_reason AS "skipReason",
+                 cr.attempted_at AS "attemptedAt",
+                 c.display_name AS "displayName",
+                 m.status AS "messageStatus",
+                 (SELECT ci.value_normalized FROM contact_identity ci
+                  WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
+                  ORDER BY ci.is_primary DESC LIMIT 1) AS "identity"
+          FROM campaign_recipient cr
+          JOIN contact c ON c.id = cr.contact_id AND c.org_id = ${orgId}
+          LEFT JOIN message m ON m.id = cr.message_id
+          WHERE cr.campaign_id = ${id} AND cr.org_id = ${orgId}
+            AND (${statusFilter}::text IS NULL OR cr.status = ${statusFilter})
+            AND (${like}::text IS NULL
+                 OR c.display_name ILIKE ${like}
+                 OR EXISTS (SELECT 1 FROM contact_identity ci2
+                            WHERE ci2.contact_id = c.id AND ci2.value_normalized ILIKE ${like}))
+            AND (${after}::uuid IS NULL OR cr.id > ${after}::uuid)
+          ORDER BY cr.id ASC
+          LIMIT ${limit}`);
+      });
+
+      if (result === null) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such campaign.'));
+        return;
+      }
+      const data = result as unknown as Array<{ id: string }>;
+      const nextCursor = data.length === limit ? data[data.length - 1]!.id : null;
+      res.json({ data, nextCursor });
     });
 
   /** Lists campaigns, newest first. */

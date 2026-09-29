@@ -331,6 +331,77 @@ describe('finishing', () => {
   });
 });
 
+describe('per-recipient results (who it reached, and why not the rest)', () => {
+  it('lists every recipient with a status, none silently absent (AC-5)', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+
+    const r = await request(app).get(`/api/v1/campaigns/${id}/recipients?limit=200`).set(...auth());
+    expect(r.status).toBe(200);
+    // Eleven frozen: ten pending, one skipped — the same totals GET /:id reports.
+    expect(r.body.data).toHaveLength(11);
+    const statuses = r.body.data.map((x: { status: string }) => x.status).sort();
+    expect(statuses.filter((s: string) => s === 'pending')).toHaveLength(10);
+    expect(statuses.filter((s: string) => s === 'skipped')).toHaveLength(1);
+    // Each row carries who it is and, for a skip, why.
+    const skipped = r.body.data.find((x: { status: string }) => x.status === 'skipped');
+    expect(skipped.displayName).toBe('No Phone');
+    expect(skipped.skipReason).toBeTruthy();
+  });
+
+  it('filters to one status', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+
+    const r = await request(app)
+      .get(`/api/v1/campaigns/${id}/recipients?status=skipped`).set(...auth());
+    expect(r.body.data).toHaveLength(1);
+    expect(r.body.data[0].displayName).toBe('No Phone');
+  });
+
+  it('searches by the contact’s name or number', async () => {
+    const created = await create();
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+
+    const byName = await request(app)
+      .get(`/api/v1/campaigns/${id}/recipients?q=Person 3`).set(...auth());
+    expect(byName.body.data).toHaveLength(1);
+    expect(byName.body.data[0].displayName).toBe('Person 3');
+
+    const byPhone = await request(app)
+      .get(`/api/v1/campaigns/${id}/recipients?q=98765000${'05'}`).set(...auth());
+    expect(byPhone.body.data).toHaveLength(1);
+    expect(byPhone.body.data[0].displayName).toBe('Person 5');
+  });
+
+  it('reflects the message delivery status once dispatched', async () => {
+    const created = await create(contactIds.slice(0, 3));
+    const id = created.body.data.id as string;
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(...auth());
+    await dispatchCampaigns(gatewayCtx());
+    await db.execute(sql`
+      UPDATE message SET status = 'delivered', sent_at = now()
+      WHERE org_id = ${orgId} AND status = 'queued'`);
+    await dispatchCampaigns(gatewayCtx());   // reconcile moves recipients to 'sent'
+
+    const r = await request(app).get(`/api/v1/campaigns/${id}/recipients`).set(...auth());
+    expect(r.body.data).toHaveLength(3);
+    for (const row of r.body.data) {
+      expect(row.status).toBe('sent');
+      expect(row.messageStatus).toBe('delivered');
+    }
+  });
+
+  it('404s for a campaign that does not exist, rather than an empty list', async () => {
+    const r = await request(app)
+      .get('/api/v1/campaigns/00000000-0000-4000-8000-0000000000aa/recipients').set(...auth());
+    expect(r.status).toBe(404);
+  });
+});
+
 describe('isolation', () => {
   it('will not show another tenant’s campaign', async () => {
     const created = await create();

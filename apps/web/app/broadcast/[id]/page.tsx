@@ -1,0 +1,268 @@
+import { redirect, notFound } from 'next/navigation';
+import Link from 'next/link';
+import {
+  getCampaign, listCampaignRecipients, CrmApiError, NotAuthenticatedError
+} from '@/lib/crm';
+import type { CampaignDetail, CampaignRecipient } from '@/lib/crm';
+import { campaignStatusBadge } from '../campaign-status';
+
+/** Rendered per request — progress and the status/search filters come live from the query string. */
+export const dynamic = 'force-dynamic';
+
+/** The recipient statuses, in the order the filter bar shows them. */
+const STATUSES = ['sent', 'queued', 'pending', 'skipped', 'failed'] as const;
+
+/**
+ * One campaign's page: its progress and forecast, the message it sends, and — the point of this
+ * slice — the **per-recipient results**: every recipient in a terminal or pending state, none
+ * silently absent, filterable by status and searchable by name or number. This is how an operator
+ * answers "who did this reach, and why not the rest?" (F5 AC-5).
+ */
+export default async function CampaignPage(
+  { params, searchParams }: {
+    params: Promise<{ id: string }>;
+    searchParams: Promise<{ status?: string; q?: string }>;
+  }
+) {
+  const { id } = await params;
+  const { status, q } = await searchParams;
+  const activeStatus = typeof status === 'string' ? status : '';
+  const query = typeof q === 'string' ? q : '';
+
+  let campaign: CampaignDetail | null = null;
+  let recipients: CampaignRecipient[] = [];
+  let failure: string | null = null;
+  let expired = false;
+  let missing = false;
+  try {
+    [campaign, recipients] = await Promise.all([
+      getCampaign(id),
+      listCampaignRecipients(id, { status: activeStatus, q: query })
+    ]);
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) expired = true;
+    else if (error instanceof CrmApiError && error.status === 404) missing = true;
+    else {
+      failure = error instanceof CrmApiError
+        ? `${error.code}: ${error.message}`
+        : 'Could not reach the API. Is it running? Start it with: npm run dev';
+    }
+  }
+
+  if (expired) redirect(`/login?next=/broadcast/${id}`);
+  if (missing) notFound();
+
+  return (
+    <main className="mx-auto max-w-3xl px-5 py-8">
+      <Link href="/broadcast" className="text-xs text-muted hover:text-ink">← All campaigns</Link>
+
+      {failure !== null && <p className="mt-4 text-sm text-danger">{failure}</p>}
+
+      {campaign !== null && (
+        <>
+          <header className="mb-5 mt-2 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold tracking-tight">{campaign.name}</h1>
+              <p className="mt-1 text-sm text-muted">
+                {campaign.startedAt !== null
+                  ? <>Started {new Date(campaign.startedAt).toLocaleString()}</>
+                  : <>Draft — not started yet</>}
+              </p>
+            </div>
+            <StatusBadge status={campaign.status} />
+          </header>
+
+          <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />
+
+          <MessageBody body={campaign.body} />
+
+          <section className="mt-6">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Recipients</h2>
+              <span className="text-xs text-muted">{recipients.length} shown</span>
+            </div>
+
+            <StatusFilterBar id={id} activeStatus={activeStatus} query={query} />
+            <SearchBox id={id} activeStatus={activeStatus} query={query} />
+
+            {recipients.length === 0 && (
+              <p className="text-sm text-muted">
+                {campaign.progress.total === 0
+                  ? 'No recipients yet — this campaign has not been started, so its audience is not frozen.'
+                  : 'No recipients match this filter.'}
+              </p>
+            )}
+
+            {recipients.length > 0 && (
+              <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
+                {recipients.map((r) => <RecipientRow key={r.id} recipient={r} />)}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
+
+/** The campaign status badge, reusing the list's colours. */
+function StatusBadge({ status }: { status: string }) {
+  const badge = campaignStatusBadge(status);
+  return (
+    <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${badge.cls}`}>
+      {badge.label}
+    </span>
+  );
+}
+
+/**
+ * The progress counters, each a link that filters the list below to that status — so the summary
+ * and the detail are one thing, not two. The forecast sits alongside while the campaign runs.
+ */
+function ProgressTiles(
+  { campaign, activeStatus, query, id }:
+  { campaign: CampaignDetail; activeStatus: string; query: string; id: string }
+) {
+  const p = campaign.progress;
+  const tiles: Array<{ key: string; label: string; value: number; filter: string }> = [
+    { key: 'total', label: 'Total', value: p.total, filter: '' },
+    { key: 'sent', label: 'Sent', value: p.sent, filter: 'sent' },
+    { key: 'queued', label: 'Queued', value: p.queued, filter: 'queued' },
+    { key: 'pending', label: 'Pending', value: p.pending, filter: 'pending' },
+    { key: 'skipped', label: 'Skipped', value: p.skipped, filter: 'skipped' },
+    { key: 'failed', label: 'Failed', value: p.failed, filter: 'failed' }
+  ];
+  const showForecast = campaign.status === 'running' || campaign.status === 'paused';
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {tiles.map((t) => (
+          <Link
+            key={t.key}
+            href={hrefFor(id, t.filter, query)}
+            className={`rounded-lg border px-3 py-2 ${
+              (activeStatus === t.filter || (t.filter === '' && activeStatus === ''))
+                ? 'border-accent/50 bg-accent-soft'
+                : 'border-border bg-surface hover:bg-accent-soft/40'
+            }`}
+          >
+            <div className="text-base font-semibold tabular-nums">{t.value}</div>
+            <div className="text-[11px] text-muted">{t.label}</div>
+          </Link>
+        ))}
+      </div>
+
+      {showForecast && (
+        <p className="mt-2 text-xs text-muted">
+          {campaign.forecast.remaining} left ·{' '}
+          {campaign.forecast.daysToFinish === 0
+            ? 'finishes today'
+            : `about ${campaign.forecast.daysToFinish} day${campaign.forecast.daysToFinish === 1 ? '' : 's'} to finish`}
+          {' '}at {campaign.forecast.allowanceToday}/day
+          {campaign.forecast.inWarmup && ' (number still warming up, so the daily cap is low)'}.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** The message every recipient is sent — shown so the results are read next to what went out. */
+function MessageBody({ body }: { body: string }) {
+  return (
+    <section className="mt-5">
+      <h2 className="mb-1.5 text-sm font-semibold">Message</h2>
+      <p className="whitespace-pre-wrap rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+        {body}
+      </p>
+    </section>
+  );
+}
+
+/** The row of status filters. "All" clears it; the active one is highlighted. */
+function StatusFilterBar(
+  { id, activeStatus, query }: { id: string; activeStatus: string; query: string }
+) {
+  const chip = (active: boolean): string =>
+    `rounded-md border px-2 py-0.5 text-xs capitalize ${
+      active ? 'border-accent/50 bg-accent-soft text-ink' : 'border-border text-muted hover:bg-accent-soft'
+    }`;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-muted">Status:</span>
+      <Link href={hrefFor(id, '', query)} className={chip(activeStatus === '')}>All</Link>
+      {STATUSES.map((s) => (
+        <Link key={s} href={hrefFor(id, s, query)} className={chip(activeStatus === s)}>{s}</Link>
+      ))}
+    </div>
+  );
+}
+
+/** Search by contact name or number, keeping the active status filter. */
+function SearchBox({ id, activeStatus, query }: { id: string; activeStatus: string; query: string }) {
+  return (
+    <form className="mb-4 flex gap-2" action={`/broadcast/${id}`}>
+      {activeStatus !== '' && <input type="hidden" name="status" value={activeStatus} />}
+      <input
+        name="q"
+        defaultValue={query}
+        placeholder="Search recipient name or number…"
+        aria-label="Search recipients"
+        className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+      />
+      <button
+        type="submit"
+        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent-soft"
+      >
+        Search
+      </button>
+    </form>
+  );
+}
+
+/** One recipient: who they are, where they ended up, and why (for a skip or failure). */
+function RecipientRow({ recipient }: { recipient: CampaignRecipient }) {
+  return (
+    <li className="flex items-center justify-between gap-3 px-4 py-2.5">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">
+          {recipient.displayName ?? recipient.identity ?? 'Unnamed contact'}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-muted">
+          {recipient.identity ?? 'no contact details'}
+          {recipient.attemptedAt !== null && <> · {new Date(recipient.attemptedAt).toLocaleString()}</>}
+        </p>
+      </div>
+      <RecipientStatus recipient={recipient} />
+    </li>
+  );
+}
+
+/** The recipient's outcome as a badge, with the reason a skip/failure carries. */
+function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
+  const { status, skipReason, messageStatus } = recipient;
+  const cls =
+    status === 'sent' ? 'text-accent border-accent/40 bg-accent-soft'
+    : status === 'failed' ? 'text-danger border-danger/50'
+    : status === 'skipped' ? 'text-warning border-warning/40 bg-warning-soft'
+    : 'text-muted border-border';
+  // For a sent recipient the message's own state (delivered/read) is more informative than "sent".
+  const label = status === 'sent' && messageStatus !== null && messageStatus !== 'sent'
+    ? messageStatus
+    : status;
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      {(skipReason !== null) && <span className="text-[11px] text-muted">{skipReason}</span>}
+      <span className={`rounded-md border px-2 py-0.5 text-[11px] capitalize ${cls}`}>{label}</span>
+    </div>
+  );
+}
+
+/** Builds a link to this campaign filtered by status and search term. */
+function hrefFor(id: string, status: string, query: string): string {
+  const p = new URLSearchParams();
+  if (status !== '') p.set('status', status);
+  if (query !== '') p.set('q', query);
+  const qs = p.toString();
+  return `/broadcast/${id}${qs === '' ? '' : `?${qs}`}`;
+}

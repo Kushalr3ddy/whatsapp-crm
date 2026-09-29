@@ -13,6 +13,26 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Broadcast UI, slice 1: campaigns list + per-recipient results
+- The **Broadcast** tab was a `ComingSoon` placeholder whose warning was **false** ("no rate
+  limiting anywhere in the send path" — the whole anti-ban engine exists). Replaced with a real,
+  read-only page; the false warning is gone.
+- **New endpoint** `GET /api/v1/campaigns/:id/recipients` — the per-recipient results (F5 AC-5).
+  `?status=` (pending/queued/sent/failed/skipped) and `?q=` (name or number, `ILIKE`), keyset
+  paginated on the row id (no timestamp column on `campaign_recipient`, so no migration). Joins the
+  contact for a name and the message for its delivery state. 404 for an unknown campaign, never a
+  silent empty list.
+- **Web:** `/broadcast` lists campaigns (name, status badge, when); `/broadcast/[id]` shows progress
+  tiles that double as status filters, the forecast, the message body, and the recipients table
+  (status badge + skip reason + delivery state, name/number search). Server-rendered, no client JS;
+  the status-badge helper lives in its own module (Next forbids arbitrary exports from a `page.tsx`).
+- **crm.ts** gained `Campaign`/`CampaignDetail`/`CampaignRecipient` types and
+  `listCampaigns`/`getCampaign`/`listCampaignRecipients`.
+- 5 API tests (list-all/none-absent, status filter, name+number search, delivery-status reflection,
+  404) — **438 total.** Root + web typecheck, lint, full suite and `web:build` all green. Not yet
+  eye-verified in a signed-in browser (needs the dev account password).
+- **Next slices:** 2 = create → target → forecast → start; 3 = pause/resume/cancel controls.
+
 ### 2026-09-29 — Typing simulation (P6 anti-ban layer 3, D-24)
 - Before each send, the gateway now shows a `composing` "typing…" presence, pauses a beat
   proportional to the message length, then clears it with `paused` — so a send looks human rather

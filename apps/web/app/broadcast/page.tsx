@@ -1,19 +1,89 @@
-import { ComingSoon } from '../coming-soon';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { listCampaigns, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { Campaign } from '@/lib/crm';
+import { campaignStatusBadge } from './campaign-status';
 
-/** Broadcast. Deliberately its own section rather than something living inside the inbox. */
-export default function BroadcastPage() {
+/** Rendered per request — campaigns are live data that changes as the gateway dispatches. */
+export const dynamic = 'force-dynamic';
+
+/**
+ * Broadcast — the campaigns list, and the way into each campaign's per-recipient results.
+ *
+ * Its own section rather than something inside the inbox on purpose: a campaign to 500 people
+ * would otherwise bury every real conversation. This first slice is read-only — you can see what
+ * campaigns exist and, drilling in, exactly who each one reached and why not the rest. Creating a
+ * campaign is still over the API; a create → target → forecast → start flow is the next slice.
+ */
+export default async function BroadcastPage() {
+  let campaigns: Campaign[] = [];
+  let failure: string | null = null;
+  let expired = false;
+  try {
+    campaigns = await listCampaigns();
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) expired = true;
+    failure = error instanceof CrmApiError
+      ? `${error.code}: ${error.message}`
+      : 'Could not reach the API. Is it running? Start it with: npm run dev';
+  }
+
+  if (expired) redirect('/login?next=/broadcast');
+
   return (
-    <ComingSoon
-      title="Broadcast"
-      blurb="Sending one message to many people. A separate place from the inbox on purpose — a campaign to 500 contacts would otherwise bury every real conversation under 500 threads."
-      items={[
-        'Segments: who receives it, built from contact fields and tags',
-        'A dry run that shows exactly who would be messaged, before anything sends',
-        'Pacing, quiet hours and per-number daily caps — the anti-ban engine',
-        'Per-recipient status, so a failure is attributable rather than a total',
-        'Pause, resume, and surviving a restart without sending anything twice'
-      ]}
-      warning="Not buildable yet, and not safe to fake. There is no rate limiting anywhere in the send path — a bulk send today would be the fastest way to get the number banned."
-    />
+    <main className="mx-auto max-w-3xl px-5 py-8">
+      <header className="mb-5">
+        <h1 className="text-lg font-semibold tracking-tight">Broadcast</h1>
+        <p className="mt-1 text-sm text-muted">
+          Send one message to many people, paced by the anti-ban engine so a burst can never go out
+          at once. Open a campaign to see who it reached and who was skipped.
+        </p>
+      </header>
+
+      <p className="mb-5 rounded-lg border border-border bg-accent-soft/40 px-3 py-2 text-xs text-muted">
+        Every send passes the anti-ban engine — warmup, per-minute/hour/day caps, jitter, circadian
+        pacing, contact-graph gates, health scoring and a human-like typing delay. A campaign is
+        deliberately slow; the forecast on each one says how long it will take.
+      </p>
+
+      {failure !== null && <p className="text-sm text-danger">{failure}</p>}
+
+      {failure === null && campaigns.length === 0 && (
+        <p className="text-sm text-muted">
+          No campaigns yet. They are created over the API for now (a create flow is the next slice);
+          once one is started, it appears here with its per-recipient results.
+        </p>
+      )}
+
+      {campaigns.length > 0 && (
+        <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
+          {campaigns.map((c) => <CampaignRow key={c.id} campaign={c} />)}
+        </ul>
+      )}
+    </main>
+  );
+}
+
+/** One campaign in the list: its name, status and when it started, linking to its results. */
+function CampaignRow({ campaign }: { campaign: Campaign }) {
+  const badge = campaignStatusBadge(campaign.status);
+  const when = campaign.startedAt ?? campaign.createdAt;
+  return (
+    <li>
+      <Link
+        href={`/broadcast/${campaign.id}`}
+        className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent-soft/40"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{campaign.name}</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {campaign.startedAt !== null ? 'started' : 'created'} {new Date(when).toLocaleString()}
+          </p>
+        </div>
+        <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${badge.cls}`}>
+          {badge.label}
+        </span>
+      </Link>
+    </li>
   );
 }

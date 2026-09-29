@@ -179,6 +179,65 @@ export interface Contact {
   tags: Tag[];
 }
 
+/** One campaign as the list needs it. Mirrors a row of `GET /api/v1/campaigns`. */
+export interface Campaign {
+  id: string;
+  name: string;
+  /** `draft` · `running` · `paused` · `completed` · `cancelled`. */
+  status: string;
+  startedAt: string | null;
+  createdAt: string;
+}
+
+/** How many recipients sit in each state. Mirrors the `progress` on `GET /api/v1/campaigns/:id`. */
+export interface CampaignProgress {
+  total: number;
+  pending: number;
+  queued: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+}
+
+/** The engine's estimate of how long a campaign has left. Mirrors `forecast` on the detail route. */
+export interface CampaignForecast {
+  remaining: number;
+  allowanceToday: number;
+  /** Whole days before the last message goes out. 0 means it finishes today. */
+  daysToFinish: number;
+  /** True while the sender is still ramping up (warmup), which is why the daily allowance is low. */
+  inWarmup: boolean;
+}
+
+/** One campaign in full, with its live progress and forecast. Mirrors `GET /api/v1/campaigns/:id`. */
+export interface CampaignDetail {
+  id: string;
+  name: string;
+  status: string;
+  body: string;
+  senderIdentityId: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  progress: CampaignProgress;
+  forecast: CampaignForecast;
+}
+
+/** One recipient's outcome. Mirrors a row of `GET /api/v1/campaigns/:id/recipients`. */
+export interface CampaignRecipient {
+  id: string;
+  /** `pending` · `queued` · `sent` · `failed` · `skipped`. */
+  status: string;
+  /** Why a `skipped`/`failed` recipient was not reached (`dnc`, `cancelled`, unreachable, …). */
+  skipReason: string | null;
+  attemptedAt: string | null;
+  displayName: string | null;
+  /** The underlying message's own delivery state (`sent`/`delivered`/`read`/`failed`), if any. */
+  messageStatus: string | null;
+  /** The contact's primary phone or email, for identifying them in the list. */
+  identity: string | null;
+}
+
 /** What the API returns when a request fails: RFC 7807, plus our stable `code`. */
 export interface ApiProblem {
   code: string;
@@ -534,5 +593,31 @@ export async function getLinkState(senderId: string): Promise<LinkState> {
 export async function unlinkSender(senderId: string): Promise<{ senderId: string; status: string }> {
   return request<{ senderId: string; status: string }>(
     `/senders/${encodeURIComponent(senderId)}/unlink`, { method: 'POST' }
+  );
+}
+
+/** Lists the org's campaigns, newest first. */
+export async function listCampaigns(): Promise<Campaign[]> {
+  return request<Campaign[]>('/campaigns');
+}
+
+/** Fetches one campaign with its live progress and forecast. */
+export async function getCampaign(id: string): Promise<CampaignDetail> {
+  return request<CampaignDetail>(`/campaigns/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Lists a campaign's recipients — the per-recipient results. `status` narrows to one state and
+ * `q` searches the contact's name or number. Returns the first page; keyset paging is a follow-up.
+ */
+export async function listCampaignRecipients(
+  id: string, opts: { status?: string; q?: string } = {}
+): Promise<CampaignRecipient[]> {
+  const params = new URLSearchParams();
+  if (opts.status !== undefined && opts.status !== '') params.set('status', opts.status);
+  if (opts.q !== undefined && opts.q.trim() !== '') params.set('q', opts.q.trim());
+  const qs = params.toString();
+  return request<CampaignRecipient[]>(
+    `/campaigns/${encodeURIComponent(id)}/recipients${qs === '' ? '' : `?${qs}`}`
   );
 }

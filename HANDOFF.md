@@ -33,7 +33,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments | **partial** (search + realtime left) |
 | P5 | Ingestion — CSV **+ Excel** import | **first slice** |
 | P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring, **typing sim** | **✅ mostly** (per-incident recovery schedules left) |
-| P7 | Campaigns — bulk send, paced (API only, **no UI** — see Known defects) | **first slice** |
+| P7 | Campaigns — bulk send, paced; **Broadcast UI slice 1** (list + per-recipient results); create/controls UI still to build | **first slice** |
 | P8 | Meta Cloud API | not started |
 
 **D-14 is CLOSED (2026-09-28).** Inbound is alive again after a re-link, and media was verified
@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**433 tests · 24 of 35 specced tables · 15 migrations (through 0014).**
+**438 tests · 24 of 35 specced tables · 15 migrations (through 0014).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -107,7 +107,10 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   gateway converts recipients into messages **only as fast as the anti-ban ceiling allows**.
   Recipients are the queue, so pausing is instant and a campaign cannot bury an agent's reply.
   The start response forecasts how many days it will take. Cancelled recipients are marked
-  skipped with a reason, never dropped.
+  skipped with a reason, never dropped. A **Broadcast web page** (slice 1) lists campaigns and
+  shows **per-recipient results** — status filter + name/number search, progress tiles, forecast,
+  the message body — via `GET /campaigns/:id/recipients`. Create/target/start and pause/resume
+  controls in the UI are still to build (API-only today).
 - **Import — CSV and Excel (P5, first slice)**: upload → dry run → commit, now with a web
   **Import tab** and **.xlsx** support (exceljs, cells read as displayed text so a numeric phone
   survives; converted to CSV and fed the one pipeline). **Content-hash dedup**, so the same file
@@ -254,7 +257,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
-| **Campaigns have no UI** (flagged 2026-09-29) | The **Broadcast** tab is a `ComingSoon` placeholder (`apps/web/app/broadcast/page.tsx`), so a **built** feature is invisible — campaigns have a working API (create/start/pause/cancel, paced by the full anti-ban engine, `fromImportRunId`/`explicitContactIds` targeting). Worse, the placeholder's **warning is now false**: it says *"no rate limiting anywhere in the send path"*, but the entire anti-ban engine (six layers) exists. Needs a real campaigns UI (create → target → forecast → start/pause → per-recipient status) and the stale warning removed. Related: the greenlit **per-recipient results** view is the natural first piece. |
+| **Campaigns UI — partial** (slice 1 landed 2026-09-29) | The **Broadcast** tab is now a real page: it lists campaigns and drills into one to show **per-recipient results** (status filter + name/number search, progress tiles, forecast, the message body) — backed by the new `GET /campaigns/:id/recipients`. The old `ComingSoon` placeholder and its **false warning** ("no rate limiting anywhere") are gone. **Still to build (slices 2–3):** a **create → target → forecast** flow and **start/pause/resume/cancel controls** in the UI (those actions are API-only today). D-26 body variation lands in the compose step later. |
 
 ---
 
@@ -348,7 +351,20 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-29): typing simulation (D-24) + a fixture/export cleanup.** Before each
+**Most recent (2026-09-29): Broadcast UI, slice 1 — the campaigns list + per-recipient results.**
+The Broadcast tab was a `ComingSoon` placeholder whose warning was **false** (it claimed "no rate
+limiting anywhere" while the whole engine exists). It is now a real, read-only page: a **campaign
+list** (`/broadcast`) and a **campaign detail** (`/broadcast/[id]`) with progress tiles that double
+as status filters, the forecast, the message body, and the **per-recipient results** — every
+recipient with its status (`sent`/`queued`/`pending`/`skipped`/`failed`), the reason for a skip, and
+the message's own delivery state, filterable by status and searchable by name or number. Backed by a
+new **`GET /campaigns/:id/recipients`** (`?status=`, `?q=`, keyset on the row id; 404 for an unknown
+campaign, never an empty list) — F5 AC-5. 5 API tests → **438 total**; root+web typecheck, lint,
+full suite and `web:build` all green. **Not** eye-verified in a signed-in browser (needs the dev
+account password). **Still to build:** slice 2 (create → target → forecast → start) and slice 3
+(pause/resume/cancel controls) — those campaign actions are API-only today.
+
+**Before that (2026-09-29): typing simulation (D-24) + a fixture/export cleanup.** Before each
 send the gateway now shows a `composing` "typing…" presence, pauses a beat proportional to the
 message length (`typingDelayMs` in `@crm/core` — Gaussian on the per-char rate, clamped 0.7–8 s),
 then clears it — so a send looks human rather than instant. The `ChannelProvider` port gained an
@@ -438,11 +454,16 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    - ~~**Tags**~~ — **done.** `tag` + `contact_tag` (migration 0014, RLS forced), `GET/POST /tags`,
      `DELETE /tags/:id`, attach/detach on `/contacts/:id/tags`, `?tag=` filter on the contact list,
      and a Contacts-page filter bar + chips + add/remove + new-tag form (server actions).
-   - **Building next (greenlit):** **per-recipient results** — a searchable view of a campaign's
-     recipients (sent/delivered/skipped-and-why); the data already sits on `campaign_recipient`,
-     it just needs a `GET /campaigns/:id/recipients` endpoint + a view. Then an operator can find
-     people (search), label them (tags), hand-pick an audience (campaign `explicitContactIds`),
-     and see what a campaign did.
+   - ~~**Per-recipient results**~~ — **done (2026-09-29), as Broadcast UI slice 1.**
+     `GET /campaigns/:id/recipients` + the `/broadcast` list and `/broadcast/[id]` results view.
+   - **Broadcast UI — in progress (Kushal, 2026-09-29):** building the campaigns frontend in
+     slices. **Slice 1 done** (list + per-recipient results, and the false-warning placeholder
+     removed). **Slice 2 next:** create → target (whole import / picked contacts / by tag) →
+     dry-run forecast → start. **Slice 3:** pause/resume/cancel controls + live status. D-26 body
+     variation lands in the compose step; **D-10** (where broadcast output lives vs the inbox) is
+     decided by building this.
+   - **Then, the agreed order:** finish **P6 recovery orchestration** (Layer 6 timed schedules +
+     the frontend at-risk warning), then **D-10**, **D-26**, **D-28**.
    - **Pinned, priority:** **D-19** templates + **D-26** body variation (ship together);
      **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
@@ -455,7 +476,7 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
 - ~~**`[TEST DATA]` fixtures**~~ — **deleted 2026-09-29.** Rows and stub files gone; only the real D-14 JPEG remains.
 - **D-17** live inbound + presence/collision (WebSocket) · **D-18** snooze/Meta-window/keyboard ·
   **D-19** rich templates · **D-20** SQLite · **D-21** full import wizard · **D-22** row-level
-  dedup · **D-24** typing simulation.
+  dedup. (**D-24** typing simulation is now **built** — no longer parked.)
 - **Deployment** — where the production database is decided. **`ENCRYPTION_KEY` must be backed up
   separately from the database** — losing it loses every linked number and every stored message.
 
