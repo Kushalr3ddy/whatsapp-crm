@@ -13,6 +13,19 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-29 — Contact list + search (find people in the book)
+- **`GET /api/v1/contacts`** (`contacts:read`) — lists contacts newest-first and searches by a
+  case-insensitive substring across the **display name and any identity** (phone/email). Contact
+  fields aren't encrypted, so it's a plain `ILIKE` — no blind index, no design decision (the
+  encrypted message-body search of D-23 stays the separate, harder half). Keyset-paginated on
+  `created_at`; returns each contact with its identities and `do_not_contact`.
+- **New `/contacts` web page** + a **Contacts** nav tab: a server-rendered search box (a plain GET
+  form, no client JS) and a list showing name, phone/email, source, and a "do not contact" badge.
+  This is what lets an operator *find* specific imported people (to hand-pick a campaign audience).
+- 6 new API tests (search by name/phone/email, empty-on-no-match, per-org isolation) — **418
+  total**. Eye-verified against the real dev DB: lists the actual contacts, `?q=919035` narrows to
+  one. First slice; per-page cursor and richer filters come with tags/segments.
+
 ### 2026-09-29 — Build queue refined: contact search + tags + per-recipient results greenlit
 - **Building now** (P2–P7 core, greenlit by Kushal): **contact list + search** (browse/search
   imported contacts by name/phone — contact fields aren't encrypted, so no design decision),

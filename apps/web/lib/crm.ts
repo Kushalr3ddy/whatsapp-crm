@@ -152,6 +152,23 @@ export interface Sender {
   linked: boolean;
 }
 
+/** One way to reach a contact — a phone or email. */
+export interface ContactIdentity {
+  kind: string;
+  value: string;
+}
+
+/** A contact and its ways-to-reach. Mirrors `GET /api/v1/contacts`. */
+export interface Contact {
+  id: string;
+  displayName: string | null;
+  source: string | null;
+  /** Un-messageable gate — shown so an operator does not try to include them in a send. */
+  doNotContact: boolean;
+  createdAt: string;
+  identities: ContactIdentity[];
+}
+
 /** What the API returns when a request fails: RFC 7807, plus our stable `code`. */
 export interface ApiProblem {
   code: string;
@@ -267,6 +284,15 @@ export async function listUsers(): Promise<OrgUser[]> {
 /** Reads the signed-in principal, so the UI can tell which threads are "mine". */
 export async function getMe(): Promise<Me> {
   return request<Me>('/auth/me');
+}
+
+/**
+ * Lists / searches contacts, newest first. `q` is a case-insensitive substring matched against
+ * the display name and any identity (phone/email). Returns the first page; paging is a follow-up.
+ */
+export async function listContacts(q?: string): Promise<Contact[]> {
+  const query = q !== undefined && q.trim() !== '' ? `?q=${encodeURIComponent(q.trim())}` : '';
+  return request<Contact[]>(`/contacts${query}`);
 }
 
 /**

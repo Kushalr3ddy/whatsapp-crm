@@ -386,11 +386,12 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    `health` jsonb + relationship counts. Data eye-verified against the real dev DB; the logged-in
    visual is still worth a glance (needs the dev password to sign in).
 7. **Build queue (Kushal, 2026-09-29)** — all P2–P7 alpha core:
-   - **Building now (greenlit):** (a) **contact list + search** — browse/search imported contacts
-     by name/phone (contact fields aren't encrypted, so no design decision); (b) **tags** — label
-     contacts (`tag` + `contact_tag`); (c) **per-recipient results** — a searchable view of a
-     campaign's recipients (sent/delivered/skipped-and-why); the data already sits on
-     `campaign_recipient`. Together these let an operator find specific imported people, tag them,
+   - ~~**Contact list + search**~~ — **done.** `GET /contacts` (name/phone/email substring, plain
+     `ILIKE`, keyset-paginated) + a `/contacts` web page and nav tab. Finds specific imported people.
+   - **Building next (greenlit):** (a) **tags** — label contacts (`tag` + `contact_tag`; migration
+     + attach/detach + show them on the contact list); (b) **per-recipient results** — a searchable
+     view of a campaign's recipients (sent/delivered/skipped-and-why); the data already sits on
+     `campaign_recipient`. Together with contact search these let an operator find people, tag them,
      hand-pick an audience (campaign `explicitContactIds`), and see what a campaign did.
    - **Pinned, priority:** **D-19** templates + **D-26** body variation (ship together);
      **D-25** outbound media (high).

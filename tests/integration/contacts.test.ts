@@ -117,3 +117,56 @@ describe('the same person is not created twice', () => {
     expect(other.status).toBe(201);
   });
 });
+
+const list = (q?: string, key = keyA) =>
+  request(app)
+    .get(`/api/v1/contacts${q !== undefined ? `?q=${encodeURIComponent(q)}` : ''}`)
+    .set('Authorization', `Bearer ${key}`);
+
+describe('listing and searching contacts', () => {
+  beforeEach(async () => {
+    await post({ displayName: 'Priya Sharma', phone: '+919876500100', email: 'priya@example.com' });
+    await post({ displayName: 'Rahul Verma', phone: '+919876500200' });
+  });
+
+  it('lists the org\'s contacts, newest first, each with its identities', async () => {
+    const r = await list();
+    expect(r.status).toBe(200);
+    expect(r.body.data).toHaveLength(2);
+    expect(r.body.data[0].displayName).toBe('Rahul Verma');   // created last, so first
+    const priya = r.body.data.find((c: { displayName: string }) => c.displayName === 'Priya Sharma');
+    expect(priya.identities).toContainEqual({ kind: 'phone', value: '+919876500100' });
+    expect(priya.identities).toContainEqual({ kind: 'email', value: 'priya@example.com' });
+  });
+
+  it('searches by name (case-insensitive substring)', async () => {
+    const r = await list('priya');
+    expect(r.body.data).toHaveLength(1);
+    expect(r.body.data[0].displayName).toBe('Priya Sharma');
+  });
+
+  it('searches by a phone substring', async () => {
+    const r = await list('500200');
+    expect(r.body.data).toHaveLength(1);
+    expect(r.body.data[0].displayName).toBe('Rahul Verma');
+  });
+
+  it('searches by email', async () => {
+    const r = await list('priya@example');
+    expect(r.body.data).toHaveLength(1);
+  });
+
+  it('returns an empty list for a non-match, not an error', async () => {
+    const r = await list('zzzznomatch');
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual([]);
+  });
+
+  it('never returns another org\'s contacts', async () => {
+    // Org B created nothing, so its own read sees nothing — even though org A has "priya".
+    const keyBread = (await issueApiKey(db, { orgId: orgB, name: 'bread', scopes: ['contacts:read'] })).secret;
+    const r = await list('priya', keyBread);
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual([]);
+  });
+});

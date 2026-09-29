@@ -24,6 +24,16 @@ const createContact = z.object({
 });
 
 /**
+ * Query for listing / searching contacts. `q` is a free-text substring; `cursor` is the
+ * `createdAt` of the last row seen, for keyset paging without offsets on an unbounded list.
+ */
+const listContactsQuery = z.object({
+  q: z.string().trim().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().datetime().optional()
+});
+
+/**
  * Creating a contact over HTTP.
  *
  * The one way to add a single person that did not previously exist — until now a contact could
@@ -108,6 +118,52 @@ export function contactsRouter(defaultCountry: string): Router {
         identities: identities.map((i) => ({ kind: i.kind, value: i.value }))
       }
     });
+  });
+
+  /**
+   * Lists and searches contacts, newest first.
+   *
+   * Search matches the display name **or any identity** (phone/email) with a case-insensitive
+   * substring. Contact fields are not encrypted, so this is a plain `ILIKE` — no blind index and
+   * no design decision (the encrypted message-body search of D-23 is the separate, harder half).
+   * Keyset-paginated on `created_at` so a large contact book pages without offsets.
+   */
+  router.get('/', requireScope('contacts:read'), async (req: Request, res: Response) => {
+    const parsed = listContactsQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+        (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const { q, limit, cursor } = parsed.data;
+    const orgId = req.crm!.orgId;
+    const like = q === undefined ? null : `%${q}%`;
+    const before = cursor ?? null;
+
+    const rows = await req.tenant!((tx) => tx.execute(sql`
+      SELECT c.id, c.display_name AS "displayName", c.source,
+             c.do_not_contact AS "doNotContact", c.created_at AS "createdAt",
+             coalesce((
+               SELECT json_agg(json_build_object('kind', ci.kind, 'value', ci.value_normalized)
+                               ORDER BY ci.is_primary DESC)
+               FROM contact_identity ci
+               WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
+             ), '[]'::json) AS identities
+      FROM contact c
+      WHERE c.org_id = ${orgId}
+        AND c.deleted_at IS NULL
+        AND (${like}::text IS NULL
+             OR c.display_name ILIKE ${like}
+             OR EXISTS (SELECT 1 FROM contact_identity ci2
+                        WHERE ci2.contact_id = c.id AND ci2.value_normalized ILIKE ${like}))
+        AND (${before}::timestamptz IS NULL OR c.created_at < ${before}::timestamptz)
+      ORDER BY c.created_at DESC
+      LIMIT ${limit}`));
+
+    const data = rows as unknown as Array<{ createdAt: string }>;
+    // A full page means there may be more; hand back the last row's timestamp as the next cursor.
+    const nextCursor = data.length === limit ? data[data.length - 1]!.createdAt : null;
+    res.json({ data, nextCursor });
   });
 
   return router;
