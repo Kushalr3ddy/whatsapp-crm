@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
-  listSenders, listTags, listImportRuns, CrmApiError, NotAuthenticatedError
+  listSenders, listTags, listImportRuns, listSegments, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { Sender, Tag, ImportRun } from '@/lib/crm';
+import type { Sender, Tag, ImportRun, Segment } from '@/lib/crm';
 import { createCampaignAction } from '../actions';
 
 /** Rendered per request — the sender and tag pickers reflect live data. */
@@ -35,10 +35,13 @@ export default async function NewCampaignPage(
   let senders: Sender[] = [];
   let tags: Tag[] = [];
   let imports: ImportRun[] = [];
+  let segments: Segment[] = [];
   let failure: string | null = null;
   let expired = false;
   try {
-    [senders, tags, imports] = await Promise.all([listSenders(), listTags(), listImportRuns()]);
+    [senders, tags, imports, segments] = await Promise.all([
+      listSenders(), listTags(), listImportRuns(), listSegments()
+    ]);
   } catch (e) {
     if (e instanceof NotAuthenticatedError) expired = true;
     failure = e instanceof CrmApiError
@@ -47,8 +50,8 @@ export default async function NewCampaignPage(
   }
   if (expired) redirect('/login?next=/broadcast/new');
 
-  // A campaign needs a number to send from and an audience — a tag or an import — to aim at.
-  const canSend = senders.length > 0 && (tags.length > 0 || imports.length > 0);
+  // A campaign needs a number to send from and an audience — a tag, an import, or a segment.
+  const canSend = senders.length > 0 && (tags.length > 0 || imports.length > 0 || segments.length > 0);
 
   return (
     <main className="mx-auto max-w-xl px-5 py-8">
@@ -119,9 +122,9 @@ export default async function NewCampaignPage(
           <fieldset className="flex flex-col gap-2 rounded-md border border-border px-3 py-3">
             <legend className="px-1 text-sm font-medium">Audience</legend>
             <p className="text-xs text-muted">
-              Choose <em>one</em> — everyone carrying a tag, or everyone from an import. To pick
-              specific people instead, select them on the Contacts tab. Frozen when the campaign
-              starts, so changes afterwards won&apos;t alter the run.
+              Choose <em>one</em> — everyone carrying a tag, everyone from an import, or everyone
+              matching a segment. To pick specific people instead, select them on the Contacts tab.
+              Frozen when the campaign starts, so changes afterwards won&apos;t alter the run.
             </p>
 
             {tags.length > 0 && (
@@ -154,6 +157,21 @@ export default async function NewCampaignPage(
                       {r.filename ?? 'import'} · {r.contactCount} contacts ·{' '}
                       {new Date(r.createdAt).toLocaleDateString()}
                     </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {segments.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-muted">Everyone matching a segment</span>
+                <select
+                  name="fromSegmentId" defaultValue=""
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                >
+                  <option value="">— no segment —</option>
+                  {segments.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} · {s.contactCount} match</option>
                   ))}
                 </select>
               </label>

@@ -860,12 +860,20 @@ a missed opt-out becomes a block/report and a ban signal.
 
 ---
 
-## D-28 · Dynamic audience segments ("segregation") — later
+## D-28 · Dynamic audience segments ("segregation") — **MINIMAL SLICE LANDED 2026-09-30**
 
-> **Reduced 2026-09-29.** The combined "tags & segments" pin is retired: **tags** and a **contact
-> list + search** are being **built now** (not pinned), and campaigns already target a whole import
-> (`fromImportRunId`) or an explicit id list. What remains parked here is only the **dynamic**
-> segment — the saved-filter "segregation" — which is the meaty, deferrable part.
+> **Built (2026-09-30), minimal slice as scoped with Kushal.** A `segment` table (migration 0017,
+> RLS forced) stores an allowlisted `definition`; `@crm/core` `segments.ts` turns it into a **bound**
+> SQL predicate (`buildSegmentPredicate` / `countSegmentMatches`) — the JSON-to-SQL seam is closed by
+> construction: only known keys emit SQL, every value is a bound parameter, unknown keys are dropped
+> (and the API's `.strict()` zod rejects them). Criteria in this slice: **has-tag**, **replied
+> ever/never**, **last-contacted-within-N-days**, AND-combined, with `do_not_contact` and soft-deleted
+> always excluded. `GET/POST/DELETE /segments` + `POST /segments/preview` (live count); campaigns gain
+> a fourth targeting mode `from_segment_id`, resolved and **frozen** in `snapshotAudience`/`previewAudience`
+> like every other audience. A `/segments` page builds one (tag/reply/recency), previews the count, and
+> saves; the new-campaign form can target a segment. **Deliberately not built** (the "not a query
+> language" line): custom-field equals, AND/OR grouping, nested trees, more operators — add only on a
+> concrete need.
 
 **What:** a saved **filter** that re-evaluates on read — "everyone tagged `pune` who replied in the
 last 30 days" — table `segment` (`kind`, a `definition` jsonb, a cached count), and a campaign

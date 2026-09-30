@@ -13,6 +13,26 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-30 — D-28 dynamic segments (minimal slice)
+- A **saved, criteria-based audience** that re-evaluates every time it's used — unlike a tag (a
+  fixed list). New `segment` table (migration `0017`, RLS forced) storing an allowlisted
+  `definition`; `@crm/core` `segments.ts` turns it into a **bound** SQL predicate.
+- **The JSON-to-SQL seam is closed by construction:** only known keys emit SQL, every value is a
+  bound parameter, unknown keys contribute nothing, and the API's `.strict()` zod rejects them with
+  a 422. Criteria this slice: **has-tag**, **replied ever/never**, **last-contacted-within-N-days**,
+  AND-combined; `do_not_contact` and soft-deleted contacts always excluded.
+- `GET/POST/DELETE /segments` + `POST /segments/preview` (live count). Campaigns gain a fourth
+  targeting mode `from_segment_id`, resolved and **frozen** in `snapshotAudience`/`previewAudience`
+  like every other audience.
+- **Web:** a `/segments` page (nav tab added; Broadcast's stale `soon` flag removed) — a builder
+  (tag / reply / recency) with a live "N match" count via a GET preview + a Save server action, and
+  a list with per-segment counts + delete. The new-campaign form can target a segment.
+- 13 new tests: filter correctness (tag/replied/recency/AND/empty), injection-safety (unknown key →
+  422, non-uuid → 422, valid-but-unknown id → 0 not error), CRUD + live count, and campaign
+  freeze-at-launch. **478 total.** Typecheck, lint, suite and `web:build` green.
+- **Deliberately not built** ("a CRM, not a query language"): custom-field equals, AND/OR grouping,
+  nested trees — add only on a concrete need.
+
 ### 2026-09-29 — D-26 campaign body variation (spintax + {{name}}); D-29 pinned
 - A campaign no longer sends byte-identical text. New `@crm/core` module `body-variation.ts` —
   `renderBody(template, vars)` resolves **spintax** (`{Hi|Hey|Hello}`, nested, inside-out) first on

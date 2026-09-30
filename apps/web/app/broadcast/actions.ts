@@ -35,12 +35,14 @@ export async function createCampaignAction(formData: FormData): Promise<void> {
   const senderIdentityId = String(formData.get('senderIdentityId') ?? '');
   const fromTagId = String(formData.get('fromTagId') ?? '');
   const fromImportRunId = String(formData.get('fromImportRunId') ?? '');
+  const fromSegmentId = String(formData.get('fromSegmentId') ?? '');
 
-  // The audience is a tag or an import, exactly one. The form offers both selects with a "none"
-  // default; picking neither or both is a mistake worth a clear message rather than an API error.
+  // The audience is a tag, an import, or a segment — exactly one. The form offers all three selects
+  // with a "none" default; picking neither or more than one is a mistake worth a clear message.
   const chosen: CampaignTarget[] = [];
   if (fromTagId !== '') chosen.push({ fromTagId });
   if (fromImportRunId !== '') chosen.push({ fromImportRunId });
+  if (fromSegmentId !== '') chosen.push({ fromSegmentId });
 
   if (name === '' || body === '' || senderIdentityId === '' || chosen.length !== 1) {
     redirect('/broadcast/new?error=missing');

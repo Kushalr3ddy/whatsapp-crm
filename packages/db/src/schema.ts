@@ -453,6 +453,30 @@ export const contactTag = pgTable('contact_tag', {
 ]);
 
 /**
+ * A saved, criteria-based audience — the dynamic segment (docs/21-deferred.md D-28). Unlike a tag
+ * (a static named list), a segment stores a *filter* in `definition` that re-evaluates against
+ * current data every time it is used. A campaign targeting a segment resolves and **freezes** it at
+ * launch, like every other audience, so a running campaign never shifts.
+ *
+ * `definition` is a small allowlisted shape (has-tag, replied ever/never, last-contacted-within-N-
+ * days), never free SQL — the filter engine in `@crm/core` maps each key to a pre-written, bound
+ * fragment, so a stored definition can never inject (docs/21-deferred.md D-28).
+ */
+export const segment = pgTable('segment', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** `dynamic` for a re-evaluating filter. A future `static` kind (a frozen list) would live here too. */
+  kind: text('kind').notNull().default('dynamic'),
+  /** The allowlisted filter criteria. Interpreted only by the engine, never turned into raw SQL. */
+  definition: jsonb('definition').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  uniqueIndex('segment_org_name_uidx').on(t.orgId, t.name)
+]);
+
+/**
  * One stored attachment.
  *
  * Separate from `message` rather than columns on it because the same file can arrive twice —
@@ -611,6 +635,11 @@ export const campaign = pgTable('campaign', {
    * the tag is later deleted; the frozen `campaign_recipient` rows are unaffected.
    */
   fromTagId: uuid('from_tag_id').references(() => tag.id, { onDelete: 'set null' }),
+  /**
+   * A dynamic segment whose filter resolves to the audience — evaluated and frozen at snapshot, so
+   * later data changes never move a running campaign. Nulled if the segment is deleted.
+   */
+  fromSegmentId: uuid('from_segment_id').references(() => segment.id, { onDelete: 'set null' }),
 
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),

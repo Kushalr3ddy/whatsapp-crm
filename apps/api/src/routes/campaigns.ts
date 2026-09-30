@@ -15,10 +15,11 @@ const createCampaign = z.object({
   senderIdentityId: z.string().uuid(),
   fromImportRunId: z.string().uuid().optional(),
   explicitContactIds: z.array(z.string().uuid()).min(1).max(50_000).optional(),
-  fromTagId: z.string().uuid().optional()
-}).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId]
+  fromTagId: z.string().uuid().optional(),
+  fromSegmentId: z.string().uuid().optional()
+}).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId, v.fromSegmentId]
   .filter((x) => x !== undefined).length === 1, {
-  message: 'state the audience exactly once: fromImportRunId, explicitContactIds, or fromTagId'
+  message: 'state the audience exactly once: fromImportRunId, explicitContactIds, fromTagId, or fromSegmentId'
 });
 
 /**
@@ -54,7 +55,7 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
     }
     const orgId = req.crm!.orgId;
     const {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId
     } = parsed.data;
 
     const created = await req.tenant!(async (tx) => {
@@ -70,13 +71,20 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
         if ((t as unknown as unknown[]).length === 0) return { error: 'no_tag' as const };
       }
 
+      // Same for a segment audience.
+      if (fromSegmentId !== undefined) {
+        const s = await tx.execute(sql`
+          SELECT id FROM segment WHERE id = ${fromSegmentId} AND org_id = ${orgId}`);
+        if ((s as unknown as unknown[]).length === 0) return { error: 'no_segment' as const };
+      }
+
       const rows = await tx.execute(sql`
         INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                              explicit_contact_ids, from_tag_id, status)
+                              explicit_contact_ids, from_tag_id, from_segment_id, status)
         VALUES (${orgId}, ${name}, ${body}, ${senderIdentityId}, ${fromImportRunId ?? null},
                 ${explicitContactIds === undefined
                   ? null : JSON.stringify(explicitContactIds)}::jsonb,
-                ${fromTagId ?? null}, 'draft')
+                ${fromTagId ?? null}, ${fromSegmentId ?? null}, 'draft')
         RETURNING id`);
       const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
       await writeAudit(tx, {
@@ -88,7 +96,9 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
     });
 
     if ('error' in created) {
-      const detail = created.error === 'no_tag' ? 'No such tag.' : 'No such sender.';
+      const detail = created.error === 'no_tag' ? 'No such tag.'
+        : created.error === 'no_segment' ? 'No such segment.'
+        : 'No such sender.';
       res.status(404).json(problem(req, 404, 'NOT_FOUND', detail));
       return;
     }

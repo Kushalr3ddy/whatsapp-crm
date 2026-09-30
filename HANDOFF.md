@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**465 tests · 24 of 35 specced tables · 17 migrations (through 0016).**
+**478 tests · 25 of 35 specced tables · 18 migrations (through 0017).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -360,7 +360,21 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-29): D-26 campaign body variation (spintax + `{{name}}`).** A campaign no
+**Most recent (2026-09-30): D-28 dynamic segments — minimal slice.** A **saved, criteria-based
+audience** that re-evaluates on read. New `segment` table (migration 0017, RLS forced) storing an
+allowlisted `definition`; `@crm/core` `segments.ts` turns it into a **bound** SQL predicate — the
+JSON-to-SQL seam is closed by construction (only known keys emit SQL, every value bound, unknown
+keys dropped, `.strict()` zod rejects them at the API). Criteria: **has-tag / replied ever-never /
+last-contacted-within-N-days**, AND-only, `do_not_contact` + soft-deleted always excluded.
+`GET/POST/DELETE /segments` + `POST /segments/preview` (live count); a fourth campaign targeting mode
+`from_segment_id`, resolved and **frozen** in `snapshotAudience`/`previewAudience` like every other
+audience. A `/segments` page (nav tab added; Broadcast's stale `soon` flag dropped) builds a segment
+with a live "N match" count and the new-campaign form can target one. 13 new tests including
+injection-safety (unknown key → 422, non-uuid → 422, valid-but-unknown id → 0 not error) and
+freeze-at-launch. **Deliberately not built** (the "not a query language" line): custom-field equals,
+AND/OR, nested trees. **The agreed P6 → D-26 → D-28 queue is now complete.**
+
+**Before that (2026-09-29): D-26 campaign body variation (spintax + `{{name}}`).** A campaign no
 longer sends byte-identical text to everyone. `renderBody` in `@crm/core` (`body-variation.ts`)
 resolves **spintax** (`{Hi|Hey|Hello}`, nested, resolved first on the operator's template) then
 fills **variables** (`{{name}}` / `{{contact.name}}` from the contact, inserted last so an odd
@@ -535,7 +549,13 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    - ~~**D-26 body variation**~~ — **mostly done (2026-09-29).** Spintax + `{{name}}` rendered
      per recipient at dispatch (`renderBody`); the "refuse N identical bodies" guard is the small
      remaining half (moot when spintax is used).
-   - **Now on to:** **D-28** dynamic segments (criteria-based audiences), when Kushal wants it.
+   - ~~**D-28 dynamic segments**~~ — **minimal slice done (2026-09-30).** `segment` table + an
+     allowlisted filter engine (tag / replied / last-contacted, AND-only, bound params), a
+     `/segments` builder with live count, and campaign targeting by segment. Fuller filter
+     (custom-field equals, AND/OR) deliberately deferred.
+   - **The agreed queue (P6 → D-26 → D-28) is done.** Remaining pins, Kushal's call on order:
+     **D-25** outbound media (high), **D-19** templates, **D-23** message-body search, **D-27**
+     opt-out automation, **D-29** anti-ban advisory mode.
    - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
      simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences);

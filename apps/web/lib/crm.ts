@@ -419,6 +419,23 @@ export async function listTags(): Promise<Tag[]> {
   return request<Tag[]>('/tags');
 }
 
+/** The allowlisted filter a dynamic segment stores (docs/21-deferred.md D-28). All fields optional. */
+export interface SegmentDefinition {
+  tagIds?: string[];
+  replied?: 'ever' | 'never';
+  lastContactedWithinDays?: number;
+}
+
+/** A saved criteria-based audience with its live match count. Mirrors a row of `GET /segments`. */
+export interface Segment {
+  id: string;
+  name: string;
+  definition: SegmentDefinition;
+  createdAt: string;
+  /** How many contacts the filter matches right now (dynamic — recomputed each read). */
+  contactCount: number;
+}
+
 /** One committed import run, as a campaign audience option. Mirrors a row of `GET /imports`. */
 export interface ImportRun {
   id: string;
@@ -432,6 +449,33 @@ export interface ImportRun {
 /** Lists committed, non-superseded import runs — the ones a campaign can target. */
 export async function listImportRuns(): Promise<ImportRun[]> {
   return request<ImportRun[]>('/imports');
+}
+
+/** Lists the org's dynamic segments, each with a live match count. */
+export async function listSegments(): Promise<Segment[]> {
+  return request<Segment[]>('/segments');
+}
+
+/** Counts how many contacts a filter matches right now — for the builder, before saving. */
+export async function previewSegmentCount(definition: SegmentDefinition): Promise<number> {
+  const r = await request<{ count: number }>('/segments/preview', {
+    method: 'POST', body: JSON.stringify({ definition })
+  });
+  return r.count;
+}
+
+/** Creates a segment. Throws `CrmApiError` (`SEGMENT_EXISTS`) if the name is taken. */
+export async function createSegment(
+  name: string, definition: SegmentDefinition
+): Promise<{ id: string; name: string }> {
+  return request<{ id: string; name: string }>('/segments', {
+    method: 'POST', body: JSON.stringify({ name, definition })
+  });
+}
+
+/** Deletes a segment. A campaign that targeted it keeps its frozen recipients. */
+export async function deleteSegment(id: string): Promise<void> {
+  return requestVoid(`/segments/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 /** Creates a tag. Throws `CrmApiError` (code `TAG_EXISTS`) if the name is already taken. */
@@ -674,7 +718,8 @@ export async function listCampaignRecipients(
 export type CampaignTarget =
   | { fromTagId: string }
   | { fromImportRunId: string }
-  | { explicitContactIds: string[] };
+  | { explicitContactIds: string[] }
+  | { fromSegmentId: string };
 
 /**
  * Creates a draft campaign. Sends nothing and freezes no audience — a draft until started.

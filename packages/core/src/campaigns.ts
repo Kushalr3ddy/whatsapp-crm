@@ -3,6 +3,7 @@ import type { Transaction } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import { dailyCeiling, type PacingLimits } from './pacing.js';
 import { renderBody } from './body-variation.js';
+import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
 import type { TenantWork } from './ingestion.js';
 
 /**
@@ -67,6 +68,16 @@ export interface AudiencePreview {
 export async function previewAudience(
   tx: Transaction, orgId: string, campaignId: string
 ): Promise<AudiencePreview> {
+  // Same segment branch as snapshotAudience, so the dry-run count matches what start would freeze.
+  const segRows = await tx.execute(sql`
+    SELECT s.definition AS "definition"
+    FROM campaign cp JOIN segment s ON s.id = cp.from_segment_id
+    WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}`);
+  const segDef = (segRows as unknown as Array<{ definition: SegmentDefinition }>)[0]?.definition;
+  const segmentBranch = segDef === undefined
+    ? sql``
+    : sql`OR (cp.from_segment_id IS NOT NULL AND (${buildSegmentPredicate(segDef, orgId)}))`;
+
   const rows = await tx.execute(sql`
     WITH audience AS (
       SELECT c.id AS contact_id,
@@ -90,6 +101,7 @@ export async function previewAudience(
             SELECT 1 FROM contact_tag ct
             WHERE ct.tag_id = cp.from_tag_id AND ct.contact_id = c.id AND ct.org_id = ${orgId}
           ))
+          ${segmentBranch}
         )
     )
     SELECT count(*)::int AS total,
@@ -164,6 +176,18 @@ export async function forecast(
 export async function snapshotAudience(
   tx: Transaction, orgId: string, campaignId: string
 ): Promise<number> {
+  // A dynamic segment resolves in TypeScript (the filter engine turns its stored definition into a
+  // bound predicate) and is composed into the audience WHERE as one more branch. Fetched first so
+  // the branch is empty for the other targeting modes, leaving their SQL untouched.
+  const segRows = await tx.execute(sql`
+    SELECT s.definition AS "definition"
+    FROM campaign cp JOIN segment s ON s.id = cp.from_segment_id
+    WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}`);
+  const segDef = (segRows as unknown as Array<{ definition: SegmentDefinition }>)[0]?.definition;
+  const segmentBranch = segDef === undefined
+    ? sql``
+    : sql`OR (cp.from_segment_id IS NOT NULL AND (${buildSegmentPredicate(segDef, orgId)}))`;
+
   const rows = await tx.execute(sql`
     WITH audience AS (
       SELECT c.id AS contact_id,
@@ -191,6 +215,8 @@ export async function snapshotAudience(
             SELECT 1 FROM contact_tag ct
             WHERE ct.tag_id = cp.from_tag_id AND ct.contact_id = c.id AND ct.org_id = ${orgId}
           ))
+          -- … or everyone a dynamic segment's filter matches, resolved and frozen here.
+          ${segmentBranch}
         )
     )
     INSERT INTO campaign_recipient (org_id, campaign_id, contact_id, status, skip_reason)
