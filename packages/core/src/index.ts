@@ -37,6 +37,7 @@ export {
 
 export {
   checkContactGraph, classifyRelationship, relationshipDelayMultiplier,
+  newContactDailyAllowance, DEFAULT_REPLY_FLOOR, type ReplyFloorConfig,
   type Relationship, type ContactGraphLimits, type ContactGraphDecision
 } from './contact-graph.js';
 

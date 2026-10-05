@@ -3,7 +3,7 @@ import { createLogger, loadConfig, ConfigError } from '@crm/shared';
 import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
-import { storeInboundMessage, applyDeliveryStatus, storeMedia } from '@crm/core';
+import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import type { NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -64,7 +64,9 @@ async function main(): Promise<void> {
     contactGraph: config.CONTACT_GRAPH_GATES
       ? {
           newContactsPerHour: config.NEW_CONTACTS_PER_HOUR,
-          newContactsPerDay: config.NEW_CONTACTS_PER_DAY
+          newContactsPerDay: config.NEW_CONTACTS_PER_DAY,
+          // Lower the daily allowance until recent new contacts actually reply (Layer 4).
+          ...(config.NEW_CONTACT_REPLY_FLOOR ? { replyFloor: DEFAULT_REPLY_FLOOR } : {})
         }
       : null,
     // Make each send look human — a "typing…" beat before it lands (docs/08-antiban.md, D-24).

@@ -23,10 +23,35 @@ import type { Database } from '@crm/db';
 /** Where a contact sits relative to this sender, strongest relationship first. */
 export type Relationship = 'known' | 'contacted' | 'stranger';
 
+/**
+ * The reply-ratio floor (docs/08-antiban.md, Layer 4): the full new-contact daily cap is only
+ * earned once enough recent new contacts have actually replied. Reply ratio is the strongest
+ * single ban signal, so a number whose cold outreach is not being answered is not given more.
+ */
+export interface ReplyFloorConfig {
+  /** How far back to look for new contacts, in days. */
+  readonly windowDays: number;
+  /** A new contact only counts once this many hours have passed, so a recent send is not a "no reply". */
+  readonly graceHours: number;
+  /** Fewer matured new contacts than this is too little evidence to earn the full cap. */
+  readonly minSample: number;
+  /** The share of matured new contacts that must have replied to earn the full cap. */
+  readonly minRatio: number;
+  /** The daily allowance for new contacts until the floor is met. */
+  readonly startPerDay: number;
+}
+
+/** 7-day window, 48 h grace, a sample of 10, a 30 % floor, and 5 new contacts/day until earned. */
+export const DEFAULT_REPLY_FLOOR: ReplyFloorConfig = {
+  windowDays: 7, graceHours: 48, minSample: 10, minRatio: 0.3, startPerDay: 5
+};
+
 /** The caps on starting conversations with people this sender has never messaged. */
 export interface ContactGraphLimits {
   readonly newContactsPerHour: number;
   readonly newContactsPerDay: number;
+  /** Opt-in: when set, the daily cap is lowered until the reply-ratio floor is met. */
+  readonly replyFloor?: ReplyFloorConfig;
 }
 
 /** Whether a send may proceed on relationship grounds, and how much to slow it if so. */
@@ -74,6 +99,18 @@ export function relationshipDelayMultiplier(relationship: Relationship): number 
 }
 
 /**
+ * The daily new-contact allowance after the reply-ratio floor: the full `cap` once at least
+ * `minSample` matured new contacts exist and `minRatio` of them replied, otherwise the lower
+ * starting allowance. It only ever lowers the cap, never raises it past what the operator set.
+ */
+export function newContactDailyAllowance(
+  sample: number, replied: number, cap: number, floor: ReplyFloorConfig
+): number {
+  const earned = sample >= floor.minSample && replied / sample >= floor.minRatio;
+  return earned ? cap : Math.min(cap, floor.startPerDay);
+}
+
+/**
  * Decides whether this send may go to this contact right now, on relationship grounds.
  *
  * A stranger send is refused once the number has already started too many new conversations in
@@ -87,6 +124,10 @@ export async function checkContactGraph(
   limits: ContactGraphLimits, now: Date = new Date()
 ): Promise<ContactGraphDecision> {
   const at = now.toISOString();
+  const floor = limits.replyFloor;
+  // Bound as plain numbers; the unused defaults keep the query valid when the floor is off.
+  const graceHours = floor?.graceHours ?? DEFAULT_REPLY_FLOOR.graceHours;
+  const windowDays = floor?.windowDays ?? DEFAULT_REPLY_FLOOR.windowDays;
   const rows = await db.execute(sql`
     WITH firsts AS (
       -- The first time this sender messaged each contact. A "new contact" is one whose first
@@ -102,6 +143,19 @@ export async function checkContactGraph(
         count(*) FILTER (WHERE first_out > ${at}::timestamptz - interval '1 hour')::int AS "newLastHour",
         count(*) FILTER (WHERE first_out > ${at}::timestamptz - interval '1 day')::int  AS "newLastDay"
       FROM firsts
+    ),
+    matured AS (
+      -- New contacts old enough to have had a fair chance to reply, and whether each did. This is
+      -- the evidence for the reply-ratio floor.
+      SELECT count(*)::int AS sample,
+             count(*) FILTER (WHERE EXISTS (
+               SELECT 1 FROM message m JOIN conversation v ON v.id = m.conversation_id
+               WHERE v.sender_identity_id = ${senderIdentityId} AND v.contact_id = firsts.contact_id
+                 AND m.direction = 'inbound' AND m.created_at > firsts.first_out
+             ))::int AS replied
+      FROM firsts
+      WHERE first_out <= ${at}::timestamptz - ${graceHours} * interval '1 hour'
+        AND first_out >  ${at}::timestamptz - ${windowDays} * interval '1 day'
     )
     SELECT
       EXISTS (
@@ -114,11 +168,12 @@ export async function checkContactGraph(
         WHERE v.sender_identity_id = ${senderIdentityId} AND v.contact_id = ${contactId}
           AND m.direction = 'outbound' AND m.sent_at IS NOT NULL
       ) AS "hasPriorOutbound",
-      counts."newLastHour", counts."newLastDay"
-    FROM counts`);
+      counts."newLastHour", counts."newLastDay", matured.sample, matured.replied
+    FROM counts, matured`);
 
   const row = (rows as unknown as Array<{
     hasInbound: boolean; hasPriorOutbound: boolean; newLastHour: number; newLastDay: number;
+    sample: number; replied: number;
   }>)[0]!;
 
   const relationship = classifyRelationship(row.hasInbound, row.hasPriorOutbound);
@@ -126,10 +181,17 @@ export async function checkContactGraph(
   // Only a stranger send starts a new conversation, so only it is throttled. Day before hour, so
   // the message names the ceiling that will free up last.
   if (relationship === 'stranger') {
-    if (row.newLastDay >= limits.newContactsPerDay) {
+    const dailyAllowance = floor
+      ? newContactDailyAllowance(row.sample, row.replied, limits.newContactsPerDay, floor)
+      : limits.newContactsPerDay;
+    if (row.newLastDay >= dailyAllowance) {
+      const why = dailyAllowance < limits.newContactsPerDay
+        ? ` (reply-ratio floor: ${String(row.replied)} of ${String(row.sample)} recent new contacts replied, ` +
+          `${String(Math.round(floor!.minRatio * 100))}% needed over ${String(floor!.minSample)}+ to earn ${String(limits.newContactsPerDay)}/day)`
+        : '';
       return {
         allowed: false, reason: 'new_contact_throttle',
-        detail: `new-contact daily cap reached: ${String(row.newLastDay)} of ${String(limits.newContactsPerDay)}`,
+        detail: `new-contact daily cap reached: ${String(row.newLastDay)} of ${String(dailyAllowance)}${why}`,
         retryAfterMs: 60 * 60 * 1000
       };
     }

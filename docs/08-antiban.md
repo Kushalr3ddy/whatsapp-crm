@@ -86,8 +86,7 @@ both-ways *status* recovery, a typed incident now starts a **timed** response: a
 the send chokepoint (message left queued, never failed), the ramp is a fraction that only *lowers*
 the daily ceiling, and the Numbers page shows an at-risk / cooling-off banner per number. A 401 hard
 ban stays on the existing unlink→re-link path rather than auto-retiring, because a genuine ban and a
-user unlink are indistinguishable at the socket. Two refinements to what *is* built remain open: the
-reply-ratio floor before the new-contact allowance grows, and inferring the *recipient's* timezone.
+user unlink are indistinguishable at the socket. One refinement to what *is* built remains open: inferring the *recipient's* timezone.
 
 ✅ **Typing simulation is now built** (D-24). Before each send the gateway emits a `composing`
 presence, pauses a beat proportional to the message length (Gaussian on the rate, clamped
@@ -162,8 +161,16 @@ Delay multiplier by relationship:
 | Handshake sent | 1.8× | `contacted` |
 | **Stranger** | **2.5×** | `stranger` |
 
-New-contact throttle: **5/hour, 20/day** ✅ enforced. The rolling minimum **~30% reply ratio**
-from new contacts before the allowance grows is **not yet built** — a refinement on top of the cap.
+New-contact throttle: **5/hour, 20/day** ✅ enforced.
+
+✅ **Reply-ratio floor built.** The 20/day cap is *earned*, not given: it applies only once at least
+**10** new contacts from the last **7 days** (each given a **48 h** grace to answer) exist and **≥30 %**
+of them replied. Until then the daily allowance is **5/day** (`DEFAULT_REPLY_FLOOR`,
+`newContactDailyAllowance` in `contact-graph.ts`). It only ever lowers the cap, is computed from the
+`message` table like every other layer, and a held send names the evidence in its reason (e.g. "2 of
+10 recent new contacts replied"). It is deliberately a *floor on the allowance*, not a hard stop — a
+hard stop would starve the number of the very replies that raise the ratio. `NEW_CONTACT_REPLY_FLOOR=false`
+restores the flat cap.
 
 Group operations (V2, but the limits belong here): ~3 adds and ~2 creates per 10 minutes;
 a **12-hour lurk period** after joining a group before posting.

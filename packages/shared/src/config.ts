@@ -61,6 +61,9 @@ const configSchema = z.object({
   // messaging per hour / day. Cold-blasting a fresh list is a top ban signal; these cap it.
   NEW_CONTACTS_PER_HOUR: z.coerce.number().int().positive().max(100).default(5),
   NEW_CONTACTS_PER_DAY: z.coerce.number().int().positive().max(500).default(20),
+  // Reply-ratio floor: the daily new-contact cap above is only earned once ~30% of recent new
+  // contacts have replied; until then a lower starting allowance applies. `false` = flat cap.
+  NEW_CONTACT_REPLY_FLOOR: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   CONTACT_GRAPH_GATES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   // Typing simulation (docs/08-antiban.md, D-24): emit a "typing…" presence and pause a beat
   // proportional to the message length before each send, so a send looks human rather than

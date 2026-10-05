@@ -4,7 +4,8 @@ import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
-  recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident
+  recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
+  type ReplyFloorConfig
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -74,6 +75,7 @@ export interface WorkContext {
   readonly contactGraph?: {
     readonly newContactsPerHour: number;
     readonly newContactsPerDay: number;
+    readonly replyFloor?: ReplyFloorConfig;
   } | null;
   /**
    * Emit a `composing` presence and pause a human-like beat before each send (docs/08-antiban.md,

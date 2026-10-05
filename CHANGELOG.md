@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-05 — Anti-ban #4 (reply-ratio floor) + printable docs
+- **#4 of 8 — reply-ratio floor (Layer 4).** The new-contact daily cap (20) is now earned: it applies
+  only once ≥10 new contacts from the last 7 days (48 h grace to reply) exist and ≥30 % replied;
+  until then 5/day. `newContactDailyAllowance` + `DEFAULT_REPLY_FLOOR` in `contact-graph.ts`,
+  evidence computed in the same SQL as the existing throttle (no migration). Opt-in per
+  `ContactGraphLimits.replyFloor`, wired by `NEW_CONTACT_REPLY_FLOOR` (default true). Never throttles
+  known/contacted recipients. 6 new tests → **491 vitest**.
+- **`npm run docs:pdf`** builds `build/whatsapp-crm-docs.pdf` (gitignored): HANDOFF + CHANGELOG +
+  GETTING_STARTED + all of `docs/`, with a cover, contents and a section index, both with page
+  numbers (`scripts/docs-pdf.mjs`, `marked` dev dependency). eslint ignores `scripts/*.mjs`.
+
 ### 2026-09-30 — Anti-ban #3 (delivery→speed curve) + CI runs the full test set
 - **#3 of 8 — continuous delivery→speed curve (Layer 5).** New `deliveryDelayMultiplier` in
   `@crm/core` scales the inter-send delay by the delivery ratio — ×1 at ≥85 %, ×4 below 55 %, linear
@@ -52,7 +63,7 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 - 5 tests (4 unit on `dailyCeiling`: clamp / lift / backward-compat / never-raises; 1 integration:
   dispatch holds a never-replied sender to 20 then lifts to the rest once it gets an inbound).
 - Remaining backlog (HANDOFF): #2 identical-body guard · #3 continuous delivery→speed curve ·
-  #4 reply-ratio floor · #5 decrypt-failure signal · #6 read behaviour · #7 background entropy ·
+  #5 decrypt-failure signal · #6 read behaviour · #7 background entropy ·
   #8 recipient-timezone inference.
 
 ### 2026-09-30 — Playwright E2E + a segments-UI bug found by driving the app

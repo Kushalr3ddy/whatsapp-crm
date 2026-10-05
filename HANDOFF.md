@@ -8,21 +8,21 @@ request; `HANDOFF.md` + `CHANGELOG.md` are the primary, always-current record.)
 
 ---
 
-## ▶ Pick up here (new chat, 2026-09-30)
+## ▶ Pick up here (2026-10-05)
 
 **In progress: the anti-ban completion pass — finishing the 8 remaining refinements one by one,
-marking each done in [`docs/08-antiban.md`](docs/08-antiban.md). 3 of 8 done; next is #4.**
+marking each done in [`docs/08-antiban.md`](docs/08-antiban.md). 4 of 8 done; next is #5.**
 
-1. **Resume at anti-ban #4 — the reply-ratio floor** (Layer 4, `docs/08-antiban.md`): a new-contact
-   allowance should only grow once a rolling **~30% reply ratio** from recent new contacts is met —
-   a refinement on top of the already-built new-contact throttle in
-   `packages/core/src/contact-graph.ts`. Then #5 decrypt-failure signal, #6 read behaviour,
-   #7 background entropy, #8 recipient-timezone inference. Full list + status in **Next**, below.
+1. **Resume at anti-ban #5 — the decrypt-failure signal** (Layer 5): 3 `Bad MAC` events in 60 s
+   should degrade the sender. Then #6 read behaviour, #7 background entropy, #8 recipient-timezone
+   inference. **#4 (reply-ratio floor) landed 2026-10-05** — the 20/day new-contact cap is earned by
+   ≥30 % replies from ≥10 recent new contacts, else 5/day (`contact-graph.ts`, `NEW_CONTACT_REPLY_FLOOR`).
+   Full list + status in **Next**, below. `npm run docs:pdf` builds a printable copy of all the docs.
 2. **Watch the first CI run** on GitHub (`.github/workflows/ci.yml` was rewritten this session and
    is **unvalidated** — the `e2e` job especially). Fix whatever the first push/PR surfaces.
 3. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin,
    or the `e2e-test` admin in `.env` (`TEST_EMAIL`/`TEST_PASSWORD`). `npm run check` = typecheck +
-   lint + **485 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
+   lint + **491 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
@@ -63,7 +63,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**485 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
+**491 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -396,12 +396,13 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-30): anti-ban completion pass (3 of 8) + CI + the hydration fix.** Working
+**Most recent (2026-10-05): anti-ban #4, the reply-ratio floor (4 of 8)** — see `CHANGELOG.md`; the
+entry below is the pass before it. **Before that (2026-09-30): anti-ban completion pass (3 of 8) + CI + the hydration fix.** Working
 through the remaining anti-ban refinements one by one (full list + status in *Next*):
 **#1 outbound-only daily clamp** (never-replied sender → 20/day), **#2 identical-body guard**
 (≤ `IDENTICAL_BODY_DAILY_CAP`/24h, completes D-26), **#3 continuous delivery→speed curve**
 (`deliveryDelayMultiplier`, replaces degraded=half) — all enforced in `handleSend`/dispatch with
-unit + integration tests. **Still pending: #4 reply-ratio floor · #5 decrypt-failure signal ·
+unit + integration tests. **Still pending then: #5 decrypt-failure signal ·
 #6 read behaviour · #7 background entropy · #8 recipient-timezone inference.** Also: **GitHub
 Actions rewritten** to actually run the vitest suite (migrate test DB first) and a new **e2e job**
 (`npm run test:e2e`) — unvalidated on GitHub, watch the first run; and the root
@@ -625,7 +626,8 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      - ~~**#3** continuous delivery→speed curve~~ — **done.** `deliveryDelayMultiplier` scales the
        send delay ×1 (≥85% delivery) → ×4 (<55%), linear between, in `handleSend`; a degraded sender
        still held to ≥ half speed. Replaces the blunt degraded=half.
-     - **#4** reply-ratio floor before the new-contact allowance grows (Layer 4).
+     - ~~**#4** reply-ratio floor~~ — **done (2026-10-05).** Daily new-contact cap earned by ≥30 %
+       replies from ≥10 new contacts in 7 d (48 h grace), else 5/day; `newContactDailyAllowance`.
      - **#5** decrypt-failure signal (3 `Bad MAC` in 60 s → degrade, Layer 5).
      - **#6** read behaviour (mark-as-read after 10–60 min, gateway) · **#7** background entropy
        (periodic presence noise, gateway) · **#8** recipient-timezone inference (circadian).

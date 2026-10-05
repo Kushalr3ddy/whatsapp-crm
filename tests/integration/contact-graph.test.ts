@@ -5,7 +5,8 @@ import { createDatabase, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import {
-  checkContactGraph, classifyRelationship, relationshipDelayMultiplier
+  checkContactGraph, classifyRelationship, relationshipDelayMultiplier,
+  newContactDailyAllowance, DEFAULT_REPLY_FLOOR
 } from '@crm/core';
 import { createLogger } from '@crm/shared';
 import { handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
@@ -190,6 +191,86 @@ describe('the new-contact throttle', () => {
     );
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) expect(decision.detail).toContain('daily');
+  });
+});
+
+describe('the reply-ratio floor', () => {
+  const floorLimits = { newContactsPerHour: 100, newContactsPerDay: 20, replyFloor: DEFAULT_REPLY_FLOOR };
+  const day = 24 * 60 * 60_000;
+
+  /** Starts `n` new contacts 3 days ago (matured), the first `replies` of which answered. */
+  async function matureContacts(n: number, replies: number, prefix: string): Promise<void> {
+    for (let i = 0; i < n; i++) {
+      const c = await newContact(`${prefix}${String(i).padStart(2, '0')}`);
+      await sentOutbound(c.conversationId, 3 * day);
+      if (i < replies) await inbound(c.conversationId);
+    }
+  }
+
+  it('allowance: full cap only with a big enough sample AND ≥30% replies (pure)', () => {
+    const f = DEFAULT_REPLY_FLOOR;
+    expect(newContactDailyAllowance(3, 3, 20, f)).toBe(5);    // great ratio, tiny sample
+    expect(newContactDailyAllowance(10, 2, 20, f)).toBe(5);   // 20% < 30%
+    expect(newContactDailyAllowance(10, 3, 20, f)).toBe(20);  // exactly 30%
+    expect(newContactDailyAllowance(40, 40, 3, f)).toBe(3);   // never above the operator's cap
+  });
+
+  it('holds a fresh sender with no history to the starting allowance', async () => {
+    for (let i = 0; i < 5; i++) {
+      const c = await newContact(`+91987660000${String(i)}`);
+      await sentOutbound(c.conversationId, 60 * 60_000);      // started today
+    }
+    const next = await newContact('+919876609999');
+    const decision = await checkContactGraph(db, senderId, next.contactId, floorLimits);
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.detail).toContain('reply-ratio floor');
+  });
+
+  it('lifts to the full cap once ≥30% of 10+ matured new contacts replied', async () => {
+    await matureContacts(10, 3, '+9198767000');
+    for (let i = 0; i < 5; i++) {
+      const c = await newContact(`+91987680000${String(i)}`);
+      await sentOutbound(c.conversationId, 60 * 60_000);
+    }
+    const next = await newContact('+919876809999');
+    const decision = await checkContactGraph(db, senderId, next.contactId, floorLimits);
+    expect(decision.allowed).toBe(true);
+  });
+
+  it('stays at the starting allowance when matured contacts mostly ignored us', async () => {
+    await matureContacts(10, 2, '+9198769000');
+    for (let i = 0; i < 5; i++) {
+      const c = await newContact(`+91987690100${String(i)}`);
+      await sentOutbound(c.conversationId, 60 * 60_000);
+    }
+    const next = await newContact('+919876909999');
+    const decision = await checkContactGraph(db, senderId, next.contactId, floorLimits);
+    expect(decision.allowed).toBe(false);
+  });
+
+  it('does not count a new contact still inside the 48 h reply grace', async () => {
+    for (let i = 0; i < 10; i++) {
+      const c = await newContact(`+9198771000${String(i).padStart(2, '0')}`);
+      await sentOutbound(c.conversationId, 5 * 60 * 60_000);  // 5 h ago: no chance to reply yet
+    }
+    // 10 unreplied, but all inside the grace → not a sample; with the flat cap this would pass
+    const next = await newContact('+919877109999');
+    const flat = await checkContactGraph(db, senderId, next.contactId,
+      { newContactsPerHour: 100, newContactsPerDay: 20 });
+    expect(flat.allowed).toBe(true);
+    const floored = await checkContactGraph(db, senderId, next.contactId, floorLimits);
+    expect(floored.allowed).toBe(false);   // 10 started today ≥ the starting 5
+  });
+
+  it('never throttles known or contacted recipients, floor or not', async () => {
+    for (let i = 0; i < 6; i++) {
+      const c = await newContact(`+9198772000${String(i)}`);
+      await sentOutbound(c.conversationId, 60 * 60_000);
+    }
+    const old = await newContact('+919877299999');
+    await sentOutbound(old.conversationId, 5 * day);
+    const decision = await checkContactGraph(db, senderId, old.contactId, floorLimits);
+    expect(decision.allowed).toBe(true);
   });
 });
 
