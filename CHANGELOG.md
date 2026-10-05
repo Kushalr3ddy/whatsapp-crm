@@ -13,6 +13,23 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-05 — The anti-ban simulation harness (and two bugs it found)
+- **`npm run test:sim`** (`tests/simulation/*.sim.ts`, `vitest.sim.config.ts`, a CI step on `main`):
+  the real gateway engine against `SimulatedWhatsApp`, a virtual WhatsApp that scores every send on the
+  documented ban heuristics and bans at risk 100 (downgrades deliveries at 60). Simulated time (faked
+  JS `Date` + a `simclock.now()` `search_path` shim visible only to the sim's own connections),
+  simulated people (delivery/reply rates). A **negative control** proves the sim can ban. Scenarios:
+  day-1 blast (strangers / known contacts), warmed long campaign (ceilings, no night sends, timing
+  spread), reconnect-then-backlog, low-reply-ratio spiral. Scaled down to run in ~4 min.
+- **Bug 1 (fixed): false soft-ban on a healthy number.** Sends younger than a receipt could exist were
+  counted as undelivered, so the first burst of any campaign read as a delivery collapse and opened a
+  48 h soft-ban recovery pause. `RECEIPT_GRACE_MS` (15 min) now keeps fresh sends out of the ratio.
+- **Bug 2 (fixed): backlog flood after reconnect.** A queue built while the socket was down drained at
+  8/min the moment it returned (32 sends in 5 min). For `RECONNECT_RAMP_MS` (10 min) after a (re)connect
+  the per-minute ceiling is held at 3 (12 sends in 5 min in the sim). `last_connected_at` feeds it; no
+  migration. `WorkContext.sweepBatchSize` added so the sim can run a small batch.
+- 2 new pacing tests; health tests aged past the grace. **532 vitest** (+ 6 simulation scenarios).
+
 ### 2026-10-05 — D-25 outbound media (sending files)
 - **Agents can send a file.** `POST /conversations/:id/attachments` (raw body, `?filename=&caption=`,
   16 MB cap) → type decided from the bytes (images/video/audio/PDF/ZIP-Office; HTML/SVG/unknown refused

@@ -30,6 +30,15 @@ export type RiskBand = 'low' | 'medium' | 'high' | 'critical';
 /** Below this many recent sends, delivery and failure rates are too noisy to score on. */
 const MIN_SENDS_TO_SCORE = 10;
 
+/**
+ * A send younger than this has not had a fair chance to be delivered, so it is left out of the
+ * delivery ratio. Receipts arrive within seconds when the recipient's phone is on, but minutes to
+ * hours when it is off — judging a fresh send as "undelivered" would read the first burst of any
+ * campaign as a delivery collapse and open a 48 h soft-ban pause on a perfectly healthy number
+ * (found by the simulation harness, tests/simulation).
+ */
+export const RECEIPT_GRACE_MS = 15 * 60_000;
+
 /** Delivery ratios: at or above HEALTHY is fine; below POOR is a soft-ban signal. */
 const DELIVERY_HEALTHY = 0.85;
 const DELIVERY_POOR = 0.55;
@@ -180,10 +189,12 @@ export async function scoreSenderHealth(
       count(m.*) FILTER (
         WHERE m.direction = 'outbound' AND m.status IN ('sent','delivered','read')
           AND m.sent_at > ${at}::timestamptz - interval '1 day'
+          AND m.sent_at < ${at}::timestamptz - ${String(RECEIPT_GRACE_MS / 1000)} * interval '1 second'
       )::int AS "sentRecent",
       count(m.*) FILTER (
         WHERE m.direction = 'outbound' AND m.status IN ('delivered','read')
           AND m.sent_at > ${at}::timestamptz - interval '1 day'
+          AND m.sent_at < ${at}::timestamptz - ${String(RECEIPT_GRACE_MS / 1000)} * interval '1 second'
       )::int AS "deliveredRecent",
       count(m.*) FILTER (
         WHERE m.direction = 'outbound' AND m.status = 'failed'

@@ -72,7 +72,20 @@ export interface PacingLimits {
    * the whole test suite, behaving exactly as before.
    */
   readonly lastInboundAt?: Date | null;
+  /**
+   * When the socket last (re)opened. For `RECONNECT_RAMP_MS` after it, the per-minute ceiling is
+   * held at `RECONNECT_PER_MINUTE`: a backlog that queued while the number was down must not drain
+   * at full speed the instant it returns — "burst flood after reconnect" is one of the documented
+   * ban signals (docs/08-antiban.md). Absent means the caller did not evaluate it, so no ramp.
+   */
+  readonly lastConnectedAt?: Date | null;
 }
+
+/** How long after a (re)connect the number is eased back to speed. */
+export const RECONNECT_RAMP_MS = 10 * 60_000;
+
+/** The per-minute ceiling while easing back after a reconnect. */
+export const RECONNECT_PER_MINUTE = 3;
 
 /** Whether a send may proceed, and if not, why and for how long. */
 export type PacingDecision =
@@ -255,6 +268,10 @@ export async function checkSendAllowance(
 ): Promise<PacingDecision> {
   const counts = await recentSends(db, senderIdentityId, now);
   const ceiling = dailyCeiling(limits, counts.lastSentAt, now);
+  // Easing back after a reconnect: a lower per-minute ceiling for a few minutes. Only ever lowers.
+  const easing = limits.lastConnectedAt !== undefined && limits.lastConnectedAt !== null
+    && now.getTime() - limits.lastConnectedAt.getTime() < RECONNECT_RAMP_MS;
+  const perMinute = easing ? Math.min(limits.perMinute, RECONNECT_PER_MINUTE) : limits.perMinute;
 
   if (counts.today >= ceiling) {
     const warming = limits.warmupStartedAt === null || ceiling < limits.perDay;
@@ -276,10 +293,11 @@ export async function checkSendAllowance(
       retryAfterMs: 5 * 60 * 1000
     };
   }
-  if (counts.lastMinute >= limits.perMinute) {
+  if (counts.lastMinute >= perMinute) {
     return {
       allowed: false, reason: 'per_minute',
-      detail: `per-minute cap reached: ${String(counts.lastMinute)} of ${String(limits.perMinute)}`,
+      detail: `per-minute cap reached: ${String(counts.lastMinute)} of ${String(perMinute)}`
+        + (easing ? ' (easing back after a reconnect)' : ''),
       retryAfterMs: 60 * 1000
     };
   }

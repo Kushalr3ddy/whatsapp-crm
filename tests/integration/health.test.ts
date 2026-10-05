@@ -147,7 +147,9 @@ async function messages(
 ): Promise<void> {
   const add = async (n: number, status: string, hasSentAt: boolean): Promise<void> => {
     for (let i = 0; i < n; i++) {
-      const now = new Date().toISOString();
+      // 30 minutes old: past the receipt grace, so the delivery ratio counts it. A send younger
+      // than RECEIPT_GRACE_MS is deliberately not judged yet (see health.ts).
+      const now = new Date(Date.now() - 30 * 60_000).toISOString();
       await db.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type,
                              provider_message_id, sent_at, created_at)

@@ -32,6 +32,7 @@ export {
 export {
   checkSendAllowance, dailyCeiling, humanDelayMs,
   circadianActivity, circadianDelayMs, localHour, CIRCADIAN_QUIET_THRESHOLD,
+  RECONNECT_RAMP_MS, RECONNECT_PER_MINUTE,
   type PacingLimits, type PacingDecision
 } from './pacing.js';
 

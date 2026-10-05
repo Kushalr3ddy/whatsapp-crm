@@ -34,6 +34,8 @@ interface QueuedSend {
   readonly dailyCapOverride: number | null;
   /** When the sender last received an inbound, or null if never — drives the outbound-only clamp. */
   readonly lastInboundAt: string | null;
+  /** When the socket last (re)opened, for the post-reconnect ramp. */
+  readonly lastConnectedAt: string | null;
   /** Layer 6 recovery state, read with the job: the incident class and when its pause ends. */
   readonly recoveryIncident: string | null;
   readonly recoveryUntil: string | null;
@@ -96,6 +98,8 @@ export interface WorkContext {
    * exercise it never see a read receipt.
    */
   readonly readReceipts?: boolean;
+  /** How many of the oldest queued messages one sweep attempts. Default 200; the simulation lowers it. */
+  readonly sweepBatchSize?: number;
   /**
    * Where stored files live, so a queued message that carries one can be read back and sent
    * (D-25). Absent in tests that only send text; a media message with no storage fails visibly.
@@ -354,6 +358,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            si.warmup_started_at AS "warmupStartedAt",
            si.daily_cap_override AS "dailyCapOverride",
            si.last_inbound_at AS "lastInboundAt",
+           cs.last_connected_at AS "lastConnectedAt",
            si.recovery_incident AS "recoveryIncident",
            si.recovery_until AS "recoveryUntil",
            COALESCE((si.health->>'deliveryRatio')::float, 1) AS "deliveryRatio",
@@ -362,6 +367,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
     FROM message m
     JOIN conversation v   ON v.id = m.conversation_id
     JOIN sender_identity si ON si.id = v.sender_identity_id
+    LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
     LEFT JOIN media_asset ma ON ma.id = m.media_id AND ma.org_id = m.org_id
     JOIN contact_identity ci ON ci.contact_id = v.contact_id
                             AND ci.kind IN ('phone','wa_jid','wa_lid')
@@ -431,6 +437,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       dailyCapOverride: job.dailyCapOverride,
       warmupStartedAt: job.warmupStartedAt === null ? null : new Date(job.warmupStartedAt),
       lastInboundAt: job.lastInboundAt === null ? null : new Date(job.lastInboundAt),
+      lastConnectedAt: job.lastConnectedAt === null ? null : new Date(job.lastConnectedAt),
       circadianTimezone: ctx.limits.circadianTimezone ?? null,
       // While ramping out of a recovery, the daily ceiling is scaled down to this fraction.
       ...(recovery.phase === 'ramping' ? { recoveryCapFraction: recovery.capFraction } : {})
@@ -659,7 +666,7 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   const sendRows = await ctx.db.execute(sql`
     SELECT id FROM message
     WHERE direction = 'outbound' AND status = 'queued'
-    ORDER BY created_at ASC LIMIT 200`);
+    ORDER BY created_at ASC LIMIT ${ctx.sweepBatchSize ?? 200}`);
   const sends = (sendRows as unknown as Array<{ id: string }>).map((r) => r.id);
   for (const id of sends) await handleSend(ctx, id);
 

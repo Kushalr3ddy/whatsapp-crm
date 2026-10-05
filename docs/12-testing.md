@@ -37,7 +37,30 @@ cleared, and it is why the ports exist at all.
 | **Chaos** | Scripted | Quarterly | Kill Postgres / queue / gateway mid-campaign |
 | **Manual** | Runbook | Pre-release | One real number, small scale, against a checklist |
 
-## The simulation harness
+## The simulation harness — ✅ built
+
+> **Built (2026-10-05):** `npm run test:sim` (files `tests/simulation/*.sim.ts`, config
+> `vitest.sim.config.ts`; CI runs it on `main`). It runs the **real** gateway code — `sweepPendingWork`,
+> which sends, scores health, dispatches campaigns and fires read receipts and presence noise — against
+> `SimulatedWhatsApp`, a `FakeChannelProvider` subclass that scores every send against the documented
+> ban heuristics (burst, volume beyond the account's age, night sending, robotic timing, identical
+> bodies, strangers who never answered, reply ratio, a flood after reconnect), downgrades deliveries at
+> risk 60 and bans at 100. Its thresholds are deliberately independent of, and looser than, the
+> engine's own, so the test is not circular. Time is simulated: JavaScript `Date` is faked, and the
+> simulation's database connections shadow `now()` with `simclock.now()` (a `search_path` shim that no
+> other connection or test sees), so days of traffic run in minutes with the engine none the wiser. The
+> people are simulated too — configurable delivery and reply rates, receipts and replies arriving
+> through the real `applyDeliveryStatus` / `storeInboundMessage`. A **negative control** drives a number
+> with every protection off and asserts it *is* banned, so a harness gone blind cannot pass quietly.
+> Scenarios built: day-1 blast (to strangers, and to known contacts), a warmed number's long campaign
+> (ceilings, never at night, human timing), reconnect-then-backlog, and the low-reply-ratio spiral.
+> **Scaled down** from the table below (hundreds of recipients, 2–4 days, not 10k) so it runs in
+> minutes. Not built: the "5 workers, one sender" scenario — the gateway holds exactly one connection
+> per number by design, so concurrent workers on one sender is not a supported topology.
+> **It found two real bugs on its first run**, both fixed: a healthy number's first burst of sends was
+> read as a delivery collapse (sends too fresh to have a receipt counted as undelivered) and opened a
+> 48 h soft-ban pause; and a backlog drained at full speed the instant the socket returned.
+> The original design follows.
 
 **The single highest-value test in the project**, because it is the only way to validate
 `08-antiban.md` without risking a real number.

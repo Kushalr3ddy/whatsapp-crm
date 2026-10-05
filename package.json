@@ -29,6 +29,7 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:sim": "vitest run --config vitest.sim.config.ts",
     "test:e2e": "playwright test",
     "//2": "─── database: db:setup does everything a new clone needs ────────────",
     "db:setup": "npm run db:dev:up && npm run db:migrate:all",

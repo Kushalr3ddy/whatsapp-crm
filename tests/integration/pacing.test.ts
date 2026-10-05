@@ -200,6 +200,39 @@ describe('rate windows, counted from what was actually sent', () => {
   });
 });
 
+describe('easing back after a reconnect', () => {
+  const warmed = () => ({ ...limits, warmupStartedAt: new Date(Date.now() - 30 * 86_400_000) });
+
+  it('holds the per-minute ceiling low just after the socket reopens', async () => {
+    await alreadySent(10_000, 3);                              // 3 in the last minute: fine normally
+    const normal = await checkSendAllowance(db, senderId, warmed());
+    expect(normal.allowed).toBe(true);
+
+    const easing = await checkSendAllowance(db, senderId, {
+      ...warmed(), lastConnectedAt: new Date(Date.now() - 2 * 60_000)
+    });
+    expect(easing.allowed).toBe(false);
+    if (!easing.allowed) {
+      expect(easing.reason).toBe('per_minute');
+      expect(easing.detail).toContain('reconnect');
+    }
+  });
+
+  it('is back to full speed after the ramp, and never raises a lower configured ceiling', async () => {
+    await alreadySent(10_000, 3);
+    const later = await checkSendAllowance(db, senderId, {
+      ...warmed(), lastConnectedAt: new Date(Date.now() - 11 * 60_000)
+    });
+    expect(later.allowed).toBe(true);
+
+    await alreadySent(10_000, 1);                               // 4 in the minute; configured cap is 2
+    const lowCap = await checkSendAllowance(db, senderId, {
+      ...warmed(), perMinute: 2, lastConnectedAt: new Date(Date.now() - 2 * 60_000)
+    });
+    expect(lowCap.allowed).toBe(false);
+  });
+});
+
 describe('the delay between sends', () => {
   it('stays inside the specced window', () => {
     const samples = Array.from({ length: 500 }, () => humanDelayMs());

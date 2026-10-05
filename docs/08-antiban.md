@@ -103,6 +103,15 @@ the send chokepoint and in campaign dispatch, and reflected in the campaign fore
 so the rest of the pacing path is unchanged. Outbound-only is exactly the pattern the graph
 heuristics punish — a real account gets replies — and now the ceiling says so.
 
+✅ **Proven by simulation, and two defects fixed because of it.** `tests/simulation` runs days of
+traffic through this engine against a virtual WhatsApp that bans on the heuristics above
+(`docs/12-testing.md`). Its first run found (1) that the delivery ratio counted sends too young to have
+a receipt as *undelivered*, so a healthy number's first burst opened a 48 h soft-ban pause — a send now
+has `RECEIPT_GRACE_MS` (15 min) before it is judged; and (2) that a backlog queued while the socket was
+down drained at the full 8/min the moment it returned — for 10 minutes after a (re)connect
+(`RECONNECT_RAMP_MS`) the per-minute ceiling is now held at `RECONNECT_PER_MINUTE` (3). Both only ever
+lower what a number may do.
+
 ## Layer 1 — Warmup
 
 Per sender identity, from `warmup_started_at`. Exponential ramp, factor **1.8×/day**:
