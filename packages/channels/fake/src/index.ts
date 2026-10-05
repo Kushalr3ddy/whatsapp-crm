@@ -62,6 +62,9 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Every read receipt sent, in order, so a test can assert when (and whether) one went out. */
   readonly readCalls: Array<{ senderId: string; to: Recipient; providerMessageId: string }> = [];
 
+  /** Every own-presence call, in order, so a test can assert the entropy blip fired. */
+  readonly presenceCalls: Array<{ senderId: string; state: 'available' | 'unavailable' }> = [];
+
   private readonly health_ = new Map<string, ProviderHealth>();
   private readonly inboundQueue: NormalisedInboundEvent[] = [];
   /** Attachments this fake will hand back, keyed by the ref put on the event. */
@@ -145,6 +148,13 @@ export class FakeChannelProvider implements ChannelProvider {
   async typing(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void> {
     if (this.health_.get(sender.id)?.state !== 'open') return;
     this.typingCalls.push({ senderId: sender.id, to, state });
+  }
+
+  /** Records an own-presence call; false (like the real adapter) when not connected. */
+  async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<boolean> {
+    if (this.health_.get(sender.id)?.state !== 'open') return false;
+    this.presenceCalls.push({ senderId: sender.id, state });
+    return true;
   }
 
   /** Records a read receipt; false (like the real adapter) when the sender is not connected. */

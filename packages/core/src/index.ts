@@ -66,6 +66,11 @@ export {
 } from './decrypt-failures.js';
 
 export {
+  EntropyScheduler, entropyPlan, nextEntropyDelayMs, ENTROPY_MIN_INTERVAL_MS, ENTROPY_MAX_INTERVAL_MS,
+  type EntropyPlan, type Rng
+} from './entropy.js';
+
+export {
   readDelayMs, readIsDue, READ_DELAY_MIN_MS, READ_DELAY_MAX_MS, READ_MAX_AGE_MS
 } from './read-receipts.js';
 

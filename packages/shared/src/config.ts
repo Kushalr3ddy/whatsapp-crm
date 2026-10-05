@@ -72,6 +72,9 @@ const configSchema = z.object({
   // Read behaviour (docs/08-antiban.md, Layer 3): mark inbound messages read after a per-message
   // 10–60 minute delay, only in active hours. `false` = never send read receipts from the gateway.
   SEND_READ_RECEIPTS: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // Background entropy (docs/08-antiban.md, Layer 3): every 2–6 h per connected number, in active
+  // hours, an abandoned "typing…" and a brief online blip. `false` = no idle-time presence at all.
+  SEND_BACKGROUND_ENTROPY: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   // Body-variation backstop (docs/08-antiban.md, Layer 3 / D-26): the most identical message bodies
   // one number may queue within a rolling 24h. Beyond it, further identical-body recipients are left
   // pending until the window frees up or the operator adds spintax. Only bites a no-variation blast —

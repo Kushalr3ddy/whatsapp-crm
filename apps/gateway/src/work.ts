@@ -5,7 +5,7 @@ import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
   recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
-  type ReplyFloorConfig, readIsDue, circadianActivity, localHour
+  type ReplyFloorConfig, readIsDue, circadianActivity, localHour, entropyPlan, type EntropyScheduler
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -91,10 +91,79 @@ export interface WorkContext {
    */
   readonly readReceipts?: boolean;
   /**
+   * Background presence noise while idle (docs/08-antiban.md, Layer 3). Present = on: the
+   * scheduler decides per number when an event is due (every 2–6 h). Absent in tests that do not
+   * exercise it.
+   */
+  readonly entropy?: EntropyScheduler;
+  /**
    * Waits before a send. Injected so tests do not spend real seconds on jitter — production
    * passes a real sleep, and skipping it entirely would defeat the point of the jitter.
    */
   readonly sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * One background noise event for a connected number: an abandoned "typing…" to a contact who has
+ * replied (never to a stranger — typing at someone who never wrote back is itself odd), then a
+ * brief available→unavailable presence blip. Strictly cosmetic and best-effort: every call is
+ * swallowed on failure and nothing here can affect a send.
+ */
+export async function runEntropyEvent(
+  ctx: WorkContext, senderId: string, senderPhone: string,
+  rng: () => number = Math.random
+): Promise<void> {
+  if (!ctx.provider.presence) return;
+  const plan = entropyPlan(rng);
+  const sender = { id: senderId, phoneE164: senderPhone };
+  const sleep = ctx.sleep ?? (async () => {});
+  try {
+    if (ctx.provider.typing) {
+      const rows = await ctx.db.execute(sql`
+        SELECT ci.value_normalized AS "value", ci.kind AS "kind"
+        FROM conversation v
+        JOIN contact_identity ci ON ci.contact_id = v.contact_id AND ci.kind IN ('phone','wa_jid','wa_lid')
+        WHERE v.sender_identity_id = ${senderId} AND v.last_inbound_at IS NOT NULL
+        ORDER BY v.last_inbound_at DESC, CASE ci.kind WHEN 'phone' THEN 0 WHEN 'wa_jid' THEN 1 ELSE 2 END
+        LIMIT 1`);
+      const target = (rows as unknown as Array<{ value: string; kind: string }>)[0];
+      if (target) {
+        const to = target.kind === 'phone'
+          ? { phoneE164: target.value } : { phoneE164: '', providerAddress: target.value };
+        await ctx.provider.typing(sender, to, 'composing');
+        await sleep(plan.typingMs);
+        await ctx.provider.typing(sender, to, 'paused');      // started typing, changed their mind
+      }
+    }
+    if (await ctx.provider.presence(sender, 'available')) {
+      await sleep(plan.presenceMs);
+      await ctx.provider.presence(sender, 'unavailable');
+    }
+  } catch (err) {
+    ctx.logger.warn({ err, senderId }, 'background entropy event failed');
+  }
+}
+
+/**
+ * Fires whichever numbers' noise events are due, in active hours only. The events themselves take
+ * tens of seconds (typing, then a presence blip), so they run detached rather than holding up the
+ * send sweep; each is best-effort and logs its own failure.
+ */
+export async function sweepEntropy(ctx: WorkContext, now: Date = new Date()): Promise<number> {
+  if (!ctx.entropy) return 0;
+  const tz = ctx.limits?.circadianTimezone ?? null;
+  if (tz && circadianActivity(localHour(now, tz)) < 0.5) return 0;
+  const rows = await ctx.db.execute(sql`
+    SELECT si.id AS "id", si.phone_e164 AS "phone"
+    FROM sender_identity si JOIN channel_session cs ON cs.sender_identity_id = si.id
+    WHERE si.status IN ('active','degraded') AND cs.connection_state = 'open'`);
+  let fired = 0;
+  for (const r of rows as unknown as Array<{ id: string; phone: string | null }>) {
+    if (!ctx.entropy.due(r.id, now)) continue;
+    fired++;
+    void runEntropyEvent(ctx, r.id, r.phone ?? '');
+  }
+  return fired;
 }
 
 /**
@@ -547,6 +616,9 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
 
   // Read receipts that have come due (human-like read delay, active hours only).
   await sweepReadReceipts(ctx);
+
+  // Idle-time presence noise, so a number is not only ever active when a send is queued.
+  await sweepEntropy(ctx);
 
   // After sending, not before: a campaign tops the queue up with whatever allowance is left
   // once this sweep's sends have been accounted for.

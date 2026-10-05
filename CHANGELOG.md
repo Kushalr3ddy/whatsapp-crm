@@ -13,6 +13,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-05 — Anti-ban #7 (background entropy)
+- **#7 of 8 — idle-time presence noise (Layer 3).** New optional `ChannelProvider.presence` (Baileys
+  `sendPresenceUpdate`, fake records `presenceCalls`) and `runEntropyEvent`/`sweepEntropy` in the
+  gateway: per connected number every 2–6 h, active hours only, an abandoned 3–8 s "typing…" to a
+  contact who has replied (never a stranger) plus a 30–120 s available→unavailable blip. Pure
+  `EntropyScheduler`/`entropyPlan` in `@crm/core`; events run detached and best-effort.
+  `SEND_BACKGROUND_ENTROPY` (default on). No migration. 9 new tests → **514**.
+
 ### 2026-10-05 — Anti-ban #6 (read behaviour)
 - **#6 of 8 — human-like read receipts (Layer 3).** New `ChannelProvider.markRead` (optional;
   Baileys `readMessages`, fake records `readCalls`). `sweepReadReceipts` (gateway, every sweep) blue-

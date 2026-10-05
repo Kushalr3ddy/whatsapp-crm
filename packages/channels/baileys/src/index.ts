@@ -208,6 +208,14 @@ export class BaileysChannelProvider implements ChannelProvider {
     await conn.socket.sendPresenceUpdate(state, jid);
   }
 
+  /** Sets this number's own online/offline presence; false when the socket is not open. */
+  async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<boolean> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return false;
+    await conn.socket.sendPresenceUpdate(state);
+    return true;
+  }
+
   /** Sends the blue ticks for one inbound message; false when the socket is not open. */
   async markRead(sender: SenderRef, to: Recipient, providerMessageId: string): Promise<boolean> {
     const conn = this.#connections.get(sender.id);

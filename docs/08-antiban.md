@@ -145,8 +145,13 @@ A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" 
   `message.read_at` on an inbound message records "we sent the receipt", set only after the provider
   confirms, so a closed socket just retries. `ChannelProvider.markRead` is optional like `typing`.
   `SEND_READ_RECEIPTS=false` stops the gateway sending any.
-- **Background entropy**: every 2–6 hours, presence noise — a typing indicator for 3–8 s then
-  stop (someone started typing and changed their mind), presence toggling over 30–120 s.
+- **Background entropy** ✅ **built**: every 2–6 hours per connected number, in active hours only, the
+  gateway emits one noise event — a "typing…" for 3–8 s that is then abandoned (`paused`, no message),
+  and an available→unavailable presence blip held 30–120 s. The typing goes only to a contact who has
+  replied, never a stranger; with nobody suitable it does just the blip. `EntropyScheduler` (core)
+  schedules per number, in memory — the first sighting schedules 2–6 h out, so a restart never fires
+  every number at once. Best-effort and detached from the send sweep. Optional `ChannelProvider.presence`.
+  `SEND_BACKGROUND_ENTROPY=false` turns it off.
 - **Body variation** ✅ **built** (D-26): spintax (`{Hi|Hey}`) plus per-recipient variables
   (`{{name}}`) render each recipient's copy in `dispatchCampaign` (`renderBody`, `@crm/core`), so
   sends are no longer byte-identical. **And the dispatcher now refuses more than N identical bodies

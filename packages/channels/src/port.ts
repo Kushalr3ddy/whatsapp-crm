@@ -192,6 +192,14 @@ export interface ChannelProvider {
   typing?(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void>;
 
   /**
+   * Sets the number's own presence — `available` (shows online) or `unavailable` — with no
+   * recipient. Optional and best-effort like `typing`; used only by the anti-ban background
+   * entropy (docs/08-antiban.md, Layer 3) to give an idle number human-shaped noise. Resolves
+   * false when the socket is not open.
+   */
+  presence?(sender: SenderRef, state: 'available' | 'unavailable'): Promise<boolean>;
+
+  /**
    * Sends a read receipt (the blue ticks) for one inbound message. Resolves true when it was
    * actually sent, false when it could not be (socket closed) so the caller leaves the message
    * unread and tries again later rather than recording a receipt that never went out.

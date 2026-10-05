@@ -4,7 +4,7 @@ import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
-  DecryptFailureTracker, markDecryptBurst } from '@crm/core';
+  DecryptFailureTracker, markDecryptBurst, EntropyScheduler } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import type { NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -87,6 +87,8 @@ async function main(): Promise<void> {
     typingSimulation: config.SEND_TYPING_SIMULATION,
     // Blue-tick inbound messages only after a human-like 10–60 min delay, in active hours.
     readReceipts: config.SEND_READ_RECEIPTS,
+    // Idle-time presence noise every 2–6 h per number, in active hours.
+    ...(config.SEND_BACKGROUND_ENTROPY ? { entropy: new EntropyScheduler() } : {}),
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
     kms,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
