@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**478 tests · 25 of 35 specced tables · 18 migrations (through 0017).**
+**478 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -224,7 +224,12 @@ npm run web       # UI       :3001
 **[`docs/24-local-testing.md`](docs/24-local-testing.md)** is the by-hand testing recipe:
 getting a key, exercising the API, checking the attachment headers, reading the audit trail.
 
-Sign in at `localhost:3001/login`. `npm run check` runs typecheck, lint and 330 tests.
+Sign in at `localhost:3001/login`. `npm run check` runs typecheck (incl. web), lint and the 478
+vitest tests. **`npm run test:e2e`** runs the Playwright browser tests — they reuse a running stack
+(`npm run dev:all`) and sign in with `TEST_EMAIL`/`TEST_PASSWORD` from `.env`. Those point at a
+dev-only throwaway admin, **`e2e@test.local`** (org slug `e2e-test`, admin), provisioned
+2026-09-30 for the walkthrough; delete it with `npm run db:psql` if unwanted. Chromium is installed
+via `npx playwright install chromium`.
 
 **Two documents are written for picking this up cold**, and are worth more than re-reading the
 code: [`docs/24-local-testing.md`](docs/24-local-testing.md) — start the stack, get a key,
@@ -267,6 +272,9 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
 | ~~**Campaigns UI**~~ **— feature-complete for the alpha** (2026-09-29) | The **Broadcast** tab is a real, operable page: list → **create** (name, message, sender, audience by **tag / import / hand-picked contacts**) → **pre-start dry-run preview** → **start / pause / resume / cancel** → **per-recipient results** (status filter + name/number search, progress tiles, forecast, message body). Endpoints: `GET /campaigns/:id/recipients`, `GET /campaigns/:id/preview`, `GET /imports` (audience list), and `from_tag_id` targeting (migration 0015, resolved at snapshot). Hand-pick is on the Contacts page (row checkboxes → "campaign from checked", `form=` association so no nested forms). The old placeholder and its **false warning** are gone. **Only enhancement left:** **D-26** body variation (spintax) in the compose step, pinned separately. |
+| **Dev hydration overlay — the "can't see anything but the error" symptom** | In Next **dev** a hydration-attribute mismatch can throw the full-screen error overlay that hides the page. Two benign causes: the theme-before-paint script sets `data-theme` on `<html>`, and browser extensions (Grammarly) add attributes to `<body>`. The app renders fine otherwise (verified end to end). The one-line fix — `suppressHydrationWarning` on `<html>` and `<body>` in `apps/web/app/layout.tsx` — was applied then **reverted at Kushal's request**; it suppresses only those two elements' own attributes, never page content, and is the documented Next fix. **Re-apply when wanted.** |
+| Copy nit (cosmetic) | Audience pickers say "1 contacts" / "1 match" without singular/plural handling. |
+| No "add one contact" in the UI | Contacts arrive only via **Import** or the **API** (`POST /contacts`); there is no form to add a single person by hand. Fine if intended (import/API by design), a gap if an operator expects it. |
 
 ---
 
@@ -360,7 +368,19 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-30): D-28 dynamic segments — minimal slice.** A **saved, criteria-based
+**Most recent (2026-09-30): Playwright E2E + a segments-UI fix found by driving the app.** Added
+browser end-to-end tests — `@playwright/test` + Chromium, `playwright.config.ts` (reads
+`TEST_EMAIL`/`TEST_PASSWORD` from `.env`, `webServer` reuses a running stack), specs under
+`tests/e2e/*.spec.ts` (`npm run test:e2e`): wrong-password refused, sign-in→sign-out drops the
+session, every main page renders, and build-a-segment→preview→save. **4 e2e, all green.** Driving
+the whole flow in a browser surfaced a real bug: the Segments **"Preview count" button did nothing**
+— the builder `<form>` used a function server action, so React intercepted the submit and swallowed
+the button's GET override. Fixed (plain GET form + `formAction` on Save); the e2e test now guards it.
+The full walkthrough (login → inbox → contacts → tags → segments → campaign create/start/pause →
+logout) otherwise passed. Also **reverted** the earlier root `suppressHydrationWarning` at Kushal's
+request — see *Known defects* for why it is likely still wanted.
+
+**Before that (2026-09-30): D-28 dynamic segments — minimal slice.** A **saved, criteria-based
 audience** that re-evaluates on read. New `segment` table (migration 0017, RLS forced) storing an
 allowlisted `definition`; `@crm/core` `segments.ts` turns it into a **bound** SQL predicate — the
 JSON-to-SQL seam is closed by construction (only known keys emit SQL, every value bound, unknown

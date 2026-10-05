@@ -13,6 +13,26 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-30 — Playwright E2E + a segments-UI bug found by driving the app
+- **Added browser end-to-end tests (Playwright).** `@playwright/test` (dev dep) + Chromium,
+  `playwright.config.ts` (loads `TEST_EMAIL`/`TEST_PASSWORD` from `.env` without a dotenv dep;
+  `webServer` reuses a running stack), and specs under `tests/e2e/` (`*.spec.ts`, so vitest's
+  `*.test.ts` and Playwright never grab each other's files). `npm run test:e2e`. Coverage: wrong
+  password refused; sign-in → sign-out drops the session (a protected page then bounces); every main
+  page renders; and **build-a-segment → preview-count → save**, which guards the bug below. **4 e2e
+  tests, all green** (478 vitest tests unchanged).
+- **Fixed: the Segments "Preview count" button did nothing.** The builder `<form>` used a *function*
+  server action, so React intercepted every submit and swallowed the button's `formMethod="get"`
+  override — the GET never fired and no count showed. Fixed by making the form a plain GET form and
+  moving the server action onto the Save button via `formAction={createSegmentAction}` (and dropping
+  `required` from the name field so Preview works before naming). Found by driving the app in a
+  browser end to end; verified fixed there and by the new e2e regression test.
+- **Walkthrough (login → inbox → contacts → tags → segments → campaign create/start/pause →
+  logout) passed** against a throwaway `e2e-test` org. Other findings are in `HANDOFF.md`
+  (the dev hydration-overlay cause of "can't see anything", a plural-copy nit, no add-one-contact UI).
+- Reverted the earlier root `suppressHydrationWarning` change at Kushal's request (see HANDOFF for
+  why it is likely still wanted).
+
 ### 2026-09-30 — D-28 dynamic segments (minimal slice)
 - A **saved, criteria-based audience** that re-evaluates every time it's used — unlike a tag (a
   fixed list). New `segment` table (migration `0017`, RLS forced) storing an allowlisted

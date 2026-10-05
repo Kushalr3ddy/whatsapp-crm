@@ -142,10 +142,15 @@ function Builder(
     previewing: boolean; previewCount: number | null;
   }
 ) {
+  // The form itself is a plain GET (no function action), so "Preview count" is a normal submit that
+  // navigates to /segments?…fields… and shows the count. "Save" carries the server action on the
+  // button via formAction — mixing a function action on the <form> would make React intercept the
+  // submit and swallow the GET-preview button entirely (the bug this replaced).
   return (
-    <form action={createSegmentAction} className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+    <form method="get" action="/segments"
+      className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
       <input
-        name="name" required maxLength={100} placeholder="Segment name (e.g. Active Pune leads)"
+        name="name" maxLength={100} placeholder="Segment name (e.g. Active Pune leads)"
         aria-label="Segment name"
         className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
       />
@@ -177,11 +182,11 @@ function Builder(
       </div>
 
       <div className="flex items-center gap-3">
-        <button type="submit" formMethod="get" formAction="/segments"
+        <button type="submit"
           className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent-soft">
           Preview count
         </button>
-        <button type="submit"
+        <button type="submit" formAction={createSegmentAction}
           className="rounded-md border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm text-ink hover:bg-accent-soft/70">
           Save segment
         </button>
