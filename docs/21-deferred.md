@@ -948,3 +948,76 @@ override bolted onto the Baileys path.
 Building it early mostly adds a way to lose a number in a hurry. The **visibility** half an operator
 actually needs already exists: the Numbers-page at-risk / cooling-off banners and the per-recipient
 campaign results show *why* a number is quiet without turning enforcement off.
+
+---
+
+## D-30 · Media that fails to store is invisible to the operator
+
+**What:** when a received file's bytes cannot be stored, the message is kept and marked
+`mediaUnavailable`, and **only a log line** records why — nothing surfaces it for an operator and there is
+no retry. Related: no size cap on an inbound download (D-11 holds the quota question).
+
+**Why parked:** Kushal pinned it (2026-10-05) while other work was prioritised. Nothing is lost — the
+message text survives — it is a missing signal, not a defect in what is stored.
+
+**What brings it back:** the first real "where did that CV go?" or a media-heavy deployment.
+
+**What it takes:** record the failure on the message (an `error_code` for media), show it in the thread,
+and add a retry that re-downloads through the live socket while WhatsApp still has the file.
+
+---
+
+## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation
+
+**What:** `docs/22-encryption.md` describes a two-layer design — a master key (KEK) wrapping a per-org
+data key (DEK) — plus rotation. Today `LocalKms` encrypts directly with one global key, holds exactly one
+key version, and has no backfill job, so rotation is impossible in practice and one key covers every org.
+
+**Why parked:** pinned by Kushal (2026-10-05). It is not a vulnerability at one tenant, only a missing
+capability: no cheap KEK rotation, no crypto-shredding for tenant erasure, a larger blast radius.
+
+**What brings it back:** a second tenant, a real key-rotation need, or any erasure obligation.
+
+**Cost of deferring:** it grows with every message stored — the refactor is cheapest before there is real
+history to re-encrypt (22-encryption.md, "Not built yet").
+
+---
+
+## D-32 · Encrypting contact identifiers (phone numbers and emails)
+
+**What:** `contact_identity.value_normalized` holds phone numbers and emails in clear. `09-security.md`
+lists `value_enc` among the encrypted columns — it does not exist. Encrypting needs the same
+encrypt-plus-blind-index pattern message bodies use, with the UNIQUE constraint moved onto the digest.
+
+**Why parked:** pinned by Kushal (2026-10-05). It also changes how contact search works (today a plain
+`ILIKE`), so it should be decided together with D-23.
+
+**What brings it back:** a deployment where a stolen database dump exposing every contact's number is not
+acceptable, or any D-2 data-residency obligation.
+
+---
+
+## D-33 · P1 close-out and deployment
+
+**What:** the compose file (`infra/compose/` is empty, so `docker compose --profile core up` does not
+exist), the `email` and `secrets` drivers, and deploying anywhere — which is also when the production
+database is chosen.
+
+**Why parked:** held by Kushal (2026-10-05) — nothing needs it while the build is local.
+
+**What brings it back:** the first deployment, or a second person who must run it.
+
+**Note:** `ENCRYPTION_KEY` must be backed up separately from the database before any deployment.
+
+---
+
+## D-34 · The Meta Cloud API adapter (P8) and the real-number pilot
+
+**What:** the official, paid transport (templates, the 24-hour window, tier and quality tracking) and the
+controlled pilot `docs/08-antiban.md` calls for — one number, a 7-day warmup, ≤ 50 messages/day, watched
+daily — which is also the only way to confirm anti-ban #5–#8 behave on real WhatsApp.
+
+**Why parked:** held by Kushal (2026-10-05) as pending.
+
+**What brings it back:** a need for anything business-critical to go over the official channel (P8), or
+the decision to take the engine from the simulation to a real number (the pilot).

@@ -247,9 +247,10 @@ Media arrives through the gateway: a file is re-downloaded through the socket th
 typed from its **magic bytes**, stored under an unguessable key, and served back only through
 an authenticated route.
 
-There is deliberate test data in the dev database for exactly this —
-`[TEST DATA - DO NOT TOUCH] media demo +919999000001`, with two `[TEST]`-prefixed attachments.
-Find one:
+The old `[TEST DATA]` fixtures are gone (deleted 2026-09-29, once real media was proven). To exercise
+this, link a number and have someone send it a file — or send one yourself: in the inbox, the 📎 button
+(or `POST /api/v1/conversations/:id/attachments`, a raw file body) sends a file into a thread. Find a
+stored file:
 
 ```bash
 npm run db:query "SELECT id, filename, content_type FROM media_asset"
@@ -286,8 +287,7 @@ exists.
 re-linked), an inbound image was downloaded through the socket, typed from its magic bytes as
 `image/jpeg`, stored under an unguessable key, and the bytes on disk matched the bytes received.
 Storing, typing, serving and auditing were already tested; the one link from provider to bytes
-is now proven too. The `[TEST DATA]` fixtures below remain for a keep-linked-number-free way to
-exercise the media route.
+is now proven too. 
 
 ---
 
@@ -332,10 +332,11 @@ npm run wa:link
 ```
 
 QR or pairing code. **Read [`08 · Anti-ban`](08-antiban.md) first if you are pointing this at a
-number you care about** — Baileys is unofficial and a ban has no appeal. Send-pacing now exists
-(warmup ramp, per minute/hour/day ceilings, jitter — anti-ban layers 1–2), so a burst is capped;
-but layers 3–6 (typing simulation, circadian pacing, contact-graph gates, health scoring) are
-not built, so this is a floor, not safety.
+number you care about** — Baileys is unofficial and a ban has no appeal. The full anti-ban engine now
+exists — all six layers (warmup and ceilings, jitter, typing/circadian/read behaviour, contact-graph
+gates, health scoring, timed recovery) — and `npm run test:sim` proves it against a simulated WhatsApp.
+That makes a burst impossible and a campaign slow by design, but it reduces the risk of a ban; it
+cannot remove it.
 
 Two things that have cost time before, both now handled but worth recognising:
 

@@ -185,9 +185,10 @@ defects and gotchas; the changelog covers what has been built and what is left, 
 
 No outbound media in **campaigns** or templates (agents can send a file in a thread, D-25) · no encryption at
 rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
-no message templates (a campaign carries a plain body) · **anti-ban: warmup, ceilings, jitter,
-circadian pacing, contact-graph gates and health scoring are built; per-incident recovery
-schedules are not (typing simulation, D-24, is now built)** · no Meta adapter · no deployment.
+no message templates (a campaign carries a plain body) · **anti-ban: complete** (all six layers + the
+simulation); not built: the admin-overridable gates (engagement lock / cooldown / duplicate-campaign
+guard) and Meta-side tracking · no webhooks, OpenAPI or SDK · no inbox search · no Meta adapter · no
+deployment.
 
 ---
 
@@ -288,7 +289,7 @@ whole API surface including the refusals that must stay refused.
 | — | The `.env` `API_KEY` is a **bootstrap credential**: provisioning only, refused on data |
 | — | The UI **forwards the user's session**; it holds no machine credential |
 
-Parked decisions with trigger conditions: **D-1 … D-24** in [`docs/21-deferred.md`](docs/21-deferred.md).
+Parked decisions with trigger conditions: **D-1 … D-34** in [`docs/21-deferred.md`](docs/21-deferred.md).
 **D-14 (dead inbound) is now closed** — media has been verified end to end against a real
 WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 

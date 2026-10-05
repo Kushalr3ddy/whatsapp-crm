@@ -54,7 +54,7 @@ Build phases, in [`17-roadmap.md`](17-roadmap.md). The order work happens in.
 | **P3** | **Channels — the Baileys adapter. First code that touches WhatsApp** | **done** — link, send, receive, media all verified |
 | **P4** | Inbox (the screen agents use) | mostly (search + realtime left) |
 | **P5** | Data import (spreadsheets and other sources) | first slice (CSV + Excel) |
-| **P6** | The anti-ban engine | layers 1–2 of 6 (warmup, ceilings, jitter) |
+| **P6** | The anti-ban engine | **✅ complete** — all six layers, plus an offline simulation (`npm run test:sim`) |
 | P7 | Campaigns | first slice |
 | P8–P12 | Official Meta API, public API, automation, hardening, release | not started |
 
@@ -234,8 +234,9 @@ codes, order updates, anything a client sees) goes through the paid official cha
 outreach goes through Baileys, wrapped in the safety engine described in
 [`08-antiban.md`](08-antiban.md).
 
-**What that engine actually does, in plain terms** — six things, all built, all at the one point
-every message passes through:
+**What that engine actually does, in plain terms** — six layers, all built, all at the one point
+every message passes through (plus human touches: typing, delayed read receipts, idle presence, and
+respecting the *recipient's* day too):
 
 1. **Warmup** — a brand-new number starts slow (about 20 messages the first day) and speeds up
    over a week, like a real new account, instead of blasting on day one.

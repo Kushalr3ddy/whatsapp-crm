@@ -37,11 +37,13 @@ organisation existed, because a config-level key could not say which tenant it m
 
 **Scopes implemented today:** `contacts:read|write` · `conversations:read|write` ·
 `messages:send` · `senders:read|write`. An unknown scope is rejected when the key is issued,
-rather than silently granting nothing. ⬜ Not yet: `campaigns:*`, `templates:*`,
-`imports:write`, `webhooks:manage`, `admin`.
+rather than silently granting nothing. Campaigns ride on these — create/start/pause/cancel need
+`messages:send`, reading them `conversations:read`; imports and segments use `contacts:*`. ⬜ Not yet
+their own scopes: `campaigns:*`, `templates:*`, `imports:write`, `webhooks:manage`, `admin`.
 
-**Rate limiting is still not implemented** — `rate_limit_per_min` is stored on every key and
-enforced nowhere (P9). Login attempts *are* throttled, with progressive lockout, in-process.
+**Rate limiting is enforced per key** — `rate_limit_per_min` (default 120) is counted per API key and
+login attempts are throttled with progressive lockout — but both counters are in-process, so with several
+replicas the effective ceiling is the limit times the replica count (the shared limiter is P9).
 
 ## Conventions
 
@@ -74,39 +76,35 @@ Branch on `code`, never on `detail`.
 
 ## What exists today
 
-**Seventeen endpoints, plus two unauthenticated health checks.** Everything else in this document
-is design, not implementation — the `Resources` list below is the intended surface, and the
-`Sending a message` example shows the shape it will take once the dispatcher exists, **not**
-what the endpoint accepts now.
+**About fifty endpoints, plus two unauthenticated health checks.** Everything marked ⬜ elsewhere in this
+document (templates, webhooks, policy delegation, the SDK, OpenAPI) is design, not implementation. The
+`Resources` list further down is the *intended* surface; the table below is what actually exists. The
+`Sending a message` example later shows the shape the send body will take once the dispatcher exists,
+**not** what the endpoint accepts now.
 
-| Method | Path | Notes |
+| Area | Method · path | Notes |
 |---|---|---|
-| `GET` | `/health` | No auth. Process is up |
-| `GET` | `/ready` | No auth. Also checks Postgres |
-| `GET` | `/api/v1/senders` | With live connection state |
-| `POST` | `/api/v1/senders` | `{label, provider?, phoneE164?}` → 201, status `linking` |
-| `POST` | `/api/v1/senders/:id/link` | `{mode: 'qr' \| 'pairing_code', phoneE164?}` → 202 + poll URL |
-| `GET` | `/api/v1/senders/:id/link` | The challenge, once the gateway has produced it |
-| `GET` | `/api/v1/conversations` | Includes `contactPhone` and `queuedCount` |
-| `GET` | `/api/v1/conversations/:id/messages` | Bodies decrypted for display. Carries `media` and `mediaUnavailable` |
-| `GET` | `/api/v1/media/:id` | Streams one attachment. Always a download — see below |
-| `POST` | `/api/v1/imports` | `text/csv` body → stores it, content-hash dedup, 409 on a repeat |
-| `POST` | `/api/v1/imports/:id/run` | `{mapping, dryRun}` → dry run by default |
-| `GET` | `/api/v1/imports/:id` | Summary plus the rows that failed |
-| `POST` | `/api/v1/campaigns` | Creates a **draft**. Sends nothing |
-| `POST` | `/api/v1/campaigns/:id/start` | Freezes the audience, returns a forecast |
-| `POST` | `/api/v1/campaigns/:id/pause` · `/cancel` | Stops it. Pause is instant |
-| `GET` | `/api/v1/campaigns` · `/:id` | Progress by status, and days remaining |
-| `POST` | `/api/v1/conversations/:id/attachments` | **Raw file body** + `?filename=&caption=` → 202. Sends a file into a thread. Type decided from the bytes; HTML/unknown → 415; over 16 MB → 413. Needs `messages:send` |
-| `POST` | `/api/v1/messages` | **`{to \| conversationId, body, senderId?}`** → 202. See the note below |
-| `POST` | `/api/v1/auth/login` | Public. `{email, password}` → session + CSRF cookies |
-| `POST` | `/api/v1/auth/logout` | Ends the session, clears both cookies |
-| `GET` | `/api/v1/auth/me` | Who the caller is: kind, org, role, scopes |
-| `POST` | `/api/v1/admin/orgs` | **Bootstrap key only.** Creates an org and its first admin |
-| `POST` | `/api/v1/admin/keys` | Mints a key. Bootstrap (names the org) or an admin session |
-| `GET` | `/api/v1/admin/keys` | Admin session. Never returns a secret |
-| `DELETE` | `/api/v1/admin/keys/:id` | Admin session. Soft revoke |
-| `POST` | `/api/v1/admin/users` | Admin session. Adds someone to the org |
+| Health | `GET /health` · `GET /ready` | No auth. `/ready` also checks Postgres |
+| Auth | `POST /api/v1/auth/login` · `/logout` · `GET /auth/me` | Session + CSRF cookies; `me` says who the caller is |
+| Admin | `POST /admin/orgs` · `POST/GET/DELETE /admin/keys` · `POST /admin/users` | `orgs` is bootstrap-key only; the rest an admin session |
+| Senders | `GET/POST /senders` · `POST/GET /senders/:id/link` · `POST /senders/:id/unlink` | Live connection state, health evidence, recovery state; link by QR or pairing code |
+| Inbox | `GET /conversations` (filters) · `GET/PATCH /conversations/:id` · `POST /conversations/:id/read` | Status, assignee, unread |
+| | `GET /conversations/:id/messages` | Bodies decrypted for display; carries `media` and `mediaUnavailable` |
+| | `GET/POST /conversations/:id/notes` | Team-only; never transmitted |
+| | `GET/POST /canned-replies` · `GET /users` | Saved replies; org members for the assignee picker |
+| Sending | `POST /messages` | **`{to \| conversationId, body, senderId?}`** → 202 (queued, not sent) |
+| | `POST /conversations/:id/attachments` | **Raw file body** + `?filename=&caption=` → 202. Type decided from the bytes; HTML/unknown → 415; over 16 MB → 413 |
+| Media | `GET /media/:id` | Streams one attachment, always as a download |
+| Contacts | `GET/POST /contacts` | Search by name/phone/email; create with `externalRef`; 409 on a duplicate |
+| | `POST /contacts/:id/tags` · `DELETE /contacts/:id/tags/:tagId` | Attach/detach |
+| Tags | `GET/POST /tags` · `DELETE /tags/:id` | Name unique per org; counts on the list |
+| Segments | `GET/POST /segments` · `POST /segments/preview` · `DELETE /segments/:id` | Saved criteria-based audiences, live count |
+| Import | `GET /imports` · `POST /imports` · `POST /imports/:id/run` · `GET /imports/:id` | Upload (`?force=true` to re-import) → dry run → commit |
+| Campaigns | `GET/POST /campaigns` · `GET /campaigns/:id` | Create a **draft** (sends nothing); detail with progress |
+| | `POST /campaigns/:id/start` · `/pause` · `/cancel` | Start freezes the audience and returns a forecast; pause is instant |
+| | `GET /campaigns/:id/preview` · `GET /campaigns/:id/recipients` | Dry run before start; per-recipient results |
+
+All paths are under `/api/v1` except the health checks.
 
 **Rate limiting.** Every API-key request is counted against that key's `rate_limit_per_min`
 (default 120, settable when minting it, `0` for unlimited). Over the ceiling returns **429

@@ -78,6 +78,8 @@ readable message, never a silent random fallback.**
 | `cooldown_days` | 14 | yes |
 | `quiet_hours` | 21:00–09:00 local | yes |
 | `new_contacts_per_hour` / `_day` | 5 / 20 | **ceiling not raisable** |
+| *(env today)* `NEW_CONTACT_REPLY_FLOOR` | on | the 20/day is earned by ≥30 % replies from ≥10 recent new contacts, else 5/day |
+| *(env today)* `SEND_READ_RECEIPTS` · `SEND_BACKGROUND_ENTROPY` · `SEND_RECIPIENT_TIMEZONE` | on | human-behaviour layers; `false` turns each off |
 | `retention_raw_events_days` | 30 | yes |
 | `optout_keywords` | locale packs | yes |
 

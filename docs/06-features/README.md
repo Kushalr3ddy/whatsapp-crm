@@ -14,7 +14,7 @@ slice, remainder tracked in `../21-deferred.md`) · **partial / seam only** as n
 | [F3](F3-inbox.md) | Shared inbox | ✅ (search + realtime pending — D-23) |
 | [F4](F4-templates.md) | Templates | ⚠️ partial (plain body + canned replies; rich templates D-19) |
 | [F5](F5-campaigns.md) | Campaigns | ⚠️ partial (first slice) |
-| [F6](F6-antiban.md) | Anti-ban engine → `../08-antiban.md` | ⚠️ partial (layers 1–2 of 6) |
+| [F6](F6-antiban.md) | Anti-ban engine → `../08-antiban.md` | ✅ built — all six layers + the simulation harness |
 | [F7](F7-ingestion.md) | Ingestion → `../07-ingestion.md` | ⚠️ partial (CSV + Excel; mapping wizard / gsheets deferred) |
 | [F8](F8-api.md) | Public API & webhooks → `../15-api.md` | ⚠️ partial (API only; webhooks not built) |
 | [F9](F9-automation.md) | Automation | partial |

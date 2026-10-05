@@ -4,11 +4,13 @@ A generic, self-hostable conversation and outreach platform for WhatsApp — sha
 contacts, campaigns, automation, and a real API — that runs on one small VPS and costs
 nothing to operate.
 
-> **Status: early build, moving fast.** WhatsApp is live end to end — link a number, send,
-> receive, and media, all verified against a real phone. Working first slices exist for the
-> shared inbox (assignment, status, filters, notes, canned replies, thread lock, attachments),
-> CSV/Excel import, campaigns, and send-pacing (anti-ban layers 1–2). Not built: the Meta Cloud
-> API, anti-ban layers 3–6, templates, webhooks, deployment. Build phases are tracked in
+> **Status: alpha build, moving fast.** WhatsApp is live end to end — link a number, send,
+> receive, and media (both directions), verified against a real phone. Built: the shared inbox
+> (assignment, status, filters, notes, canned replies, thread lock, attachments in and out),
+> contacts with search, tags and dynamic segments, CSV/Excel import, campaigns with a full Broadcast
+> UI (spintax, dry-run preview, per-recipient results), and the whole anti-ban engine — all six
+> layers plus an offline simulation that proves it. Not built: the Meta Cloud API, message templates,
+> webhooks and the OpenAPI/SDK, opt-out automation, inbox search, deployment. Build phases are tracked in
 > [`docs/17-roadmap.md`](docs/17-roadmap.md); current state and the work ledger are
 > [`HANDOFF.md`](HANDOFF.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -19,8 +21,9 @@ A messaging CRM that treats WhatsApp as **one adapter behind a port**, not as th
 - **Shared inbox** — two-way conversations, assignment, collision detection, internal notes.
 - **Contacts** — custom fields, tags, segments, identity-based dedup. No domain assumptions.
 - **Campaigns** — segment, schedule, drip, opt-out, per-recipient status, cost estimate.
-- **Anti-ban engine** — warmup, Gaussian jitter, circadian pacing, contact-graph gates,
-  risk scoring, auto-throttle and recovery. See [`docs/08-antiban.md`](docs/08-antiban.md).
+- **Anti-ban engine** — warmup, Gaussian jitter, circadian pacing (the sender's day *and* the
+  recipient's), contact-graph gates, risk scoring, auto-throttle and recovery, human-like typing,
+  read receipts and idle presence — proven by an offline simulation (`npm run test:sim`). See [`docs/08-antiban.md`](docs/08-antiban.md).
 - **Pluggable ingestion** — Excel/CSV, Google Sheets, REST, webhooks, scheduled syncs, with
   a mapping UI, dry run, and a per-row error ledger.
 - **Public API + webhooks** — everything the UI can do, any other app can do.
@@ -199,7 +202,7 @@ More requests to try by hand, with real responses, in
 ### Checking it still works
 
 ```bash
-npm run check        # typecheck (server + web) + lint + ~375 tests
+npm run check        # typecheck (server + web) + lint + ~530 tests
 ```
 
 `npm run` lists every script. [20 · Orientation](docs/20-orientation.md) explains the stack and

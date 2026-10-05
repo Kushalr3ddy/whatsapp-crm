@@ -274,7 +274,9 @@ it when an operator chooses to keep one.
 | `ip` | inet NULL | Source address at the moment of granting. |
 | `granted_at` / `revoked_at` | timestamptz | The timeline. Rows are immutable; a withdrawal writes a new row rather than editing the old one. |
 
-## `segment` ⬜
+## `segment` ✅ (minimal slice)
+
+> **Built differently from the spec below:** a `definition` jsonb holding an allowlisted AND-only filter (has-tag, replied ever/never, last-contacted-within-N-days), evaluated on read — no `kind`, no cached count. See D-28.
 
 A saved audience. What a campaign targets.
 
@@ -355,7 +357,8 @@ re-linking a number silently broke sending.
 | `capabilities_snapshot` | jsonb | What this provider could do when last checked — template requirements, window length, media support. The dispatcher reads it to refuse illegal sends *before* calling the provider. |
 | `health` | jsonb | Rolling counters: delivery ratio, reply ratio, recent failures. |
 | `warmup_started_at` | timestamptz NULL | When the ramp began. Drives the day-N ceiling (20 → 36 → 65 → …). Reset after 72 hours of inactivity. |
-| `last_inbound_at` | timestamptz NULL | A number that has never received a message is capped harder — outbound-only is exactly what the graph heuristics punish. |
+| `recovery_incident` / `recovery_started_at` / `recovery_until` | text / timestamptz NULL | Layer 6 timed recovery after a 463/429/soft-ban (migration 0016): the incident class and its pause window. `recoveryState` derives the phase and cap fraction from these. |
+| `last_inbound_at` | timestamptz NULL | A number that has never received a message is capped to 20/day — outbound-only is exactly what the graph heuristics punish. |
 | `risk_score` | int | 0–100, computed from `send_risk_event`. ≥60 auto-pauses campaigns; ≥85 quarantines. |
 | `daily_cap_override` | int NULL | Lets an admin lower the cap. **Cannot raise it above the safety ceiling** — no code path exists. |
 | `meta_waba_id` / `meta_phone_number_id` | text NULL | Meta Cloud API identifiers, for official senders only. |
@@ -372,6 +375,7 @@ One connection to a sender. Runtime state, not reputation.
 | `connection_state` | text | `connecting` / `open` / `closed`. |
 | `last_connected_at` | timestamptz NULL | For the "down more than 5 minutes" alert. |
 | `disconnect_reason` / `disconnect_code` | text / int NULL | Typed classification — 401 logged out, 429 rate limited, 463 timelock, 515 restart. Each carries its own backoff and risk weight; the old system treated all failures alike. |
+| `decrypt_burst_at` | timestamptz NULL | When the gateway last saw 3 `Bad MAC` frames inside a minute — a diverged session (migration 0018). The scorer counts it for 15 min, then lets it lapse. |
 | `reconnect_attempts` | int | Drives exponential backoff. A reconnect storm is worse than a slow recovery. |
 | `qr_expires_at` | timestamptz NULL | When the current linking QR goes stale. |
 
@@ -456,7 +460,9 @@ worked for two campaigns at once (M31).
 fetched**, while `content_type` still says `image` or `document` — which is how the inbox knows
 to say an attachment exists and could not be retrieved, rather than showing an empty message.
 
-## `conversation_participant` · `internal_note` · `canned_reply` ⬜
+## `conversation_participant` ⬜ · `internal_note` ✅ · `canned_reply` ✅
+
+> `internal_note` and `canned_reply` are built (migration 0012); `conversation_participant` waits for presence/collision (D-17).
 
 | Table | Key columns | What it is |
 |---|---|---|
@@ -494,7 +500,9 @@ into a browser and never persisted, so nothing was reusable, auditable or A/B-te
 |---|---|
 | `template_id`, `label`, `weight`, `body` | An A/B arm. `weight` sets the split; results roll up per variant. |
 
-## `campaign` ⬜
+## `campaign` ✅ (first slice)
+
+> **Built:** targeting by `from_import_run_id`, `explicit_contact_ids`, `from_tag_id` or `from_segment_id` (exactly one), a plain `body` (no template table yet — D-19), `status`, `started_at`/`completed_at`. Not yet: scheduling, quiet hours, cost fields.
 
 | Column | Type | What it is |
 |---|---|---|
@@ -511,7 +519,7 @@ into a browser and never persisted, so nothing was reusable, auditable or A/B-te
 | `estimated_cost_micros` | int | What the dry run predicted. |
 | `actual_cost_micros` | int | What it really cost. The two are reconciled after completion. |
 
-## `campaign_recipient` ⬜
+## `campaign_recipient` ✅
 
 One row per person per campaign. **Snapshotted at launch**, so a dynamic segment changing
 mid-run cannot change who is being messaged.
@@ -602,7 +610,9 @@ stop trusting a classifier they cannot inspect (M32).
 | `identity_rules` | jsonb | **Ordered** matching rules — external_ref, then phone, then email. Replaces the old `email OR phone` that merged strangers (M7). |
 | `is_preset` | bool | Ships as a starting point (e.g. a job-board export layout) rather than hardcoded in the importer, which is where the old system put it. |
 
-## `import_run` ⬜
+## `import_run` ✅ (first slice)
+
+> **Built:** upload → dry run → commit with a content-`sha256` unique per org (partial index — a forced re-import supersedes), status and counts. Mapping is posted per run; the reusable `field_mapping` / `data_source` tables are D-21.
 
 | Column | Type | What it is |
 |---|---|---|
@@ -615,7 +625,7 @@ stop trusting a classifier they cannot inspect (M32).
 | `actor_id` | uuid | Who ran it. |
 | `file_ref` | text NULL | The stored upload. **The file never round-trips through the browser** (M3). |
 
-## `import_row` ⬜
+## `import_row` ✅
 
 **The whole answer to M4**, where one bad row rolled back an entire 5,000-row import.
 

@@ -706,19 +706,23 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
   a web Import tab with simple column mapping.
 - ❌ Google Sheets, REST puller, webhook source, schedules, full mapping wizard (**D-21**).
 
-### P6 · Anti-ban — ✅ mostly (all six layers built)
-- ✅ Warmup ramp, per minute/hour/day ceilings, Gaussian jitter (counted from `message`,
-  restart-safe; an override may only *lower* a ceiling); **circadian pacing**; **contact-graph
-  gates**; **health scoring** (auto-degrade → quarantine, recovers both directions); a
-  **sender-health panel** on the Numbers page.
-- ❌ Per-incident recovery *schedules* (timed pause/resume ramps); typing simulation (**D-24**).
+### P6 · Anti-ban — ✅ complete
+- ✅ All six layers, enforced at the one send chokepoint: warmup ramp, per-minute/hour/day ceilings,
+  Gaussian jitter; circadian pacing (the sender's day **and**, via `timezoneForPhone`, the recipient's);
+  contact-graph gates with the reply-ratio floor; health scoring (both directions, receipt grace,
+  decrypt-failure signal); timed recovery; reconnect easing; outbound-only clamp; identical-body guard;
+  delivery→speed curve. Human behaviour: typing simulation, delayed read receipts, background presence
+  noise. A **sender-health panel** and recovery banners on the Numbers page.
+- ✅ **The simulation harness** (`npm run test:sim`) proves it against a virtual WhatsApp.
+- ❌ Not built: the admin-overridable gates (engagement lock, cooldown, duplicate-campaign guard), a
+  normalised `send_risk_event` table, Meta-side tier/quality tracking (P8), group limits, per-number proxy.
 
-### P7 · Campaigns — ✅ first slice (API only, **no UI**)
-- Create draft, freeze the audience at start (target a whole import via `fromImportRunId` or an
-  explicit id list), gateway paces recipients through the full anti-ban engine, instant pause,
-  day-count forecast, cancelled recipients marked skipped with a reason.
-- ❌ **No UI** — the Broadcast tab is a stale "coming soon" placeholder (see `HANDOFF.md` Known
-  defects). ❌ Templates + body variation (**D-19**/**D-26**), per-recipient results view.
+### P7 · Campaigns — ✅ alpha-complete
+- Create (target by tag / import / hand-picked contacts / dynamic segment), a **dry-run preview**,
+  start / pause / resume / cancel, per-recipient results, a forecast; the audience is frozen at start;
+  bodies are rendered per recipient (spintax + `{{name}}`); the gateway paces them through the engine.
+  A full **Broadcast UI**.
+- ❌ Templates (**D-19**), scheduling and quiet hours, outbound media in a campaign, cost estimate.
 
 ### P8 · Meta Cloud API — ❌ not started
 
@@ -734,33 +738,18 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 ## To do (top = next)
 
-### Quick wins / P4 continuation
-1. **Outbound media** — send path must carry a file; `OutboundContent` must stop being text-only.
-2. **P4 realtime (WS `/realtime`).** Live inbound (< 1 s, AC-2) — blocked by **D-14** (inbound
-   dead). Presence + typing / collision detection (AC-3) is **pinned as D-17** — do it in the
-   same slice as live inbound so the transport is paid for once. *New table:* `conversation_participant`.
-3. **P4 search — PINNED as D-23** (message bodies + contact fields, AC-7). The last substantial
-   P4 piece; parked because it needs the blind-index vs trigram decision on encrypted bodies.
-4. **P4 leftovers — PINNED as D-18** (not required now): snooze (AC-6), Meta 24-hour window UI
-   (AC-9, needs P8), keyboard shortcuts (AC-10). Priority flag also deferred.
+The anti-ban completion pass and the simulation harness are done. What remains, in the order Kushal
+set (2026-10-05) — items marked *pinned* are deliberately held:
 
-> Presence/typing/collision → **D-17**. Snooze/Meta-window/keyboard → **D-18**.
-
-### Other feature work
-5. **Close out P1** — a compose file, plus `email` and `secrets` drivers, each with a contract
-   suite like storage has.
-6. **P6 layers 3–6** — circadian pacing, contact-graph gates, health scoring. (Typing simulation
-   is now **pinned as D-24** — set aside 2026-09-28.)
-7. **P8 — Meta Cloud API adapter** (official, paid transport for business-critical messages).
-
-### Hardening / deployment
-8. **Deployment** — staging/prod config; decide the production database. **`ENCRYPTION_KEY` must
-   be backed up separately from the database** — losing it loses every linked number and message.
-9. **P9 shared rate-limit layer** — login throttle and per-key limit are in-process today, so
-   replicas each count separately.
-10. **Media hardening (D-11)** — encryption at rest for files, retention job, antivirus, size cap.
-
----
+1. **A contacts feature set** — add one contact by hand, import a **vCard (.vcf)**, a **contacts
+   library** that keeps every imported person (not only the last file), and an **admin export of all
+   stored people to CSV/Excel** (discussed 2026-10-05; not yet specced).
+2. **Custom contact fields** (`contact_field_def`) — explained 2026-10-05, awaiting a go-ahead.
+3. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
+4. *Pinned:* **D-19** templates · **D-23** message-body search · **D-27** opt-out automation · **D-29**
+   advisory mode · the admin-overridable gates · **D-30** media-failure surfacing · **D-31** per-org
+   encryption keys · **D-32** encrypting contact identifiers · **D-33** P1 close-out / deployment ·
+   **D-34** Meta Cloud API + the real-number pilot.
 
 ## Blockers (detail in `HANDOFF.md`)
 

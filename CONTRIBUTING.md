@@ -24,7 +24,8 @@ how good the rest is.
 6. **No mutable module state.** Locks and buckets go through the cache driver.
 7. **Free-path first.** Any feature must work on the `lean` preset, or be optional and degrade
    cleanly when its driver is `none`.
-8. **Append to `CONTEXT.md`.** Every working session, without exception.
+8. **Keep `HANDOFF.md` and `CHANGELOG.md` current.** `HANDOFF.md` is the state snapshot, `CHANGELOG.md` the
+   work ledger. (`CONTEXT.md` is a retired historical log — do not append to it.)
 
 ## Adding things
 
@@ -37,11 +38,13 @@ how good the rest is.
 
 ## Pull requests
 
-- Conventional Commits.
+- Commits go straight to `main` while this is a single-maintainer repo (open a branch only when a change
+  needs review first). A plain lowercase subject saying what changed and why, a substantive body, and
+  **no AI / `Co-Authored-By` attribution** — see `docs/11-conventions.md`.
 - Every bug fix starts with a failing test.
 - Every `M*` defect in `docs/00-prior-art.md` has a named regression test — do not remove one.
 - Checklist: does this touch the send path? does it add a bypass? is the comment rule
-  satisfied? does `lean` still work? does it need a `CONTEXT.md` entry?
+  satisfied? does `lean` still work? are `HANDOFF.md` / `CHANGELOG.md` updated?
 
 ## Tests
 
