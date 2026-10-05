@@ -16,15 +16,15 @@ read behaviour, #7 background entropy, #8 recipient-timezone). Each is marked do
 [`docs/08-antiban.md`](docs/08-antiban.md). None of #5–#8 has been exercised against a real linked
 number, only the fake channel — worth a watch the next time one is linked.
 
-1. **Choose the next build.** Remaining pins, Kushal's call on order: **D-25** outbound media
-   (high), **D-19** templates, **D-23** message-body search, **D-27** opt-out automation, **D-29**
+1. **Choose the next build.** **D-25 outbound media landed 2026-10-05** (📎 in the composer,
+   `POST /conversations/:id/attachments`). Remaining pins, Kushal's call on order: **D-19** templates, **D-23** message-body search, **D-27** opt-out automation, **D-29**
    advisory mode. Also a stale-docs pass (see the 2026-10-05 review: README, CONTRIBUTING, 15-api,
    24-local-testing, CHANGELOG by-phase).
 2. **Watch the first CI run** on GitHub (`.github/workflows/ci.yml` was rewritten this session and
    is **unvalidated** — the `e2e` job especially). Fix whatever the first push/PR surfaces.
 3. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin,
    or the `e2e-test` admin in `.env` (`TEST_EMAIL`/`TEST_PASSWORD`). `npm run check` = typecheck +
-   lint + **520 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
+   lint + **530 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
@@ -65,7 +65,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**520 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 19 migrations (through 0018).**
+**530 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 19 migrations (through 0018).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -180,7 +180,7 @@ defects and gotchas; the changelog covers what has been built and what is left, 
 
 ### What does not exist
 
-No **outbound** media — receiving and serving work; sending a file does not · no encryption at
+No outbound media in **campaigns** or templates (agents can send a file in a thread, D-25) · no encryption at
 rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
 no message templates (a campaign carries a plain body) · **anti-ban: warmup, ceilings, jitter,
 circadian pacing, contact-graph gates and health scoring are built; per-incident recovery

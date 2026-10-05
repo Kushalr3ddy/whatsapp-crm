@@ -97,6 +97,7 @@ what the endpoint accepts now.
 | `POST` | `/api/v1/campaigns/:id/start` | Freezes the audience, returns a forecast |
 | `POST` | `/api/v1/campaigns/:id/pause` · `/cancel` | Stops it. Pause is instant |
 | `GET` | `/api/v1/campaigns` · `/:id` | Progress by status, and days remaining |
+| `POST` | `/api/v1/conversations/:id/attachments` | **Raw file body** + `?filename=&caption=` → 202. Sends a file into a thread. Type decided from the bytes; HTML/unknown → 415; over 16 MB → 413. Needs `messages:send` |
 | `POST` | `/api/v1/messages` | **`{to \| conversationId, body, senderId?}`** → 202. See the note below |
 | `POST` | `/api/v1/auth/login` | Public. `{email, password}` → session + CSRF cookies |
 | `POST` | `/api/v1/auth/logout` | Ends the session, clears both cookies |

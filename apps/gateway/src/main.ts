@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   const storage = createStorage(config);
 
   const ctx: WorkContext = {
-    db, provider, logger,
+    db, provider, logger, storage,
     decrypt: (cipher) => new TextDecoder().decode(kms.decrypt(cipher)),
     // The anti-ban ceilings. Configurable per deployment, but a ceiling either way — nothing
     // in the send path can raise them (docs/08-antiban.md).

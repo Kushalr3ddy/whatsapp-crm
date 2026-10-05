@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
   queueReply, startLink, getLinkState, unlinkSender, updateConversation, addNote,
-  uploadImport, runImportMapping, CrmApiError
+  uploadImport, runImportMapping, queueAttachment, CrmApiError
 } from '@/lib/crm';
 import type { LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
 
@@ -32,6 +32,26 @@ export async function sendReply(conversationId: string, body: string): Promise<S
     return { ok: false, error: 'Could not reach the API.' };
   }
 
+  revalidatePath('/inbox');
+  return { ok: true };
+}
+
+/**
+ * Sends a file into a thread, with the composer's text as its caption. The bytes go straight to the
+ * API; a refusal (wrong file type, too large, thread locked) comes back as a message to show.
+ */
+export async function sendAttachment(
+  conversationId: string, formData: FormData
+): Promise<SendResult> {
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Choose a file first.' };
+  const caption = typeof formData.get('caption') === 'string' ? (formData.get('caption') as string).trim() : '';
+  try {
+    await queueAttachment(conversationId, await file.arrayBuffer(), file.name === '' ? 'file' : file.name, caption);
+  } catch (error) {
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
   revalidatePath('/inbox');
   return { ok: true };
 }

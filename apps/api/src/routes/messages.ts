@@ -2,11 +2,12 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
-import { writeAudit, AUDIT } from '@crm/core';
+import { writeAudit, AUDIT, storeOutboundMedia } from '@crm/core';
+import type { StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
-import { normalisePhone } from '@crm/shared';
+import { normalisePhone, detectMediaType } from '@crm/shared';
 
 /**
  * Body for queueing an outbound message.
@@ -76,7 +77,9 @@ const createCannedReply = z.object({
  * the dispatcher (P6) — a route that could reach a provider directly would be a way to bypass
  * them, which is precisely the hole the previous system had (docs/00-prior-art.md, M12).
  */
-export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
+export function messagesRouter(
+  kms: KmsDriver, defaultCountry: string, storage: StorageDriver, maxUploadBytes: number
+): Router {
   const router = Router();
 
   /**
@@ -484,6 +487,82 @@ export function messagesRouter(kms: KmsDriver, defaultCountry: string): Router {
   });
 
   /** Queues an outbound message. The gateway sends it; poll the thread for status. */
+  /**
+   * Sends a file into an existing thread (D-25). The bytes are the request body — not JSON, not
+   * multipart — so the file never takes a second trip through a client-side encoder (the same shape
+   * as the import upload, M3). `?filename=` names it and `?caption=` is optional text under it.
+   *
+   * Everything about the file is decided here from its bytes, never from what the client claims:
+   * only images, video, audio, PDFs and ZIP/Office containers are accepted, because those are what
+   * WhatsApp carries and what `detectMediaType` can vouch for. HTML, SVG and anything unrecognised
+   * is refused outright rather than stored and sent. The thread lock applies exactly as it does to
+   * a text reply. The message is queued like any other: the gateway reads the file from storage
+   * and sends it, paced by the same anti-ban engine.
+   */
+  router.post('/conversations/:id/attachments', requireUuidParam('id'),
+    requireScope('messages:send'), async (req: Request, res: Response) => {
+      const bytes = req.body as unknown;
+      if (!Buffer.isBuffer(bytes) || bytes.byteLength === 0) {
+        res.status(415).json(problem(req, 415, 'UNSUPPORTED_MEDIA_TYPE',
+          'POST the file itself as the request body (Content-Type: application/octet-stream).'));
+        return;
+      }
+      if (bytes.byteLength > maxUploadBytes) {
+        res.status(413).json(problem(req, 413, 'FILE_TOO_LARGE',
+          `This file is ${String(bytes.byteLength)} bytes; the limit is ${String(maxUploadBytes)}.`));
+        return;
+      }
+      const detected = detectMediaType(bytes);
+      if (!detected.recognised) {
+        res.status(415).json(problem(req, 415, 'UNSUPPORTED_FILE_TYPE',
+          'Only images, video, audio, PDFs and ZIP/Office documents can be sent. ' +
+          'The file type is decided from its contents, not its name.'));
+        return;
+      }
+      const filename = typeof req.query.filename === 'string' ? req.query.filename : null;
+      const caption = typeof req.query.caption === 'string' ? req.query.caption.slice(0, 1024) : '';
+      const conversationId = req.params.id as string;
+      const orgId = req.crm!.orgId;
+      const contentType = detected.contentType.startsWith('image/') ? 'image'
+        : detected.contentType.startsWith('video/') ? 'video'
+        : detected.contentType.startsWith('audio/') ? 'audio' : 'document';
+
+      const result = await req.tenant!(async (tx) => {
+        const conv = (await tx.execute(sql`
+          SELECT assignee_user_id AS "assigneeUserId" FROM conversation
+          WHERE id = ${conversationId} AND org_id = ${orgId}`)
+        ) as unknown as Array<{ assigneeUserId: string | null }>;
+        if (conv.length === 0) return { notFound: true as const };
+        const ctx = req.crm!;
+        if (ctx.kind === 'session' && ctx.role !== 'admin'
+          && conv[0]!.assigneeUserId !== null && conv[0]!.assigneeUserId !== ctx.userId) {
+          return { locked: true as const };
+        }
+
+        const stored = await storeOutboundMedia(tx, storage, { orgId, bytes, filename });
+        const inserted = (await tx.execute(sql`
+          INSERT INTO message (org_id, conversation_id, direction, status, content_type,
+                               body_enc, body_hmac, media_id, sent_by)
+          VALUES (${orgId}, ${conversationId}, 'outbound', 'queued', ${contentType},
+                  ${Buffer.from(kms.encrypt(new TextEncoder().encode(caption)))},
+                  ${kms.blindIndex(caption)}, ${stored.mediaId}, 'api')
+          RETURNING id, conversation_id AS "conversationId", status, media_id AS "mediaId"`)
+        ) as unknown as Array<{ id: string; conversationId: string; status: string; mediaId: string }>;
+        return { row: { ...inserted[0]!, contentType, sizeBytes: stored.sizeBytes } };
+      });
+
+      if ('notFound' in result) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+        return;
+      }
+      if ('locked' in result) {
+        res.status(409).json(problem(req, 409, 'THREAD_ASSIGNED',
+          'This thread is assigned to another agent. Reassign it to yourself, or ask an admin, to reply.'));
+        return;
+      }
+      res.status(202).json({ data: result.row });
+    });
+
   router.post('/messages', requireScope('messages:send'), async (req: Request, res: Response) => {
     const parsed = sendMessage.safeParse(req.body);
     if (!parsed.success) {

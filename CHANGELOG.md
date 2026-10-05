@@ -13,6 +13,19 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-05 — D-25 outbound media (sending files)
+- **Agents can send a file.** `POST /conversations/:id/attachments` (raw body, `?filename=&caption=`,
+  16 MB cap) → type decided from the bytes (images/video/audio/PDF/ZIP-Office; HTML/SVG/unknown refused
+  415) → `storeOutboundMedia` (core; random key, per-org sha256 dedup, inside the tenant tx) → a queued
+  message with `media_id` + caption, under the thread lock and `messages:send`. The gateway reads the
+  file from storage (`WorkContext.storage`) and sends it via `OutboundContent.freeform.media`; Baileys
+  `toBaileysContent` maps images/video/audio natively, the rest as a named document. Web: 📎 button in
+  the composer. Same anti-ban pacing as any send. No migration.
+- **Fixed a latent bug found on the way:** an over-limit body (an upload past 20 MB, JSON past 1 MB)
+  came back as `500 INTERNAL_ERROR`; the error boundary now answers body-parser 4xx errors as 413 /
+  400. 10 new tests → **530**.
+- Not built: >16 MB documents, voice notes, media in campaigns, media templates (D-19).
+
 ### 2026-10-05 — Anti-ban #8 (recipient-timezone inference) — the completion pass is done
 - **#8 of 8 — respect the recipient's day (Layer 3 circadian).** `timezoneForPhone` (`@crm/core`, a
   ~60-country table over a new `phoneCountry` in `@crm/shared`) infers a recipient's zone from their

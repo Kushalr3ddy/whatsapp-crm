@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import { sendReply, saveNote } from '@/app/actions';
+import { sendReply, saveNote, sendAttachment } from '@/app/actions';
 import type { CannedReply } from '@/lib/crm';
 
 /** Fills `{{name}}` / `{{contact.name}}` placeholders from what the thread knows about the contact. */
@@ -41,6 +41,25 @@ export function Composer(
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * Sends the chosen file into the thread with whatever is typed as its caption. A file goes to the
+   * contact, so it is only offered in reply mode and respects the same thread lock.
+   */
+  function sendFile(file: File) {
+    if (pending || replyLocked) return;
+    const form = new FormData();
+    form.set('file', file);
+    form.set('caption', text);
+    setError(null);
+    startTransition(async () => {
+      const result = await sendAttachment(conversationId, form);
+      if (result.ok) setText('');
+      else setError(result.error ?? 'Failed.');
+      if (fileInput.current) fileInput.current.value = '';
+    });
+  }
 
   /** Sends the current text down whichever path the mode selects, keeping it on a refusal. */
   function submit() {
@@ -129,6 +148,23 @@ export function Composer(
       </div>
 
       <div className="flex items-end gap-2">
+        {!isNote && (
+          <>
+            <input
+              ref={fileInput} type="file" className="hidden" aria-label="Attach a file"
+              accept="image/*,video/*,audio/*,application/pdf,.zip,.docx,.xlsx,.pptx"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) sendFile(f); }}
+            />
+            <button
+              type="button" title="Attach a file (image, video, audio, PDF or Office document)"
+              onClick={() => { fileInput.current?.click(); }}
+              disabled={pending || replyLocked}
+              className="rounded-lg border border-border px-3 py-2 text-sm text-muted disabled:opacity-40"
+            >
+              📎
+            </button>
+          </>
+        )}
         <textarea
           value={text}
           onChange={(e) => { setText(e.target.value); }}

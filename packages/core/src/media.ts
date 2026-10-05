@@ -165,3 +165,53 @@ async function linkMessage(
       WHERE id = ${messageId} AND org_id = ${orgId}`);
   });
 }
+
+/** What an upload from an agent needs: the bytes, who it is for, and what the person called it. */
+export interface OutboundUpload {
+  readonly orgId: string;
+  readonly bytes: Uint8Array;
+  readonly filename: string | null;
+}
+
+/**
+ * Stores a file an agent is about to send and returns its media id, inside the caller's tenant
+ * transaction (the API holds no pool handle, so this takes the runner's `tx`).
+ *
+ * Same three rules as `storeMedia`, for the same reasons: the type is decided from the bytes,
+ * the key is random, and an identical file is stored once per org. Bytes are written before the
+ * row, so a failure leaves collectable garbage rather than a row pointing at nothing. Unlike the
+ * inbound path this does not attach to a message — the API creates the message with the returned
+ * id in the same transaction, so an upload that is not sent leaves nothing half-linked.
+ */
+export async function storeOutboundMedia(
+  tx: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> },
+  storage: StorageDriver, upload: OutboundUpload
+): Promise<StoredMedia> {
+  const sha256 = createHash('sha256').update(upload.bytes).digest('hex');
+  const type = detectMediaType(upload.bytes);
+  const filename = safeFilename(upload.filename);
+
+  const existing = (await tx.execute(sql`
+    SELECT id, content_type AS "contentType", size_bytes AS "sizeBytes"
+    FROM media_asset WHERE org_id = ${upload.orgId} AND sha256 = ${sha256} LIMIT 1`
+  ) as unknown as Array<{ id: string; contentType: string; sizeBytes: number }>)[0];
+  if (existing) {
+    return {
+      mediaId: existing.id, contentType: existing.contentType,
+      sizeBytes: existing.sizeBytes, sha256, deduplicated: true
+    };
+  }
+
+  const mediaId = randomUUID();
+  const key = mediaKey(upload.orgId, mediaId, type.extension);
+  await storage.put(key, upload.bytes, { contentType: type.contentType });
+  await tx.execute(sql`
+    INSERT INTO media_asset (id, org_id, storage_key, storage_driver, content_type,
+                             size_bytes, sha256, filename)
+    VALUES (${mediaId}, ${upload.orgId}, ${key}, ${storage.name}, ${type.contentType},
+            ${upload.bytes.byteLength}, ${sha256}, ${filename})`);
+  return {
+    mediaId, contentType: type.contentType, sizeBytes: upload.bytes.byteLength,
+    sha256, deduplicated: false
+  };
+}

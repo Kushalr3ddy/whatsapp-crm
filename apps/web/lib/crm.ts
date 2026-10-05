@@ -629,6 +629,34 @@ export async function queueReply(
   });
 }
 
+/**
+ * Sends a file into a thread. The raw bytes are the request body (not JSON or multipart), with the
+ * filename and optional caption on the query string — the API decides what the file is from its
+ * contents. Returns once the API has queued it, not once it is sent.
+ */
+export async function queueAttachment(
+  conversationId: string, bytes: ArrayBuffer, filename: string, caption: string
+): Promise<{ id: string }> {
+  const auth = await forwardedAuth();
+  const query = new URLSearchParams({ filename, ...(caption === '' ? {} : { caption }) });
+  const response = await fetch(
+    `${baseUrl()}/api/v1/conversations/${encodeURIComponent(conversationId)}/attachments?${query.toString()}`,
+    { method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/octet-stream', ...auth }, body: new Uint8Array(bytes) }
+  );
+  if (response.status === 401) throw new NotAuthenticatedError();
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = payload as Partial<ApiProblem> | null;
+    throw new CrmApiError({
+      code: problem?.code ?? 'UNKNOWN',
+      detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
+      status: response.status
+    });
+  }
+  return (payload as { data: { id: string } }).data;
+}
+
 /** The challenge a person acts on to link a number: a QR to scan, or a code to type. */
 export type LinkChallenge =
   | { mode: 'qr'; qr: string; expiresAt: string }

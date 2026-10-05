@@ -31,6 +31,10 @@ import { campaignsRouter } from './routes/campaigns.js';
 const IMPORT_LIMIT = '20mb';
 const IMPORT_LIMIT_BYTES = 20 * 1024 * 1024;
 
+/** Largest file an agent can send. WhatsApp's own image limit is 16 MB, so this is the practical one. */
+const ATTACHMENT_LIMIT = '16mb';
+const ATTACHMENT_LIMIT_BYTES = 16 * 1024 * 1024;
+
 /** Everything the HTTP layer needs, passed in rather than imported. */
 export interface AppDependencies {
   readonly config: Config;
@@ -85,6 +89,11 @@ export function buildApp(deps: AppDependencies): Express {
   // CSV and Excel both arrive as a raw body on this one path. Excel is binary, so its type and
   // `application/octet-stream` (what some clients send) are accepted too; the handler tells them
   // apart by the bytes, not the header.
+  // The outbound-attachment upload: raw bytes, one path, capped. Any content type is accepted
+  // here because the handler decides what the file is from its bytes, not from this header.
+  app.post('/api/v1/conversations/:id/attachments', express.raw({
+    type: () => true, limit: ATTACHMENT_LIMIT
+  }));
   app.use('/api/v1/imports', express.raw({
     type: [
       'text/csv', 'text/plain',
@@ -161,7 +170,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use('/campaigns', campaignsRouter({
     perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY
   }));
-  api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY));
+  api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY, deps.storage, ATTACHMENT_LIMIT_BYTES));
   app.use('/api/v1', api);
 
   /** Anything unrouted. Kept in the same problem+json shape as a real error. */
@@ -184,6 +193,23 @@ export function buildApp(deps: AppDependencies): Express {
    * Errors are logged once, here, rather than at every layer (docs/11-conventions.md).
    */
   app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
+    // The body parsers reject an oversized or malformed body with their own 4xx error. That is the
+    // caller's mistake, not ours: answer it as such instead of as a 500 (an over-limit upload used
+    // to come back as INTERNAL_ERROR).
+    const parserError = error as { status?: number; expose?: boolean; type?: string };
+    if (parserError.expose === true && parserError.status !== undefined
+      && parserError.status >= 400 && parserError.status < 500) {
+      const tooLarge = parserError.status === 413;
+      res.status(parserError.status).json({
+        type: 'about:blank',
+        title: tooLarge ? 'Payload Too Large' : 'Bad Request',
+        status: parserError.status,
+        code: tooLarge ? 'FILE_TOO_LARGE' : 'BAD_REQUEST',
+        detail: tooLarge ? 'The request body is larger than this endpoint accepts.' : 'The request body could not be read.',
+        request_id: req.id
+      });
+      return;
+    }
     req.log.error({ err: error }, 'unhandled error');
     res.status(500).json({
       type: 'about:blank',

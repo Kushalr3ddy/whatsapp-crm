@@ -25,8 +25,8 @@ export {
 } from './audit.js';
 
 export {
-  storeMedia, resolveMedia,
-  type IncomingMedia, type StoredMedia, type ResolvedMedia
+  storeMedia, storeOutboundMedia, resolveMedia,
+  type OutboundUpload, type IncomingMedia, type StoredMedia, type ResolvedMedia
 } from './media.js';
 
 export {

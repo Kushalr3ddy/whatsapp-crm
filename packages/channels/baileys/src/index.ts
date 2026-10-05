@@ -13,6 +13,7 @@ import type {
 import { loadAuthState, hasStoredSession } from './auth-adapter.js';
 import { EventStream } from './event-stream.js';
 import { tapDecryptFailures } from './decrypt-tap.js';
+import { toBaileysContent } from './outbound-content.js';
 
 /** The minimum logger shape Baileys requires. Satisfied by pino. */
 export interface BaileysLogger {
@@ -189,7 +190,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     // privacy-mode contact addresses a chat that does not exist, and in the previous system that
     // crashed the whole engine rather than one send — a permanent crash loop (M26).
     const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
-    const sent = await conn.socket.sendMessage(jid, { text: content.body });
+    const sent = await conn.socket.sendMessage(jid, toBaileysContent(content) as never);
     if (!sent?.key.id) throw new Error('WhatsApp accepted the send but returned no message id');
 
     return { providerMessageId: sent.key.id, acceptedAt: new Date() };

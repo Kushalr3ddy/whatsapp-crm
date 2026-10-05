@@ -10,6 +10,7 @@ import {
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
+import type { StorageDriver } from '@crm/storage';
 
 /** A queued outbound message, joined to everything needed to actually send it. */
 interface QueuedSend {
@@ -24,6 +25,10 @@ interface QueuedSend {
   readonly recipientValue: string;
   readonly recipientKind: string;
   readonly bodyEnc: Uint8Array | null;
+  /** The attachment this message carries (D-25), or null for plain text. */
+  readonly mediaStorageKey: string | null;
+  readonly mediaContentType: string | null;
+  readonly mediaFilename: string | null;
   /** Pacing inputs, read with the job so the gate costs no extra round trip. */
   readonly warmupStartedAt: string | null;
   readonly dailyCapOverride: number | null;
@@ -91,6 +96,11 @@ export interface WorkContext {
    * exercise it never see a read receipt.
    */
   readonly readReceipts?: boolean;
+  /**
+   * Where stored files live, so a queued message that carries one can be read back and sent
+   * (D-25). Absent in tests that only send text; a media message with no storage fails visibly.
+   */
+  readonly storage?: StorageDriver;
   /**
    * Also respect the *recipient's* day, inferred from their phone number's country: a send to
    * someone in their small hours is deferred, and one in their shoulders is slowed. Only ever
@@ -337,6 +347,8 @@ export async function handleUnlinkRequest(ctx: WorkContext, sessionId: string): 
 export async function handleSend(ctx: WorkContext, messageId: string): Promise<void> {
   const rows = await ctx.db.execute(sql`
     SELECT m.id AS "messageId", m.org_id AS "orgId", m.body_enc AS "bodyEnc",
+           ma.storage_key AS "mediaStorageKey", ma.content_type AS "mediaContentType",
+           ma.filename AS "mediaFilename",
            si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
            si.status AS "senderStatus",
            si.warmup_started_at AS "warmupStartedAt",
@@ -350,6 +362,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
     FROM message m
     JOIN conversation v   ON v.id = m.conversation_id
     JOIN sender_identity si ON si.id = v.sender_identity_id
+    LEFT JOIN media_asset ma ON ma.id = m.media_id AND ma.org_id = m.org_id
     JOIN contact_identity ci ON ci.contact_id = v.contact_id
                             AND ci.kind IN ('phone','wa_jid','wa_lid')
     WHERE m.id = ${messageId} AND m.direction = 'outbound' AND m.status = 'queued'
@@ -498,6 +511,19 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       : { phoneE164: '', providerAddress: job.recipientValue };
     const body = ctx.decrypt(job.bodyEnc);
 
+    // An attachment (D-25): read the file back from storage so the adapter can upload it. Done
+    // before the pacing pause is spent on a message that cannot go. A file that cannot be read
+    // fails this one message with a clear code — the inbox shows it, nothing else is affected.
+    let media: { bytes: Uint8Array; contentType: string; filename: string | null } | undefined;
+    if (job.mediaStorageKey !== null) {
+      if (!ctx.storage) throw new Error('media_storage_unavailable');
+      media = {
+        bytes: await ctx.storage.get(job.mediaStorageKey),
+        contentType: job.mediaContentType ?? 'application/octet-stream',
+        filename: job.mediaFilename
+      };
+    }
+
     // ── typing simulation ─────────────────────────────────────────────────────────────
     // Show the "typing…" bubble and pause a beat proportional to the message length before
     // sending, so the send looks human rather than instant (docs/08-antiban.md, D-24). Opt-in,
@@ -516,7 +542,9 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       }
     }
 
-    const result = await ctx.provider.send(senderRef, recipient, { kind: 'freeform', body });
+    const result = await ctx.provider.send(
+      senderRef, recipient, { kind: 'freeform', body, ...(media ? { media } : {}) }
+    );
     await markMessageSent(ctx.db, messageId, result.providerMessageId);
     ctx.logger.info({ messageId, providerMessageId: result.providerMessageId }, 'message sent');
   } catch (error) {

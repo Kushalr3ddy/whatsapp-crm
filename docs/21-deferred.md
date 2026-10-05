@@ -772,7 +772,21 @@ already provide the actual burst protection.
 
 ---
 
-## D-25 · Outbound media (sending files) — **HIGH PRIORITY**
+## D-25 · Outbound media (sending files) — **LANDED 2026-10-05**
+
+> **Built.** `POST /api/v1/conversations/:id/attachments?filename=&caption=` takes the file as the raw
+> request body (16 MB cap, `FILE_TOO_LARGE` otherwise). The type is decided from the bytes
+> (`detectMediaType`): images, video, audio, PDFs and ZIP/Office containers are accepted; HTML, SVG and
+> anything unrecognised is refused `415 UNSUPPORTED_FILE_TYPE`, never stored. `storeOutboundMedia`
+> (`@crm/core`) stores it exactly like an inbound attachment (random key, per-org sha256 dedup) inside
+> the request's tenant transaction, and the message is queued with `media_id` and the caption as its
+> body, subject to the thread lock and `messages:send`. The gateway reads the file back from storage
+> (`WorkContext.storage`) and `OutboundContent.freeform` now carries `media` (bytes + type + filename,
+> replacing the unused `mediaUrl`); the Baileys adapter sends images/video/audio natively and the rest
+> as a named document (`toBaileysContent`). It passes the same anti-ban pacing as any send. The web
+> composer has a 📎 attach button (reply mode only). **Not built:** documents over 16 MB (WhatsApp allows
+> ~100 MB), voice-note (`ptt`) sends, outbound media in campaigns, and templates with media (D-19).
+> Original note kept below.
 
 **What:** sending an image or document, not just receiving one. Inbound media is fully built —
 downloaded, typed from magic bytes, stored, served, and shown in the thread — but the **send path

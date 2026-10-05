@@ -29,7 +29,20 @@ export interface ChannelCapabilities {
  */
 export type OutboundContent =
   | { readonly kind: 'template'; readonly key: string; readonly variables: Record<string, string> }
-  | { readonly kind: 'freeform'; readonly body: string; readonly mediaUrl?: string };
+  | { readonly kind: 'freeform'; readonly body: string; readonly media?: OutboundMedia };
+
+/**
+ * A file to send, handed over as bytes rather than a URL. The gateway reads it from storage and
+ * the adapter uploads it; a URL would be a second way to reach a file, and the only authorisation
+ * a stored file has is the database walk that resolves it (docs/21-deferred.md, D-11). For a
+ * media message `body` is the caption (possibly empty).
+ */
+export interface OutboundMedia {
+  readonly bytes: Uint8Array;
+  /** Detected from the bytes at upload, never from a filename or a client's claim. */
+  readonly contentType: string;
+  readonly filename: string | null;
+}
 
 /** Who to send to, in whatever form this channel addresses people by. */
 export interface Recipient {
