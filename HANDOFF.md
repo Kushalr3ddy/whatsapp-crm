@@ -376,7 +376,18 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently, and what it cost
 
-**Most recent (2026-09-30): Playwright E2E + a segments-UI fix found by driving the app.** Added
+**Most recent (2026-09-30): anti-ban completion pass (3 of 8) + CI + the hydration fix.** Working
+through the remaining anti-ban refinements one by one (full list + status in *Next*):
+**#1 outbound-only daily clamp** (never-replied sender → 20/day), **#2 identical-body guard**
+(≤ `IDENTICAL_BODY_DAILY_CAP`/24h, completes D-26), **#3 continuous delivery→speed curve**
+(`deliveryDelayMultiplier`, replaces degraded=half) — all enforced in `handleSend`/dispatch with
+unit + integration tests. **Still pending: #4 reply-ratio floor · #5 decrypt-failure signal ·
+#6 read behaviour · #7 background entropy · #8 recipient-timezone inference.** Also: **GitHub
+Actions rewritten** to actually run the vitest suite (migrate test DB first) and a new **e2e job**
+(`npm run test:e2e`) — unvalidated on GitHub, watch the first run; and the root
+**`suppressHydrationWarning`** re-applied (clears the Next dev overlay). 485 vitest + 4 e2e, green.
+
+**Before that (2026-09-30): Playwright E2E + a segments-UI fix found by driving the app.** Added
 browser end-to-end tests — `@playwright/test` + Chromium, `playwright.config.ts` (reads
 `TEST_EMAIL`/`TEST_PASSWORD` from `.env`, `webServer` reuses a running stack), specs under
 `tests/e2e/*.spec.ts` (`npm run test:e2e`): wrong-password refused, sign-in→sign-out drops the
