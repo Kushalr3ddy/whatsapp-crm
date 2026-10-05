@@ -1,0 +1,1 @@
+ALTER TABLE "channel_session" ADD COLUMN "decrypt_burst_at" timestamp with time zone;

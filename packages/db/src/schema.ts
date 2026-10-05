@@ -275,6 +275,10 @@ export const channelSession = pgTable('channel_session', {
   disconnectReason: text('disconnect_reason'),
   disconnectCode: integer('disconnect_code'),
   reconnectAttempts: integer('reconnect_attempts').notNull().default(0),
+  // When the gateway last saw a burst of undecryptable frames ("Bad MAC") on this socket — the
+  // early sign of a diverged companion session (D-14). The scorer treats it as live for a while
+  // and then lets it lapse, so the number recovers on its own once the burst stops.
+  decryptBurstAt: timestamp('decrypt_burst_at', { withTimezone: true }),
 
   // The linking handshake. The API cannot call the provider directly — the gateway owns the
   // socket in a separate process — so a link request is left here and the challenge WhatsApp

@@ -11,18 +11,18 @@ request; `HANDOFF.md` + `CHANGELOG.md` are the primary, always-current record.)
 ## ▶ Pick up here (2026-10-05)
 
 **In progress: the anti-ban completion pass — finishing the 8 remaining refinements one by one,
-marking each done in [`docs/08-antiban.md`](docs/08-antiban.md). 4 of 8 done; next is #5.**
+marking each done in [`docs/08-antiban.md`](docs/08-antiban.md). 5 of 8 done; next is #6.**
 
-1. **Resume at anti-ban #5 — the decrypt-failure signal** (Layer 5): 3 `Bad MAC` events in 60 s
-   should degrade the sender. Then #6 read behaviour, #7 background entropy, #8 recipient-timezone
-   inference. **#4 (reply-ratio floor) landed 2026-10-05** — the 20/day new-contact cap is earned by
+1. **Resume at anti-ban #6 — read behaviour** (mark-as-read after 10–60 min, gateway). Then #7
+   background entropy, #8 recipient-timezone inference. **#5 (decrypt-failure signal) landed
+   2026-10-05** — 3 `Bad MAC`/60 s → `channel_session.decrypt_burst_at` (migration 0018) → degraded. **#4 (reply-ratio floor) landed 2026-10-05** — the 20/day new-contact cap is earned by
    ≥30 % replies from ≥10 recent new contacts, else 5/day (`contact-graph.ts`, `NEW_CONTACT_REPLY_FLOOR`).
    Full list + status in **Next**, below. `npm run docs:pdf` builds a printable copy of all the docs.
 2. **Watch the first CI run** on GitHub (`.github/workflows/ci.yml` was rewritten this session and
    is **unvalidated** — the `e2e` job especially). Fix whatever the first push/PR surfaces.
 3. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin,
    or the `e2e-test` admin in `.env` (`TEST_EMAIL`/`TEST_PASSWORD`). `npm run check` = typecheck +
-   lint + **491 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
+   lint + **498 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
@@ -63,7 +63,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**491 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
+**498 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 19 migrations (through 0018).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -628,7 +628,7 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
        still held to ≥ half speed. Replaces the blunt degraded=half.
      - ~~**#4** reply-ratio floor~~ — **done (2026-10-05).** Daily new-contact cap earned by ≥30 %
        replies from ≥10 new contacts in 7 d (48 h grace), else 5/day; `newContactDailyAllowance`.
-     - **#5** decrypt-failure signal (3 `Bad MAC` in 60 s → degrade, Layer 5).
+     - ~~**#5** decrypt-failure signal~~ — **done (2026-10-05).** Logger tap → tracker → `decrypt_burst_at` → +60 score while <15 min old; recovers by time.
      - **#6** read behaviour (mark-as-read after 10–60 min, gateway) · **#7** background entropy
        (periodic presence noise, gateway) · **#8** recipient-timezone inference (circadian).
    - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).

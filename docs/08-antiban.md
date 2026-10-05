@@ -192,8 +192,12 @@ whatever its delivery, since it may be degraded for failures or disconnects rath
 | 55–85% | scaled linearly |
 | < 55% | 25% |
 
-**Decrypt failures.** Alert on 3 "Bad MAC" events within 60 seconds — session degradation
-usually precedes trouble.
+**Decrypt failures** ✅ built. 3 "Bad MAC" events within 60 seconds mark the session as diverged
+(D-14) and degrade the number. Baileys drops undecryptable frames before the app sees them, so the
+adapter taps its logger (`tapDecryptFailures`); the gateway's `DecryptFailureTracker` detects the
+burst and writes `channel_session.decrypt_burst_at`; the scorer adds +60 (high band) while the burst
+is under 15 minutes old. It lapses by time, so the number recovers without anyone clearing it — the
+both-directions rule. A slow drip (under 3 a minute) never trips it.
 
 **Risk score, 0–100**, from typed events, each written to `send_risk_event` so the dashboard
 shows evidence rather than a bare number:

@@ -3,7 +3,8 @@ import { createLogger, loadConfig, ConfigError } from '@crm/shared';
 import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
-import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR } from '@crm/core';
+import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
+  DecryptFailureTracker, markDecryptBurst } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import type { NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -45,7 +46,20 @@ async function main(): Promise<void> {
     indexKeyHex: config.ENCRYPTION_INDEX_KEY
   });
   const authStore = new PostgresAuthStateStore(db, kms);
-  const provider = new BaileysChannelProvider({ authStore, logger });
+  // Layer 5: Baileys drops undecryptable frames before the app sees them, so its logger is the only
+  // place a diverged session shows. Three "Bad MAC" in a minute is recorded on the session row and
+  // scored by the next health sweep, which degrades the number and later lets it recover.
+  const decryptTracker = new DecryptFailureTracker();
+  const provider = new BaileysChannelProvider({
+    authStore, logger,
+    onDecryptFailure: (senderId, at) => {
+      if (!decryptTracker.record(senderId, at)) return;
+      logger.warn({ senderId }, 'decrypt-failure burst: companion session looks diverged');
+      markDecryptBurst(db, senderId, at).catch((err: unknown) => {
+        logger.error({ err, senderId }, 'could not record decrypt-failure burst');
+      });
+    }
+  });
   // Attachments land here rather than in the API, because this is the process holding the
   // connection that can fetch them — WhatsApp media is re-downloaded through the socket that
   // received it, not from a URL anyone else could call.

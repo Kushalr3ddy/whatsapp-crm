@@ -127,6 +127,13 @@
       "when": 1790740725484,
       "tag": "0017_natural_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791217725288,
+      "tag": "0018_thick_makkari",
+      "breakpoints": true
     }
   ]
 }

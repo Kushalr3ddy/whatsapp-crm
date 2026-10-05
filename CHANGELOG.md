@@ -13,6 +13,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-05 — Anti-ban #5 (decrypt-failure signal)
+- **#5 of 8 — 3 `Bad MAC` in 60 s degrades the sender (Layer 5).** Baileys drops undecryptable
+  frames before `messages.upsert`, so the adapter now taps its logger (`decrypt-tap.ts`, covers child
+  loggers, best-effort) and reports each one via `onDecryptFailure`. The gateway's
+  `DecryptFailureTracker` (`@crm/core`) trips on the 3rd inside 60 s and writes
+  `channel_session.decrypt_burst_at` (migration 0018); `computeRiskScore` adds +60 while it is under
+  15 min old → high band → degraded, then recovers by time with no manual clear. 7 new tests → **498**.
+
 ### 2026-10-05 — Anti-ban #4 (reply-ratio floor) + printable docs
 - **#4 of 8 — reply-ratio floor (Layer 4).** The new-contact daily cap (20) is now earned: it applies
   only once ≥10 new contacts from the last 7 days (48 h grace to reply) exist and ≥30 % replied;
@@ -63,7 +71,7 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 - 5 tests (4 unit on `dailyCeiling`: clamp / lift / backward-compat / never-raises; 1 integration:
   dispatch holds a never-replied sender to 20 then lifts to the rest once it gets an inbound).
 - Remaining backlog (HANDOFF): #2 identical-body guard · #3 continuous delivery→speed curve ·
-  #5 decrypt-failure signal · #6 read behaviour · #7 background entropy ·
+  #6 read behaviour · #7 background entropy ·
   #8 recipient-timezone inference.
 
 ### 2026-09-30 — Playwright E2E + a segments-UI bug found by driving the app

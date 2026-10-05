@@ -12,6 +12,7 @@ import type {
 } from '@crm/channels';
 import { loadAuthState, hasStoredSession } from './auth-adapter.js';
 import { EventStream } from './event-stream.js';
+import { tapDecryptFailures } from './decrypt-tap.js';
 
 /** The minimum logger shape Baileys requires. Satisfied by pino. */
 export interface BaileysLogger {
@@ -30,6 +31,11 @@ export interface BaileysProviderOptions {
   readonly logger: BaileysLogger;
   /** How long a QR stays valid before the caller should request a fresh one. */
   readonly qrTtlMs?: number;
+  /**
+   * Called each time Baileys reports a frame it could not decrypt on this sender's socket. The
+   * gateway turns a burst of these into a health signal (docs/08-antiban.md, Layer 5).
+   */
+  readonly onDecryptFailure?: (senderId: string, at: Date) => void;
 }
 
 /**
@@ -283,11 +289,14 @@ export class BaileysChannelProvider implements ChannelProvider {
 
     const { state, saveCreds } = await loadAuthState(this.#options.authStore, senderId);
     const { version } = await fetchLatestBaileysVersion();
+    const onFail = this.#options.onDecryptFailure;
 
     const socket = makeWASocket({
       version,
       auth: state,
-      logger: this.#options.logger as never,
+      logger: (onFail
+        ? tapDecryptFailures(this.#options.logger, () => { onFail(senderId, new Date()); })
+        : this.#options.logger) as never,
       // Identify as a desktop browser. A plausible, stable client fingerprint matters — the
       // detection heuristics notice inconsistency across sessions (docs/08-antiban.md).
       browser: Browsers.ubuntu('Chrome'),

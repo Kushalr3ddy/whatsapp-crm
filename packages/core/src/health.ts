@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 import { beginRecovery } from './recovery.js';
+import { decryptBurstIsLive } from './decrypt-failures.js';
 
 /**
  * Sender health scoring — P6 anti-ban, the feedback loop (docs/08-antiban.md).
@@ -52,6 +53,8 @@ export interface HealthSignals {
   readonly disconnectCode: number | null;
   /** Reconnect churn — a number that keeps dropping and re-opening is unhealthy. */
   readonly reconnectAttempts: number;
+  /** A burst of undecryptable frames was seen recently — a diverged session. Absent = no signal. */
+  readonly decryptBurstLive?: boolean;
 }
 
 /** The delivery ratio, or a healthy 1.0 when there is nothing to judge it on. */
@@ -92,6 +95,10 @@ export function computeRiskScore(signals: HealthSignals): number {
     else if (signals.disconnectCode === 429) score += 25;
   }
   if (signals.reconnectAttempts >= 5) score += 15;
+
+  // A diverged companion session (3 Bad MAC in a minute): high band on its own, so the number is
+  // degraded until the burst lapses. It lapses by time, so this recovers without anyone clearing it.
+  if (signals.decryptBurstLive === true) score += 60;
 
   return Math.min(100, score);
 }
@@ -184,24 +191,28 @@ export async function scoreSenderHealth(
       )::int AS "failedRecent",
       cs.connection_state AS "connectionState",
       cs.disconnect_code AS "disconnectCode",
-      coalesce(cs.reconnect_attempts, 0) AS "reconnectAttempts"
+      coalesce(cs.reconnect_attempts, 0) AS "reconnectAttempts",
+      cs.decrypt_burst_at AS "decryptBurstAt"
     FROM sender_identity si
     LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
     LEFT JOIN conversation v ON v.sender_identity_id = si.id
     LEFT JOIN message m ON m.conversation_id = v.id
     WHERE si.id = ${senderIdentityId}
-    GROUP BY si.id, si.status, cs.connection_state, cs.disconnect_code, cs.reconnect_attempts`);
+    GROUP BY si.id, si.status, cs.connection_state, cs.disconnect_code, cs.reconnect_attempts,
+             cs.decrypt_burst_at`);
 
   const row = (rows as unknown as Array<{
     status: SenderStatus; sentRecent: number; deliveredRecent: number; failedRecent: number;
     connectionState: string | null; disconnectCode: number | null; reconnectAttempts: number;
+    decryptBurstAt: string | null;
   }>)[0];
   if (!row) return null;
 
   const signals: HealthSignals = {
     sentRecent: row.sentRecent, deliveredRecent: row.deliveredRecent,
     failedRecent: row.failedRecent, connectionState: row.connectionState ?? 'closed',
-    disconnectCode: row.disconnectCode, reconnectAttempts: row.reconnectAttempts
+    disconnectCode: row.disconnectCode, reconnectAttempts: row.reconnectAttempts,
+    decryptBurstLive: decryptBurstIsLive(row.decryptBurstAt ? new Date(row.decryptBurstAt) : null, now)
   };
 
   const score = computeRiskScore(signals);
@@ -216,7 +227,8 @@ export async function scoreSenderHealth(
     score, band, deliveryRatio: Number(ratio.toFixed(3)),
     sentRecent: signals.sentRecent, deliveredRecent: signals.deliveredRecent,
     failedRecent: signals.failedRecent, disconnectCode: signals.disconnectCode,
-    reconnectAttempts: signals.reconnectAttempts, computedAt: at
+    reconnectAttempts: signals.reconnectAttempts,
+    decryptBurst: signals.decryptBurstLive === true, computedAt: at
   };
 
   await db.execute(sql`
