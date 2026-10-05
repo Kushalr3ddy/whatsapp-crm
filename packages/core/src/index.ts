@@ -31,7 +31,7 @@ export {
 
 export {
   checkSendAllowance, dailyCeiling, humanDelayMs,
-  circadianActivity, circadianDelayMs, localHour,
+  circadianActivity, circadianDelayMs, localHour, CIRCADIAN_QUIET_THRESHOLD,
   type PacingLimits, type PacingDecision
 } from './pacing.js';
 
@@ -64,6 +64,8 @@ export {
   DecryptFailureTracker, markDecryptBurst, decryptBurstIsLive,
   DECRYPT_BURST_COUNT, DECRYPT_BURST_WINDOW_MS, DECRYPT_BURST_LIVE_MS
 } from './decrypt-failures.js';
+
+export { timezoneForPhone, COUNTRY_TIMEZONES } from './recipient-timezone.js';
 
 export {
   EntropyScheduler, entropyPlan, nextEntropyDelayMs, ENTROPY_MIN_INTERVAL_MS, ENTROPY_MAX_INTERVAL_MS,

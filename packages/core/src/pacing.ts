@@ -162,7 +162,7 @@ export function humanDelayMs(random: () => number = Math.random): number {
  */
 
 /** Below this activity a number is treated as "asleep": sends are deferred to the morning. */
-const CIRCADIAN_QUIET_THRESHOLD = 0.15;
+export const CIRCADIAN_QUIET_THRESHOLD = 0.15;
 
 /** Never stretch a pause past this, however slow the hour — an hours-long gap helps nobody. */
 const CIRCADIAN_MAX_DELAY_MS = 15_000;

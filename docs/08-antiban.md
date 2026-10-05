@@ -86,7 +86,7 @@ both-ways *status* recovery, a typed incident now starts a **timed** response: a
 the send chokepoint (message left queued, never failed), the ramp is a fraction that only *lowers*
 the daily ceiling, and the Numbers page shows an at-risk / cooling-off banner per number. A 401 hard
 ban stays on the existing unlink→re-link path rather than auto-retiring, because a genuine ban and a
-user unlink are indistinguishable at the socket. One refinement to what *is* built remains open: inferring the *recipient's* timezone.
+user unlink are indistinguishable at the socket. The anti-ban completion pass is now finished: every refinement in this section is built.
 
 ✅ **Typing simulation is now built** (D-24). Before each send the gateway emits a `composing`
 presence, pauses a beat proportional to the message length (Gaussian on the rate, clamped
@@ -136,8 +136,15 @@ A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" 
   send, not a fast one. Best-effort: a failed presence update never fails the send.
 - **Circadian pacing** ✅ **built** (see "What is built" above): fast 09:00–22:00, slow
   22:00–02:00, near-dead 02:00–06:00, with a smooth cosine transition rather than steps. Uses the
-  configured send timezone (`SEND_TIMEZONE`); the recipient's inferred timezone is a future
-  refinement, not built yet.
+  configured send timezone (`SEND_TIMEZONE`), and **the recipient's day is respected too** ✅: their
+  zone is inferred from their phone number's country (`timezoneForPhone`, a ~60-country table; multi-
+  zone countries use their most populous zone; an unknown country means no adjustment). A send that
+  would land in the recipient's small hours is left queued, one in their shoulders is slowed; it only
+  ever adds caution, only for `phone` recipients (a privacy id carries no country), and only when their
+  zone differs from the sender's. It never consults where the server is hosted — the sender's day
+  comes from the explicit `SEND_TIMEZONE`, so a US-region deployment with +91 numbers behaves exactly
+  like an Indian one. `SEND_RECIPIENT_TIMEZONE=false` turns it off. Caveat: a deferred message stays
+  in the 200-oldest queue window, so a large overnight batch to a far zone can briefly crowd it.
 - **Read behaviour** ✅ **built**: an inbound message is blue-ticked only after its own 10–60 minute
   delay (`readDelayMs`, derived from the message id so a restart cannot reshuffle it), only in the
   number's active hours (circadian level ≥ 0.5, so never at 4 a.m.), never for a message older than

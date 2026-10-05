@@ -1,4 +1,4 @@
-import { parsePhoneNumberWithError, type CountryCode } from 'libphonenumber-js/max';
+import { parsePhoneNumberFromString, parsePhoneNumberWithError, type CountryCode } from 'libphonenumber-js/max';
 import { err, ok, type Result } from './result.js';
 
 /** Why a phone number could not be normalised. Surfaced per row during an import. */
@@ -86,4 +86,13 @@ function toLineType(raw: string | undefined): NormalisedPhone['type'] {
  */
 export function isMatchableIdentity(value: string | null | undefined): value is string {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
+ * The ISO country (`IN`, `GB`, …) an E.164 number belongs to, or null when it cannot be told.
+ * Many countries share one calling code (+1), and libphonenumber resolves those from the number
+ * itself, which is why this parses rather than slicing a prefix.
+ */
+export function phoneCountry(e164: string): string | null {
+  return parsePhoneNumberFromString(e164)?.country ?? null;
 }

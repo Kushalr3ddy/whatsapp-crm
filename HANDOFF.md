@@ -10,20 +10,21 @@ request; `HANDOFF.md` + `CHANGELOG.md` are the primary, always-current record.)
 
 ## ▶ Pick up here (2026-10-05)
 
-**In progress: the anti-ban completion pass — finishing the 8 remaining refinements one by one,
-marking each done in [`docs/08-antiban.md`](docs/08-antiban.md). 7 of 8 done; next is #8.**
+**The anti-ban completion pass is DONE — all 8 refinements built** (#1 outbound-only clamp, #2
+identical-body guard, #3 delivery→speed curve, #4 reply-ratio floor, #5 decrypt-failure signal, #6
+read behaviour, #7 background entropy, #8 recipient-timezone). Each is marked done in
+[`docs/08-antiban.md`](docs/08-antiban.md). None of #5–#8 has been exercised against a real linked
+number, only the fake channel — worth a watch the next time one is linked.
 
-1. **Resume at anti-ban #8 — recipient-timezone inference** (circadian, the last one). **#7
-   (background entropy) landed 2026-10-05** — `sweepEntropy`, 2–6 h, `SEND_BACKGROUND_ENTROPY`. **#6 (read behaviour) landed 2026-10-05** — `sweepReadReceipts`,
-   10–60 min delay, active hours only, max 3/sender/sweep, `SEND_READ_RECEIPTS`. **#5 (decrypt-failure signal) landed
-   2026-10-05** — 3 `Bad MAC`/60 s → `channel_session.decrypt_burst_at` (migration 0018) → degraded. **#4 (reply-ratio floor) landed 2026-10-05** — the 20/day new-contact cap is earned by
-   ≥30 % replies from ≥10 recent new contacts, else 5/day (`contact-graph.ts`, `NEW_CONTACT_REPLY_FLOOR`).
-   Full list + status in **Next**, below. `npm run docs:pdf` builds a printable copy of all the docs.
+1. **Choose the next build.** Remaining pins, Kushal's call on order: **D-25** outbound media
+   (high), **D-19** templates, **D-23** message-body search, **D-27** opt-out automation, **D-29**
+   advisory mode. Also a stale-docs pass (see the 2026-10-05 review: README, CONTRIBUTING, 15-api,
+   24-local-testing, CHANGELOG by-phase).
 2. **Watch the first CI run** on GitHub (`.github/workflows/ci.yml` was rewritten this session and
    is **unvalidated** — the `e2e` job especially). Fix whatever the first push/PR surfaces.
 3. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin,
    or the `e2e-test` admin in `.env` (`TEST_EMAIL`/`TEST_PASSWORD`). `npm run check` = typecheck +
-   lint + **514 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
+   lint + **520 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
@@ -64,7 +65,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**514 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 19 migrations (through 0018).**
+**520 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 19 migrations (through 0018).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -632,7 +633,7 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      - ~~**#5** decrypt-failure signal~~ — **done (2026-10-05).** Logger tap → tracker → `decrypt_burst_at` → +60 score while <15 min old; recovers by time.
      - ~~**#6** read behaviour~~ — **done (2026-10-05).** `sweepReadReceipts` + `ChannelProvider.markRead`.
      - ~~**#7** background entropy~~ — **done (2026-10-05).** `sweepEntropy` + `ChannelProvider.presence`.
-     - **#8** recipient-timezone inference (circadian) — the last one.
+     - ~~**#8** recipient-timezone inference~~ — **done (2026-10-05).** `timezoneForPhone` + a deferral/stretch in `handleSend`; `SEND_RECIPIENT_TIMEZONE`.
    - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
      simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences);

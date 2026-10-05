@@ -5,7 +5,8 @@ import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
   recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
-  type ReplyFloorConfig, readIsDue, circadianActivity, localHour, entropyPlan, type EntropyScheduler
+  type ReplyFloorConfig, readIsDue, circadianActivity, localHour, entropyPlan, type EntropyScheduler,
+  timezoneForPhone, circadianDelayMs, CIRCADIAN_QUIET_THRESHOLD
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -90,6 +91,12 @@ export interface WorkContext {
    * exercise it never see a read receipt.
    */
   readonly readReceipts?: boolean;
+  /**
+   * Also respect the *recipient's* day, inferred from their phone number's country: a send to
+   * someone in their small hours is deferred, and one in their shoulders is slowed. Only ever
+   * adds caution. Needs `limits.circadianTimezone` (the sender's own zone) to be set too.
+   */
+  readonly recipientTimezone?: boolean;
   /**
    * Background presence noise while idle (docs/08-antiban.md, Layer 3). Present = on: the
    * scheduler decides per number when an event is due (every 2–6 h). Absent in tests that do not
@@ -453,6 +460,25 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       // Stretch the pause by the relationship multiplier, capped so a stranger at a slow hour is
       // paced, not parked for a minute. The base delay is already circadian-scaled.
       delayMs = Math.min(30_000, Math.round(delayMs * graph.delayMultiplier));
+    }
+
+    // Recipient's day (Layer 3): circadian above is the sender's clock. Infer the recipient's zone
+    // from their number and defer a send landing in their small hours, or stretch one in their
+    // shoulders. Phone recipients only (a privacy id carries no country), and only when it
+    // differs from the sender's own zone, so same-zone traffic is untouched.
+    if (ctx.recipientTimezone && ctx.limits.circadianTimezone && job.recipientKind === 'phone') {
+      const theirTz = timezoneForPhone(job.recipientValue);
+      if (theirTz && theirTz !== ctx.limits.circadianTimezone) {
+        const theirs = circadianActivity(localHour(new Date(), theirTz));
+        if (theirs < CIRCADIAN_QUIET_THRESHOLD) {
+          ctx.logger.warn(
+            { messageId, senderId: job.senderIdentityId, recipientTimezone: theirTz },
+            `send paced: recipient is outside their sending hours (${theirTz})`
+          );
+          return;                       // left queued; the sweep tries again later
+        }
+        if (theirs < 1) delayMs = Math.min(30_000, circadianDelayMs(delayMs, theirs));
+      }
     }
 
     // Layer 5 adaptive speed: scale the pause by the delivery-ratio curve (×1 healthy → ×4 when

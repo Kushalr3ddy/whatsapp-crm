@@ -87,6 +87,8 @@ async function main(): Promise<void> {
     typingSimulation: config.SEND_TYPING_SIMULATION,
     // Blue-tick inbound messages only after a human-like 10–60 min delay, in active hours.
     readReceipts: config.SEND_READ_RECEIPTS,
+    // Also respect the recipient's day, inferred from their number's country.
+    recipientTimezone: config.SEND_RECIPIENT_TIMEZONE,
     // Idle-time presence noise every 2–6 h per number, in active hours.
     ...(config.SEND_BACKGROUND_ENTROPY ? { entropy: new EntropyScheduler() } : {}),
     // Campaign bodies are encrypted on their way into a message, exactly like any other.

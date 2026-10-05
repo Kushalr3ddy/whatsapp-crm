@@ -6,7 +6,7 @@
 export { loadConfig, ConfigError, type Config } from './config.js';
 export { createLogger, type Logger } from './logger.js';
 export { ok, err, type Result, type Ok, type Err } from './result.js';
-export { normalisePhone, isMatchableIdentity, type PhoneError } from './phone.js';
+export { normalisePhone, phoneCountry, isMatchableIdentity, type PhoneError } from './phone.js';
 export {
   detectMediaType, safeFilename, UNKNOWN_MEDIA_TYPE, type MediaType
 } from './media-type.js';

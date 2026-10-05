@@ -13,6 +13,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-05 — Anti-ban #8 (recipient-timezone inference) — the completion pass is done
+- **#8 of 8 — respect the recipient's day (Layer 3 circadian).** `timezoneForPhone` (`@crm/core`, a
+  ~60-country table over a new `phoneCountry` in `@crm/shared`) infers a recipient's zone from their
+  number. In `handleSend`, after the sender's own circadian gate: a send landing in the recipient's
+  small hours is left queued, one in their shoulders is slowed. Only adds caution; phone recipients
+  only; same-zone and unknown-country traffic untouched; independent of server location (the
+  sender's day is the explicit `SEND_TIMEZONE`). `SEND_RECIPIENT_TIMEZONE` (default on). No migration.
+  Writing the test caught that +44 7911… is Guernsey (`GG`), so GG/JE/IM now map to London.
+  6 new tests → **520**. **All 8 anti-ban refinements are done.**
+
 ### 2026-10-05 — Anti-ban #7 (background entropy)
 - **#7 of 8 — idle-time presence noise (Layer 3).** New optional `ChannelProvider.presence` (Baileys
   `sendPresenceUpdate`, fake records `presenceCalls`) and `runEntropyEvent`/`sweepEntropy` in the
