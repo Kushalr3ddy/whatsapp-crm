@@ -543,3 +543,28 @@ describe('body variation on dispatch (D-26)', () => {
     expect(new Set(bodies).size).toBe(3);
   });
 });
+
+describe('the outbound-only clamp in campaign dispatch (Layer 1)', () => {
+  it('holds a never-replied sender to 20/day, then lifts once it has received an inbound', async () => {
+    // 25 reachable contacts; the sender (from beforeEach) has never received an inbound.
+    const ids: string[] = [];
+    for (let i = 0; i < 25; i++) {
+      const c = (await db.execute(sql`
+        INSERT INTO contact (org_id, display_name, source)
+        VALUES (${orgId}, ${`Clamp ${String(i)}`}, 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+      await db.execute(sql`
+        INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
+        VALUES (${orgId}, ${c}, 'phone', ${`+91990000${String(i).padStart(4, '0')}`}, true)`);
+      ids.push(c);
+    }
+    const created = await create(ids);
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+
+    // Clamped to 20, not 25, because the number has never been replied to.
+    expect(await dispatchCampaigns(gatewayCtx())).toBe(20);
+
+    // Give it an inbound: the clamp lifts and the remaining recipients can queue.
+    await db.execute(sql`UPDATE sender_identity SET last_inbound_at = now() WHERE id = ${senderId}`);
+    expect(await dispatchCampaigns(gatewayCtx())).toBe(5);
+  });
+});

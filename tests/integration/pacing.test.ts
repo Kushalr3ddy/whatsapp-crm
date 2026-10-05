@@ -487,3 +487,30 @@ describe('circadian pacing (the daily rhythm)', () => {
     expect(decision.allowed).toBe(true);
   });
 });
+
+describe('the outbound-only clamp (never received an inbound)', () => {
+  const warmed = {
+    perMinute: 8, perDay: 1500, dailyCapOverride: null,
+    warmupStartedAt: new Date('2026-01-01T00:00:00Z')            // long past warmup → steady 1500
+  };
+  const now = new Date('2026-03-01T00:00:00Z');
+
+  it('caps a number that has never replied at 20/day, whatever its warmup day', () => {
+    expect(dailyCeiling({ ...warmed, lastInboundAt: null }, null, now)).toBe(20);
+  });
+
+  it('does not clamp once the number has received an inbound', () => {
+    expect(dailyCeiling({ ...warmed, lastInboundAt: new Date('2026-02-20T00:00:00Z') }, null, now))
+      .toBe(1500);
+  });
+
+  it('is skipped entirely when the caller does not evaluate inbound (backward compatible)', () => {
+    // No `lastInboundAt` key → the clamp never applies, so every pre-existing caller is unchanged.
+    expect(dailyCeiling(warmed, null, now)).toBe(1500);
+  });
+
+  it('never raises a lower ceiling — a day-1 warmup number is still 20, not bumped', () => {
+    const day1 = { ...warmed, warmupStartedAt: now, lastInboundAt: null };
+    expect(dailyCeiling(day1, null, now)).toBe(20);
+  });
+});

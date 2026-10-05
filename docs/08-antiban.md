@@ -96,13 +96,13 @@ presence, pauses a beat proportional to the message length (Gaussian on the rate
 send. The beat is a *compressed* pause, not literal 45-WPM typing time (a 30-second bubble before
 every send would stall a paced queue for no gain).
 
-⬜ **The "never received an inbound message is capped harder" rule is specced but not yet
-implemented.** It *was* blocked by D-14 (inbound dead, so every sender looked outbound-only and
-the rule would have capped the whole system at 20 sends a day). **D-14 is now closed** — inbound
-works again — so the signal it depends on (`last_inbound_at`, reply ratio) is real and the rule
-is unblocked. It lands with contact-graph gates (layer 4/5). **Worth understanding rather than
-working around: bulk sending from a number that receives nothing is exactly the pattern the
-graph heuristics punish, so the risk is real even though the gate is not enforcing it yet.**
+✅ **The "never received an inbound message is capped harder" rule is now built.** A sender whose
+`last_inbound_at` is null is clamped to **20 sends/day regardless of warmup day** in `dailyCeiling`
+(`OUTBOUND_ONLY_DAILY_CAP`), lifting automatically the moment its first inbound arrives. Enforced at
+the send chokepoint and in campaign dispatch, and reflected in the campaign forecast. It only ever
+*lowers* the ceiling, and a caller that does not evaluate inbound (`lastInboundAt` absent) skips it,
+so the rest of the pacing path is unchanged. Outbound-only is exactly the pattern the graph
+heuristics punish — a real account gets replies — and now the ceiling says so.
 
 ## Layer 1 — Warmup
 

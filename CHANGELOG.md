@@ -13,6 +13,22 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-30 — Anti-ban completion #1: outbound-only daily clamp (Layer 1)
+Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
+- A sender that has **never received an inbound** (`last_inbound_at IS NULL`) is now clamped to
+  **20 sends/day regardless of warmup day** — outbound-only is a top ban pattern. Built in
+  `dailyCeiling` as `OUTBOUND_ONLY_DAILY_CAP`; it only lowers the ceiling and lifts automatically on
+  the first inbound.
+- Enforced at the send chokepoint (`handleSend`) and in campaign dispatch, and fed into the campaign
+  **forecast** (all three sender-limit queries now carry `last_inbound_at`), so "this will take
+  forever" shows up before launch. A caller that omits `lastInboundAt` skips the clamp, so the whole
+  pre-existing pacing path — and the test suite — is unchanged.
+- 5 tests (4 unit on `dailyCeiling`: clamp / lift / backward-compat / never-raises; 1 integration:
+  dispatch holds a never-replied sender to 20 then lifts to the rest once it gets an inbound).
+- Remaining backlog (HANDOFF): #2 identical-body guard · #3 continuous delivery→speed curve ·
+  #4 reply-ratio floor · #5 decrypt-failure signal · #6 read behaviour · #7 background entropy ·
+  #8 recipient-timezone inference.
+
 ### 2026-09-30 — Playwright E2E + a segments-UI bug found by driving the app
 - **Added browser end-to-end tests (Playwright).** `@playwright/test` (dev dep) + Chromium,
   `playwright.config.ts` (loads `TEST_EMAIL`/`TEST_PASSWORD` from `.env` without a dotenv dep;

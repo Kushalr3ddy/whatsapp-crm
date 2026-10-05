@@ -141,16 +141,18 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
 
         const progress = await campaignProgress(tx, orgId, id);
         const senderLimits = await tx.execute(sql`
-          SELECT warmup_started_at AS "warmupStartedAt", daily_cap_override AS "dailyCapOverride"
+          SELECT warmup_started_at AS "warmupStartedAt", daily_cap_override AS "dailyCapOverride",
+                 last_inbound_at AS "lastInboundAt"
           FROM sender_identity WHERE id = ${campaign.senderIdentityId} AND org_id = ${orgId}`);
         const s = (senderLimits as unknown as Array<{
-          warmupStartedAt: string | null; dailyCapOverride: number | null;
+          warmupStartedAt: string | null; dailyCapOverride: number | null; lastInboundAt: string | null;
         }>)[0]!;
 
         const outlook = await forecast(tx, campaign.senderIdentityId, progress.pending, {
           perMinute: limits.perMinute, perDay: limits.perDay,
           dailyCapOverride: s.dailyCapOverride,
-          warmupStartedAt: s.warmupStartedAt === null ? null : new Date(s.warmupStartedAt)
+          warmupStartedAt: s.warmupStartedAt === null ? null : new Date(s.warmupStartedAt),
+          lastInboundAt: s.lastInboundAt === null ? null : new Date(s.lastInboundAt)
         });
 
         await writeAudit(tx, {
@@ -206,7 +208,8 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
                  c.started_at AS "startedAt", c.completed_at AS "completedAt",
                  c.created_at AS "createdAt",
                  si.warmup_started_at AS "warmupStartedAt",
-                 si.daily_cap_override AS "dailyCapOverride"
+                 si.daily_cap_override AS "dailyCapOverride",
+                 si.last_inbound_at AS "lastInboundAt"
           FROM campaign c
           JOIN sender_identity si ON si.id = c.sender_identity_id
           WHERE c.id = ${id} AND c.org_id = ${orgId}`);
@@ -218,10 +221,12 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
           perMinute: limits.perMinute, perDay: limits.perDay,
           dailyCapOverride: campaign.dailyCapOverride as number | null,
           warmupStartedAt: campaign.warmupStartedAt === null
-            ? null : new Date(campaign.warmupStartedAt as string)
+            ? null : new Date(campaign.warmupStartedAt as string),
+          lastInboundAt: campaign.lastInboundAt === null
+            ? null : new Date(campaign.lastInboundAt as string)
         });
         // The sender's pacing state fed the forecast; it is not the caller's business.
-        const { warmupStartedAt: _w, dailyCapOverride: _d, ...rest } = campaign;
+        const { warmupStartedAt: _w, dailyCapOverride: _d, lastInboundAt: _l, ...rest } = campaign;
         return { ...rest, progress, forecast: outlook };
       });
 
@@ -247,13 +252,14 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
         const rows = await tx.execute(sql`
           SELECT c.status, c.sender_identity_id AS "senderIdentityId",
                  si.warmup_started_at AS "warmupStartedAt",
-                 si.daily_cap_override AS "dailyCapOverride"
+                 si.daily_cap_override AS "dailyCapOverride",
+                 si.last_inbound_at AS "lastInboundAt"
           FROM campaign c
           JOIN sender_identity si ON si.id = c.sender_identity_id
           WHERE c.id = ${id} AND c.org_id = ${orgId}`);
         const campaign = (rows as unknown as Array<{
           status: string; senderIdentityId: string;
-          warmupStartedAt: string | null; dailyCapOverride: number | null;
+          warmupStartedAt: string | null; dailyCapOverride: number | null; lastInboundAt: string | null;
         }>)[0];
         if (!campaign) return null;
 
@@ -263,7 +269,8 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
           perMinute: limits.perMinute, perDay: limits.perDay,
           dailyCapOverride: campaign.dailyCapOverride,
           warmupStartedAt: campaign.warmupStartedAt === null
-            ? null : new Date(campaign.warmupStartedAt)
+            ? null : new Date(campaign.warmupStartedAt),
+          lastInboundAt: campaign.lastInboundAt === null ? null : new Date(campaign.lastInboundAt)
         });
         return { status: campaign.status, audience, forecast: outlook };
       });

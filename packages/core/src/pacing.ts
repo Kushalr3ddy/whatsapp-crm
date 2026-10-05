@@ -33,6 +33,14 @@ const DORMANT_MS = 72 * 60 * 60 * 1000;
 /** Per-hour ceiling. Specced at 200; no config knob, because it sits between two that exist. */
 const PER_HOUR = 200;
 
+/**
+ * Hard daily ceiling for a number that has **never received an inbound message**. Outbound-only is
+ * exactly the pattern the graph heuristics punish — a real account gets replies — so a sender that
+ * only ever sends is capped here regardless of its warmup day, until it receives its first inbound
+ * (docs/08-antiban.md, Layer 1). Not raisable; it only ever lowers the computed ceiling.
+ */
+const OUTBOUND_ONLY_DAILY_CAP = 20;
+
 /** Inter-send delay bounds. A fixed interval is a perfect fingerprint (M10). */
 const DELAY_MIN_MS = 1500;
 const DELAY_MAX_MS = 4000;
@@ -57,6 +65,13 @@ export interface PacingLimits {
    * Like `dailyCapOverride` it can only *lower* the ceiling, so it cannot be abused to send faster.
    */
   readonly recoveryCapFraction?: number;
+  /**
+   * When this sender last received an inbound message, or `null` when it never has. **`null` caps
+   * the daily ceiling hard** (outbound-only is a top ban pattern — Layer 1). `undefined` means the
+   * caller did not evaluate it, so the cap is skipped — which keeps every pre-existing caller, and
+   * the whole test suite, behaving exactly as before.
+   */
+  readonly lastInboundAt?: Date | null;
 }
 
 /** Whether a send may proceed, and if not, why and for how long. */
@@ -84,9 +99,13 @@ export function dailyCeiling(limits: PacingLimits, lastSentAt: Date | null, now:
 
   // Never warmed up, or dormant long enough to start again.
   const dormant = lastSentAt !== null && now.getTime() - lastSentAt.getTime() > DORMANT_MS;
-  const base = (limits.warmupStartedAt === null || dormant)
+  let base = (limits.warmupStartedAt === null || dormant)
     ? Math.min(steady, WARMUP_RAMP[0]!)
     : warmupCeiling(steady, limits.warmupStartedAt, now);
+
+  // Outbound-only clamp: a number that has never received an inbound is held at the hard cap
+  // regardless of warmup day, until its first reply arrives (docs/08-antiban.md, Layer 1).
+  if (limits.lastInboundAt === null) base = Math.min(base, OUTBOUND_ONLY_DAILY_CAP);
 
   return applyRecovery(base, limits.recoveryCapFraction);
 }

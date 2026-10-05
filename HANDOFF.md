@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**478 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
+**483 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -141,7 +141,9 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   6)** — a typed incident (463 → 24 h/10 %/+15 %; 429 → 4 h/25 %/+25 %; delivery-collapse soft ban →
   48 h/5 %/+10 %) starts a timed pause then a weekly-ramping cap, stored in three `sender_identity`
   columns (migration 0016) and derived by `recoveryState`; the Numbers page shows a cooling-off /
-  at-risk banner per number. **All six layers are now complete.**
+  at-risk banner per number. **Outbound-only clamp** — a sender that has never received an inbound
+  is held to 20/day (`OUTBOUND_ONLY_DAILY_CAP`) until its first reply. **All six layers complete;
+  refinements being finished in a completion pass (see Next).**
 - **Contacts list, search & tags (P2)**: `GET /contacts` lists and searches by name/phone/email
   (plain `ILIKE` — contact fields aren't encrypted, so no blind-index decision); `tag` +
   `contact_tag` tables with `GET/POST /tags`, `DELETE /tags/:id`, attach/detach on
@@ -576,6 +578,16 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
    - **The agreed queue (P6 → D-26 → D-28) is done.** Remaining pins, Kushal's call on order:
      **D-25** outbound media (high), **D-19** templates, **D-23** message-body search, **D-27**
      opt-out automation, **D-29** anti-ban advisory mode.
+   - **Anti-ban completion pass (Kushal, 2026-09-30)** — finishing every remaining anti-ban
+     refinement, one by one, marking each done in `08-antiban.md`:
+     - ~~**#1 outbound-only daily clamp**~~ — **done.** Never-replied sender capped 20/day
+       (`OUTBOUND_ONLY_DAILY_CAP` in `dailyCeiling`), enforced in `handleSend` + dispatch + forecast.
+     - **#2** body-variation "refuse N identical bodies in a window" (completes D-26).
+     - **#3** continuous delivery→speed curve (replace degraded=half with 85%/linear/25%).
+     - **#4** reply-ratio floor before the new-contact allowance grows (Layer 4).
+     - **#5** decrypt-failure signal (3 `Bad MAC` in 60 s → degrade, Layer 5).
+     - **#6** read behaviour (mark-as-read after 10–60 min, gateway) · **#7** background entropy
+       (periodic presence noise, gateway) · **#8** recipient-timezone inference (circadian).
    - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
    - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
      simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences);

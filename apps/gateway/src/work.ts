@@ -25,6 +25,8 @@ interface QueuedSend {
   /** Pacing inputs, read with the job so the gate costs no extra round trip. */
   readonly warmupStartedAt: string | null;
   readonly dailyCapOverride: number | null;
+  /** When the sender last received an inbound, or null if never — drives the outbound-only clamp. */
+  readonly lastInboundAt: string | null;
   /** Layer 6 recovery state, read with the job: the incident class and when its pause ends. */
   readonly recoveryIncident: string | null;
   readonly recoveryUntil: string | null;
@@ -190,6 +192,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            si.status AS "senderStatus",
            si.warmup_started_at AS "warmupStartedAt",
            si.daily_cap_override AS "dailyCapOverride",
+           si.last_inbound_at AS "lastInboundAt",
            si.recovery_incident AS "recoveryIncident",
            si.recovery_until AS "recoveryUntil",
            v.contact_id AS "contactId",
@@ -264,6 +267,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       perDay: ctx.limits.perDay,
       dailyCapOverride: job.dailyCapOverride,
       warmupStartedAt: job.warmupStartedAt === null ? null : new Date(job.warmupStartedAt),
+      lastInboundAt: job.lastInboundAt === null ? null : new Date(job.lastInboundAt),
       circadianTimezone: ctx.limits.circadianTimezone ?? null,
       // While ramping out of a recovery, the daily ceiling is scaled down to this fraction.
       ...(recovery.phase === 'ramping' ? { recoveryCapFraction: recovery.capFraction } : {})
@@ -370,7 +374,8 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
   const rows = await ctx.db.execute(sql`
     SELECT c.id, c.org_id AS "orgId", c.body, c.sender_identity_id AS "senderIdentityId",
            si.warmup_started_at AS "warmupStartedAt",
-           si.daily_cap_override AS "dailyCapOverride"
+           si.daily_cap_override AS "dailyCapOverride",
+           si.last_inbound_at AS "lastInboundAt"
     FROM campaign c
     JOIN sender_identity si ON si.id = c.sender_identity_id
     WHERE c.status = 'running' AND si.status <> 'quarantined'
@@ -380,7 +385,7 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
   let queued = 0;
   for (const campaign of rows as unknown as Array<{
     id: string; orgId: string; body: string; senderIdentityId: string;
-    warmupStartedAt: string | null; dailyCapOverride: number | null;
+    warmupStartedAt: string | null; dailyCapOverride: number | null; lastInboundAt: string | null;
   }>) {
     const tenant = tenantRunner(ctx, campaign.orgId);
 
@@ -402,7 +407,8 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
         perMinute: ctx.limits.perMinute, perDay: ctx.limits.perDay,
         dailyCapOverride: campaign.dailyCapOverride,
         warmupStartedAt: campaign.warmupStartedAt === null
-          ? null : new Date(campaign.warmupStartedAt)
+          ? null : new Date(campaign.warmupStartedAt),
+        lastInboundAt: campaign.lastInboundAt === null ? null : new Date(campaign.lastInboundAt)
       },
       u.lastSentAt === null ? null : new Date(u.lastSentAt),
       new Date()
