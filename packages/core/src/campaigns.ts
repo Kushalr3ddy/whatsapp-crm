@@ -241,7 +241,11 @@ export async function snapshotAudience(
  */
 export async function dispatchCampaign(
   tenant: TenantWork, kms: KmsDriver,
-  input: { orgId: string; campaignId: string; senderIdentityId: string; body: string; limit: number }
+  input: {
+    orgId: string; campaignId: string; senderIdentityId: string; body: string; limit: number;
+    /** Most identical message bodies this sender may hold within a rolling 24h (Layer 3 / D-26). */
+    identicalBodyCap: number;
+  }
 ): Promise<number> {
   if (input.limit <= 0) return 0;
 
@@ -259,7 +263,35 @@ export async function dispatchCampaign(
       id: string; contactId: string; contactName: string | null;
     }>;
 
+    // Identical-body backstop (docs/08-antiban.md, Layer 3 / D-26): cap how many messages with the
+    // SAME body this sender holds within a rolling 24h. Spintax / {{name}} make bodies differ, so
+    // this only bites a no-variation blast. The count per body is cached, so a no-variation batch
+    // costs one query, not one per recipient.
+    const identicalSeen = new Map<string, number>();
+    let queued = 0;
+
     for (const recipient of batch) {
+      // Render this recipient's copy first — spintax picks a wording, {{name}} fills from the
+      // contact (D-26) — because the identical-body check keys off the rendered body's blind index.
+      const body = renderBody(input.body, { name: recipient.contactName ?? '' });
+      const hmac = kms.blindIndex(body);
+
+      let already = identicalSeen.get(hmac);
+      if (already === undefined) {
+        const c = await tx.execute(sql`
+          SELECT count(*)::int AS n FROM message m
+          JOIN conversation v ON v.id = m.conversation_id
+          WHERE v.sender_identity_id = ${input.senderIdentityId} AND v.org_id = ${input.orgId}
+            AND m.body_hmac = ${hmac} AND m.created_at > now() - interval '1 day'`);
+        already = (c as unknown as Array<{ n: number }>)[0]!.n;
+      }
+      if (already >= input.identicalBodyCap) {
+        // Too many identical bodies this window — leave this recipient pending (never failed: it
+        // has not gone wrong, it waits for the window to free or for the operator to add variation).
+        identicalSeen.set(hmac, already);
+        continue;
+      }
+
       // One conversation per contact per sender, reused if it exists — a campaign message
       // belongs in the same thread as everything else, not in a parallel history.
       const conv = await tx.execute(sql`
@@ -269,16 +301,12 @@ export async function dispatchCampaign(
         RETURNING id`);
       const conversationId = (conv as unknown as Array<{ id: string }>)[0]!.id;
 
-      // Render this recipient's copy: spintax picks a wording, {{name}} is filled from the contact
-      // (docs/21-deferred.md D-26). Each send differs, which is both the point and an anti-ban win.
-      const body = renderBody(input.body, { name: recipient.contactName ?? '' });
-
       const created = await tx.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type,
                              body_enc, body_hmac, sent_by, campaign_id)
         VALUES (${input.orgId}, ${conversationId}, 'outbound', 'queued', 'text',
                 ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
-                ${kms.blindIndex(body)}, 'system', ${input.campaignId})
+                ${hmac}, 'system', ${input.campaignId})
         RETURNING id`);
       const messageId = (created as unknown as Array<{ id: string }>)[0]!.id;
 
@@ -286,8 +314,10 @@ export async function dispatchCampaign(
         UPDATE campaign_recipient
         SET status = 'queued', message_id = ${messageId}, attempted_at = now()
         WHERE id = ${recipient.id} AND org_id = ${input.orgId}`);
+      identicalSeen.set(hmac, already + 1);
+      queued += 1;
     }
-    return batch.length;
+    return queued;
   });
 }
 

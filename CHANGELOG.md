@@ -13,6 +13,18 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-30 — Anti-ban completion #2: identical-body guard (D-26 backstop)
+**#2 of 8.** The dispatcher now **refuses more than N identical bodies in a window** — the half of
+D-26 that was left open.
+- A sender holds at most `IDENTICAL_BODY_DAILY_CAP` (new config, default 50) messages with the same
+  `body_hmac` per rolling 24h; `dispatchCampaign` leaves the excess **pending** (never failed). The
+  per-body count is cached in the loop, so a no-variation batch costs one query, not one per
+  recipient. Moot when spintax/`{{name}}` vary the body — it only brakes a no-variation blast.
+- Threaded via `WorkContext.limits.identicalBodyCap` (absent = no cap, so existing tests/behaviour
+  are unchanged) from `IDENTICAL_BODY_DAILY_CAP`.
+- 1 test: a flat body to 8 recipients queues 3 (cap 3) with 5 pending; a `{{name}}` body to the same
+  8 queues all 8 (distinct bodies, never capped). D-26 is now complete (both halves).
+
 ### 2026-09-30 — Anti-ban completion #1: outbound-only daily clamp (Layer 1)
 Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 - A sender that has **never received an inbound** (`last_inbound_at IS NULL`) is now clamped to

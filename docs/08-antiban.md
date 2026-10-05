@@ -143,10 +143,13 @@ A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" 
   classic tell.
 - **Background entropy**: every 2–6 hours, presence noise — a typing indicator for 3–8 s then
   stop (someone started typing and changed their mind), presence toggling over 30–120 s.
-- **Body variation** ✅ **mostly built** (D-26): spintax (`{Hi|Hey}`) plus per-recipient variables
+- **Body variation** ✅ **built** (D-26): spintax (`{Hi|Hey}`) plus per-recipient variables
   (`{{name}}`) render each recipient's copy in `dispatchCampaign` (`renderBody`, `@crm/core`), so
-  sends are no longer byte-identical. The dispatcher's **refuse more than N identical bodies in a
-  window** guard is the remaining half — moot when spintax is used, unbuilt for a no-variation body.
+  sends are no longer byte-identical. **And the dispatcher now refuses more than N identical bodies
+  in a window**: a sender holds at most `IDENTICAL_BODY_DAILY_CAP` messages with the same
+  `body_hmac` per rolling 24h (default 50), the excess left pending (never failed) until the window
+  frees or the operator adds variation. Spintax/`{{name}}` make bodies differ, so it only bites a
+  no-variation blast — exactly the shape it exists to slow.
 
 ## Layer 4 — Contact-graph gates ✅ built (see "What is built" above)
 

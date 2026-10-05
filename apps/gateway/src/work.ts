@@ -60,6 +60,8 @@ export interface WorkContext {
   readonly limits: {
     readonly perMinute: number;
     readonly perDay: number;
+    /** Most identical message bodies a sender may hold per 24h (Layer 3 / D-26). Absent = no cap. */
+    readonly identicalBodyCap?: number;
     /** Circadian pacing timezone, or null to leave the send cadence flat (layers 1–2 only). */
     readonly circadianTimezone?: string | null;
   };
@@ -420,7 +422,8 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
     if (room > 0) {
       queued += await dispatchCampaign(tenant, ctx.kms, {
         orgId: campaign.orgId, campaignId: campaign.id,
-        senderIdentityId: campaign.senderIdentityId, body: campaign.body, limit: room
+        senderIdentityId: campaign.senderIdentityId, body: campaign.body, limit: room,
+        identicalBodyCap: ctx.limits.identicalBodyCap ?? Number.MAX_SAFE_INTEGER
       });
     }
     await tenant((tx) => reconcileCampaign(tx, campaign.orgId, campaign.id));

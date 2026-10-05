@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**483 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
+**484 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -582,7 +582,9 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      refinement, one by one, marking each done in `08-antiban.md`:
      - ~~**#1 outbound-only daily clamp**~~ — **done.** Never-replied sender capped 20/day
        (`OUTBOUND_ONLY_DAILY_CAP` in `dailyCeiling`), enforced in `handleSend` + dispatch + forecast.
-     - **#2** body-variation "refuse N identical bodies in a window" (completes D-26).
+     - ~~**#2** body-variation "refuse N identical bodies in a window"~~ — **done.** A sender holds
+       ≤ `IDENTICAL_BODY_DAILY_CAP` (default 50) identical `body_hmac` per 24h in `dispatchCampaign`;
+       excess left pending. Completes D-26. Moot under spintax; brakes a no-variation blast.
      - **#3** continuous delivery→speed curve (replace degraded=half with 85%/linear/25%).
      - **#4** reply-ratio floor before the new-contact allowance grows (Layer 4).
      - **#5** decrypt-failure signal (3 `Bad MAC` in 60 s → degrade, Layer 5).

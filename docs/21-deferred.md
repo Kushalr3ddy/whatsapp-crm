@@ -802,17 +802,18 @@ capability, not a defect.
 
 ---
 
-## D-26 · Campaign body variation (spintax + per-recipient) — **MOSTLY LANDED 2026-09-29**
+## D-26 · Campaign body variation (spintax + per-recipient) — **LANDED (both halves)**
 
 > **Built (2026-09-29):** the per-recipient rendering is done. `renderBody` in `@crm/core`
 > (`body-variation.ts`) resolves **spintax** (`{Hi|Hey|Hello}`, nested, resolved first on the
 > operator template) then fills **variables** (`{{name}}` / `{{contact.name}}` from the contact,
 > inserted last so an odd display name can't corrupt the parse). `dispatchCampaign` renders each
 > recipient's copy before encrypting it, so 500 sends are no longer 500 identical strings, and both
-> campaign compose UIs hint at the syntax. **Still open (the smaller half):** the dispatcher's
-> **"refuse more than N identical bodies in a window"** guard is not enforced — with spintax in use
-> it is moot, but a campaign sent with *no* variation is still byte-identical and unguarded. That
-> explicit belt-and-suspenders check, and richer variables beyond `{{name}}`, are the remainder.
+> campaign compose UIs hint at the syntax. **The identical-body guard is now built too** (2026-09-30):
+> `dispatchCampaign` holds a sender to at most `IDENTICAL_BODY_DAILY_CAP` messages with the same
+> `body_hmac` per rolling 24h (default 50), the excess left pending — moot when spintax varies the
+> body, a real brake on a no-variation blast. The only remainder now is **richer variables beyond
+> `{{name}}`** (e.g. custom fields), additive when wanted.
 
 **What:** stop a campaign sending **byte-identical bodies** to everyone — spintax and
 per-recipient variables so each rendered message differs, and the dispatcher refusing more than N

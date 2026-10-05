@@ -58,6 +58,7 @@ async function main(): Promise<void> {
     // in the send path can raise them (docs/08-antiban.md).
     limits: {
       perMinute: config.SEND_RATE_PER_MINUTE, perDay: config.SEND_RATE_PER_DAY,
+      identicalBodyCap: config.IDENTICAL_BODY_DAILY_CAP,
       circadianTimezone: config.SEND_CIRCADIAN ? config.SEND_TIMEZONE : null
     },
     contactGraph: config.CONTACT_GRAPH_GATES

@@ -65,7 +65,12 @@ const configSchema = z.object({
   // Typing simulation (docs/08-antiban.md, D-24): emit a "typing…" presence and pause a beat
   // proportional to the message length before each send, so a send looks human rather than
   // instant. Cosmetic anti-ban; `SEND_TYPING_SIMULATION=false` turns it off (e.g. to send faster).
-  SEND_TYPING_SIMULATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true')
+  SEND_TYPING_SIMULATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // Body-variation backstop (docs/08-antiban.md, Layer 3 / D-26): the most identical message bodies
+  // one number may queue within a rolling 24h. Beyond it, further identical-body recipients are left
+  // pending until the window frees up or the operator adds spintax. Only bites a no-variation blast —
+  // spintax/`{{name}}` make bodies differ, so it never fires on a varied campaign.
+  IDENTICAL_BODY_DAILY_CAP: z.coerce.number().int().positive().max(100000).default(50)
 });
 
 /** True when the string names a timezone this runtime's Intl database recognises. */
