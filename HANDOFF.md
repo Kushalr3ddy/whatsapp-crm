@@ -1,10 +1,30 @@
-# Handoff — state as of 2026-09-29
+# Handoff — state as of 2026-09-30
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
 is*, read [`docs/20-orientation.md`](docs/20-orientation.md), which explains the project and the
 whole stack assuming no prior knowledge. (`CONTEXT.md` is a **historical session log**, updated on
 request; `HANDOFF.md` + `CHANGELOG.md` are the primary, always-current record.)
+
+---
+
+## ▶ Pick up here (new chat, 2026-09-30)
+
+**In progress: the anti-ban completion pass — finishing the 8 remaining refinements one by one,
+marking each done in [`docs/08-antiban.md`](docs/08-antiban.md). 3 of 8 done; next is #4.**
+
+1. **Resume at anti-ban #4 — the reply-ratio floor** (Layer 4, `docs/08-antiban.md`): a new-contact
+   allowance should only grow once a rolling **~30% reply ratio** from recent new contacts is met —
+   a refinement on top of the already-built new-contact throttle in
+   `packages/core/src/contact-graph.ts`. Then #5 decrypt-failure signal, #6 read behaviour,
+   #7 background entropy, #8 recipient-timezone inference. Full list + status in **Next**, below.
+2. **Watch the first CI run** on GitHub (`.github/workflows/ci.yml` was rewritten this session and
+   is **unvalidated** — the `e2e` job especially). Fix whatever the first push/PR surfaces.
+3. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin,
+   or the `e2e-test` admin in `.env` (`TEST_EMAIL`/`TEST_PASSWORD`). `npm run check` = typecheck +
+   lint + **485 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
+
+Everything below is the full state. Working style and commit conventions are at the very bottom.
 
 ---
 
@@ -280,7 +300,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
 | Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
 | ~~**Campaigns UI**~~ **— feature-complete for the alpha** (2026-09-29) | The **Broadcast** tab is a real, operable page: list → **create** (name, message, sender, audience by **tag / import / hand-picked contacts**) → **pre-start dry-run preview** → **start / pause / resume / cancel** → **per-recipient results** (status filter + name/number search, progress tiles, forecast, message body). Endpoints: `GET /campaigns/:id/recipients`, `GET /campaigns/:id/preview`, `GET /imports` (audience list), and `from_tag_id` targeting (migration 0015, resolved at snapshot). Hand-pick is on the Contacts page (row checkboxes → "campaign from checked", `form=` association so no nested forms). The old placeholder and its **false warning** are gone. **Only enhancement left:** **D-26** body variation (spintax) in the compose step, pinned separately. |
-| **Dev hydration overlay — the "can't see anything but the error" symptom** | In Next **dev** a hydration-attribute mismatch can throw the full-screen error overlay that hides the page. Two benign causes: the theme-before-paint script sets `data-theme` on `<html>`, and browser extensions (Grammarly) add attributes to `<body>`. The app renders fine otherwise (verified end to end). The one-line fix — `suppressHydrationWarning` on `<html>` and `<body>` in `apps/web/app/layout.tsx` — was applied then **reverted at Kushal's request**; it suppresses only those two elements' own attributes, never page content, and is the documented Next fix. **Re-apply when wanted.** |
+| ~~Dev hydration overlay~~ **— FIXED 2026-09-30** | The "can't see anything but the error" symptom: in Next **dev** a hydration-attribute mismatch threw the full-screen overlay. Two benign causes — the theme-before-paint script setting `data-theme` on `<html>`, and browser extensions (Grammarly) touching `<body>`. Fixed with `suppressHydrationWarning` on `<html>` and `<body>` in `apps/web/app/layout.tsx` (suppresses only those two elements' own attributes, never page content). |
 | Copy nit (cosmetic) | Audience pickers say "1 contacts" / "1 match" without singular/plural handling. |
 | No "add one contact" in the UI | Contacts arrive only via **Import** or the **API** (`POST /contacts`); there is no form to add a single person by hand. Fine if intended (import/API by design), a gap if an operator expects it. |
 
