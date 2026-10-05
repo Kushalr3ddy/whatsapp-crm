@@ -59,6 +59,9 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Every typing-presence call, in order, so a test can assert composing fired before the send. */
   readonly typingCalls: Array<{ senderId: string; to: Recipient; state: 'composing' | 'paused' }> = [];
 
+  /** Every read receipt sent, in order, so a test can assert when (and whether) one went out. */
+  readonly readCalls: Array<{ senderId: string; to: Recipient; providerMessageId: string }> = [];
+
   private readonly health_ = new Map<string, ProviderHealth>();
   private readonly inboundQueue: NormalisedInboundEvent[] = [];
   /** Attachments this fake will hand back, keyed by the ref put on the event. */
@@ -142,6 +145,13 @@ export class FakeChannelProvider implements ChannelProvider {
   async typing(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void> {
     if (this.health_.get(sender.id)?.state !== 'open') return;
     this.typingCalls.push({ senderId: sender.id, to, state });
+  }
+
+  /** Records a read receipt; false (like the real adapter) when the sender is not connected. */
+  async markRead(sender: SenderRef, to: Recipient, providerMessageId: string): Promise<boolean> {
+    if (this.health_.get(sender.id)?.state !== 'open') return false;
+    this.readCalls.push({ senderId: sender.id, to, providerMessageId });
+    return true;
   }
 
   /**

@@ -208,6 +208,15 @@ export class BaileysChannelProvider implements ChannelProvider {
     await conn.socket.sendPresenceUpdate(state, jid);
   }
 
+  /** Sends the blue ticks for one inbound message; false when the socket is not open. */
+  async markRead(sender: SenderRef, to: Recipient, providerMessageId: string): Promise<boolean> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return false;
+    const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
+    await conn.socket.readMessages([{ remoteJid: jid, id: providerMessageId, fromMe: false }]);
+    return true;
+  }
+
   /** Inbound messages, normalised so callers never see Baileys' own shapes. */
   inbound(): AsyncIterable<NormalisedInboundEvent> {
     return this.#inbound;

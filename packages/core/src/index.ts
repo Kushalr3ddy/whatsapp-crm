@@ -66,6 +66,10 @@ export {
 } from './decrypt-failures.js';
 
 export {
+  readDelayMs, readIsDue, READ_DELAY_MIN_MS, READ_DELAY_MAX_MS, READ_MAX_AGE_MS
+} from './read-receipts.js';
+
+export {
   runImport,
   type ImportMapping, type ImportSummary, type RowOutcome, type Transform, type TenantWork
 } from './ingestion.js';

@@ -13,6 +13,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-05 — Anti-ban #6 (read behaviour)
+- **#6 of 8 — human-like read receipts (Layer 3).** New `ChannelProvider.markRead` (optional;
+  Baileys `readMessages`, fake records `readCalls`). `sweepReadReceipts` (gateway, every sweep) blue-
+  ticks an inbound message only after its own 10–60 min delay (`readDelayMs`, deterministic from the
+  message id), only in active hours, never past 24 h, max 3/sender/sweep. `read_at` on an inbound
+  message = "receipt sent", set only after the provider confirms. `SEND_READ_RECEIPTS` (default on).
+  No migration. 7 new tests → **505**.
+
 ### 2026-10-05 — Anti-ban #5 (decrypt-failure signal)
 - **#5 of 8 — 3 `Bad MAC` in 60 s degrades the sender (Layer 5).** Baileys drops undecryptable
   frames before `messages.upsert`, so the adapter now taps its logger (`decrypt-tap.ts`, covers child

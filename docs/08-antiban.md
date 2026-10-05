@@ -138,8 +138,13 @@ A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" 
   22:00–02:00, near-dead 02:00–06:00, with a smooth cosine transition rather than steps. Uses the
   configured send timezone (`SEND_TIMEZONE`); the recipient's inferred timezone is a future
   refinement, not built yet.
-- **Read behaviour**: mark-as-read after a 10–60 minute delay. Instant reads at 4 a.m. are a
-  classic tell.
+- **Read behaviour** ✅ **built**: an inbound message is blue-ticked only after its own 10–60 minute
+  delay (`readDelayMs`, derived from the message id so a restart cannot reshuffle it), only in the
+  number's active hours (circadian level ≥ 0.5, so never at 4 a.m.), never for a message older than
+  24 h, and at most 3 per sender per 60-second sweep — a backlog is a trickle, never a burst.
+  `message.read_at` on an inbound message records "we sent the receipt", set only after the provider
+  confirms, so a closed socket just retries. `ChannelProvider.markRead` is optional like `typing`.
+  `SEND_READ_RECEIPTS=false` stops the gateway sending any.
 - **Background entropy**: every 2–6 hours, presence noise — a typing indicator for 3–8 s then
   stop (someone started typing and changed their mind), presence toggling over 30–120 s.
 - **Body variation** ✅ **built** (D-26): spintax (`{Hi|Hey}`) plus per-recipient variables

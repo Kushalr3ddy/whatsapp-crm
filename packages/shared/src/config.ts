@@ -69,6 +69,9 @@ const configSchema = z.object({
   // proportional to the message length before each send, so a send looks human rather than
   // instant. Cosmetic anti-ban; `SEND_TYPING_SIMULATION=false` turns it off (e.g. to send faster).
   SEND_TYPING_SIMULATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // Read behaviour (docs/08-antiban.md, Layer 3): mark inbound messages read after a per-message
+  // 10–60 minute delay, only in active hours. `false` = never send read receipts from the gateway.
+  SEND_READ_RECEIPTS: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   // Body-variation backstop (docs/08-antiban.md, Layer 3 / D-26): the most identical message bodies
   // one number may queue within a rolling 24h. Beyond it, further identical-body recipients are left
   // pending until the window frees up or the operator adds spintax. Only bites a no-variation blast —

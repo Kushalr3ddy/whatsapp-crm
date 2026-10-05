@@ -191,6 +191,17 @@ export interface ChannelProvider {
    */
   typing?(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void>;
 
+  /**
+   * Sends a read receipt (the blue ticks) for one inbound message. Resolves true when it was
+   * actually sent, false when it could not be (socket closed) so the caller leaves the message
+   * unread and tries again later rather than recording a receipt that never went out.
+   *
+   * Optional, and used only by the anti-ban read behaviour (docs/08-antiban.md, Layer 3): a real
+   * person reads a message minutes after it lands, so the gateway delays this rather than calling
+   * it on arrival. Cosmetic like `typing` — a failure must never affect anything else.
+   */
+  markRead?(sender: SenderRef, to: Recipient, providerMessageId: string): Promise<boolean>;
+
   /** Inbound messages, normalised. Consumed by the gateway and republished onto the queue. */
   inbound(): AsyncIterable<NormalisedInboundEvent>;
 

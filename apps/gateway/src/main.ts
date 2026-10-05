@@ -85,6 +85,8 @@ async function main(): Promise<void> {
       : null,
     // Make each send look human — a "typing…" beat before it lands (docs/08-antiban.md, D-24).
     typingSimulation: config.SEND_TYPING_SIMULATION,
+    // Blue-tick inbound messages only after a human-like 10–60 min delay, in active hours.
+    readReceipts: config.SEND_READ_RECEIPTS,
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
     kms,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))

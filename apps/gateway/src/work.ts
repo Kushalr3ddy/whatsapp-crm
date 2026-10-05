@@ -5,7 +5,7 @@ import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
   recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
-  type ReplyFloorConfig
+  type ReplyFloorConfig, readIsDue, circadianActivity, localHour
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -85,10 +85,77 @@ export interface WorkContext {
    */
   readonly typingSimulation?: boolean;
   /**
+   * Mark inbound messages read after a human-like 10–60 minute delay, in active hours only
+   * (docs/08-antiban.md, Layer 3). Opt-in like the other behaviour layers, so tests that do not
+   * exercise it never see a read receipt.
+   */
+  readonly readReceipts?: boolean;
+  /**
    * Waits before a send. Injected so tests do not spend real seconds on jitter — production
    * passes a real sleep, and skipping it entirely would defeat the point of the jitter.
    */
   readonly sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Sends the read receipts that have come due (Layer 3 read behaviour).
+ *
+ * An inbound message is marked read only after its own 10–60 minute delay and only in the
+ * number's active hours, and at most a few per sender per sweep, so a backlog can never be
+ * blue-ticked in one burst. `read_at` on an inbound message records "we sent the receipt"; it is
+ * set only after the provider confirms, so a closed socket leaves the message to be tried again.
+ */
+export async function sweepReadReceipts(ctx: WorkContext, now: Date = new Date()): Promise<number> {
+  if (!ctx.readReceipts || !ctx.provider.markRead) return 0;
+  const tz = ctx.limits?.circadianTimezone ?? null;
+  const activity = tz ? circadianActivity(localHour(now, tz)) : null;
+  if (activity !== null && activity < 0.5) return 0;       // quiet hours: nobody reads at 4 a.m.
+
+  const rows = await ctx.db.execute(sql`
+    SELECT m.id AS "messageId", m.provider_message_id AS "providerMessageId",
+           m.created_at AS "receivedAt", si.id AS "senderId", si.phone_e164 AS "senderPhone",
+           ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
+    FROM message m
+    JOIN conversation v ON v.id = m.conversation_id
+    JOIN sender_identity si ON si.id = v.sender_identity_id
+    JOIN LATERAL (
+      SELECT value_normalized, kind FROM contact_identity
+      WHERE contact_id = v.contact_id AND kind IN ('phone','wa_jid','wa_lid')
+      ORDER BY CASE kind WHEN 'phone' THEN 0 WHEN 'wa_jid' THEN 1 ELSE 2 END, is_primary DESC
+      LIMIT 1
+    ) ci ON true
+    WHERE m.direction = 'inbound' AND m.read_at IS NULL
+      AND m.created_at > ${now.toISOString()}::timestamptz - interval '24 hours'
+      AND m.created_at < ${now.toISOString()}::timestamptz - interval '10 minutes'
+      AND si.status IN ('active','degraded')
+    ORDER BY m.created_at ASC
+    LIMIT 200`);
+
+  const perSender = new Map<string, number>();
+  let sent = 0;
+  for (const r of rows as unknown as Array<{
+    messageId: string; providerMessageId: string; receivedAt: string; senderId: string;
+    senderPhone: string | null; recipientValue: string; recipientKind: string;
+  }>) {
+    if ((perSender.get(r.senderId) ?? 0) >= 3) continue;   // a trickle, never a burst
+    if (!readIsDue(r.messageId, new Date(r.receivedAt), now, activity)) continue;
+    const recipient = r.recipientKind === 'phone'
+      ? { phoneE164: r.recipientValue }
+      : { phoneE164: '', providerAddress: r.recipientValue };
+    try {
+      const ok = await ctx.provider.markRead(
+        { id: r.senderId, phoneE164: r.senderPhone ?? '' }, recipient, r.providerMessageId
+      );
+      if (!ok) continue;                                    // socket closed: try again next sweep
+      await ctx.db.execute(sql`UPDATE message SET read_at = ${now.toISOString()}::timestamptz WHERE id = ${r.messageId}`);
+      perSender.set(r.senderId, (perSender.get(r.senderId) ?? 0) + 1);
+      sent++;
+    } catch (err) {
+      // Cosmetic and best-effort: never let a refused receipt disturb the sweep.
+      ctx.logger.warn({ err, messageId: r.messageId }, 'read receipt failed');
+    }
+  }
+  return sent;
 }
 
 /**
@@ -477,6 +544,9 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   // struggle is degraded or quarantined — and a recovered one restored to active — before the
   // next batch of campaign sends is queued against it.
   await scoreConnectedSenders(ctx.db);
+
+  // Read receipts that have come due (human-like read delay, active hours only).
+  await sweepReadReceipts(ctx);
 
   // After sending, not before: a campaign tops the queue up with whatever allowance is left
   // once this sweep's sends have been accounted for.
