@@ -23,12 +23,17 @@ const applyThemeBeforePaint =
 
 /** The root layout wrapping every page. */
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // suppressHydrationWarning on <html> and <body> only: the theme script above sets `data-theme` on
+  // <html> before hydration (by design, to avoid a flash), and browser extensions (Grammarly, etc.)
+  // inject attributes onto <body>. Both are expected one-level attribute diffs — in Next dev a
+  // hydration mismatch can throw a full-screen error overlay that hides the page, which this clears.
+  // It suppresses ONLY these two elements' own attributes, never the page content below.
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>
-      <body className="flex h-screen flex-col overflow-hidden antialiased">
+      <body className="flex h-screen flex-col overflow-hidden antialiased" suppressHydrationWarning>
         <Nav />
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </body>
