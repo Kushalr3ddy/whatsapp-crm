@@ -4,7 +4,7 @@ import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
-  recoveryState, beginRecovery, type RecoveryIncident
+  recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -30,6 +30,8 @@ interface QueuedSend {
   /** Layer 6 recovery state, read with the job: the incident class and when its pause ends. */
   readonly recoveryIncident: string | null;
   readonly recoveryUntil: string | null;
+  /** The sender's recent delivery ratio (from `health`), for the Layer 5 adaptive-speed curve. */
+  readonly deliveryRatio: number;
 }
 
 /** A pending request from the API to link a number. */
@@ -197,6 +199,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            si.last_inbound_at AS "lastInboundAt",
            si.recovery_incident AS "recoveryIncident",
            si.recovery_until AS "recoveryUntil",
+           COALESCE((si.health->>'deliveryRatio')::float, 1) AS "deliveryRatio",
            v.contact_id AS "contactId",
            ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
     FROM message m
@@ -314,11 +317,12 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       delayMs = Math.min(30_000, Math.round(delayMs * graph.delayMultiplier));
     }
 
-    // A degraded sender (elevated risk, not yet quarantined) sends at half speed — the adaptive
-    // throttle that gives a struggling number room to recover rather than pushing it to a ban.
-    if (job.senderStatus === 'degraded') {
-      delayMs = Math.min(30_000, delayMs * 2);
-    }
+    // Layer 5 adaptive speed: scale the pause by the delivery-ratio curve (×1 healthy → ×4 when
+    // delivery has collapsed), and keep a degraded sender to at least half speed whatever its
+    // delivery looks like, since it may be degraded for failures or disconnects, not delivery.
+    let healthFactor = deliveryDelayMultiplier(job.deliveryRatio);
+    if (job.senderStatus === 'degraded') healthFactor = Math.max(healthFactor, 2);
+    delayMs = Math.min(30_000, Math.round(delayMs * healthFactor));
 
     // The jittered pause. Deliberately before the send rather than after, so a burst arriving
     // at once is spread out rather than going at once and then waiting.

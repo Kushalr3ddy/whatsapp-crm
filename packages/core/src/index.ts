@@ -54,7 +54,7 @@ export {
 } from './recovery.js';
 
 export {
-  computeRiskScore, riskBand, nextStatus, deliveryRatio,
+  computeRiskScore, riskBand, nextStatus, deliveryRatio, deliveryDelayMultiplier,
   scoreSenderHealth, scoreConnectedSenders,
   type SenderStatus, type RiskBand, type HealthSignals, type HealthResult
 } from './health.js';

@@ -5,7 +5,7 @@ import { createDatabase, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import {
-  computeRiskScore, riskBand, nextStatus, deliveryRatio, scoreSenderHealth,
+  computeRiskScore, riskBand, nextStatus, deliveryRatio, deliveryDelayMultiplier, scoreSenderHealth,
   type HealthSignals
 } from '@crm/core';
 import { createLogger } from '@crm/shared';
@@ -82,6 +82,14 @@ describe('the scoring maths (pure)', () => {
   it('reports a healthy delivery ratio when there is nothing to judge', () => {
     expect(deliveryRatio({ ...healthy })).toBe(1);
     expect(deliveryRatio({ ...healthy, sentRecent: 4, deliveredRecent: 3 })).toBe(0.75);
+  });
+
+  it('turns the delivery ratio into a continuous send-delay multiplier (Layer 5)', () => {
+    expect(deliveryDelayMultiplier(0.9)).toBe(1);          // healthy → full speed, no slow-down
+    expect(deliveryDelayMultiplier(0.5)).toBe(4);          // collapsed → quarter speed → ×4 delay
+    expect(deliveryDelayMultiplier(0.7)).toBeCloseTo(1.6, 2); // midway → scaled, not a cliff
+    // Monotonic: worse delivery is never faster.
+    expect(deliveryDelayMultiplier(0.6)).toBeGreaterThan(deliveryDelayMultiplier(0.8));
   });
 });
 

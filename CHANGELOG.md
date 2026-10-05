@@ -13,6 +13,20 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-09-30 — Anti-ban #3 (delivery→speed curve) + CI runs the full test set
+- **#3 of 8 — continuous delivery→speed curve (Layer 5).** New `deliveryDelayMultiplier` in
+  `@crm/core` scales the inter-send delay by the delivery ratio — ×1 at ≥85 %, ×4 below 55 %, linear
+  between — applied in `handleSend` from the sender's `health.deliveryRatio`. Replaces the blunt
+  "degraded = half speed"; a degraded sender is still held to at least half speed whatever its
+  delivery (it may be degraded for failures/disconnects, not delivery). 1 unit test.
+- **GitHub Actions now runs everything** (`.github/workflows/ci.yml`). The `check` job was fixed —
+  it migrated the test DB *after* running tests and pointed at the wrong database, so the
+  integration suite never really ran in CI; now it uses a `dev`-superuser Postgres on 5434 (so the
+  vitest default connection and the `crm_app` role both work), migrates the test DB **before**
+  `npm test`, and re-checks migration idempotency. A new **`e2e` job** installs Chromium, migrates,
+  provisions the `e2e-test` admin, starts the API + web, and runs `npm run test:e2e`.
+- **CI can't be validated from here** — it runs on the next push/PR; watch the first run.
+
 ### 2026-09-30 — Anti-ban completion #2: identical-body guard (D-26 backstop)
 **#2 of 8.** The dispatcher now **refuses more than N identical bodies in a window** — the half of
 D-26 that was left open.

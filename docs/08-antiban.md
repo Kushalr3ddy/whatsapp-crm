@@ -172,9 +172,10 @@ a **12-hour lurk period** after joining a group before posting.
 
 *First slice built from the `message` and `channel_session` rows already recorded; the normalised
 `send_risk_event` table below is a later refinement, and its evidence currently lives in the
-`sender_identity.health` jsonb. The delivery-ratio → speed curve is applied as a status-based
-throttle (degraded = half speed) rather than the continuous scaling shown below — the exact curve
-is the refinement.*
+`sender_identity.health` jsonb. The delivery-ratio → speed curve below is now **built as the
+continuous scaling** (`deliveryDelayMultiplier` in `@crm/core`, applied in `handleSend`): ×1 at
+≥85 %, up to ×4 below 55 %, linear between — plus a degraded sender is held to at least half speed
+whatever its delivery, since it may be degraded for failures or disconnects rather than delivery.*
 
 **Delivery tracking.** Sustained delivery below **60%** is a soft-ban signal. Adaptive speed:
 

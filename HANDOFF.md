@@ -43,7 +43,7 @@ end to end against a real WhatsApp file for the first time — see *What landed 
 `docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
 it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
 
-**484 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
+**485 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 18 migrations (through 0017).**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -232,6 +232,12 @@ vitest tests. **`npm run test:e2e`** runs the Playwright browser tests — they 
 dev-only throwaway admin, **`e2e@test.local`** (org slug `e2e-test`, admin), provisioned
 2026-09-30 for the walkthrough; delete it with `npm run db:psql` if unwanted. Chromium is installed
 via `npx playwright install chromium`.
+
+**CI (`.github/workflows/ci.yml`) runs both now** — a `check` job (typecheck ×2, lint, migrate the
+test DB, vitest, migration-idempotency) and an `e2e` job (Chromium, migrate, provision the e2e
+admin, start API + web, `npm run test:e2e`), plus a gitleaks secrets scan. **Rewritten 2026-09-30
+and not yet validated on GitHub** — the old `check` ran `npm test` before migrating and against the
+wrong DB, so the integration suite never truly ran in CI. Watch the first push/PR.
 
 **Two documents are written for picking this up cold**, and are worth more than re-reading the
 code: [`docs/24-local-testing.md`](docs/24-local-testing.md) — start the stack, get a key,
@@ -585,7 +591,9 @@ assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
      - ~~**#2** body-variation "refuse N identical bodies in a window"~~ — **done.** A sender holds
        ≤ `IDENTICAL_BODY_DAILY_CAP` (default 50) identical `body_hmac` per 24h in `dispatchCampaign`;
        excess left pending. Completes D-26. Moot under spintax; brakes a no-variation blast.
-     - **#3** continuous delivery→speed curve (replace degraded=half with 85%/linear/25%).
+     - ~~**#3** continuous delivery→speed curve~~ — **done.** `deliveryDelayMultiplier` scales the
+       send delay ×1 (≥85% delivery) → ×4 (<55%), linear between, in `handleSend`; a degraded sender
+       still held to ≥ half speed. Replaces the blunt degraded=half.
      - **#4** reply-ratio floor before the new-contact allowance grows (Layer 4).
      - **#5** decrypt-failure signal (3 `Bad MAC` in 60 s → degrade, Layer 5).
      - **#6** read behaviour (mark-as-read after 10–60 min, gateway) · **#7** background entropy

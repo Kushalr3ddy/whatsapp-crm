@@ -96,6 +96,22 @@ export function computeRiskScore(signals: HealthSignals): number {
   return Math.min(100, score);
 }
 
+/**
+ * The send-delay multiplier a delivery ratio earns (Layer 5 adaptive speed, docs/08-antiban.md).
+ *
+ * The spec is a *continuous* curve, not the blunt "degraded = half speed": full speed at ≥ 85 %
+ * delivery, 25 % speed below 55 %, scaled linearly between. Speed is throughput, so the caller
+ * multiplies its inter-send delay by the inverse — ×1 when healthy, up to ×4 when delivery has
+ * collapsed. A number with too little data to judge reads as 1.0 (healthy), so it is never slowed.
+ */
+export function deliveryDelayMultiplier(deliveryRatio: number): number {
+  let speed: number;
+  if (deliveryRatio >= DELIVERY_HEALTHY) speed = 1;
+  else if (deliveryRatio <= DELIVERY_POOR) speed = 0.25;
+  else speed = 0.25 + ((deliveryRatio - DELIVERY_POOR) / (DELIVERY_HEALTHY - DELIVERY_POOR)) * 0.75;
+  return 1 / speed;
+}
+
 /** Which band a score falls in. */
 export function riskBand(score: number): RiskBand {
   if (score >= BAND_CRITICAL) return 'critical';

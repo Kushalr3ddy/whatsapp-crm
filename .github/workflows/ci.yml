@@ -18,61 +18,121 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      # Integration tests run against a real Postgres, never a mock — the boundary is
-      # exactly where mocks lie (docs/12-testing.md).
+      # Integration tests run against a real Postgres, never a mock — the boundary is exactly where
+      # mocks lie (docs/12-testing.md). User `dev` on 5434 so the vitest default connection string
+      # (dev:dev@localhost:5434/whatsapp_crm_test) works with no extra env, and `dev` is a superuser
+      # so migration 0001 can create the `crm_app` role the RLS tests drop into.
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: ci
-          POSTGRES_PASSWORD: ci
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
           POSTGRES_DB: whatsapp_crm_test
-        ports: ['5432:5432']
+        ports: ['5434:5432']
         options: >-
-          --health-cmd "pg_isready -U ci"
+          --health-cmd "pg_isready -U dev"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/whatsapp_crm_test
-      APP_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
-      PUBLIC_URL: http://localhost:3000
+      DATABASE_URL: postgresql://dev:dev@localhost:5434/whatsapp_crm_test
       NODE_ENV: test
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
       - run: npm ci
 
       # Typecheck before lint: a type error usually explains any lint noise downstream.
       - name: typecheck
         run: npm run typecheck
-
-      # apps/web is excluded from the root tsconfig — it needs DOM, JSX and React types that
-      # do not belong in the Node server config — so it has to be checked separately or a
-      # type error in the UI passes CI unnoticed.
+      # apps/web is excluded from the root tsconfig (it needs DOM/JSX/React types), so it is
+      # checked separately or a UI type error passes CI unnoticed.
       - name: typecheck web
         run: npm run typecheck:web
-
-      # Includes the comment rule and the layering rule, both of which are architectural
-      # rather than stylistic (docs/11-conventions.md).
+      # Includes the comment rule and the layering rule, both architectural (docs/11-conventions.md).
       - name: lint
         run: npm run lint
 
+      # Migrate the test database BEFORE the tests — this builds the schema and creates the crm_app
+      # role + grants (migration 0001). Without it every integration test hits "relation does not
+      # exist".
+      - name: migrate test database
+        run: npm run db:migrate:test
       - name: test
         run: npm test
-
-      - name: migrations apply from empty
-        run: npm run db:migrate
-
       # A migration that only works once is not a migration. Re-running must be a no-op.
       - name: migrations are idempotent
+        run: npm run db:migrate:test
+
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: whatsapp_crm_dev
+        ports: ['5434:5432']
+        options: >-
+          --health-cmd "pg_isready -U dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # The app validates its config at boot, so the e2e run needs real-shaped (throwaway) secrets.
+    env:
+      DATABASE_URL: postgresql://dev:dev@localhost:5434/whatsapp_crm_dev
+      APP_SECRET: ci-only-app-secret-0123456789abcdef0123456789abcdef
+      PUBLIC_URL: http://localhost:3000
+      ENCRYPTION_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+      ENCRYPTION_INDEX_KEY: ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100
+      API_KEY: ci-only-bootstrap-api-key-0123456789abcdef
+      SEND_TYPING_SIMULATION: 'false'
+      NODE_ENV: development
+      # The Playwright specs sign in with these (see playwright.config.ts).
+      TEST_EMAIL: e2e@test.local
+      TEST_PASSWORD: E2eTest!pass99
+      # Reuse the stack this job starts rather than letting Playwright run `npm run dev:all`.
+      E2E_BASE_URL: http://localhost:3001
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: install chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: migrate dev database
         run: npm run db:migrate
+      - name: provision the e2e admin
+        run: >-
+          npm run admin -- org --name "E2E Test Org" --slug e2e-test
+          --email "$TEST_EMAIL" --password "$TEST_PASSWORD"
+
+      # Start the API and web, wait until both answer, then run the browser specs. Playwright reuses
+      # this already-running stack (reuseExistingServer), so its own webServer command never fires.
+      - name: start API and web
+        run: |
+          npm run dev > /tmp/api.log 2>&1 &
+          npm run web > /tmp/web.log 2>&1 &
+          timeout 120 bash -c 'until curl -sf http://localhost:3000/ready >/dev/null; do sleep 2; done'
+          timeout 120 bash -c 'until curl -sf http://localhost:3001/login >/dev/null; do sleep 2; done'
+      - name: e2e
+        run: npm run test:e2e
+
+      - name: server logs on failure
+        if: failure()
+        run: tail -n 100 /tmp/api.log /tmp/web.log || true
 
   secrets-scan:
     runs-on: ubuntu-latest
