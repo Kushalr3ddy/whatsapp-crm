@@ -112,7 +112,8 @@ export async function markMessageSent(
   db: Database, messageId: string, providerMessageId: string
 ): Promise<void> {
   await db.execute(sql`
-    UPDATE message SET status = 'sent', provider_message_id = ${providerMessageId}, sent_at = now()
+    UPDATE message SET status = 'sent', provider_message_id = ${providerMessageId}, sent_at = now(),
+        hold_reason = NULL
     WHERE id = ${messageId}`);
   await db.execute(sql`
     UPDATE conversation SET last_outbound_at = now(), updated_at = now()

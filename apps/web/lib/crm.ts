@@ -57,6 +57,8 @@ export interface Message {
   contentType: string;
   status: string;
   errorCode: string | null;
+  /** For a still-queued outbound message: why the gateway is holding it (`sender_not_connected`…). */
+  holdReason: string | null;
   /** Decrypted by the API for display. Null when there is no body, or it could not be read. */
   body: string | null;
   /** True when the ciphertext would not decrypt — usually a changed encryption key. */
@@ -194,6 +196,16 @@ export interface Contact {
   identities: ContactIdentity[];
   /** The tags this contact carries. */
   tags: Tag[];
+  /** Values for the org's defined custom fields, keyed by field key. */
+  customFields: Record<string, string | number>;
+}
+
+/** A custom field an org has defined. Mirrors `GET /api/v1/custom-fields`. */
+export interface CustomField {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select';
+  options: string[];
 }
 
 /** One campaign as the list needs it. Mirrors a row of `GET /api/v1/campaigns`. */
@@ -492,6 +504,28 @@ export async function createTag(name: string, colour?: string): Promise<Tag> {
   return request<Tag>('/tags', { method: 'POST', body: JSON.stringify({ name, colour }) });
 }
 
+/** The org's defined custom fields. */
+export async function listCustomFields(): Promise<CustomField[]> {
+  return request<CustomField[]>('/custom-fields');
+}
+
+/** Defines a custom field (admin only). */
+export async function createCustomField(field: CustomField): Promise<CustomField> {
+  return request<CustomField>('/custom-fields', { method: 'POST', body: JSON.stringify(field) });
+}
+
+/** Removes a field definition and its value on every contact (admin only). */
+export async function deleteCustomField(key: string): Promise<void> {
+  return requestVoid(`/custom-fields/${encodeURIComponent(key)}`, { method: 'DELETE' });
+}
+
+/** Sets (or, with an empty value, clears) custom field values on one contact. */
+export async function setContactFields(contactId: string, values: Record<string, string>): Promise<void> {
+  return requestVoid(`/contacts/${encodeURIComponent(contactId)}/custom-fields`, {
+    method: 'PUT', body: JSON.stringify({ values })
+  });
+}
+
 /** Deletes a tag, and its links to every contact. */
 export async function deleteTag(id: string): Promise<void> {
   return requestVoid(`/tags/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -530,6 +564,21 @@ export async function updateConversation(
 /** Returns one thread, oldest message first. */
 export async function listMessages(conversationId: string): Promise<Message[]> {
   return request<Message[]>(`/conversations/${encodeURIComponent(conversationId)}/messages`);
+}
+
+/** Whether the number behind a thread can send right now. Mirrors `GET /conversations/:id/sender-status`. */
+export interface SenderStatus {
+  label: string;
+  connectionState: string | null;
+  status: string;
+  canSend: boolean;
+  /** `not_connected`, `quarantined`, or null when it can send. */
+  reason: string | null;
+}
+
+/** The thread's sender status, polled by the composer. */
+export async function getSenderStatus(conversationId: string): Promise<SenderStatus> {
+  return request<SenderStatus>(`/conversations/${encodeURIComponent(conversationId)}/sender-status`);
 }
 
 /** Lists the org's WhatsApp numbers, so the UI can explain when none is linked. */

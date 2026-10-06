@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
   queueReply, startLink, getLinkState, unlinkSender, updateConversation, addNote,
-  uploadImport, runImportMapping, queueAttachment, CrmApiError
+  uploadImport, runImportMapping, queueAttachment, getSenderStatus, CrmApiError
 } from '@/lib/crm';
-import type { LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
+import type { SenderStatus, LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
 export interface SendResult {
@@ -34,6 +34,19 @@ export async function sendReply(conversationId: string, body: string): Promise<S
 
   revalidatePath('/inbox');
   return { ok: true };
+}
+
+/**
+ * The status line's own action: whether the number behind a thread can send right now. The composer
+ * calls it on a timer so the warning appears (and clears) without a page reload. A failure to ask
+ * returns null — the composer then stays as it was rather than guessing the number is down.
+ */
+export async function senderStatusAction(conversationId: string): Promise<SenderStatus | null> {
+  try {
+    return await getSenderStatus(conversationId);
+  } catch {
+    return null;
+  }
 }
 
 /**

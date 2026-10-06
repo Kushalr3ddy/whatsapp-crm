@@ -141,6 +141,13 @@
       "when": 1791268143104,
       "tag": "0019_rapid_catseye",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791278884168,
+      "tag": "0020_bored_doorman",
+      "breakpoints": true
     }
   ]
 }

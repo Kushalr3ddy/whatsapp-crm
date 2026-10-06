@@ -1,9 +1,20 @@
 import {
-  getConversation, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
+  getConversation, getSenderStatus, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
 } from '@/lib/crm';
-import type { Message, OrgUser, Note, CannedReply, Me, Conversation } from '@/lib/crm';
+import type { SenderStatus, Message, OrgUser, Note, CannedReply, Me, Conversation } from '@/lib/crm';
 import { Composer } from './composer';
 import { ThreadControls } from './thread-controls';
+
+/** Plain words for why a queued message has not gone out yet. */
+function holdLabel(reason: string | null): string {
+  if (reason === null) return 'queued, not sent yet';
+  if (reason === 'sender_not_connected') return 'the number isn’t connected';
+  if (reason === 'quarantined') return 'the number is quarantined';
+  if (reason === 'recipient_hours') return 'it’s night where they are';
+  if (reason.startsWith('recovery_pause')) return 'the number is cooling off after an incident';
+  if (reason.startsWith('paced:')) return 'pacing — spacing sends to protect the number';
+  return reason;
+}
 
 /** Formats a message timestamp. Full date, because a thread spans days. */
 function stamp(iso: string): string {
@@ -69,7 +80,7 @@ function DeliveryState({ message }: { message: Message }) {
   return (
     <span className={failed || queued ? 'font-medium text-danger' : 'text-muted'}>
       {' · '}
-      {queued ? '⚠ queued — not sent yet' : message.status}
+      {queued ? `⚠ waiting: ${holdLabel(message.holdReason)}` : message.status}
       {message.errorCode !== null && ` (${message.errorCode})`}
     </span>
   );
@@ -147,11 +158,12 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     failure = error instanceof CrmApiError ? `${error.code}: ${error.message}` : 'Could not reach the API.';
   }
 
-  const [conversation, users, cannedReplies, me] = await Promise.all([
+  const [conversation, users, cannedReplies, me, senderStatus] = await Promise.all([
     getConversation(id).catch((): Conversation | null => null),
     listUsers().catch((): OrgUser[] => []),
     listCannedReplies().catch((): CannedReply[] => []),
-    getMe().catch((): Me | null => null)
+    getMe().catch((): Me | null => null),
+    getSenderStatus(id).catch((): SenderStatus | null => null)
   ]);
 
   // The thread lock, mirrored from the server guard in POST /messages: a thread assigned to
@@ -179,6 +191,11 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
           <p className="mt-0.5 text-xs text-muted">
             {conversation?.contactPhone ?? 'Privacy address — no phone shared'}
             {senderLabel !== null && ` · via ${senderLabel}`}
+            {senderStatus !== null && (
+              <span className={senderStatus.canSend ? 'text-accent' : 'font-medium text-danger'}>
+                {' · '}{senderStatus.canSend ? '● connected' : senderStatus.reason === 'quarantined' ? '● quarantined' : '● not connected'}
+              </span>
+            )}
           </p>
         </div>
         {/* Absent only if the fetch failed or the id is not in this org; otherwise every thread
@@ -225,6 +242,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
         contactName={conversation?.contactName ?? null}
         replyLocked={lockedByOther}
         lockedBy={lockedByOther ? conversation?.assigneeName ?? 'another agent' : null}
+        initialStatus={senderStatus}
       />
     </>
   );

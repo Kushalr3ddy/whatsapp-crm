@@ -410,6 +410,31 @@ export function messagesRouter(
     res.status(201).json({ data: inserted[0] });
   });
 
+  /**
+   * Whether the number this thread sends from can send right now. The composer polls it so an
+   * agent is told *before* typing that a message would only sit waiting. `canSend` is true only
+   * when the socket is open and the number is not quarantined; `reason` says what is wrong.
+   */
+  router.get('/conversations/:id/sender-status', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+      const rows = await req.tenant!((tx) => tx.execute(sql`
+        SELECT si.label, si.status, si.enforcement, cs.connection_state AS "connectionState"
+        FROM conversation v
+        JOIN sender_identity si ON si.id = v.sender_identity_id
+        LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
+        WHERE v.id = ${String(req.params.id)} AND v.org_id = ${req.crm!.orgId}`));
+      const s = (rows as unknown as Array<{
+        label: string; status: string; enforcement: string; connectionState: string | null;
+      }>)[0];
+      if (!s) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.')); return; }
+      const connected = s.connectionState === 'open';
+      const reason = !connected ? 'not_connected' : s.status === 'quarantined' ? 'quarantined' : null;
+      res.json({ data: {
+        label: s.label, connectionState: s.connectionState, status: s.status,
+        canSend: reason === null || s.enforcement === 'advisory' && connected, reason
+      } });
+    });
+
   /** Returns one thread, oldest first, with bodies decrypted for display. */
   router.get('/conversations/:id/messages', requireUuidParam('id'), requireScope('conversations:read'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
@@ -418,7 +443,8 @@ export function messagesRouter(
     const rows = await req.tenant!(async (tx) => {
       const found = await tx.execute(sql`
         SELECT m.id, m.direction, m.content_type AS "contentType", m.status,
-               m.error_code AS "errorCode", m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
+               m.error_code AS "errorCode", m.hold_reason AS "holdReason",
+               m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
                m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt",
                m.media_id AS "mediaId", ma.content_type AS "mediaContentType",
                ma.size_bytes AS "mediaSizeBytes", ma.filename AS "mediaFilename"

@@ -385,6 +385,14 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
     return;
   }
 
+  // Why this message is still waiting, shown in the thread as "waiting: reason". Written each time
+  // the gateway leaves it queued; cleared when it sends. Best-effort: never blocks the send path.
+  const hold = async (reason: string): Promise<void> => {
+    await ctx.db.execute(sql`
+      UPDATE message SET hold_reason = ${reason}
+      WHERE id = ${messageId} AND hold_reason IS DISTINCT FROM ${reason}`).catch(() => undefined);
+  };
+
   try {
     const health = await ctx.provider.health(job.senderIdentityId);
     if (health.state !== 'open') {
@@ -394,6 +402,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
         { messageId, senderId: job.senderIdentityId, state: health.state },
         'sender not connected — leaving message queued'
       );
+      await hold('sender_not_connected');
       return;
     }
 
@@ -423,6 +432,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
           { messageId, senderId: job.senderIdentityId },
           'sender quarantined — leaving message queued'
         );
+        await hold('quarantined');
         return;
       }
       await bypass('quarantined');
@@ -446,6 +456,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
           },
           'sender in recovery pause — leaving message queued'
         );
+        await hold(`recovery_pause:${recovery.incident ?? 'incident'}`);
         return;
       }
       await bypass(`recovery_pause:${recovery.incident}`);
@@ -480,6 +491,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
         },
         `send paced: ${pacing.detail}`
       );
+      await hold(`paced:${pacing.reason}`);
       return;
     }
 
@@ -503,6 +515,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
           },
           `send paced: ${graph.detail}`
         );
+        await hold(`paced:${graph.reason}`);
         return;
       }
       // Stretch the pause by the relationship multiplier, capped so a stranger at a slow hour is
@@ -525,6 +538,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
             { messageId, senderId: job.senderIdentityId, recipientTimezone: theirTz },
             `send paced: recipient is outside their sending hours (${theirTz})`
           );
+          await hold('recipient_hours');
           return;                       // left queued; the sweep tries again later
         }
         if (theirs < 1) delayMs = Math.min(30_000, circadianDelayMs(delayMs, theirs));

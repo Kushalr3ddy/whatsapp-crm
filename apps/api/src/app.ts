@@ -19,6 +19,7 @@ import { mediaRouter } from './routes/media.js';
 import { importsRouter } from './routes/imports.js';
 import { contactsRouter } from './routes/contacts.js';
 import { tagsRouter } from './routes/tags.js';
+import { customFieldsRouter } from './routes/custom-fields.js';
 import { segmentsRouter } from './routes/segments.js';
 import { campaignsRouter } from './routes/campaigns.js';
 
@@ -170,6 +171,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES));
   api.use('/contacts', contactsRouter(deps.config.DEFAULT_COUNTRY));
   api.use('/tags', tagsRouter());
+  api.use('/custom-fields', customFieldsRouter());
   api.use('/segments', segmentsRouter());
   api.use('/campaigns', campaignsRouter({
     perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY

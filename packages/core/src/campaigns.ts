@@ -256,7 +256,8 @@ export async function dispatchCampaign(
 
   return tenant(async (tx) => {
     const rows = await tx.execute(sql`
-      SELECT cr.id, cr.contact_id AS "contactId", c.display_name AS "contactName"
+      SELECT cr.id, cr.contact_id AS "contactId", c.display_name AS "contactName",
+             c.custom_fields AS "customFields"
       FROM campaign_recipient cr
       JOIN contact c ON c.id = cr.contact_id AND c.org_id = cr.org_id
       WHERE cr.campaign_id = ${input.campaignId} AND cr.org_id = ${input.orgId}
@@ -266,6 +267,7 @@ export async function dispatchCampaign(
       FOR UPDATE OF cr SKIP LOCKED`);
     const batch = rows as unknown as Array<{
       id: string; contactId: string; contactName: string | null;
+      customFields: Record<string, unknown> | null;
     }>;
 
     // Identical-body backstop (docs/08-antiban.md, Layer 3 / D-26): cap how many messages with the
@@ -290,7 +292,10 @@ export async function dispatchCampaign(
 
       // Render this recipient's copy first — spintax picks a wording, {{name}} fills from the
       // contact (D-26) — because the identical-body check keys off the rendered body's blind index.
-      const body = renderBody(input.body, { name: recipient.contactName ?? '' });
+      // {{name}} plus any of the org's custom fields ({{city}}, {{stage}}…); an unset one is blank.
+      const vars: Record<string, string> = {};
+      for (const [k, v] of Object.entries(recipient.customFields ?? {})) vars[k.toLowerCase()] = String(v);
+      const body = renderBody(input.body, { ...vars, name: recipient.contactName ?? '' });
       const hmac = kms.blindIndex(body);
 
       let already = identicalSeen.get(hmac);

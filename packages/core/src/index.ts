@@ -92,6 +92,10 @@ export {
   type CampaignProgress, type AudiencePreview, type CampaignForecast
 } from './campaigns.js';
 export {
+  CUSTOM_FIELD_TYPES, FIELD_KEY, checkFieldValue, validateCustomFields, loadCustomFields,
+  type CustomFieldDef, type CustomFieldType
+} from './custom-fields.js';
+export {
   POLICY_GATES, POLICY_SKIP_REASON, ENGAGEMENT_WINDOW_HOURS, COOLDOWN_DAYS, isPolicyGate,
   blockingPolicyGate, type PolicyGate
 } from './policy-gates.js';

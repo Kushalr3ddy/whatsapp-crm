@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { listContacts, listTags, listSenders, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { Contact, Tag, Sender } from '@/lib/crm';
+import { listContacts, listTags, listSenders, listCustomFields, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { Contact, Tag, Sender, CustomField } from '@/lib/crm';
 import {
+  createFieldAction, deleteFieldAction, saveContactFieldsAction,
   createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
 } from './actions';
 
@@ -26,13 +27,15 @@ export default async function ContactsPage(
   let contacts: Contact[] = [];
   let tags: Tag[] = [];
   let senders: Sender[] = [];
+  let fields: CustomField[] = [];
   let failure: string | null = null;
   let expired = false;
   try {
-    [contacts, tags, senders] = await Promise.all([
+    [contacts, tags, senders, fields] = await Promise.all([
       listContacts({ q: query, tag: activeTag }),
       listTags(),
-      listSenders()
+      listSenders(),
+      listCustomFields()
     ]);
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
@@ -77,6 +80,8 @@ export default async function ContactsPage(
 
       <NewTagForm />
 
+      <FieldsAdmin fields={fields} />
+
       {failure !== null && <p className="text-sm text-danger">{failure}</p>}
 
       {failure === null && contacts.length === 0 && (
@@ -93,7 +98,7 @@ export default async function ContactsPage(
 
       {contacts.length > 0 && (
         <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
-          {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} />)}
+          {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} fields={fields} />)}
         </ul>
       )}
 
@@ -231,7 +236,7 @@ function CampaignFromSelection(
 }
 
 /** One row: the contact, their details, their tag chips (each removable), and an add-tag picker. */
-function ContactRow({ contact, allTags }: { contact: Contact; allTags: Tag[] }) {
+function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: Tag[]; fields: CustomField[] }) {
   const phone = contact.identities.find((i) => i.kind === 'phone')?.value;
   const email = contact.identities.find((i) => i.kind === 'email')?.value;
   const detail = [phone, email].filter((v) => v !== undefined).join(' · ');
@@ -303,6 +308,83 @@ function ContactRow({ contact, allTags }: { contact: Contact; allTags: Tag[] }) 
           </form>
         )}
       </div>
+
+      {fields.length > 0 && <ContactFields contact={contact} fields={fields} />}
     </li>
+  );
+}
+
+/** The org's custom fields on one contact: a one-line summary, and a form to edit them. */
+function ContactFields({ contact, fields }: { contact: Contact; fields: CustomField[] }) {
+  const values = contact.customFields ?? {};
+  const set = fields.filter((f) => values[f.key] !== undefined);
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-muted hover:text-ink">
+        {set.length === 0 ? 'Fields' : set.map((f) => `${f.label}: ${String(values[f.key])}`).join(' · ')}
+      </summary>
+      <form action={saveContactFieldsAction} className="mt-2 grid grid-cols-2 gap-2">
+        <input type="hidden" name="contactId" value={contact.id} />
+        {fields.map((f) => (
+          <label key={f.key} className="flex flex-col gap-0.5">
+            <span className="text-muted">{f.label}</span>
+            {f.type === 'select' ? (
+              <select name={`f_${f.key}`} defaultValue={String(values[f.key] ?? '')}
+                className="rounded-md border border-border bg-surface px-1.5 py-1">
+                <option value="">—</option>
+                {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input name={`f_${f.key}`} defaultValue={String(values[f.key] ?? '')}
+                type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} step="any"
+                className="rounded-md border border-border bg-surface px-1.5 py-1" />
+            )}
+          </label>
+        ))}
+        <button type="submit" className="col-span-2 justify-self-start rounded-md border border-border px-2.5 py-1 text-muted hover:bg-accent-soft">
+          Save fields
+        </button>
+      </form>
+    </details>
+  );
+}
+
+/**
+ * Defining the org's fields. Everyone sees what exists (and the `{{key}}` to use it in a campaign);
+ * only an admin's create/remove goes through, since it changes every contact.
+ */
+function FieldsAdmin({ fields }: { fields: CustomField[] }) {
+  return (
+    <details className="mb-4 text-xs">
+      <summary className="cursor-pointer text-muted hover:text-ink">
+        Custom fields ({fields.length}) — extra details on each contact, usable as {'{{field}}'} in a campaign
+      </summary>
+      <ul className="mt-2 flex flex-col gap-1">
+        {fields.map((f) => (
+          <li key={f.key} className="flex items-center gap-2">
+            <span className="font-medium">{f.label}</span>
+            <code className="text-muted">{`{{${f.key}}}`}</code>
+            <span className="text-muted">{f.type}{f.type === 'select' && `: ${f.options.join(', ')}`}</span>
+            <form action={deleteFieldAction} className="ml-auto">
+              <input type="hidden" name="key" value={f.key} />
+              <button type="submit" className="text-muted hover:text-danger" title="Remove this field and its values (admin)">remove</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+      <form action={createFieldAction} className="mt-2 flex flex-wrap items-center gap-2">
+        <input name="label" required placeholder="Field name, e.g. City" aria-label="Field name"
+          className="rounded-md border border-border bg-surface px-2 py-1" />
+        <select name="type" aria-label="Field type" className="rounded-md border border-border bg-surface px-1.5 py-1">
+          <option value="text">text</option><option value="number">number</option>
+          <option value="date">date</option><option value="select">select</option>
+        </select>
+        <input name="options" placeholder="options, comma separated (select only)" aria-label="Options"
+          className="min-w-48 flex-1 rounded-md border border-border bg-surface px-2 py-1" />
+        <button type="submit" className="rounded-md border border-border px-2.5 py-1 text-muted hover:bg-accent-soft">
+          Add field (admin)
+        </button>
+      </form>
+    </details>
   );
 }

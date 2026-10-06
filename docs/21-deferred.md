@@ -969,7 +969,7 @@ and add a retry that re-downloads through the live socket while WhatsApp still h
 
 ---
 
-## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation
+## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation — **PRIORITY (Kushal, 2026-10-06), still pinned**
 
 **What:** `docs/22-encryption.md` describes a two-layer design — a master key (KEK) wrapping a per-org
 data key (DEK) — plus rotation. Today `LocalKms` encrypts directly with one global key, holds exactly one
@@ -1010,6 +1010,9 @@ database is chosen.
 **What brings it back:** the first deployment, or a second person who must run it.
 
 **Note:** `ENCRYPTION_KEY` must be backed up separately from the database before any deployment.
+
+
+**Decision (Kushal, 2026-10-06):** for now the `ENCRYPTION_KEY` lives locally in the `.env` file; back that file up separately from the database.
 
 ---
 
@@ -1084,3 +1087,16 @@ template updates into the same ingestion and receipt paths Baileys events use to
 **Why parked:** pinned by Kushal (2026-10-06). Part of the Meta adapter's surface.
 
 **What brings it back:** D-34 landing.
+
+---
+
+## D-40 · Custom fields in imports, segments, and exports
+
+**What:** custom fields (defined per org, built 2026-10-06) work on the contact screen, over the API, and as
+`{{key}}` in campaign messages. Not yet: mapping a spreadsheet column onto a field during import, a segment
+filter such as "city is Pune", and a typed column per field in the CSV export (it still dumps them as one
+JSON cell). Also: renaming a field's label or editing a select's options after creation.
+
+**Why parked:** the first version was kept small (Kushal, 2026-10-06).
+
+**What brings it back:** the first import that carries columns an operator wants as fields.

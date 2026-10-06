@@ -125,7 +125,9 @@ export const AUDIT = {
   // An admin knowingly lifting recipient-experience gates for one campaign, and switching a number
   // between enforcing the anti-ban engine and advisory mode (D-29). Both carry a reason.
   campaignGatesOverridden: 'campaign.gates_overridden',
-  senderEnforcementChanged: 'sender.enforcement_changed'
+  senderEnforcementChanged: 'sender.enforcement_changed',
+  customFieldCreated: 'custom_field.created',
+  customFieldDeleted: 'custom_field.deleted'
 } as const;
 
 /**

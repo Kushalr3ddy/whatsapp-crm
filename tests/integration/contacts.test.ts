@@ -78,6 +78,8 @@ describe('creating a contact', () => {
   });
 
   it('stores custom fields and an external ref (the host-app hook)', async () => {
+    // Custom fields are a fixed vocabulary now: `tier` must be defined before it can be set.
+    await db.execute(sql`INSERT INTO custom_field (org_id, key, label) VALUES (${orgA}, 'tier', 'Tier')`);
     const r = await post({ phone: '+919876500002', externalRef: { candidateId: 'cand_42' }, customFields: { tier: 'gold' } });
     expect(r.status).toBe(201);
     const row = (await db.execute(sql`

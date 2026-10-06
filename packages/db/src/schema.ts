@@ -381,6 +381,12 @@ export const message = pgTable('message', {
   bodyHmac: text('body_hmac'),
   status: text('status').notNull().default('queued'),
   errorCode: text('error_code'),
+  /**
+   * Why a still-`queued` outbound message has not gone out yet (`sender_not_connected`,
+   * `quarantined`, `paced:per_minute`, …). Written by the gateway each time it leaves a message
+   * waiting and cleared when it sends, so the inbox can say "waiting: reason" instead of silence.
+   */
+  holdReason: text('hold_reason'),
   sentBy: text('sent_by').notNull().default('system'),
   sentByUserId: uuid('sent_by_user_id').references(() => appUser.id, { onDelete: 'set null' }),
 
@@ -435,6 +441,25 @@ export const cannedReply = pgTable('canned_reply', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
   uniqueIndex('canned_reply_org_shortcut_uidx').on(t.orgId, t.shortcut)
+]);
+
+/**
+ * A field an org has defined for its contacts — `city`, `experience_years`, `stage`. The fixed
+ * vocabulary that gives `contact.custom_fields` a shape: only defined keys may be set, values are
+ * checked against `type`, and the same name means the same thing everywhere (UI, imports, `{{key}}`
+ * in a campaign). `type` is `text`, `number`, `date` (YYYY-MM-DD) or `select` (one of `options`).
+ */
+export const customField = pgTable('custom_field', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  /** Lower-case slug, the key stored in `custom_fields` and used as `{{key}}`. */
+  key: text('key').notNull(),
+  label: text('label').notNull(),
+  type: text('type').notNull().default('text'),
+  options: text('options').array().notNull().default(sql`'{}'::text[]`),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  uniqueIndex('custom_field_org_key_uidx').on(t.orgId, t.key)
 ]);
 
 /**

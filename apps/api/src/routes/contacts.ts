@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { normalisePhone } from '@crm/shared';
 import { writeAudit, AUDIT, csvHeader, csvLine, vcardEntry, fetchExportBatch } from '@crm/core';
 import { requireScope, requireRole, auditActor } from '../auth.js';
+import { loadCustomFields, validateCustomFields } from '@crm/core';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
 
@@ -123,6 +124,18 @@ export function contactsRouter(defaultCountry: string): Router {
     const { displayName, phone, email, customFields, externalRef } = parsed.data;
     const orgId = req.crm!.orgId;
 
+    // Custom fields are a fixed vocabulary: only defined keys, each checked against its type.
+    let storedFields: Record<string, string | number> = {};
+    if (customFields !== undefined && Object.keys(customFields).length > 0) {
+      const defs = await req.tenant!((tx) => loadCustomFields(tx, orgId));
+      const checked = validateCustomFields(defs, customFields);
+      if (!checked.ok) {
+        res.status(422).json(problem(req, 422, 'INVALID_CUSTOM_FIELDS', checked.errors.join('; ')));
+        return;
+      }
+      storedFields = checked.set;
+    }
+
     // One normalisation boundary, the same function the send path and the importer use, so a
     // number written three ways becomes one identity rather than three contacts (M8). A phone
     // that cannot be normalised is refused; one that is valid but not WhatsApp-reachable is
@@ -156,7 +169,7 @@ export function contactsRouter(defaultCountry: string): Router {
 
       const created = (await tx.execute(sql`
         INSERT INTO contact (org_id, display_name, source, custom_fields, external_ref)
-        VALUES (${orgId}, ${name}, 'api', ${JSON.stringify(customFields ?? {})}::jsonb,
+        VALUES (${orgId}, ${name}, 'api', ${JSON.stringify(storedFields)}::jsonb,
                 ${externalRef === undefined ? null : JSON.stringify(externalRef)}::jsonb)
         RETURNING id`)
       ) as unknown as Array<{ id: string }>;
@@ -212,6 +225,7 @@ export function contactsRouter(defaultCountry: string): Router {
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT c.id, c.display_name AS "displayName", c.source,
              c.do_not_contact AS "doNotContact", c.created_at AS "createdAt",
+             c.custom_fields AS "customFields",
              coalesce((
                SELECT json_agg(json_build_object('kind', ci.kind, 'value', ci.value_normalized)
                                ORDER BY ci.is_primary DESC)
@@ -276,6 +290,44 @@ export function contactsRouter(defaultCountry: string): Router {
       });
       if (outcome === 'not_found') {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such contact or tag.'));
+        return;
+      }
+      res.status(204).end();
+    });
+
+  /**
+   * Sets or clears custom field values on a contact: `{ "values": { "city": "Pune", "stage": null } }`.
+   * `null` or an empty string clears a field. Validated against the org's definitions.
+   */
+  router.put('/:id/custom-fields', requireUuidParam('id'), requireScope('contacts:write'),
+    async (req: Request, res: Response) => {
+      const body = z.object({ values: z.record(z.unknown()) }).safeParse(req.body);
+      if (!body.success) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send { "values": { key: value } }.'));
+        return;
+      }
+      const orgId = req.crm!.orgId;
+      const outcome = await req.tenant!(async (tx) => {
+        const exists = await tx.execute(sql`
+          SELECT 1 FROM contact WHERE id = ${req.params.id} AND org_id = ${orgId} AND deleted_at IS NULL`);
+        if ((exists as unknown as unknown[]).length === 0) return { notFound: true as const };
+        const defs = await loadCustomFields(tx, orgId);
+        const checked = validateCustomFields(defs, body.data.values);
+        if (!checked.ok) return { errors: checked.errors };
+        let next = sql`custom_fields`;
+        for (const key of checked.clear) next = sql`(${next}) - ${key}::text`;
+        await tx.execute(sql`
+          UPDATE contact SET custom_fields = (${next}) || ${JSON.stringify(checked.set)}::jsonb,
+                             updated_at = now()
+          WHERE id = ${req.params.id} AND org_id = ${orgId}`);
+        return { ok: true as const };
+      });
+      if ('notFound' in outcome) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such contact.'));
+        return;
+      }
+      if ('errors' in outcome) {
+        res.status(422).json(problem(req, 422, 'INVALID_CUSTOM_FIELDS', outcome.errors.join('; ')));
         return;
       }
       res.status(204).end();
