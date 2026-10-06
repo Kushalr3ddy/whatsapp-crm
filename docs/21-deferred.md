@@ -1043,3 +1043,44 @@ shape is known: parse the vCard to rows and feed the existing import pipeline, t
 converted to CSV, so duplicates and phone normalisation behave identically.
 
 **What brings it back:** the first operator with their contacts on a phone rather than in a spreadsheet.
+
+---
+
+## D-37 · Meta tier and quality tracking, feeding the health engine
+
+**What:** per Meta sender, poll the Cloud API for its **messaging tier** (250/day → 1K → 10K → 100K →
+unlimited; Meta re-evaluates about every 6 h, advancing on unique customers over a rolling 7 days) and its
+**quality rating** (green / yellow / red, driven by blocks and reports). Store both on the sender, show them
+on the Numbers page, and feed them into the same health scoring and pacing: yellow slows, red pauses, and the
+daily ceiling follows the tier instead of the Baileys warmup curve.
+
+**Why parked:** pinned by Kushal (2026-10-06). Meaningless without the Meta adapter (D-34); every send today
+goes over Baileys, which has no tiers or quality ratings.
+
+**What brings it back:** D-34 landing.
+
+---
+
+## D-38 · Meta template submission, approval status, and the template-only window
+
+**What:** the Meta-specific half of D-19 and D-18: submit a template to Meta for approval, sync its status
+(approved / rejected / paused) back, and surface a rejection reason. Outside the 24-hour customer-service
+window, only an approved template may be sent, so the composer shows the window countdown and locks to
+templates once it closes (`conversation.window_expires_at` already exists for this).
+
+**Why parked:** pinned by Kushal (2026-10-06). Needs D-19's template model and the adapter first.
+
+**What brings it back:** D-34 and D-19.
+
+---
+
+## D-39 · Per-transport pacing policy and the Meta inbound/status webhooks
+
+**What:** (a) pacing limits chosen **per transport**, so an official Meta number is legitimately looser than a
+Baileys one, instead of one global policy (this is also the cleaner home for what advisory mode, D-29, is a
+blunt version of); (b) the Meta **webhooks** that carry inbound messages, delivery/read statuses and quality or
+template updates into the same ingestion and receipt paths Baileys events use today.
+
+**Why parked:** pinned by Kushal (2026-10-06). Part of the Meta adapter's surface.
+
+**What brings it back:** D-34 landing.
