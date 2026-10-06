@@ -13,6 +13,21 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-06 — Contact export, CORS allowlist, CI fixed
+- **Admin contact export.** `GET /contacts/export?format=csv|vcf`: admin-only (agents and API keys 403),
+  keyset-streamed, audited (`contacts.exported`), 5 per hour (429 `EXPORT_RATE_LIMITED`). CSV has a BOM
+  for Excel and defuses `= + - @` formula cells (phone lists left alone); vCard 3.0 for loading onto a
+  phone, with tags / DNC in `NOTE`. Web: export links on `/contacts` via `contacts/export/route.ts`.
+  Excel and vCard *import* are pinned (D-30..D-36).
+- **CORS allowlist.** `CORS_ALLOWED_ORIGINS` (comma list of exact origins; no wildcard, no paths).
+  Listed origins get headers and a pre-auth preflight answer; never credentials. Browser-only concept —
+  server-to-server callers (JobPortal backend) need nothing.
+- **CI repaired.** Found by reading the Actions API: `.gitignore` `storage/` hid `packages/providers/storage`
+  (now `/storage/`); `check` job given throwaway config for the migration runner; gitleaks told the
+  throwaway keys are intentional. e2e + check green (incl. `test:sim`); the secrets-scan fix (`41c4cd7`)
+  awaiting its run result.
+- Docs PDF script (`npm run docs:pdf`). Standing rule: docs untouched unless asked. **541 vitest.**
+
 ### 2026-10-05 — The anti-ban simulation harness (and two bugs it found)
 - **`npm run test:sim`** (`tests/simulation/*.sim.ts`, `vitest.sim.config.ts`, a CI step on `main`):
   the real gateway engine against `SimulatedWhatsApp`, a virtual WhatsApp that scores every send on the

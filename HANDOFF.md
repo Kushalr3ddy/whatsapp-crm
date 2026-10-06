@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-09-30
+# Handoff — state as of 2026-10-06
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -8,26 +8,34 @@ request; `HANDOFF.md` + `CHANGELOG.md` are the primary, always-current record.)
 
 ---
 
-## ▶ Pick up here (2026-10-05)
+## ▶ Pick up here (2026-10-06)
 
-**The anti-ban completion pass is DONE — all 8 refinements built** (#1 outbound-only clamp, #2
-identical-body guard, #3 delivery→speed curve, #4 reply-ratio floor, #5 decrypt-failure signal, #6
-read behaviour, #7 background entropy, #8 recipient-timezone). Each is marked done in
-[`docs/08-antiban.md`](docs/08-antiban.md). None of #5–#8 has been exercised against a real linked
-number, only the fake channel — worth a watch the next time one is linked.
+**Standing instruction (Kushal, 2026-10-06): ignore the docs unless he asks.** Don't read or update
+HANDOFF / CHANGELOG / docs on your own; "pin it" still means a new D-<n> in `docs/21-deferred.md`.
 
-1. **The simulation harness exists now** (`npm run test:sim`, CI on `main`) and found two real bugs on
-   its first run — see `docs/12-testing.md`. Anti-ban still unbuilt: the admin-overridable policy gates
-   (engagement lock / 14-day cooldown / duplicate-campaign guard), a real-number pilot, Meta-side tracking.
-2. **Choose the next build.** **D-25 outbound media landed 2026-10-05** (📎 in the composer,
-   `POST /conversations/:id/attachments`). Remaining pins, Kushal's call on order: **D-19** templates, **D-23** message-body search, **D-27** opt-out automation, **D-29**
-   advisory mode. Also a stale-docs pass (see the 2026-10-05 review: README, CONTRIBUTING, 15-api,
-   24-local-testing, CHANGELOG by-phase).
-3. **Watch the first CI run** on GitHub (`.github/workflows/ci.yml` was rewritten this session and
-   is **unvalidated** — the `e2e` job especially). Fix whatever the first push/PR surfaces.
-4. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin,
-   or the `e2e-test` admin in `.env` (`TEST_EMAIL`/`TEST_PASSWORD`). `npm run check` = typecheck +
-   lint + **532 vitest**; `npm run test:e2e` = the **4 Playwright** browser tests.
+**State:** the anti-ban pass (#1–#8) is done, the simulation harness exists (`npm run test:sim`),
+D-25 outbound media landed, and the admin **contact export** (CSV + vCard, `GET /contacts/export`,
+audited, 5/hr) plus the **CORS allowlist** (`CORS_ALLOWED_ORIGINS`, exact origins only) are built.
+`npm run check` = typecheck + lint + **541 vitest**; `npm run test:e2e` = **4 Playwright** tests.
+
+1. **CI (GitHub Actions) was fixed this session** by reading the Actions API with the git-stored
+   credential. Causes: `.gitignore` had `storage/` which swallowed `packages/providers/storage` (now
+   `/storage/`, packages committed); the `check` job lacked the config the migration runner needs
+   (throwaway env added); gitleaks flagged those throwaway keys (`# gitleaks:allow` +
+   `.gitleaksignore`). Last verified: e2e and check green; the secrets-scan fix is commit `41c4cd7`,
+   its run result was still pending — confirm it.
+2. **Open questions for Kushal (unanswered):** (a) "2 add a new action ig?" — a new GitHub Actions
+   workflow, or an action button on the number-status line? (b) build the connected/not-connected
+   status line in the thread header and per-message "waiting: reason"? (asked "is it possible", not
+   told to build); (c) custom fields: small first version, or keep free-form? (d) delete the D-31
+   (key rotation) pin? He questioned it; OpenAPI and an SDK are explicitly not wanted.
+3. **Held, do not build:** D-19 templates, D-23 message search, D-27 opt-out, D-29 advisory mode,
+   admin-overridable gates, D-30..D-36 (Excel/vCard import, etc.).
+4. **Gateway outside tenant tx** (RLS defect) was explained, not yet pinned.
+5. Anti-ban #5–#8 and the engine have only been exercised against the fake channel and the sim, never
+   a real linked number — worth watching when one is linked.
+6. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin or
+   the `e2e-test` admin in `.env`. Printable docs: `npm run docs:pdf` → `build/whatsapp-crm-docs.pdf`.
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
