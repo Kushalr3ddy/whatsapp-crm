@@ -25,7 +25,7 @@ how good the rest is.
 7. **Free-path first.** Any feature must work on the `lean` preset, or be optional and degrade
    cleanly when its driver is `none`.
 8. **Keep `HANDOFF.md` and `CHANGELOG.md` current.** `HANDOFF.md` is the state snapshot, `CHANGELOG.md` the
-   work ledger. (`CONTEXT.md` is a retired historical log — do not append to it.)
+   work ledger.
 
 ## Adding things
 

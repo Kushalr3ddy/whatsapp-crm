@@ -64,6 +64,5 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 
 ## Not in here
 
-[`../CONTEXT.md`](../CONTEXT.md) is the running log — one entry per working session, appended
-never edited, recording what was decided and why. If you want to know *how the project got
-here* rather than *what it is now*, read that.
+The old `CONTEXT.md` session log has been deleted (2026-10-06). For *how the project got here*, read
+[`../CHANGELOG.md`](../CHANGELOG.md) and the git history; for *where it stands now*, [`../HANDOFF.md`](../HANDOFF.md).

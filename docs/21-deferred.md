@@ -1100,3 +1100,23 @@ JSON cell). Also: renaming a field's label or editing a select's options after c
 **Why parked:** the first version was kept small (Kushal, 2026-10-06).
 
 **What brings it back:** the first import that carries columns an operator wants as fields.
+
+---
+
+## D-41 · The gateway runs outside row-level security — **PRIORITY (Kushal, 2026-10-06)**
+
+**What:** the API sets the org on every request (`setTenant`), so the database itself refuses cross-org
+rows. The gateway process mostly does not: `handleSend` and the sweeps (`sweepPendingWork`,
+`dispatchCampaigns`' first query, read receipts, entropy, health scoring) query the database directly, so
+there row-level security is not the safety net — only each query's own `WHERE org_id` is. (Per-campaign
+work in `dispatchCampaigns` does use `tenantRunner`; the rest does not. Confirm the gateway's DB role
+bypasses RLS when fixing.)
+
+**Fix:** have the gateway enter the owning org's tenant transaction (`tenantRunner`) before each unit of
+work — list work across orgs with a narrow privileged query, then run each job under `setTenant`. Add a
+test that a gateway job for org A cannot touch org B's rows.
+
+**Why parked:** harmless while one team (plus JobPortal) shares an install; becomes a real cross-org risk
+the moment unrelated customers share one. Pinned as priority by Kushal.
+
+**What brings it back:** now, as priority; certainly before any multi-customer hosting.

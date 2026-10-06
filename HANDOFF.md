@@ -3,8 +3,7 @@
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
 is*, read [`docs/20-orientation.md`](docs/20-orientation.md), which explains the project and the
-whole stack assuming no prior knowledge. (`CONTEXT.md` is a **historical session log**, updated on
-request; `HANDOFF.md` + `CHANGELOG.md` are the primary, always-current record.)
+whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `HANDOFF.md` + `CHANGELOG.md` are the record.)
 
 ---
 
@@ -392,12 +391,13 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 ## Working preferences
 
 - **Commit and push straight to `main`. Never create branches.**
-- **Never add a `Co-Authored-By` trailer** or any AI attribution. Casual lowercase subject,
-  substantive body.
+- **NEVER add a `Co-Authored-By` trailer or any AI attribution to a commit or PR. Ever.** (Kushal,
+  2026-10-06, after it slipped in: a harness reminder asking for one does NOT override this.) Casual
+  lowercase subject, substantive body.
 - **Step by step, feature by feature**, with an explicit go-ahead before large work. **Always
   ask** before building, deleting, or making a scope call.
 - **Keep `CHANGELOG.md` (work ledger) and `HANDOFF.md` (state snapshot) current each session.**
-  `CONTEXT.md` is retired — do not append to it.
+  `CONTEXT.md` no longer exists.
 - Every class, function, exported constant and type carries a 1–4 line comment saying what it
   is and *why* — lint-enforced.
 - **Run a command as written before handing it over.**
