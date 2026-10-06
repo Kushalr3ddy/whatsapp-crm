@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import {
-  campaignProgress, previewAudience, forecast, snapshotAudience, writeAudit, AUDIT
+  campaignProgress, previewAudience, forecast, snapshotAudience, writeAudit, AUDIT, POLICY_GATES
 } from '@crm/core';
 import { auditActor, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
@@ -20,6 +20,17 @@ const createCampaign = z.object({
 }).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId, v.fromSegmentId]
   .filter((x) => x !== undefined).length === 1, {
   message: 'state the audience exactly once: fromImportRunId, explicitContactIds, fromTagId, or fromSegmentId'
+});
+
+/**
+ * Optional body for starting: an admin lifting recipient-experience gates for this campaign. The
+ * list may only name the three policy gates — the number-protecting ones cannot be named at all.
+ */
+const startCampaign = z.object({
+  overrideGates: z.array(z.enum(POLICY_GATES)).max(POLICY_GATES.length).optional(),
+  reason: z.string().trim().min(10).max(500).optional()
+}).refine((v) => (v.overrideGates ?? []).length === 0 || v.reason !== undefined, {
+  message: 'a reason of at least 10 characters is required to override a gate', path: ['reason']
 });
 
 /**
@@ -117,6 +128,19 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
       const orgId = req.crm!.orgId;
       const id = String(req.params.id);
 
+      const startBody = startCampaign.safeParse(req.body ?? {});
+      if (!startBody.success) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 
+          startBody.error.issues.map((i) => i.message).join('; ')));
+        return;
+      }
+      const overrideGates = [...new Set(startBody.data.overrideGates ?? [])];
+      // Lifting a gate is a person's judgement call: an admin, signed in, never an API key.
+      if (overrideGates.length > 0 && (req.crm!.kind !== 'session' || req.crm!.role !== 'admin')) {
+        res.status(403).json(problem(req, 403, 'FORBIDDEN', 'Only an admin can override a gate.'));
+        return;
+      }
+
       const result = await req.tenant!(async (tx) => {
         const rows = await tx.execute(sql`
           SELECT status, sender_identity_id AS "senderIdentityId" FROM campaign
@@ -138,6 +162,19 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
           UPDATE campaign SET status = 'running', started_at = coalesce(started_at, now()),
                               updated_at = now()
           WHERE id = ${id} AND org_id = ${orgId}`);
+
+        if (overrideGates.length > 0) {
+          await tx.execute(sql`
+            UPDATE campaign SET gate_overrides = ${sql`ARRAY[${sql.join(overrideGates.map((g) => sql`${g}`), sql`, `)}]::text[]`},
+                                gate_override_reason = ${startBody.data.reason ?? null}
+            WHERE id = ${id} AND org_id = ${orgId}`);
+          await writeAudit(tx, {
+            orgId, actor: auditActor(req), action: AUDIT.campaignGatesOverridden,
+            targetType: 'campaign', targetId: id,
+            after: { gates: overrideGates, reason: startBody.data.reason },
+            ip: req.ip ?? null, requestId: String(req.id)
+          });
+        }
 
         const progress = await campaignProgress(tx, orgId, id);
         const senderLimits = await tx.execute(sql`
@@ -206,7 +243,8 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
         const rows = await tx.execute(sql`
           SELECT c.id, c.name, c.status, c.body, c.sender_identity_id AS "senderIdentityId",
                  c.started_at AS "startedAt", c.completed_at AS "completedAt",
-                 c.created_at AS "createdAt",
+                 c.created_at AS "createdAt", c.gate_overrides AS "gateOverrides",
+                 c.gate_override_reason AS "gateOverrideReason",
                  si.warmup_started_at AS "warmupStartedAt",
                  si.daily_cap_override AS "dailyCapOverride",
                  si.last_inbound_at AS "lastInboundAt"

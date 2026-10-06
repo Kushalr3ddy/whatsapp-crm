@@ -91,3 +91,7 @@ export {
   reconcileCampaign,
   type CampaignProgress, type AudiencePreview, type CampaignForecast
 } from './campaigns.js';
+export {
+  POLICY_GATES, POLICY_SKIP_REASON, ENGAGEMENT_WINDOW_HOURS, COOLDOWN_DAYS, isPolicyGate,
+  blockingPolicyGate, type PolicyGate
+} from './policy-gates.js';

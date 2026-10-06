@@ -1,9 +1,9 @@
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import {
-  getCampaign, listCampaignRecipients, previewCampaign, CrmApiError, NotAuthenticatedError
+  getCampaign, listCampaignRecipients, previewCampaign, getMe, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { CampaignDetail, CampaignRecipient, CampaignPreview } from '@/lib/crm';
+import type { Me, CampaignDetail, CampaignRecipient, CampaignPreview } from '@/lib/crm';
 import { campaignStatusBadge } from '../campaign-status';
 import { startCampaignAction, pauseCampaignAction, cancelCampaignAction } from '../actions';
 
@@ -30,6 +30,7 @@ export default async function CampaignPage(
   const activeStatus = typeof status === 'string' ? status : '';
   const query = typeof q === 'string' ? q : '';
 
+  let me: Me | null = null;
   let campaign: CampaignDetail | null = null;
   let recipients: CampaignRecipient[] = [];
   let preview: CampaignPreview | null = null;
@@ -37,9 +38,10 @@ export default async function CampaignPage(
   let expired = false;
   let missing = false;
   try {
-    [campaign, recipients] = await Promise.all([
+    [campaign, recipients, me] = await Promise.all([
       getCampaign(id),
-      listCampaignRecipients(id, { status: activeStatus, q: query })
+      listCampaignRecipients(id, { status: activeStatus, q: query }),
+      getMe()
     ]);
     // A draft has no frozen audience yet, so its progress is all zeros — a dry-run preview is the
     // useful thing to show before start. One extra round trip, and only for drafts.
@@ -76,13 +78,20 @@ export default async function CampaignPage(
             </div>
             <div className="flex shrink-0 flex-col items-end gap-2">
               <StatusBadge status={campaign.status} />
-              <Controls id={id} status={campaign.status} />
+              <Controls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
             </div>
           </header>
 
           {campaign.status === 'draft' && preview !== null
             ? <DraftPreview preview={preview} />
             : <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />}
+
+          {campaign.gateOverrides.length > 0 && (
+            <p className="mb-3 rounded-md border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-xs text-warning">
+              An admin lifted: {campaign.gateOverrides.map((g) => GATE_LABEL[g]?.split(' — ')[0] ?? g).join(', ')}
+              {campaign.gateOverrideReason !== null && <> — “{campaign.gateOverrideReason}”</>}
+            </p>
+          )}
 
           <MessageBody body={campaign.body} />
 
@@ -130,7 +139,7 @@ function StatusBadge({ status }: { status: string }) {
  * cancelled, a running campaign can pause or cancel, a paused one can resume or cancel, and a
  * finished one has none. Each is a plain form posting to a server action — no client JS.
  */
-function Controls({ id, status }: { id: string; status: string }) {
+function Controls({ id, status, isAdmin }: { id: string; status: string; isAdmin: boolean }) {
   const primary = 'rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-xs text-ink hover:bg-accent-soft/70';
   const plain = 'rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-accent-soft';
   const danger = 'rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:border-danger/50 hover:text-danger';
@@ -146,11 +155,63 @@ function Controls({ id, status }: { id: string; status: string }) {
 
   return (
     <div className="flex items-center gap-1.5">
+      {status === 'draft' && isAdmin && <OverrideStart id={id} />}
       {status === 'draft' && button(startCampaignAction, 'Start', primary)}
       {status === 'running' && button(pauseCampaignAction, 'Pause', plain)}
       {status === 'paused' && button(startCampaignAction, 'Resume', primary)}
       {button(cancelCampaignAction, 'Cancel', danger)}
     </div>
+  );
+}
+
+/** What each `skip_reason` means, for the per-recipient list. */
+const SKIP_LABEL: Record<string, string> = {
+  no_phone: 'no phone number',
+  cancelled: 'campaign cancelled',
+  engaged: 'an agent is mid-conversation',
+  cooldown: 'sent a campaign within 14 days',
+  in_other_campaign: 'in another live campaign'
+};
+
+/** Plain-language labels for the recipient-experience gates an admin may lift. */
+const GATE_LABEL: Record<string, string> = {
+  engagement: 'Engagement lock — an agent is mid-conversation with them',
+  cooldown: 'Cooldown — sent a campaign in the last 14 days',
+  duplicate_campaign: 'Duplicate campaign — waiting in another live campaign'
+};
+
+/**
+ * Admin-only: start while lifting one or more recipient-experience gates. Needs a reason, which is
+ * audited. Never offers the number-protecting limits (daily cap, rate, warmup) or do-not-contact.
+ */
+function OverrideStart({ id }: { id: string }) {
+  return (
+    <details className="relative">
+      <summary className="cursor-pointer list-none rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-accent-soft">
+        Start with overrides…
+      </summary>
+      <form action={startCampaignAction}
+        className="absolute right-0 z-10 mt-1 w-80 rounded-lg border border-border bg-surface p-3 text-xs shadow-lg">
+        <input type="hidden" name="id" value={id} />
+        <p className="mb-2 text-muted">
+          Send to people these gates would normally skip. The daily cap, rate limits, warmup and
+          do-not-contact still apply.
+        </p>
+        {Object.entries(GATE_LABEL).map(([gate, label]) => (
+          <label key={gate} className="mb-1 flex items-start gap-2">
+            <input type="checkbox" name="overrideGates" value={gate} className="mt-0.5" />
+            <span>{label}</span>
+          </label>
+        ))}
+        <textarea name="reason" required minLength={10} maxLength={500} rows={2}
+          placeholder="Why? (recorded in the audit log)"
+          className="mt-2 w-full rounded-md border border-border bg-canvas p-1.5" />
+        <button type="submit"
+          className="mt-2 rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-ink">
+          Start, lifting the ticked gates
+        </button>
+      </form>
+    </details>
   );
 }
 
@@ -327,7 +388,7 @@ function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
     : status;
   return (
     <div className="flex shrink-0 items-center gap-2">
-      {(skipReason !== null) && <span className="text-[11px] text-muted">{skipReason}</span>}
+      {(skipReason !== null) && <span className="text-[11px] text-muted">{SKIP_LABEL[skipReason] ?? skipReason}</span>}
       <span className={`rounded-md border px-2 py-0.5 text-[11px] capitalize ${cls}`}>{label}</span>
     </div>
   );

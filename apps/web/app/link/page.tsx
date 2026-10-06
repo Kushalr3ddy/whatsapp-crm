@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
-import { listSenders, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import { listSenders, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Sender } from '@/lib/crm';
 import { LinkPanel } from './link-panel';
+import { setEnforcementAction } from './actions';
 
 /** Rendered per request — linking state changes second by second. */
 export const dynamic = 'force-dynamic';
@@ -15,10 +16,11 @@ export const dynamic = 'force-dynamic';
  */
 export default async function LinkPage() {
   let senders: Sender[] = [];
+  let isAdmin = false;
   let failure: string | null = null;
   let expired = false;
   try {
-    senders = await listSenders();
+    [senders, isAdmin] = await Promise.all([listSenders(), getMe().then((m) => m.role === 'admin')]);
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
     failure = error instanceof CrmApiError
@@ -53,7 +55,7 @@ export default async function LinkPage() {
       )}
 
       <ul className="flex flex-col gap-3">
-        {active.map((s) => <SenderCard key={s.id} sender={s} />)}
+        {active.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} />)}
       </ul>
 
       {previouslyLinked.length > 0 && (
@@ -64,7 +66,7 @@ export default async function LinkPage() {
             reconnect it.
           </p>
           <ul className="flex flex-col gap-3 opacity-80">
-            {previouslyLinked.map((s) => <SenderCard key={s.id} sender={s} />)}
+            {previouslyLinked.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} />)}
           </ul>
         </section>
       )}
@@ -73,7 +75,7 @@ export default async function LinkPage() {
 }
 
 /** One number's card: its label and live state, the health panel, and the link/unlink panel. */
-function SenderCard({ sender }: { sender: Sender }) {
+function SenderCard({ sender, isAdmin }: { sender: Sender; isAdmin: boolean }) {
   return (
     <li className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-baseline justify-between gap-3">
@@ -85,13 +87,66 @@ function SenderCard({ sender }: { sender: Sender }) {
           </p>
         </div>
       </div>
+      <AdvisoryBanner sender={sender} />
       <HealthPanel sender={sender} />
+      {isAdmin && <EnforcementControl sender={sender} />}
       <LinkPanel
         senderId={sender.id}
         alreadyOpen={sender.connectionState === 'open'}
         linked={sender.linked}
       />
     </li>
+  );
+}
+
+/**
+ * Loud and persistent, by design (D-29): while a number is in advisory mode the anti-ban engine is
+ * NOT protecting it, and that must never be something an operator can forget.
+ */
+function AdvisoryBanner({ sender }: { sender: Sender }) {
+  if (sender.enforcement !== 'advisory') return null;
+  return (
+    <div className="mt-3 rounded-md border border-danger/50 bg-danger/5 px-2.5 py-1.5 text-xs text-danger">
+      <strong>Advisory mode — anti-ban is NOT enforced on this number.</strong> Pacing, health and
+      recovery holds are recorded, not obeyed; a ban here is permanent.
+      {sender.advisoryReason !== null && <> Reason: “{sender.advisoryReason}”.</>}
+      {' '}Sent past a hold <span className="tabular-nums">{sender.advisoryBypassCount}</span> time(s)
+      {sender.advisoryLastBypass !== null && <>, latest: <code>{sender.advisoryLastBypass}</code></>}.
+    </div>
+  );
+}
+
+/** Admin-only: turn advisory mode on (with a reason) or back off. */
+function EnforcementControl({ sender }: { sender: Sender }) {
+  if (sender.enforcement === 'advisory') {
+    return (
+      <form action={setEnforcementAction} className="mt-2">
+        <input type="hidden" name="senderId" value={sender.id} />
+        <input type="hidden" name="mode" value="enforce" />
+        <button type="submit" className="rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-xs text-ink">
+          Back to enforcing
+        </button>
+      </form>
+    );
+  }
+  return (
+    <details className="mt-2 text-xs">
+      <summary className="cursor-pointer text-muted hover:text-ink">Advisory mode…</summary>
+      <form action={setEnforcementAction} className="mt-2 flex flex-col gap-2">
+        <input type="hidden" name="senderId" value={sender.id} />
+        <input type="hidden" name="mode" value="advisory" />
+        <p className="text-muted">
+          Stops this number&apos;s pacing, health and recovery holds from blocking sends. For a throwaway
+          number or a test only — a ban is permanent. Do-not-contact is never relaxed.
+        </p>
+        <textarea name="reason" required minLength={10} maxLength={500} rows={2}
+          placeholder="Why? (recorded in the audit log)"
+          className="rounded-md border border-border bg-canvas p-1.5" />
+        <button type="submit" className="self-start rounded-md border border-danger/50 px-2.5 py-1 text-danger hover:bg-danger/5">
+          Turn anti-ban enforcement off for this number
+        </button>
+      </form>
+    </details>
   );
 }
 

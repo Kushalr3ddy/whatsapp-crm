@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { recoveryState } from '@crm/core';
-import { requireScope } from '../auth.js';
+import { recoveryState, writeAudit, AUDIT } from '@crm/core';
+import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
 
@@ -11,6 +11,17 @@ const createSender = z.object({
   label: z.string().min(1).max(100),
   provider: z.enum(['baileys', 'meta']).default('baileys'),
   phoneE164: z.string().regex(/^\+[1-9]\d{6,14}$/).optional()
+});
+
+/**
+ * Body for switching a number between enforcing the anti-ban engine and advisory mode (D-29).
+ * A reason is mandatory when going advisory — it is read back out of the audit log later.
+ */
+const setEnforcement = z.object({
+  mode: z.enum(['enforce', 'advisory']),
+  reason: z.string().trim().min(10).max(500).optional()
+}).refine((v) => v.mode === 'enforce' || v.reason !== undefined, {
+  message: 'a reason of at least 10 characters is required to enter advisory mode', path: ['reason']
 });
 
 /** Body for starting the linking handshake. */
@@ -36,6 +47,11 @@ export function sendersRouter(): Router {
       SELECT si.id, si.label, si.provider, si.phone_e164 AS "phoneE164", si.status,
              si.risk_score AS "riskScore", si.warmup_started_at AS "warmupStartedAt",
              si.last_inbound_at AS "lastInboundAt",
+             -- Advisory mode (D-29): enforcement state plus what the engine would have held.
+             si.enforcement, si.advisory_reason AS "advisoryReason",
+             si.advisory_set_at AS "advisorySetAt",
+             si.advisory_bypass_count AS "advisoryBypassCount",
+             si.advisory_last_bypass AS "advisoryLastBypass",
              -- Layer 6 recovery state, turned into a phase/fraction below for the health panel.
              si.recovery_incident AS "recoveryIncident", si.recovery_until AS "recoveryUntil",
              -- The health scorer's evidence (band, delivery ratio, counts), for the health panel.
@@ -86,6 +102,52 @@ export function sendersRouter(): Router {
     });
     res.json({ data });
   });
+
+  /**
+   * Switches a number between `enforce` (the default) and `advisory` (D-29): the engine keeps
+   * computing every signal, but the number-protecting holds are recorded instead of obeyed.
+   * Admin-only, needs a reason, audited. Do-not-contact and consent are never relaxed. Returning
+   * to `enforce` clears the reason and the bypass counters.
+   */
+  router.post('/:id/enforcement', requireUuidParam('id'), requireRole('admin'),
+    async (req: Request, res: Response) => {
+      const parsed = setEnforcement.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 
+          parsed.error.issues.map((i) => i.message).join('; ')));
+        return;
+      }
+      const { mode, reason } = parsed.data;
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+      const done = await req.tenant!(async (tx) => {
+        const before = (await tx.execute(sql`
+          SELECT enforcement FROM sender_identity WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`
+        ) as unknown as Array<{ enforcement: string }>)[0];
+        if (!before) return false;
+        await tx.execute(sql`
+          UPDATE sender_identity SET
+            enforcement = ${mode},
+            advisory_reason = ${mode === 'advisory' ? reason! : null},
+            advisory_set_by = ${mode === 'advisory' ? req.crm!.userId ?? null : null},
+            advisory_set_at = ${mode === 'advisory' ? sql`now()` : null},
+            advisory_bypass_count = 0, advisory_last_bypass = NULL, updated_at = now()
+          WHERE id = ${id} AND org_id = ${orgId}`);
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.senderEnforcementChanged,
+          targetType: 'sender_identity', targetId: id,
+          before: { enforcement: before.enforcement },
+          after: { enforcement: mode, ...(reason !== undefined ? { reason } : {}) },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+        return true;
+      });
+      if (!done) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such sender.'));
+        return;
+      }
+      res.json({ data: { senderId: id, enforcement: mode } });
+    });
 
   /** Creates a sender. It exists but is not connected until it has been linked. */
   router.post('/', requireScope('senders:write'), async (req: Request, res: Response) => {

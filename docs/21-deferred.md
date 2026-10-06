@@ -849,7 +849,7 @@ yet**, so this is a known soft spot, not a solved one.
 
 ---
 
-## D-27 · Opt-out keyword handling (STOP / unsubscribe) — deferred while the alpha is closed
+## D-27 · Opt-out keyword handling (STOP / unsubscribe) — OUT OF ALPHA SCOPE (Kushal, 2026-10-06)
 
 **What:** an inbound `STOP` / `UNSUBSCRIBE` (multi-language) that **automatically and irreversibly**
 sets `do_not_contact` and drops the contact from every pending send. Distinct from the manual
@@ -910,7 +910,9 @@ whole-import targeting cover it.
 
 ---
 
-## D-29 · An anti-ban "advisory mode" — warn but do not enforce
+## D-29 · An anti-ban "advisory mode" — warn but do not enforce — **BUILT 2026-10-06**
+
+> **Built** as a per-number `enforcement` setting (admin-only, reason required, audited via `sender.enforcement_changed`; `POST /senders/:id/enforcement`). Advisory lets a number past the pacing / health / recovery / contact-graph / recipient-hours holds and the identical-body cap, counting each bypass (`advisory_bypass_count`, `advisory_last_bypass`) and showing a persistent red banner on the Numbers page. `do_not_contact`, consent and a disconnected socket stay hard. The recipient-experience gates (engagement lock, 14-day cooldown, duplicate-campaign) are built too and overridable per campaign by an admin (`POST /campaigns/:id/start` with `overrideGates` + `reason`). The text below is the original pin.
 
 **What:** an operator toggle that keeps the anti-ban engine **computing and surfacing** its
 signals — the at-risk / cooling-off banners, the pacing reasons, the health score — but stops it

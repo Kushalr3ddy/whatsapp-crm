@@ -586,6 +586,11 @@ describe('the identical-body guard (D-26 backstop)', () => {
 
     // A varied body ({{name}} renders eight distinct messages) is never capped — all eight queue.
     const varied = await create(contactIds.slice(0, 8), 'Hi {{name}}, a word.');
+    // Same people as the campaign above, on purpose — so lift the two recipient-experience gates
+    // (cooldown, duplicate-campaign) that would otherwise skip them; this test is about the cap.
+    await db.execute(sql`
+      UPDATE campaign SET gate_overrides = ARRAY['cooldown', 'duplicate_campaign']
+      WHERE id = ${varied.body.data.id}`);
     await request(app).post(`/api/v1/campaigns/${varied.body.data.id}/start`).set(...auth());
     expect(await dispatchCampaigns(capped)).toBe(8);
   });

@@ -258,6 +258,17 @@ export const senderIdentity = pgTable('sender_identity', {
   recoveryStartedAt: timestamp('recovery_started_at', { withTimezone: true }),
   recoveryUntil: timestamp('recovery_until', { withTimezone: true }),
 
+  // Advisory mode (D-29). `enforce` is the default and the safe one. `advisory` keeps the engine
+  // computing every signal but lets sends past the pacing/health holds, knowingly. Admin-set,
+  // audited, with a reason; do-not-contact and consent are never relaxed. The bypass counters
+  // record how often the engine WOULD have held, so an operator sees what they are accepting.
+  enforcement: text('enforcement').notNull().default('enforce'),
+  advisoryReason: text('advisory_reason'),
+  advisorySetBy: uuid('advisory_set_by').references(() => appUser.id, { onDelete: 'set null' }),
+  advisorySetAt: timestamp('advisory_set_at', { withTimezone: true }),
+  advisoryBypassCount: integer('advisory_bypass_count').notNull().default(0),
+  advisoryLastBypass: text('advisory_last_bypass'),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
@@ -644,6 +655,14 @@ export const campaign = pgTable('campaign', {
    * later data changes never move a running campaign. Nulled if the segment is deleted.
    */
   fromSegmentId: uuid('from_segment_id').references(() => segment.id, { onDelete: 'set null' }),
+
+  /**
+   * Recipient-experience gates an admin has knowingly lifted for this campaign: any of
+   * `engagement`, `cooldown`, `duplicate_campaign` (docs/08-antiban.md, "two classes of gate").
+   * Set only by an admin, with a reason, and audited. Never covers the number-protecting gates.
+   */
+  gateOverrides: text('gate_overrides').array().notNull().default(sql`'{}'::text[]`),
+  gateOverrideReason: text('gate_override_reason'),
 
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),

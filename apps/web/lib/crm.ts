@@ -150,6 +150,12 @@ export interface Sender {
    * number that was connected before into the "previously linked" group.
    */
   linked: boolean;
+  /** `enforce` (the default) or `advisory` (D-29): the anti-ban holds are recorded, not obeyed. */
+  enforcement: 'enforce' | 'advisory';
+  advisoryReason: string | null;
+  /** How many sends went out past a hold the engine would have enforced, and the latest one. */
+  advisoryBypassCount: number;
+  advisoryLastBypass: string | null;
   /**
    * Layer 6 recovery state, or null when the number is not recovering. `paused` = cooling off and
    * sending nothing until `resumesAt`; `ramping` = sending at `capFraction` of its cap, climbing
@@ -232,6 +238,9 @@ export interface CampaignDetail {
   createdAt: string;
   progress: CampaignProgress;
   forecast: CampaignForecast;
+  /** Recipient-experience gates an admin lifted for this campaign, and why. */
+  gateOverrides: string[];
+  gateOverrideReason: string | null;
 }
 
 /** The prospective audience of a draft — a dry run's counts. Mirrors the `preview` route. */
@@ -765,8 +774,22 @@ export async function createCampaign(
  * Starts (or resumes) a campaign: freezes the audience on the first start and lets the gateway
  * begin. Resuming a paused campaign does not re-snapshot. The response carries the forecast.
  */
-export async function startCampaign(id: string): Promise<{ status: string }> {
-  return request<{ status: string }>(`/campaigns/${encodeURIComponent(id)}/start`, { method: 'POST' });
+export async function startCampaign(
+  id: string, override?: { overrideGates: string[]; reason: string }
+): Promise<{ status: string }> {
+  return request<{ status: string }>(`/campaigns/${encodeURIComponent(id)}/start`, {
+    method: 'POST', ...(override ? { body: JSON.stringify(override) } : {})
+  });
+}
+
+/** Admin only: switches a number between `enforce` and `advisory` (D-29). Advisory needs a reason. */
+export async function setSenderEnforcement(
+  senderId: string, mode: 'enforce' | 'advisory', reason?: string
+): Promise<{ senderId: string; enforcement: string }> {
+  return request<{ senderId: string; enforcement: string }>(
+    `/senders/${encodeURIComponent(senderId)}/enforcement`,
+    { method: 'POST', body: JSON.stringify({ mode, ...(reason ? { reason } : {}) }) }
+  );
 }
 
 /** Pauses a running campaign. Instant — pending recipients are simply not dispatched. */

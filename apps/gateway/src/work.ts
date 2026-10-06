@@ -20,6 +20,8 @@ interface QueuedSend {
   readonly senderPhone: string | null;
   /** The sender's health status, so a quarantined number does not send. */
   readonly senderStatus: string;
+  /** `enforce` (default) or `advisory` (D-29: holds are recorded as warnings, not obeyed). */
+  readonly enforcement: string;
   /** Who the message is to, for the contact-graph gate's relationship lookup. */
   readonly contactId: string;
   readonly recipientValue: string;
@@ -354,7 +356,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            ma.storage_key AS "mediaStorageKey", ma.content_type AS "mediaContentType",
            ma.filename AS "mediaFilename",
            si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
-           si.status AS "senderStatus",
+           si.status AS "senderStatus", si.enforcement AS "enforcement",
            si.warmup_started_at AS "warmupStartedAt",
            si.daily_cap_override AS "dailyCapOverride",
            si.last_inbound_at AS "lastInboundAt",
@@ -395,16 +397,35 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       return;
     }
 
+    // Advisory mode (D-29): the number-protecting holds below are still *computed*, but an advisory
+    // sender goes ahead anyway. Each hold it would have obeyed is counted and remembered, so the
+    // operator sees what they are accepting. Do-not-contact and consent are not here — they stop a
+    // message from ever being queued — and a disconnected socket above cannot be bypassed.
+    const advisory = job.enforcement === 'advisory';
+    const bypass = async (reason: string): Promise<void> => {
+      ctx.logger.warn(
+        { messageId, senderId: job.senderIdentityId, reason },
+        `advisory mode: sending past an anti-ban hold (${reason})`
+      );
+      await ctx.db.execute(sql`
+        UPDATE sender_identity
+        SET advisory_bypass_count = advisory_bypass_count + 1, advisory_last_bypass = ${reason}
+        WHERE id = ${job.senderIdentityId}`);
+    };
+
     // ── the health gate ─────────────────────────────────────────────────────────────
     // A quarantined number is the engine's emergency brake: it has tripped enough risk signals
     // (docs/08-antiban.md, health scoring) that sending more is the last thing it should do.
     // Leave the message queued so it goes out if the number recovers to active, never fail it.
     if (job.senderStatus === 'quarantined') {
-      ctx.logger.warn(
-        { messageId, senderId: job.senderIdentityId },
-        'sender quarantined — leaving message queued'
-      );
-      return;
+      if (!advisory) {
+        ctx.logger.warn(
+          { messageId, senderId: job.senderIdentityId },
+          'sender quarantined — leaving message queued'
+        );
+        return;
+      }
+      await bypass('quarantined');
     }
 
     // ── the recovery gate (Layer 6) ───────────────────────────────────────────────────
@@ -417,14 +438,17 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       recoveryUntil: job.recoveryUntil === null ? null : new Date(job.recoveryUntil)
     });
     if (recovery.phase === 'paused') {
-      ctx.logger.warn(
-        {
-          messageId, senderId: job.senderIdentityId,
-          incident: recovery.incident, resumesAt: recovery.resumesAt?.toISOString()
-        },
-        'sender in recovery pause — leaving message queued'
-      );
-      return;
+      if (!advisory) {
+        ctx.logger.warn(
+          {
+            messageId, senderId: job.senderIdentityId,
+            incident: recovery.incident, resumesAt: recovery.resumesAt?.toISOString()
+          },
+          'sender in recovery pause — leaving message queued'
+        );
+        return;
+      }
+      await bypass(`recovery_pause:${recovery.incident}`);
     }
 
     // ── the anti-ban gate ────────────────────────────────────────────────────────────
@@ -443,7 +467,10 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       ...(recovery.phase === 'ramping' ? { recoveryCapFraction: recovery.capFraction } : {})
     });
 
-    if (!pacing.allowed) {
+    let delayMs = pacing.allowed ? pacing.delayMs : 2_000;
+    if (!pacing.allowed && advisory) {
+      await bypass(`pacing:${pacing.reason}`);
+    } else if (!pacing.allowed) {
       // Left queued, exactly like a disconnected sender: a message that is merely early is
       // not a failed message, and failing it would lose it. The sweep retries.
       ctx.logger.warn(
@@ -460,12 +487,13 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
     // Who the message is going to. A stranger send waits longer than a reply, and starting too
     // many brand-new conversations too fast is refused outright — cold-blasting a fresh list is
     // one of the top ban signals (docs/08-antiban.md). Opt-in; skipped when unconfigured.
-    let delayMs = pacing.delayMs;
     if (ctx.contactGraph) {
       const graph = await checkContactGraph(
         ctx.db, job.senderIdentityId, job.contactId, ctx.contactGraph
       );
-      if (!graph.allowed) {
+      if (!graph.allowed && advisory) {
+        await bypass(`contact_graph:${graph.reason}`);
+      } else if (!graph.allowed) {
         // Left queued like any paced message — a stranger held back by the new-contact throttle
         // has not failed, it is waiting its turn.
         ctx.logger.warn(
@@ -479,7 +507,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       }
       // Stretch the pause by the relationship multiplier, capped so a stranger at a slow hour is
       // paced, not parked for a minute. The base delay is already circadian-scaled.
-      delayMs = Math.min(30_000, Math.round(delayMs * graph.delayMultiplier));
+      if (graph.allowed) delayMs = Math.min(30_000, Math.round(delayMs * graph.delayMultiplier));
     }
 
     // Recipient's day (Layer 3): circadian above is the sender's clock. Infer the recipient's zone
@@ -490,7 +518,9 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
       const theirTz = timezoneForPhone(job.recipientValue);
       if (theirTz && theirTz !== ctx.limits.circadianTimezone) {
         const theirs = circadianActivity(localHour(new Date(), theirTz));
-        if (theirs < CIRCADIAN_QUIET_THRESHOLD) {
+        if (theirs < CIRCADIAN_QUIET_THRESHOLD && advisory) {
+          await bypass(`recipient_hours:${theirTz}`);
+        } else if (theirs < CIRCADIAN_QUIET_THRESHOLD) {
           ctx.logger.warn(
             { messageId, senderId: job.senderIdentityId, recipientTimezone: theirTz },
             `send paced: recipient is outside their sending hours (${theirTz})`
@@ -580,7 +610,8 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
     SELECT c.id, c.org_id AS "orgId", c.body, c.sender_identity_id AS "senderIdentityId",
            si.warmup_started_at AS "warmupStartedAt",
            si.daily_cap_override AS "dailyCapOverride",
-           si.last_inbound_at AS "lastInboundAt"
+           si.last_inbound_at AS "lastInboundAt",
+           c.gate_overrides AS "gateOverrides", si.enforcement AS "enforcement"
     FROM campaign c
     JOIN sender_identity si ON si.id = c.sender_identity_id
     WHERE c.status = 'running' AND si.status <> 'quarantined'
@@ -591,8 +622,10 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
   for (const campaign of rows as unknown as Array<{
     id: string; orgId: string; body: string; senderIdentityId: string;
     warmupStartedAt: string | null; dailyCapOverride: number | null; lastInboundAt: string | null;
+    gateOverrides: string[]; enforcement: string;
   }>) {
     const tenant = tenantRunner(ctx, campaign.orgId);
+    const advisory = campaign.enforcement === 'advisory';
 
     // What this sender may still send today, after everything it has already sent —
     // including replies an agent sent by hand. A campaign gets the remainder, never a
@@ -620,13 +653,18 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
     );
     // Messages already waiting count against the allowance, or a sweep every few seconds
     // would queue the whole audience before the first one had gone out.
-    const room = Math.max(0, ceiling - u.sentToday - u.alreadyQueued);
+    // Advisory mode (D-29) does not enforce the ceiling, but a sweep still queues a bounded batch
+    // rather than the whole audience at once.
+    const room = advisory
+      ? Math.max(0, (ctx.sweepBatchSize ?? 200) - u.alreadyQueued)
+      : Math.max(0, ceiling - u.sentToday - u.alreadyQueued);
 
     if (room > 0) {
       queued += await dispatchCampaign(tenant, ctx.kms, {
         orgId: campaign.orgId, campaignId: campaign.id,
         senderIdentityId: campaign.senderIdentityId, body: campaign.body, limit: room,
-        identicalBodyCap: ctx.limits.identicalBodyCap ?? Number.MAX_SAFE_INTEGER
+        identicalBodyCap: ctx.limits.identicalBodyCap ?? Number.MAX_SAFE_INTEGER,
+        gateOverrides: campaign.gateOverrides, advisory
       });
     }
     await tenant((tx) => reconcileCampaign(tx, campaign.orgId, campaign.id));

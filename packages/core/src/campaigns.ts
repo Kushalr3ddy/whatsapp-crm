@@ -5,6 +5,7 @@ import { dailyCeiling, type PacingLimits } from './pacing.js';
 import { renderBody } from './body-variation.js';
 import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
 import type { TenantWork } from './ingestion.js';
+import { blockingPolicyGate, POLICY_SKIP_REASON } from './policy-gates.js';
 
 /**
  * Bulk sends.
@@ -245,6 +246,10 @@ export async function dispatchCampaign(
     orgId: string; campaignId: string; senderIdentityId: string; body: string; limit: number;
     /** Most identical message bodies this sender may hold within a rolling 24h (Layer 3 / D-26). */
     identicalBodyCap: number;
+    /** Policy gates an admin lifted for this campaign (`engagement`, `cooldown`, `duplicate_campaign`). */
+    gateOverrides?: readonly string[];
+    /** Advisory sender (D-29): the identical-body cap is computed but not enforced. */
+    advisory?: boolean;
   }
 ): Promise<number> {
   if (input.limit <= 0) return 0;
@@ -271,6 +276,18 @@ export async function dispatchCampaign(
     let queued = 0;
 
     for (const recipient of batch) {
+      // Recipient-experience gates: skip with a reported reason unless an admin lifted them.
+      const blocked = await blockingPolicyGate(tx, {
+        orgId: input.orgId, campaignId: input.campaignId, contactId: recipient.contactId,
+        overrides: input.gateOverrides ?? []
+      });
+      if (blocked !== null) {
+        await tx.execute(sql`
+          UPDATE campaign_recipient SET status = 'skipped', skip_reason = ${POLICY_SKIP_REASON[blocked]}
+          WHERE id = ${recipient.id} AND org_id = ${input.orgId}`);
+        continue;
+      }
+
       // Render this recipient's copy first — spintax picks a wording, {{name}} fills from the
       // contact (D-26) — because the identical-body check keys off the rendered body's blind index.
       const body = renderBody(input.body, { name: recipient.contactName ?? '' });
@@ -285,7 +302,7 @@ export async function dispatchCampaign(
             AND m.body_hmac = ${hmac} AND m.created_at > now() - interval '1 day'`);
         already = (c as unknown as Array<{ n: number }>)[0]!.n;
       }
-      if (already >= input.identicalBodyCap) {
+      if (already >= input.identicalBodyCap && !input.advisory) {
         // Too many identical bodies this window — leave this recipient pending (never failed: it
         // has not gone wrong, it waits for the window to free or for the operator to add variation).
         identicalSeen.set(hmac, already);
