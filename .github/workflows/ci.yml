@@ -35,9 +35,16 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+    # The migration runner validates the app's config at boot (required secrets are a hard crash, never
+    # a silent fallback), so the job needs real-shaped throwaway values even though no test uses them.
     env:
       DATABASE_URL: postgresql://dev:dev@localhost:5434/whatsapp_crm_test
       NODE_ENV: test
+      APP_SECRET: ci-only-app-secret-0123456789abcdef0123456789abcdef
+      PUBLIC_URL: http://localhost:3000
+      ENCRYPTION_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+      ENCRYPTION_INDEX_KEY: ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100
+      API_KEY: ci-only-bootstrap-api-key-0123456789abcdef
 
     steps:
       - uses: actions/checkout@v4
