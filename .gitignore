@@ -28,7 +28,7 @@ config/preset.local.yml
 
 # runtime state
 uploads/
-storage/
+/storage/
 logs/
 *.log
 
