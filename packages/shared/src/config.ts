@@ -28,6 +28,14 @@ const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default('0.0.0.0'),
+  // Browser origins allowed to call the API from another host or port, comma-separated, each exactly
+  // `scheme://host[:port]` (e.g. `http://192.168.1.20:4000`). Empty = none. Server-to-server callers
+  // (a backend, curl) need no entry — CORS only constrains browsers (apps/api/src/cors.ts).
+  CORS_ALLOWED_ORIGINS: z.string().default('').transform((v) =>
+    v.split(',').map((o) => o.trim().replace(/\/$/, '')).filter((o) => o !== '')
+  ).refine((list) => list.every((o) => /^https?:\/\/[^/\s]+$/.test(o)), {
+    message: 'each origin must look like http://host:port (no path, no wildcard)'
+  }),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 
   /** Which roles this process runs. `all` is the lean single-process default. */

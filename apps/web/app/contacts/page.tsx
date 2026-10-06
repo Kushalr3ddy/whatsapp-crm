@@ -48,6 +48,12 @@ export default async function ContactsPage(
       <header className="mb-5">
         <h1 className="text-lg font-semibold tracking-tight">Contacts</h1>
         <p className="mt-1 text-sm text-muted">Search by name, phone or email; label people with tags.</p>
+        <p className="mt-1 text-xs text-muted">
+          Export (admins):{' '}
+          <a href="/contacts/export?format=csv" className="text-accent underline">CSV for a spreadsheet</a>
+          {' · '}
+          <a href="/contacts/export?format=vcf" className="text-accent underline">vCard for a phone</a>
+        </p>
       </header>
 
       <form className="mb-3 flex gap-2">

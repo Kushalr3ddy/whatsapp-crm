@@ -1021,3 +1021,23 @@ daily — which is also the only way to confirm anti-ban #5–#8 behave on real 
 
 **What brings it back:** a need for anything business-critical to go over the official channel (P8), or
 the decision to take the engine from the simulation to a real number (the pilot).
+
+---
+
+## D-35 · Contact export to Excel (.xlsx)
+
+**What:** the admin contact export (built 2026-10-06 as CSV and vCard) as an `.xlsx` too. Pinned by Kushal
+("just csv for now"). CSV opens in Excel already; `.xlsx` adds typed columns and a styled header, using the
+`exceljs` dependency the import already carries.
+
+**What brings it back:** someone asking for a formatted workbook rather than a CSV.
+
+---
+
+## D-36 · Contact import from a vCard (.vcf)
+
+**What:** loading contacts from a phone's `.vcf` export (names, numbers, emails). Pinned by Kushal. The
+shape is known: parse the vCard to rows and feed the existing import pipeline, the way an `.xlsx` is
+converted to CSV, so duplicates and phone normalisation behave identically.
+
+**What brings it back:** the first operator with their contacts on a phone rather than in a spreadsheet.

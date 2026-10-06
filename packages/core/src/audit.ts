@@ -100,6 +100,10 @@ export const AUDIT = {
   conversationRead: 'conversation.read',
   mediaDownloaded: 'media.downloaded',
 
+  // A bulk export of the contact book — the easiest way to leak everything at once, so it is
+  // always recorded: who, which format, and how many people.
+  contactsExported: 'contacts.exported',
+
   // Inbox collaboration. Assignment and resolution are the acts two agents can disagree
   // about — "who was meant to answer this?", "who closed it?" — so each writes a row with the
   // value on either side, which is what makes those questions answerable after the fact.

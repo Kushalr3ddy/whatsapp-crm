@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { normalisePhone } from '@crm/shared';
-import { requireScope } from '../auth.js';
+import { writeAudit, AUDIT, csvHeader, csvLine, vcardEntry, fetchExportBatch } from '@crm/core';
+import { requireScope, requireRole, auditActor } from '../auth.js';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
 
@@ -49,6 +50,67 @@ const attachTag = z.object({ tagId: z.string().uuid() });
  */
 export function contactsRouter(defaultCountry: string): Router {
   const router = Router();
+
+  /**
+   * Exports everyone the system holds about the people it messages, as CSV or vCard.
+   *
+   * **Admin session only** (an API key is refused — an integration should not be able to walk out
+   * with the whole book), **at most 5 exports an hour per organisation**, and **audited before any
+   * byte is sent** with the format and the number of people, so an abandoned download still counts.
+   * People's details only, never message text. Streamed in keyset batches, so a large book never
+   * sits in memory as one result. `Content-Disposition: attachment`, `nosniff`, `no-store` — the
+   * same posture as a stored file.
+   */
+  router.get('/export', requireRole('admin'), async (req: Request, res: Response) => {
+    const format = req.query.format === 'vcf' ? 'vcf' : req.query.format === undefined || req.query.format === 'csv' ? 'csv' : null;
+    if (format === null) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'format must be `csv` or `vcf`.'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+
+    const gate = await req.tenant!(async (tx) => {
+      const recent = (await tx.execute(sql`
+        SELECT count(*)::int AS n FROM audit_log
+        WHERE org_id = ${orgId} AND action = ${AUDIT.contactsExported}
+          AND at > now() - interval '1 hour'`)) as unknown as Array<{ n: number }>;
+      if ((recent[0]?.n ?? 0) >= 5) return { limited: true as const };
+      const total = (await tx.execute(sql`
+        SELECT count(*)::int AS n FROM contact WHERE org_id = ${orgId} AND deleted_at IS NULL`)
+      ) as unknown as Array<{ n: number }>;
+      await writeAudit(tx, {
+        orgId, actor: auditActor(req), action: AUDIT.contactsExported, targetType: 'contact',
+        after: { format, people: total[0]?.n ?? 0 }, ip: req.ip ?? null, requestId: String(req.id)
+      });
+      return { limited: false as const };
+    });
+    if (gate.limited) {
+      res.status(429).setHeader('Retry-After', '3600').json(problem(req, 429, 'EXPORT_RATE_LIMITED',
+        'At most 5 exports an hour. Try again later.'));
+      return;
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.status(200);
+    res.setHeader('Content-Type', format === 'csv' ? 'text/csv; charset=utf-8' : 'text/vcard; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="contacts-${stamp}.${format}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (format === 'csv') res.write('\uFEFF' + csvHeader());     // BOM so Excel reads UTF-8 names
+
+    let after: string | null = null;
+    for (;;) {
+      const batch = await req.tenant!((tx) => fetchExportBatch(tx, orgId, after, 500));
+      if (batch.length === 0) break;
+      for (const row of batch) {
+        const chunk = format === 'csv' ? csvLine(row) : vcardEntry(row);
+        if (chunk !== null) res.write(chunk);
+      }
+      after = batch[batch.length - 1]!.id;
+      if (batch.length < 500) break;
+    }
+    res.end();
+  });
 
   /** Creates a contact with its identities, refusing when an identity already names someone. */
   router.post('/', requireScope('contacts:write'), async (req: Request, res: Response) => {

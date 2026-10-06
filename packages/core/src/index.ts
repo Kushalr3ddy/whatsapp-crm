@@ -66,6 +66,10 @@ export {
   DECRYPT_BURST_COUNT, DECRYPT_BURST_WINDOW_MS, DECRYPT_BURST_LIVE_MS
 } from './decrypt-failures.js';
 
+export {
+  csvCell, csvHeader, csvLine, vcardEntry, fetchExportBatch, EXPORT_COLUMNS, type ExportRow
+} from './contact-export.js';
+
 export { timezoneForPhone, COUNTRY_TIMEZONES } from './recipient-timezone.js';
 
 export {

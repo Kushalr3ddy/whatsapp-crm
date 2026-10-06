@@ -10,6 +10,7 @@ import type { StorageDriver } from '@crm/storage';
 import { attachPrincipal, requireAuthenticated, requireTenant, requireCsrf } from './auth.js';
 import { withTenant } from './tenant.js';
 import { rateLimitApiKey } from './rate-limit.js';
+import { corsAllowlist } from './cors.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
@@ -81,6 +82,9 @@ export function buildApp(deps: AppDependencies): Express {
       }
     })
   );
+
+  // Allowlisted browser origins (and their preflights) before anything that needs credentials.
+  app.use(corsAllowlist(deps.config.CORS_ALLOWED_ORIGINS ?? []));
 
   app.use(express.json({ limit: '1mb' }));
   // The import upload is the one route that takes a file rather than JSON. Scoped to that
