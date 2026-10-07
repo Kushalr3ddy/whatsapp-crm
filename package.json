@@ -50,7 +50,9 @@
     "wa:link": "tsx --env-file-if-exists=.env scripts/wa-link.ts",
     "wa:send": "tsx --env-file-if-exists=.env scripts/wa-link.ts send",
     "//4": "─── administration: provisioning and support (scripts/admin.ts) ───",
-    "admin": "tsx --env-file-if-exists=.env scripts/admin.ts"
+    "admin": "tsx --env-file-if-exists=.env scripts/admin.ts",
+    "//5": "─── local testing only: sign in → broadcast → send, on a fake number (scripts/local-flow.ts) ───",
+    "local:flow": "tsx --env-file-if-exists=.env scripts/local-flow.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",

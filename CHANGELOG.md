@@ -13,6 +13,33 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-07 — Local walkthrough scripts
+- **`npm run local:flow`** (`scripts/local-flow.ts`): local-only end-to-end walkthrough — real login route →
+  5 contacts → draft a broadcast → dry-run preview → start → real gateway sweep against the fake number →
+  per-recipient results, exits non-zero on a mismatch. `--keep` / `--reset`. Refuses a non-local database.
+- **`tests/e2e/broadcast-flow.spec.ts`**: the same flow in the browser (UI create from a tag → Start → Cancel).
+  Nothing can send: the number it creates is never linked. 7 Playwright tests total.
+- Confirmed there is no signup page (accounts come from `npm run admin`).
+
+### 2026-10-06 — Gates, advisory mode, status line, custom fields
+- **Recipient-experience gates** (`policy-gates.ts`): engagement lock (owned thread active in 48 h),
+  cooldown (another campaign within 14 d), duplicate-campaign. A blocked recipient is `skipped` with
+  `engaged` / `cooldown` / `in_other_campaign`. An admin lifts them per campaign at start
+  (`overrideGates` + a ≥10-char reason, audited as `campaign.gates_overridden`); never the number-protecting
+  limits. Broadcast page: "Start with overrides…" (admin) and a banner on overridden campaigns.
+- **Advisory mode (D-29)**, per number: `POST /senders/:id/enforcement` (admin, reason, audited). Lets a number
+  past quarantine / recovery pause / pacing / new-contact throttle / recipient hours / identical-body cap,
+  counting each bypass; DNC, consent and a dead socket stay hard. Persistent red banner on the Numbers page.
+- **Number status line:** `GET /conversations/:id/sender-status`, a `senderStatusAction` server action, the
+  composer polls it and locks reply mode (notes still allowed) when the number can't send; header shows
+  connected / quarantined / not connected. `message.hold_reason` records why a queued message waits and the
+  thread shows "waiting: …".
+- **Custom fields:** `custom_field` table (text/number/date/select), admin-defined; values validated on write
+  (`PUT /contacts/:id/custom-fields`, contact create); contact UI; `{{key}}` in campaign bodies. Migrations 0019
+  and 0020. Follow-ups pinned (D-40).
+- Pins: D-31 priority, D-37..D-39 (Meta), D-40, D-41 (gateway outside RLS, priority). `CONTEXT.md` deleted.
+  Fresh docs PDF in the repo root (gitignored). 556 vitest, 7 Playwright, 6 simulation scenarios.
+
 ### 2026-10-06 — Contact export, CORS allowlist, CI fixed
 - **Admin contact export.** `GET /contacts/export?format=csv|vcf`: admin-only (agents and API keys 403),
   keyset-streamed, audited (`contacts.exported`), 5 per hour (429 `EXPORT_RATE_LIMITED`). CSV has a BOM

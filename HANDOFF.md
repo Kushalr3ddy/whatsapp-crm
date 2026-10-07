@@ -7,34 +7,39 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 
 ---
 
-## ▶ Pick up here (2026-10-06)
+## ▶ Pick up here (2026-10-07)
 
-**Standing instruction (Kushal, 2026-10-06): ignore the docs unless he asks.** Don't read or update
-HANDOFF / CHANGELOG / docs on your own; "pin it" still means a new D-<n> in `docs/21-deferred.md`.
+**Standing rules (Kushal):** ignore the docs unless asked ("pin it" = a new D-<n> in
+`docs/21-deferred.md`); **never add a `Co-Authored-By` trailer, ever**; always run the browser tests
+and every other test after changes (`npm run check`, `npm run test:e2e`, `npm run test:sim` if the
+engine changed). `CONTEXT.md` was deleted.
 
-**State:** the anti-ban pass (#1–#8) is done, the simulation harness exists (`npm run test:sim`),
-D-25 outbound media landed, and the admin **contact export** (CSV + vCard, `GET /contacts/export`,
-audited, 5/hr) plus the **CORS allowlist** (`CORS_ALLOWED_ORIGINS`, exact origins only) are built.
-`npm run check` = typecheck + lint + **541 vitest**; `npm run test:e2e` = **4 Playwright** tests.
+**State:** anti-ban pass (#1–#8), simulation harness, D-25 outbound media, contact export + CORS
+allowlist, **recipient-experience gates** (engagement lock / 14-day cooldown / duplicate-campaign, skipped
+with a visible reason, admin-overridable per campaign with an audited reason), **advisory mode** (D-29,
+per number, admin-only, loud banner), the **number status line** in the inbox (header + composer locks
+to notes when the number can't send, polled; queued messages show "waiting: reason"), and **custom
+fields** (org-defined typed vocabulary; contact UI, API, `{{key}}` in campaigns) are all built.
+`npm run check` = **556 vitest**; `npm run test:e2e` = **7 Playwright**; `npm run test:sim` = 6 scenarios.
 
-1. **CI (GitHub Actions) was fixed this session** by reading the Actions API with the git-stored
-   credential. Causes: `.gitignore` had `storage/` which swallowed `packages/providers/storage` (now
-   `/storage/`, packages committed); the `check` job lacked the config the migration runner needs
-   (throwaway env added); gitleaks flagged those throwaway keys (`# gitleaks:allow` +
-   `.gitleaksignore`). Last verified: e2e and check green; the secrets-scan fix is commit `41c4cd7`,
-   its run result was still pending — confirm it.
-2. **Open questions for Kushal (unanswered):** (a) "2 add a new action ig?" — a new GitHub Actions
-   workflow, or an action button on the number-status line? (b) build the connected/not-connected
-   status line in the thread header and per-message "waiting: reason"? (asked "is it possible", not
-   told to build); (c) custom fields: small first version, or keep free-form? (d) delete the D-31
-   (key rotation) pin? He questioned it; OpenAPI and an SDK are explicitly not wanted.
-3. **Held, do not build:** D-19 templates, D-23 message search, D-27 opt-out, D-29 advisory mode,
-   admin-overridable gates, D-30..D-36 (Excel/vCard import, etc.).
-4. **Gateway outside tenant tx** (RLS defect) was explained, not yet pinned.
-5. Anti-ban #5–#8 and the engine have only been exercised against the fake channel and the sim, never
-   a real linked number — worth watching when one is linked.
-6. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin or
-   the `e2e-test` admin in `.env`. Printable docs: `npm run docs:pdf` → `build/whatsapp-crm-docs.pdf`.
+1. **Local walkthrough scripts (no real sends):** `npm run local:flow` signs in through the real login
+   route, adds contacts, creates + starts a broadcast and lets the real gateway code send it through the
+   fake number (`--keep` leaves the demo org, `--reset` removes it; refuses a non-local database).
+   `tests/e2e/broadcast-flow.spec.ts` is the browser version (UI create → start → cancel).
+2. **There is no signup page** — only login. Accounts are made with `npm run admin org|user|password`
+   (or the bootstrap `POST /api/v1/admin/orgs`).
+3. **Priority pins:** **D-41** the gateway runs outside row-level security (enter each org's tenant tx
+   before each job; add a cross-org test) and **D-31** key rotation.
+4. **Held, do not build:** D-19 templates, D-23 message search, D-27 opt-out (out of alpha), D-35/36/40
+   (xlsx export, vCard import, custom fields in imports/segments), D-34/37/38/39 (Meta adapter work).
+5. **Open question:** a message from a `@lid` address shows no phone. Baileys 6.7.24 has no on-demand
+   LID→number lookup, but exposes `message.key.senderPn` (when WhatsApp includes it) and a
+   `chats.phoneNumberShare` event ({lid, jid}) — our adapter ignores both today. Using them would link
+   the `wa_lid` identity to a phone on the same contact. Not built; Kushal to decide.
+6. **Real-number pilot** deferred. `ENCRYPTION_KEY` lives in `.env` locally for now.
+7. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin or the
+   `e2e-test` admin in `.env`. Printable docs: `npm run docs:pdf` → `build/…pdf` (a copy sits in the repo
+   root, gitignored).
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
