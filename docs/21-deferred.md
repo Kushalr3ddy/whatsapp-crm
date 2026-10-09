@@ -1120,3 +1120,66 @@ test that a gateway job for org A cannot touch org B's rows.
 the moment unrelated customers share one. Pinned as priority by Kushal.
 
 **What brings it back:** now, as priority; certainly before any multi-customer hosting.
+
+---
+
+## D-42 · Human takeover from an AI agent, inside a conversation
+
+**What:** when an AI agent is talking with a contact (a candidate, say), a person can stop it and continue the chat
+from there, and optionally hand it back. Requested by an end user, 2026-10-09.
+
+**Shape (design notes, nothing built):**
+- A per-conversation `automation_state` (`auto` | `paused_by_human`) with who, when and an optional reason.
+- A visible "Take over" / "Hand back" control in the thread header; the thread shows who has control.
+- While paused the AI worker must not send, and inbound messages are routed to humans only; the composer unlocks.
+- Every switch is audited. The thread lock (assignee) and all anti-ban pacing still apply to a human's messages.
+- Hand-back can carry a note ("candidate asked for a call tomorrow") for the AI to read.
+
+**Why parked:** the AI / automation runtime (F9) does not exist yet, so there is nothing to take over from. The
+conversation model, thread lock and audit log it would build on all exist.
+
+**What brings it back:** the first AI agent that sends on a number (F9), which must ship with this control.
+
+---
+
+## D-43 · Extra restriction-alert channels (webhook, email, canary self-test)
+
+**What:** the silent-restriction tracker (docs/27, built 2026-10) alerts **in the app only**: a banner, a timeline and
+a nav badge. Not built, by choice: an outbound webhook (Slack / Discord / JobPortal), email, and a **canary
+self-test**, a few test sends a day from each number to a team-owned phone, the most reliable way to catch a delay on
+an otherwise idle number.
+
+**Why parked:** Kushal chose in-app only (2026-10-09). Email needs a provider configured; webhooks wait for F8.
+
+**What brings it back:** an operator who is not looking at the app when a number is restricted.
+
+---
+
+## D-44 · Baileys 7 upgrade
+
+**What:** moving from `baileys` 6.7.24 to the 7.x line. **Not required** (assessed 2026-10-09): npm `latest` is
+7.0.0-rc14, still a release candidate, and 6.7.24 is the `legacy` tag, not deprecated and already patched for the known
+advisory. Reports exist of 7.x rcs failing QR pairing where 6.7.23 worked, and of 463 timelocks on rc13.
+
+**What would break:** inbound identity (LID becomes the primary address, the phone number moves to `remoteJidAlt`; our
+`storeInboundMessage` keeps one identity per message, so phone contacts would fork into `wa_lid` duplicates); stored
+sessions migrate one way to LID addressing (snapshot `channel_auth_state` first; a rollback is a re-link); more auth-state
+key types (`lid-mapping`, `device-list`, `tctoken`, ...) and a heavier Postgres key store; `isJidUser` is now `isPnUser`;
+`chats.phoneNumberShare` is replaced by `lid-mapping.update`; `fetchLatestBaileysVersion` is brittle; new WASM/libsignal
+dependencies. The imports we use compile unchanged, and only `packages/channels/baileys/src/{index,auth-adapter}.ts`
+touch Baileys.
+
+**What brings it back:** a stable 7.0.0, or WhatsApp breaking 6.x. Do D-45 first. Needs a throwaway number to test.
+
+---
+
+## D-45 · Link a `@lid` address to its phone number
+
+**What:** messages from a `...@lid` address carry no number, so the contact shows none. Baileys 6.7.24 already exposes
+the number sometimes: `message.key.senderPn` / `participantPn`, and the `chats.phoneNumberShare` event (`{lid, jid}`).
+Our adapter ignores both. Reading them would attach a phone identity to the `wa_lid` contact and merge it into the
+existing phone contact when one matches. WhatsApp does not always supply it (people who hide their number may never
+resolve), and 6.x has no on-demand lookup.
+
+**Why parked:** offered to Kushal, not yet scheduled (optional PR 6 of the 2026-10-09 plan). It is also the same change
+D-44 would force, so doing it first de-risks the upgrade.
