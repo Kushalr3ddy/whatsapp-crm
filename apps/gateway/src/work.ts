@@ -24,6 +24,9 @@ interface QueuedSend {
   readonly enforcement: string;
   /** Who the message is to, for the contact-graph gate's relationship lookup. */
   readonly contactId: string;
+  /** Flagged do-not-contact; refused unless an admin overrode it for this message (`dncOverride`). */
+  readonly doNotContact: boolean;
+  readonly dncOverride: boolean;
   readonly recipientValue: string;
   readonly recipientKind: string;
   readonly bodyEnc: Uint8Array | null;
@@ -364,10 +367,12 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            si.recovery_incident AS "recoveryIncident",
            si.recovery_until AS "recoveryUntil",
            COALESCE((si.health->>'deliveryRatio')::float, 1) AS "deliveryRatio",
-           v.contact_id AS "contactId",
+           v.contact_id AS "contactId", ct.do_not_contact AS "doNotContact",
+           m.dnc_override AS "dncOverride",
            ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
     FROM message m
     JOIN conversation v   ON v.id = m.conversation_id
+    JOIN contact ct       ON ct.id = v.contact_id
     JOIN sender_identity si ON si.id = v.sender_identity_id
     LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
     LEFT JOIN media_asset ma ON ma.id = m.media_id AND ma.org_id = m.org_id
@@ -382,6 +387,14 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
 
   if (job.bodyEnc === null) {
     await markMessageFailed(ctx.db, messageId, 'empty_body');
+    return;
+  }
+
+  // The last line of the do-not-contact gate. It is checked when a message is created, but a contact
+  // can be flagged after that, and advisory mode relaxes only number-protecting holds — never this.
+  // Only an admin's explicit, audited per-message override lets it through.
+  if (job.doNotContact && !job.dncOverride) {
+    await markMessageFailed(ctx.db, messageId, 'do_not_contact');
     return;
   }
 

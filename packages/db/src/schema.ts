@@ -387,6 +387,13 @@ export const message = pgTable('message', {
    * waiting and cleared when it sends, so the inbox can say "waiting: reason" instead of silence.
    */
   holdReason: text('hold_reason'),
+  /**
+   * An admin knowingly sent this to someone flagged do-not-contact (the override is a per-message,
+   * audited decision with a reason). The gateway's last-line check refuses to send to a
+   * do-not-contact contact unless this is set, so a flag raised after queueing still stops a message.
+   */
+  dncOverride: boolean('dnc_override').notNull().default(false),
+  dncOverrideReason: text('dnc_override_reason'),
   sentBy: text('sent_by').notNull().default('system'),
   sentByUserId: uuid('sent_by_user_id').references(() => appUser.id, { onDelete: 'set null' }),
 

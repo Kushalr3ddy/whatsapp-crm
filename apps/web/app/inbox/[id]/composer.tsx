@@ -28,7 +28,7 @@ function substitute(body: string, contactName: string | null): string {
  * because a send can be refused and a message that then vanishes is worse than a short wait.
  */
 export function Composer(
-  { conversationId, to, cannedReplies, contactName, replyLocked, lockedBy, initialStatus }:
+  { conversationId, to, cannedReplies, contactName, replyLocked, lockedBy, initialStatus, doNotContact, isAdmin }:
   {
     conversationId: string; to: string | null; cannedReplies: CannedReply[];
     contactName: string | null;
@@ -38,11 +38,19 @@ export function Composer(
     lockedBy: string | null;
     /** The number's state when the page loaded; the box keeps it fresh itself. Null if unknown. */
     initialStatus: SenderStatus | null;
+    /** The contact is flagged do-not-contact: replies are blocked, or need an admin override. */
+    doNotContact: boolean;
+    isAdmin: boolean;
   }
 ) {
+  const [overrideOn, setOverrideOn] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const [senderStatus, setSenderStatus] = useState<SenderStatus | null>(initialStatus);
   // A number that cannot send cannot take a reply: it would only sit queued. Notes still work.
   const numberDown = senderStatus !== null && !senderStatus.canSend;
+  // Do-not-contact: an agent is simply blocked; an admin may override, with a reason (audited).
+  const dncBlocked = doNotContact && !isAdmin;
+  const dncNeedsOverride = doNotContact && isAdmin && !(overrideOn && overrideReason.trim().length >= 10);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -53,7 +61,7 @@ export function Composer(
 
   // A locked thread opens in note mode: an internal note is always allowed (it is not sent to
   // the contact), only the reply to the contact is held by whoever has the thread.
-  const [mode, setMode] = useState<'reply' | 'note'>(replyLocked || numberDown ? 'note' : 'reply');
+  const [mode, setMode] = useState<'reply' | 'note'>(replyLocked || numberDown || dncBlocked ? 'note' : 'reply');
 
   // The number dropped while the box was open: drop to note mode so nothing typed is mistaken for a reply.
   useEffect(() => { if (numberDown) setMode('note'); }, [numberDown]);
@@ -67,7 +75,7 @@ export function Composer(
    * contact, so it is only offered in reply mode and respects the same thread lock.
    */
   function sendFile(file: File) {
-    if (pending || replyLocked || numberDown) return;
+    if (pending || replyLocked || numberDown || doNotContact) return;
     const form = new FormData();
     form.set('file', file);
     form.set('caption', text);
@@ -83,13 +91,13 @@ export function Composer(
   /** Sends the current text down whichever path the mode selects, keeping it on a refusal. */
   function submit() {
     if (text.trim() === '' || pending) return;
-    if (mode === 'reply' && (replyLocked || numberDown)) return;
+    if (mode === 'reply' && (replyLocked || numberDown || dncBlocked || dncNeedsOverride)) return;
     const body = text;
     setError(null);
     startTransition(async () => {
       const result = mode === 'note'
         ? await saveNote(conversationId, body)
-        : await sendReply(conversationId, body);
+        : await sendReply(conversationId, body, doNotContact ? { reason: overrideReason.trim() } : undefined);
       if (result.ok) setText('');
       else setError(result.error ?? 'Failed.');
     });
@@ -112,7 +120,7 @@ export function Composer(
   /** Inserts a saved reply's body, with contact variables filled in, and returns to the box. */
   function insertCanned(id: string) {
     const reply = cannedReplies.find((c) => c.id === id);
-    if (reply === undefined || replyLocked || numberDown) return;
+    if (reply === undefined || replyLocked || numberDown || dncBlocked) return;
     setMode('reply');
     setText((current) => current + substitute(reply.body, contactName));
   }
@@ -122,6 +130,26 @@ export function Composer(
   return (
     <form onSubmit={onSubmit} className="border-t border-border bg-surface px-5 py-3">
       {error !== null && <p className="mb-2 text-xs text-danger">{error}</p>}
+
+      {doNotContact && (
+        <div role="alert" className="mb-2 rounded-md border border-danger/50 px-2.5 py-1.5 text-[11px] text-danger">
+          This contact is marked <strong>do not contact</strong>.
+          {isAdmin ? (
+            <>
+              {' '}As an admin you can message them anyway, knowingly:
+              <label className="mt-1 flex items-center gap-1.5">
+                <input type="checkbox" checked={overrideOn} onChange={(e) => { setOverrideOn(e.target.checked); }} />
+                Send anyway (override do-not-contact)
+              </label>
+              {overrideOn && (
+                <input value={overrideReason} onChange={(e) => { setOverrideReason(e.target.value); }}
+                  placeholder="Why? At least 10 characters — recorded in the audit log" aria-label="Override reason"
+                  className="mt-1 w-full rounded-md border border-border bg-canvas px-2 py-1 text-ink" />
+              )}
+            </>
+          ) : <> Replies are blocked. Ask an admin if this needs to go out. You can still add an internal note.</>}
+        </div>
+      )}
 
       {numberDown && (
         <p role="alert" className="mb-2 rounded-md border border-danger/50 px-2.5 py-1.5 text-[11px] text-danger">
@@ -143,8 +171,8 @@ export function Composer(
         <div className="flex overflow-hidden rounded-md border border-border text-xs">
           <button
             type="button"
-            onClick={() => { if (!replyLocked && !numberDown) setMode('reply'); }}
-            disabled={replyLocked || numberDown}
+            onClick={() => { if (!replyLocked && !numberDown && !dncBlocked) setMode('reply'); }}
+            disabled={replyLocked || numberDown || dncBlocked}
             className={`px-2.5 py-1 font-medium disabled:opacity-40 ${isNote ? 'text-muted' : 'bg-accent text-white'}`}
           >
             Reply
@@ -186,7 +214,7 @@ export function Composer(
             <button
               type="button" title="Attach a file (image, video, audio, PDF or Office document)"
               onClick={() => { fileInput.current?.click(); }}
-              disabled={pending || replyLocked || numberDown}
+              disabled={pending || replyLocked || numberDown || doNotContact}
               className="rounded-lg border border-border px-3 py-2 text-sm text-muted disabled:opacity-40"
             >
               📎

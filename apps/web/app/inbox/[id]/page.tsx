@@ -243,6 +243,8 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
         replyLocked={lockedByOther}
         lockedBy={lockedByOther ? conversation?.assigneeName ?? 'another agent' : null}
         initialStatus={senderStatus}
+        doNotContact={conversation?.doNotContact ?? false}
+        isAdmin={me?.role === 'admin'}
       />
     </>
   );

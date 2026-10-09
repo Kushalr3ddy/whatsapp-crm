@@ -7,6 +7,9 @@ import type { Transaction } from '@crm/db';
  * These protect the *person's* experience, not the number's survival, which is why — unlike the
  * pacing ceilings — an admin may lift them, knowingly, per campaign, with a reason and an audit row:
  *
+ *  - **dnc**: the contact is flagged do-not-contact. Unlike the others this protects the person, not the
+ *    number, so it is the one an admin should think hardest about lifting — but it is liftable (Kushal,
+ *    2026-10-09), per campaign, with a reason, audited;
  *  - **engagement**: another agent owns a live conversation with this person right now, and a
  *    broadcast landing in the middle of it is rude and confusing;
  *  - **cooldown**: this person was already sent a *campaign* message recently — repeating a
@@ -16,12 +19,13 @@ import type { Transaction } from '@crm/db';
  * A blocked recipient is **skipped with a reason, never silently dropped**, so it shows in the
  * campaign's results.
  */
-export const POLICY_GATES = ['engagement', 'cooldown', 'duplicate_campaign'] as const;
+export const POLICY_GATES = ['dnc', 'engagement', 'cooldown', 'duplicate_campaign'] as const;
 /** One of the three overridable recipient-experience gates. */
 export type PolicyGate = (typeof POLICY_GATES)[number];
 
 /** `skip_reason` written for each gate. */
 export const POLICY_SKIP_REASON: Record<PolicyGate, string> = {
+  dnc: 'dnc',
   engagement: 'engaged',
   cooldown: 'cooldown',
   duplicate_campaign: 'in_other_campaign'
@@ -50,6 +54,12 @@ export async function blockingPolicyGate(
 ): Promise<PolicyGate | null> {
   const on = (g: PolicyGate): boolean => !input.overrides.includes(g);
   const { orgId, campaignId, contactId } = input;
+
+  if (on('dnc')) {
+    const r = await tx.execute(sql`
+      SELECT 1 FROM contact WHERE id = ${contactId} AND org_id = ${orgId} AND do_not_contact`);
+    if ((r as unknown as unknown[]).length > 0) return 'dnc';
+  }
 
   if (on('engagement')) {
     const r = await tx.execute(sql`

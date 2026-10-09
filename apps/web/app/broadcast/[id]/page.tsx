@@ -166,6 +166,7 @@ function Controls({ id, status, isAdmin }: { id: string; status: string; isAdmin
 
 /** What each `skip_reason` means, for the per-recipient list. */
 const SKIP_LABEL: Record<string, string> = {
+  dnc: 'marked do-not-contact',
   no_phone: 'no phone number',
   cancelled: 'campaign cancelled',
   engaged: 'an agent is mid-conversation',
@@ -175,6 +176,7 @@ const SKIP_LABEL: Record<string, string> = {
 
 /** Plain-language labels for the recipient-experience gates an admin may lift. */
 const GATE_LABEL: Record<string, string> = {
+  dnc: 'Do-not-contact — they asked not to be messaged (use with great care)',
   engagement: 'Engagement lock — an agent is mid-conversation with them',
   cooldown: 'Cooldown — sent a campaign in the last 14 days',
   duplicate_campaign: 'Duplicate campaign — waiting in another live campaign'

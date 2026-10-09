@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { listContacts, listTags, listSenders, listCustomFields, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Contact, Tag, Sender, CustomField } from '@/lib/crm';
 import {
-  createFieldAction, deleteFieldAction, saveContactFieldsAction,
+  createFieldAction, deleteFieldAction, saveContactFieldsAction, setDncAction,
   createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
 } from './actions';
 
@@ -265,11 +265,22 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
           </p>
           </div>
         </div>
-        {contact.doNotContact && (
-          <span className="shrink-0 rounded-md border border-danger/50 px-2 py-0.5 text-[11px] text-danger">
-            do not contact
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {contact.doNotContact && (
+            <span className="rounded-md border border-danger/50 px-2 py-0.5 text-[11px] text-danger">
+              do not contact
+            </span>
+          )}
+          <form action={setDncAction}>
+            <input type="hidden" name="contactId" value={contact.id} />
+            <input type="hidden" name="value" value={contact.doNotContact ? 'false' : 'true'} />
+            <button type="submit" title={contact.doNotContact
+              ? 'Allow messaging this person again' : 'Never message this person (an admin can still override)'}
+              className="rounded-md border border-border px-2 py-0.5 text-[11px] text-muted hover:bg-accent-soft">
+              {contact.doNotContact ? 'Allow contact' : 'Do not contact'}
+            </button>
+          </form>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">

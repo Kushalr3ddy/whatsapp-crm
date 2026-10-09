@@ -333,6 +333,41 @@ export function contactsRouter(defaultCountry: string): Router {
       res.status(204).end();
     });
 
+  /**
+   * Flags or clears do-not-contact. A flagged contact is refused by every send path (a message, a
+   * campaign recipient, the gateway's last-line check) unless an admin overrides it, with a reason,
+   * for one message or one campaign. The reason is kept on the contact and the change is audited.
+   */
+  router.put('/:id/do-not-contact', requireUuidParam('id'), requireScope('contacts:write'),
+    async (req: Request, res: Response) => {
+      const body = z.object({
+        value: z.boolean(), reason: z.string().trim().max(500).optional()
+      }).safeParse(req.body);
+      if (!body.success) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send { "value": true|false, "reason": "…" }.'));
+        return;
+      }
+      const orgId = req.crm!.orgId;
+      const { value, reason } = body.data;
+      const found = await req.tenant!(async (tx) => {
+        const rows = await tx.execute(sql`
+          UPDATE contact SET
+            do_not_contact = ${value}, dnc_reason = ${value ? reason ?? null : null},
+            dnc_at = ${value ? sql`now()` : null}, updated_at = now()
+          WHERE id = ${req.params.id} AND org_id = ${orgId} AND deleted_at IS NULL
+          RETURNING id`);
+        if ((rows as unknown as unknown[]).length === 0) return false;
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.contactDncChanged, targetType: 'contact',
+          targetId: String(req.params.id), after: { doNotContact: value, reason: reason ?? null },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+        return true;
+      });
+      if (!found) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such contact.')); return; }
+      res.status(204).end();
+    });
+
   /** Removes a tag from a contact. A no-op if it was not there. */
   router.delete('/:id/tags/:tagId', requireUuidParam('id'), requireUuidParam('tagId'),
     requireScope('contacts:write'), async (req: Request, res: Response) => {

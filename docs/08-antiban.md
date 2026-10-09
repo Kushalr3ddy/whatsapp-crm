@@ -261,6 +261,11 @@ the whole design.
 - Engagement lock — another agent owns an active conversation with this contact
 - Cooldown — contacted too recently
 - Duplicate-campaign guard — already in a live campaign
+- **Do-not-contact** — the person asked not to be messaged. Enforced on every send path (a single message, each
+  campaign recipient, and the gateway's last-line check); an admin can lift it only per message or per campaign,
+  signed in, with a reason, and each override is audited. Agents and API keys can never lift it, and advisory mode
+  does not bypass it. (Changed 2026-10-09: it was documented as overridable by nobody, but was not actually
+  enforced on the send path; both are fixed.)
 
 *These protect the recipient's experience. A human with context may legitimately override them.*
 
@@ -268,7 +273,6 @@ the whole design.
 - Per-sender daily cap
 - Rate and burst limits
 - Warmup ceiling
-- `do_not_contact`
 - Missing consent for a marketing intent
 
 *These protect a phone number that gets banned, and a legal obligation. They are not policy.*

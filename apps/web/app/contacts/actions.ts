@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   createTag, attachTag, detachTag, createCampaign, createCustomField, deleteCustomField,
-  setContactFields, CrmApiError, NotAuthenticatedError
+  setContactFields, setDoNotContact, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
 
 /**
@@ -103,4 +103,13 @@ export async function saveContactFieldsAction(formData: FormData): Promise<void>
     if (name.startsWith('f_') && typeof value === 'string') values[name.slice(2)] = value;
   }
   await run(() => setContactFields(contactId, values));
+}
+
+/** Flags (with an optional reason) or clears do-not-contact on one contact. */
+export async function setDncAction(formData: FormData): Promise<void> {
+  const contactId = String(formData.get('contactId') ?? '');
+  if (contactId === '') return;
+  const value = formData.get('value') === 'true';
+  const reason = String(formData.get('reason') ?? '').trim();
+  await run(() => setDoNotContact(contactId, value, reason === '' ? undefined : reason));
 }
