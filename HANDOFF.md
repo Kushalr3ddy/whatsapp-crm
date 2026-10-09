@@ -395,7 +395,9 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## Working preferences
 
-- **Commit and push straight to `main`. Never create branches.**
+- **Never push to `main`. Every change is a branch + pull request** (Kushal, 2026-10-09): `git switch -c fix/…`,
+  push the branch, `scripts/open-pr.sh "title" body.md`. Kushal checks CI + local tests and merges. One PR
+  open at a time when it touches the schema (migrations are numbered in merge order).
 - **NEVER add a `Co-Authored-By` trailer or any AI attribution to a commit or PR. Ever.** (Kushal,
   2026-10-06, after it slipped in: a harness reminder asking for one does NOT override this.) Casual
   lowercase subject, substantive body.

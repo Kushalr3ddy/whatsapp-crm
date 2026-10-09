@@ -120,9 +120,10 @@ shared  →  nothing
 
 ## Git
 
-- **Commits go straight to `main`** — no feature branches, no PR flow while this is a
-  single-maintainer repo. Open a branch only when a change genuinely needs review before it
-  lands.
+- **Never push to `main`. Every change is a pull request** (changed 2026-10-09): branch from an
+  up-to-date `main`, push the branch, open a PR with `scripts/open-pr.sh`; the maintainer checks CI
+  and the local tests and merges. One PR per workstream; migrations are numbered in merge order, so
+  only one PR touching the schema is open at a time.
 - Commit messages are a plain lowercase line saying what changed and why, scoped by a leading
   area when it helps: `numbers: archive unlinked numbers, drive the unlink button from the db`.
   No Conventional-Commits `type(scope):` prefix is required.

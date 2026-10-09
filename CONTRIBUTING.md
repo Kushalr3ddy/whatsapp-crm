@@ -38,9 +38,11 @@ how good the rest is.
 
 ## Pull requests
 
-- Commits go straight to `main` while this is a single-maintainer repo (open a branch only when a change
-  needs review first). A plain lowercase subject saying what changed and why, a substantive body, and
-  **no AI / `Co-Authored-By` attribution** — see `docs/11-conventions.md`.
+- **Every change goes through a pull request; never push to `main`.** Branch from an up-to-date `main`
+  (`fix/…`, `feat/…`, `test/…`, `chore/…`), push the branch, and open a PR (`scripts/open-pr.sh`). The maintainer
+  checks that CI and the local tests pass, then merges. A plain lowercase subject saying what changed and why,
+  a substantive body, and **never an AI / `Co-Authored-By` attribution** (commits or PR text) — see
+  `docs/11-conventions.md`.
 - Every bug fix starts with a failing test.
 - Every `M*` defect in `docs/00-prior-art.md` has a named regression test — do not remove one.
 - Checklist: does this touch the send path? does it add a bypass? is the comment rule
