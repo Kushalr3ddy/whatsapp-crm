@@ -33,9 +33,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>
-      <body className="flex h-screen flex-col overflow-hidden antialiased" suppressHydrationWarning>
+      <body className="flex h-screen flex-col overflow-hidden antialiased md:flex-row" suppressHydrationWarning>
         <Nav />
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</div>
       </body>
     </html>
   );

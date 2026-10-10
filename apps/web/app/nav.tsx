@@ -2,28 +2,63 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { ReactNode } from 'react';
 import { ThemeToggle } from './theme-toggle';
 import { signOut } from './login/actions';
 
-/** One destination in the top bar. `soon` marks a section that exists only as a placeholder. */
+/** One destination in the sidebar. `soon` marks a section that exists only as a placeholder. */
 interface Tab {
   href: string;
   label: string;
+  icon: ReactNode;
   soon?: boolean;
 }
 
+/** A 20px stroke icon. Decorative, so hidden from assistive tech — the label carries the meaning. */
+function Icon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      aria-hidden viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+      strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"
+    >
+      {children}
+    </svg>
+  );
+}
+
 const TABS: Tab[] = [
-  { href: '/inbox', label: 'Inbox' },
-  { href: '/contacts', label: 'Contacts' },
-  { href: '/segments', label: 'Segments' },
-  { href: '/link', label: 'Numbers' },
-  { href: '/import', label: 'Import' },
-  { href: '/broadcast', label: 'Broadcast' },
-  { href: '/billing', label: 'Billing', soon: true }
+  {
+    href: '/inbox', label: 'Inbox',
+    icon: <Icon><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></Icon>
+  },
+  {
+    href: '/contacts', label: 'Contacts',
+    icon: <Icon><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M16.5 5.3a3 3 0 0 1 0 5.4M18 14.8c1.8.7 3 2.3 3 5.2" /></Icon>
+  },
+  {
+    href: '/segments', label: 'Segments',
+    icon: <Icon><path d="M3 5h18l-7 8v6l-4-2v-4z" /></Icon>
+  },
+  {
+    href: '/link', label: 'Numbers',
+    icon: <Icon><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" /></Icon>
+  },
+  {
+    href: '/import', label: 'Import',
+    icon: <Icon><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></Icon>
+  },
+  {
+    href: '/broadcast', label: 'Broadcast',
+    icon: <Icon><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" /></Icon>
+  },
+  {
+    href: '/billing', label: 'Billing', soon: true,
+    icon: <Icon><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /></Icon>
+  }
 ];
 
 /**
- * The top bar.
+ * The app shell's navigation: a left sidebar on wide screens, a compact top bar on narrow ones.
  *
  * Sections are shown before they are built, marked "soon", rather than appearing later out of
  * nowhere — it makes the shape of the product legible, and makes it obvious that broadcasting
@@ -36,34 +71,46 @@ export function Nav() {
   if (pathname === '/login') return null;
 
   return (
-    <nav className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-surface px-3">
-      <div className="flex items-center gap-1">
+    <nav
+      aria-label="Main"
+      className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-3 py-2 md:w-56 md:flex-col md:items-stretch md:gap-1 md:border-b-0 md:border-r md:px-3 md:py-4"
+    >
+      <Link href="/inbox" className="mr-2 flex items-center gap-2 px-2 md:mb-4 md:mr-0">
+        <span className="avatar size-8 text-sm" aria-hidden>W</span>
+        <span className="hidden text-[15px] font-semibold tracking-tight md:inline">WhatsApp CRM</span>
+      </Link>
+
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto md:flex-none md:flex-col md:items-stretch md:overflow-visible">
         {TABS.map((tab) => {
           const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
           return (
             <Link
               key={tab.href}
               href={tab.href}
+              aria-current={active ? 'page' : undefined}
+              aria-label={tab.label}
+              title={tab.label}
               className={[
-                'rounded-md px-2.5 py-1 text-xs',
-                active ? 'bg-accent-soft font-medium text-ink' : 'text-muted hover:bg-accent-soft'
+                'flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm',
+                active
+                  ? 'bg-accent-soft font-semibold text-accent'
+                  : 'text-muted hover:bg-accent-soft hover:text-ink'
               ].join(' ')}
             >
-              {tab.label}
+              {tab.icon}
+              <span className="hidden md:inline">{tab.label}</span>
               {tab.soon === true && (
-                <span className="ml-1 text-[10px] text-muted">soon</span>
+                <span className="hidden rounded-full bg-canvas px-1.5 text-[10px] text-muted md:inline">soon</span>
               )}
             </Link>
           );
         })}
       </div>
-      <div className="flex items-center gap-1.5">
+
+      <div className="flex shrink-0 items-center gap-1.5 md:mt-auto md:flex-col md:items-stretch md:border-t md:border-border md:pt-3">
         <ThemeToggle />
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:bg-accent-soft"
-          >
+        <form action={signOut} className="md:contents">
+          <button type="submit" className="btn btn-ghost btn-sm w-full whitespace-nowrap">
             Sign out
           </button>
         </form>

@@ -132,7 +132,7 @@ export function Composer(
       {error !== null && <p className="mb-2 text-xs text-danger">{error}</p>}
 
       {doNotContact && (
-        <div role="alert" className="mb-2 rounded-md border border-danger/50 px-2.5 py-1.5 text-[11px] text-danger">
+        <div role="alert" className="mb-2 notice notice-danger">
           This contact is marked <strong>do not contact</strong>.
           {isAdmin ? (
             <>
@@ -152,7 +152,7 @@ export function Composer(
       )}
 
       {numberDown && (
-        <p role="alert" className="mb-2 rounded-md border border-danger/50 px-2.5 py-1.5 text-[11px] text-danger">
+        <p role="alert" className="mb-2 notice notice-danger">
           {senderStatus.reason === 'quarantined'
             ? <>The number <strong>{senderStatus.label}</strong> is quarantined — replies are paused until it recovers.</>
             : <>The number <strong>{senderStatus.label}</strong> isn&apos;t connected — a reply wouldn&apos;t be sent. Reconnect it on the Numbers page.</>}
@@ -173,14 +173,14 @@ export function Composer(
             type="button"
             onClick={() => { if (!replyLocked && !numberDown && !dncBlocked) setMode('reply'); }}
             disabled={replyLocked || numberDown || dncBlocked}
-            className={`px-2.5 py-1 font-medium disabled:opacity-40 ${isNote ? 'text-muted' : 'bg-accent text-white'}`}
+            className={`px-2.5 py-1 font-medium disabled:opacity-40 ${isNote ? 'text-muted' : 'bg-accent text-on-accent'}`}
           >
             Reply
           </button>
           <button
             type="button"
             onClick={() => { setMode('note'); }}
-            className={`px-2.5 py-1 font-medium ${isNote ? 'bg-accent text-white' : 'text-muted'}`}
+            className={`px-2.5 py-1 font-medium ${isNote ? 'bg-accent text-on-accent' : 'text-muted'}`}
           >
             Note
           </button>
@@ -191,7 +191,7 @@ export function Composer(
             aria-label="Insert a saved reply"
             value=""
             onChange={(e) => { insertCanned(e.target.value); }}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink"
+            className="field field-sm"
           >
             <option value="">Saved reply…</option>
             {cannedReplies.map((c) => (
@@ -215,7 +215,7 @@ export function Composer(
               type="button" title="Attach a file (image, video, audio, PDF or Office document)"
               onClick={() => { fileInput.current?.click(); }}
               disabled={pending || replyLocked || numberDown || doNotContact}
-              className="rounded-lg border border-border px-3 py-2 text-sm text-muted disabled:opacity-40"
+              className="btn btn-sm"
             >
               📎
             </button>
@@ -236,7 +236,7 @@ export function Composer(
         <button
           type="submit"
           disabled={pending || text.trim() === ''}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="btn btn-primary"
         >
           {pending ? (isNote ? 'Saving…' : 'Sending…') : isNote ? 'Add note' : 'Send'}
         </button>

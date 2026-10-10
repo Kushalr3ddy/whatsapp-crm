@@ -58,7 +58,7 @@ export default async function InboxLayout({ children }: { children: ReactNode })
       <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-surface">
         <header className="border-b border-border px-4 py-3">
           <div>
-            <h1 className="text-sm font-semibold tracking-tight">Inbox</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Inbox</h1>
             <p className="mt-0.5 text-xs text-muted">
               {connected.length > 0
                 ? `${String(connected.length)} number${connected.length === 1 ? '' : 's'} connected`

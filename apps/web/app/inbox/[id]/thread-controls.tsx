@@ -36,7 +36,7 @@ export function ThreadControls(
           value={assigneeUserId ?? ''}
           disabled={pending}
           onChange={(e) => { apply({ assigneeUserId: e.target.value === '' ? null : e.target.value }); }}
-          className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink disabled:opacity-50"
+          className="field field-sm"
         >
           <option value="">Unassigned</option>
           {users.map((u) => (
@@ -48,7 +48,7 @@ export function ThreadControls(
           type="button"
           disabled={pending}
           onClick={() => { apply({ status: status === 'closed' ? 'open' : 'closed' }); }}
-          className="rounded-md border border-border px-2 py-1 text-xs font-medium text-ink hover:bg-accent-soft disabled:opacity-50"
+          className="btn btn-sm"
         >
           {status === 'closed' ? 'Reopen' : 'Resolve'}
         </button>

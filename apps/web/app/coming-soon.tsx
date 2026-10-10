@@ -9,9 +9,9 @@ export function ComingSoon(
   { title: string; blurb: string; items: string[]; warning?: string }
 ) {
   return (
-    <main className="mx-auto max-w-2xl px-5 py-10">
+    <main className="page page-narrow">
       <div className="flex items-baseline gap-2">
-        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+        <h1 className="page-title">{title}</h1>
         <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">
           not built yet
         </span>
@@ -20,7 +20,7 @@ export function ComingSoon(
       <p className="mt-2 text-sm text-muted">{blurb}</p>
 
       {warning !== undefined && (
-        <p className="mt-4 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">
+        <p className="mt-4 notice notice-danger">
           {warning}
         </p>
       )}

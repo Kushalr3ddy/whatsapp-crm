@@ -57,14 +57,14 @@ export default async function NewCampaignPage(
     <main className="mx-auto max-w-xl px-5 py-8">
       <Link href="/broadcast" className="text-xs text-muted hover:text-ink">← All campaigns</Link>
       <header className="mb-5 mt-2">
-        <h1 className="text-lg font-semibold tracking-tight">New campaign</h1>
-        <p className="mt-1 text-sm text-muted">
+        <h1 className="page-title">New campaign</h1>
+        <p className="page-desc">
           A draft to review before it sends. Nothing goes out until you start it.
         </p>
       </header>
 
       {error !== undefined && (
-        <p className="mb-4 rounded-lg border border-danger/50 px-3 py-2 text-sm text-danger">
+        <p className="mb-4 notice notice-danger">
           {errorMessage(error)}
         </p>
       )}
@@ -85,7 +85,7 @@ export default async function NewCampaignPage(
             <input
               name="name" required maxLength={200}
               placeholder="e.g. October Pune outreach"
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+              className="field"
             />
           </label>
 
@@ -94,7 +94,7 @@ export default async function NewCampaignPage(
             <textarea
               name="body" required maxLength={4096} rows={4}
               placeholder="What every recipient receives…"
-              className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              className="field"
             />
             <span className="text-xs text-muted">
               Use <code>{'{{name}}'}</code> for the contact&apos;s name, and{' '}
@@ -107,7 +107,7 @@ export default async function NewCampaignPage(
             <span className="text-sm font-medium">Send from</span>
             <select
               name="senderIdentityId" required defaultValue=""
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+              className="field"
             >
               <option value="" disabled>Choose a number…</option>
               {senders.map((s) => (
@@ -132,7 +132,7 @@ export default async function NewCampaignPage(
                 <span className="text-xs text-muted">Everyone tagged</span>
                 <select
                   name="fromTagId" defaultValue=""
-                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                  className="field"
                 >
                   <option value="">— no tag —</option>
                   {tags.map((t) => (
@@ -149,7 +149,7 @@ export default async function NewCampaignPage(
                 <span className="text-xs text-muted">Everyone from an import</span>
                 <select
                   name="fromImportRunId" defaultValue=""
-                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                  className="field"
                 >
                   <option value="">— no import —</option>
                   {imports.map((r) => (
@@ -167,7 +167,7 @@ export default async function NewCampaignPage(
                 <span className="text-xs text-muted">Everyone matching a segment</span>
                 <select
                   name="fromSegmentId" defaultValue=""
-                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                  className="field"
                 >
                   <option value="">— no segment —</option>
                   {segments.map((s) => (
@@ -181,7 +181,7 @@ export default async function NewCampaignPage(
           <div className="flex items-center gap-2 pt-1">
             <button
               type="submit"
-              className="rounded-md border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm text-ink hover:bg-accent-soft/70"
+              className="btn btn-primary"
             >
               Create draft
             </button>

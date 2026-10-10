@@ -73,15 +73,15 @@ export function ImportPanel() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-5 py-6">
-      <h1 className="text-lg font-semibold tracking-tight">Import contacts</h1>
-      <p className="mt-1 text-sm text-muted">
+    <div className="page page-narrow">
+      <h1 className="page-title">Import contacts</h1>
+      <p className="page-desc">
         Upload a CSV or Excel (.xlsx) sheet. The same file is not imported twice — re-uploading
         identical bytes is refused with a pointer to the original.
       </p>
 
       {error !== null && (
-        <p className="mt-4 rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">
+        <p className="mt-4 notice notice-danger">
           {error}
         </p>
       )}
@@ -93,13 +93,13 @@ export function ImportPanel() {
             type="file"
             name="file"
             accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-sm"
+            className="field field-sm"
           />
           <div>
             <button
               type="submit"
               disabled={pending}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="btn btn-primary"
             >
               {pending ? 'Uploading…' : 'Upload'}
             </button>
@@ -125,7 +125,7 @@ export function ImportPanel() {
             <input
               value={tagName} onChange={(e) => { setTagName(e.target.value); }} maxLength={60}
               placeholder="e.g. october-batch" aria-label="Tag everyone in this file"
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-normal text-ink"
+              className="field font-normal text-ink"
             />
           </label>
 
@@ -134,7 +134,7 @@ export function ImportPanel() {
               type="button"
               onClick={() => { go(true); }}
               disabled={pending || phone === ''}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent-soft disabled:opacity-50"
+              className="btn"
             >
               {pending ? 'Working…' : 'Preview'}
             </button>
@@ -142,7 +142,7 @@ export function ImportPanel() {
               type="button"
               onClick={() => { go(false); }}
               disabled={pending || phone === '' || summary === null || summary.committed}
-              className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className="btn btn-primary"
               title={summary === null ? 'Preview first' : undefined}
             >
               Import
@@ -155,7 +155,7 @@ export function ImportPanel() {
           {summary !== null && (
             <div className={[
               'rounded-md border px-3 py-2 text-sm',
-              summary.committed ? 'border-accent/40 bg-accent-soft' : 'border-border bg-surface'
+              summary.committed ? 'border-transparent bg-success-soft' : 'border-border bg-surface'
             ].join(' ')}>
               <p className="font-medium">
                 {summary.committed ? '✓ Imported' : 'Preview (nothing written yet)'}
@@ -187,7 +187,7 @@ function Picker(
       <select
         value={value}
         onChange={(e) => { onChange(e.target.value); }}
-        className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-ink"
+        className="field field-sm"
       >
         {required !== true && <option value="">— none —</option>}
         {headers.map((h) => <option key={h} value={h}>{h}</option>)}

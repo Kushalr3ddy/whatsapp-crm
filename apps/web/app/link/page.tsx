@@ -37,10 +37,10 @@ export default async function LinkPage() {
   const previouslyLinked = senders.filter((s) => !s.linked && s.lastConnectedAt !== null);
 
   return (
-    <main className="mx-auto max-w-2xl px-5 py-8">
+    <main className="page page-narrow">
       <header className="mb-6">
-        <h1 className="text-lg font-semibold tracking-tight">Numbers</h1>
-        <p className="mt-1 text-sm text-muted">
+        <h1 className="page-title">Numbers</h1>
+        <p className="page-desc">
           Scan the QR from WhatsApp on your phone: <strong>Settings → Linked Devices → Link a
           device</strong>. The gateway must be running — <code>npm run gateway</code>.
         </p>
@@ -77,7 +77,7 @@ export default async function LinkPage() {
 /** One number's card: its label and live state, the health panel, and the link/unlink panel. */
 function SenderCard({ sender, isAdmin }: { sender: Sender; isAdmin: boolean }) {
   return (
-    <li className="rounded-xl border border-border bg-surface p-4">
+    <li className="card p-4">
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <p className="text-sm font-medium">{sender.label ?? 'Unnamed sender'}</p>
@@ -106,7 +106,7 @@ function SenderCard({ sender, isAdmin }: { sender: Sender; isAdmin: boolean }) {
 function AdvisoryBanner({ sender }: { sender: Sender }) {
   if (sender.enforcement !== 'advisory') return null;
   return (
-    <div className="mt-3 rounded-md border border-danger/50 bg-danger/5 px-2.5 py-1.5 text-xs text-danger">
+    <div className="mt-3 notice notice-danger">
       <strong>Advisory mode — anti-ban is NOT enforced on this number.</strong> Pacing, health and
       recovery holds are recorded, not obeyed; a ban here is permanent.
       {sender.advisoryReason !== null && <> Reason: “{sender.advisoryReason}”.</>}
@@ -123,7 +123,7 @@ function EnforcementControl({ sender }: { sender: Sender }) {
       <form action={setEnforcementAction} className="mt-2">
         <input type="hidden" name="senderId" value={sender.id} />
         <input type="hidden" name="mode" value="enforce" />
-        <button type="submit" className="rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-xs text-ink">
+        <button type="submit" className="btn btn-sm btn-primary text-ink">
           Back to enforcing
         </button>
       </form>
@@ -141,8 +141,8 @@ function EnforcementControl({ sender }: { sender: Sender }) {
         </p>
         <textarea name="reason" required minLength={10} maxLength={500} rows={2}
           placeholder="Why? (recorded in the audit log)"
-          className="rounded-md border border-border bg-canvas p-1.5" />
-        <button type="submit" className="self-start rounded-md border border-danger/50 px-2.5 py-1 text-danger hover:bg-danger/5">
+          className="field field-sm" />
+        <button type="submit" className="self-start btn btn-sm btn-danger">
           Turn anti-ban enforcement off for this number
         </button>
       </form>
@@ -154,7 +154,7 @@ function EnforcementControl({ sender }: { sender: Sender }) {
 function statusBadge(status: string): { label: string; cls: string } {
   switch (status) {
     case 'active':
-      return { label: 'Healthy', cls: 'text-accent border-accent/40 bg-accent-soft' };
+      return { label: 'Healthy', cls: 'text-success border-transparent bg-success-soft' };
     case 'degraded':
       return { label: 'Degraded', cls: 'text-warning border-warning/40 bg-warning-soft' };
     case 'quarantined':

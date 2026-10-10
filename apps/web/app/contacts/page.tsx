@@ -55,16 +55,16 @@ export default async function ContactsPage(
   if (expired) redirect('/login?next=/contacts');
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-8">
-      <header className="mb-5">
-        <h1 className="text-lg font-semibold tracking-tight">Contacts</h1>
-        <p className="mt-1 text-sm text-muted">Search by name, phone or email; label people with tags.</p>
-        <p className="mt-1 text-xs text-muted">
-          Export (admins):{' '}
-          <a href="/contacts/export?format=csv" className="text-accent underline">CSV for a spreadsheet</a>
-          {' · '}
-          <a href="/contacts/export?format=vcf" className="text-accent underline">vCard for a phone</a>
-        </p>
+    <main className="page">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="page-title">Contacts</h1>
+          <p className="page-desc">Search by name, phone or email; label people with tags.</p>
+        </div>
+        <div className="flex items-center gap-2" title="Exporting is for admins">
+          <a href="/contacts/export?format=csv" className="btn btn-sm">Export CSV</a>
+          <a href="/contacts/export?format=vcf" className="btn btn-sm">Export vCard</a>
+        </div>
       </header>
 
       <form className="mb-3 flex gap-2">
@@ -74,11 +74,11 @@ export default async function ContactsPage(
           defaultValue={query}
           placeholder="Search name, phone or email…"
           aria-label="Search contacts"
-          className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+          className="flex-1 field"
         />
         <button
           type="submit"
-          className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent-soft"
+          className="btn"
         >
           Search
         </button>
@@ -115,7 +115,7 @@ export default async function ContactsPage(
       )}
 
       {contacts.length > 0 && (
-        <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
+        <ul className="card list">
           {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} fields={fields} />)}
         </ul>
       )}
@@ -129,6 +129,14 @@ export default async function ContactsPage(
       )}
     </main>
   );
+}
+
+/** One or two letters for an avatar: first letters of the first two words, or a number's last digits. */
+function initialsOf(name: string): string {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (/^\d+$/.test(words[0]!)) return words[0]!.slice(-2);
+  return words.slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 }
 
 /** Plain-language text for a bulk-tag error code. */
@@ -160,7 +168,7 @@ function BulkTagBar(
       <p className="font-medium">Tag many at once</p>
       {error !== null && <p role="alert" className="mt-1 text-danger">{BULK_ERROR[error] ?? 'Could not do that. Try again.'}</p>}
       {done !== null && (
-        <p role="status" className="mt-1 text-accent">
+        <p role="status" className="mt-1 text-success">
           Done — {done.count} {done.count === 1 ? 'person' : 'people'} {done.action}.
         </p>
       )}
@@ -178,7 +186,7 @@ function BulkTagBar(
             {preview.count === 1 ? 'person' : 'people'}
             {preview.scope === 'all' ? ' (everyone)' : q !== '' || activeTag !== '' ? ' (matching the current filter)' : ' (everyone listed)'}?
           </span>
-          <button type="submit" className="rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-xs">
+          <button type="submit" className="btn btn-sm btn-primary">
             Confirm
           </button>
           <a href="/contacts" className="text-xs text-muted underline">Cancel</a>
@@ -187,19 +195,19 @@ function BulkTagBar(
         <form action={bulkTagPreviewAction} className="mt-2 flex flex-wrap items-center gap-2">
           <input type="hidden" name="q" value={q} />
           <input type="hidden" name="tag" value={activeTag} />
-          <select name="bulkAction" aria-label="Add or remove" className="rounded-md border border-border bg-surface px-2 py-1">
+          <select name="bulkAction" aria-label="Add or remove" className="field field-sm">
             <option value="add">Add tag</option>
             <option value="remove">Remove tag</option>
           </select>
-          <select name="bulkTag" aria-label="Tag to apply" defaultValue="" className="rounded-md border border-border bg-surface px-2 py-1">
+          <select name="bulkTag" aria-label="Tag to apply" defaultValue="" className="field field-sm">
             <option value="" disabled>choose a tag…</option>
             {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-          <select name="bulkScope" aria-label="Who" className="rounded-md border border-border bg-surface px-2 py-1">
+          <select name="bulkScope" aria-label="Who" className="field field-sm">
             <option value="matching">everyone matching the current search / tag filter</option>
             <option value="all">everyone in the book (admin)</option>
           </select>
-          <button type="submit" className="rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-accent-soft">
+          <button type="submit" className="btn btn-sm">
             Preview
           </button>
         </form>
@@ -219,12 +227,10 @@ function TagFilterBar({ tags, activeTag, query }: { tags: Tag[]; activeTag: stri
     return `/contacts${qs === '' ? '' : `?${qs}`}`;
   };
   const chip = (active: boolean): string =>
-    `rounded-md border px-2 py-0.5 text-xs ${
-      active ? 'border-accent/50 bg-accent-soft text-ink' : 'border-border text-muted hover:bg-accent-soft'
-    }`;
+    `badge ${active ? 'badge-accent !border-accent/40 font-semibold' : 'text-muted hover:bg-accent-soft'}`;
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-1.5">
+    <div className="mb-4 flex max-h-28 flex-wrap items-center gap-1.5 overflow-y-auto">
       <span className="text-xs text-muted">Filter:</span>
       <Link href={href('')} className={chip(activeTag === '')}>All</Link>
       {tags.map((t) => (
@@ -240,17 +246,17 @@ function TagFilterBar({ tags, activeTag, query }: { tags: Tag[]; activeTag: stri
 /** The little form to create a new tag. */
 function NewTagForm() {
   return (
-    <form action={createTagAction} className="mb-5 flex gap-2">
+    <form action={createTagAction} className="mb-4 flex gap-2">
       <input
         name="name"
         placeholder="New tag name…"
         aria-label="New tag name"
         maxLength={60}
-        className="w-48 rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+        className="w-48 field"
       />
       <button
         type="submit"
-        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent-soft"
+        className="btn"
       >
         Add tag
       </button>
@@ -289,25 +295,25 @@ function CampaignFromSelection(
             <input
               name="name" required maxLength={200} placeholder="Campaign name…"
               aria-label="Campaign name"
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+              className="field"
             />
             <textarea
               name="body" required maxLength={4096} rows={3} placeholder="Message to send…"
               aria-label="Campaign message"
-              className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              className="field"
             />
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
               <span className="text-muted">Or just tag the ticked people:</span>
-              <select name="bulkAction" aria-label="Add or remove (ticked)" className="rounded-md border border-border bg-surface px-1.5 py-0.5">
+              <select name="bulkAction" aria-label="Add or remove (ticked)" className="field field-sm">
                 <option value="add">Add tag</option>
                 <option value="remove">Remove tag</option>
               </select>
-              <select name="bulkTag" aria-label="Tag for ticked people" defaultValue="" className="rounded-md border border-border bg-surface px-1.5 py-0.5">
+              <select name="bulkTag" aria-label="Tag for ticked people" defaultValue="" className="field field-sm">
                 <option value="" disabled>choose a tag…</option>
                 {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
               <button type="submit" formAction={bulkTagCheckedAction} formNoValidate
-                className="rounded-md border border-border px-2 py-0.5 text-muted hover:bg-accent-soft">
+                className="btn btn-sm">
                 Tag ticked
               </button>
             </div>
@@ -317,7 +323,7 @@ function CampaignFromSelection(
             </span>
             <select
               name="senderIdentityId" required defaultValue="" aria-label="Send from"
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+              className="field"
             >
               <option value="" disabled>Send from…</option>
               {senders.map((s) => (
@@ -330,7 +336,7 @@ function CampaignFromSelection(
             <div className="flex items-center gap-2">
               <button
                 type="submit"
-                className="rounded-md border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm text-ink hover:bg-accent-soft/70"
+                className="btn btn-primary"
               >
                 Create draft from checked
               </button>
@@ -365,6 +371,9 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
             disabled={!pickable} aria-label={`Select ${contact.displayName ?? 'contact'}`}
             className="size-4 shrink-0 accent-accent disabled:opacity-30"
           />
+          <span className="avatar size-9 text-sm" aria-hidden>
+            {initialsOf(contact.displayName ?? phone ?? email ?? '?')}
+          </span>
           <div className="min-w-0">
           <p className="truncate text-sm font-medium">
             {contact.displayName ?? phone ?? email ?? 'Unnamed contact'}
@@ -377,7 +386,7 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {contact.doNotContact && (
-            <span className="rounded-md border border-danger/50 px-2 py-0.5 text-[11px] text-danger">
+            <span className="notice notice-danger">
               do not contact
             </span>
           )}
@@ -386,7 +395,7 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
             <input type="hidden" name="value" value={contact.doNotContact ? 'false' : 'true'} />
             <button type="submit" title={contact.doNotContact
               ? 'Allow messaging this person again' : 'Never message this person (an admin can still override)'}
-              className="rounded-md border border-border px-2 py-0.5 text-[11px] text-muted hover:bg-accent-soft">
+              className="btn btn-sm">
               {contact.doNotContact ? 'Allow contact' : 'Do not contact'}
             </button>
           </form>
@@ -401,7 +410,7 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
             <button
               type="submit"
               title="Remove tag"
-              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-ink hover:border-danger/50 hover:text-danger"
+              className="inline-flex items-center btn btn-sm"
             >
               {t.name} <span aria-hidden className="opacity-60">×</span>
             </button>
@@ -415,14 +424,14 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
               name="tagId"
               aria-label="Add a tag"
               defaultValue=""
-              className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-xs text-muted"
+              className="field field-sm"
             >
               <option value="" disabled>+ tag…</option>
               {available.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <button
               type="submit"
-              className="rounded-md border border-border px-2 py-0.5 text-xs text-muted hover:bg-accent-soft"
+              className="btn btn-sm"
             >
               Add
             </button>
@@ -451,18 +460,18 @@ function ContactFields({ contact, fields }: { contact: Contact; fields: CustomFi
             <span className="text-muted">{f.label}</span>
             {f.type === 'select' ? (
               <select name={`f_${f.key}`} defaultValue={String(values[f.key] ?? '')}
-                className="rounded-md border border-border bg-surface px-1.5 py-1">
+                className="field field-sm">
                 <option value="">—</option>
                 {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             ) : (
               <input name={`f_${f.key}`} defaultValue={String(values[f.key] ?? '')}
                 type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} step="any"
-                className="rounded-md border border-border bg-surface px-1.5 py-1" />
+                className="field field-sm" />
             )}
           </label>
         ))}
-        <button type="submit" className="col-span-2 justify-self-start rounded-md border border-border px-2.5 py-1 text-muted hover:bg-accent-soft">
+        <button type="submit" className="col-span-2 justify-self-start btn btn-sm">
           Save fields
         </button>
       </form>
@@ -495,14 +504,14 @@ function FieldsAdmin({ fields }: { fields: CustomField[] }) {
       </ul>
       <form action={createFieldAction} className="mt-2 flex flex-wrap items-center gap-2">
         <input name="label" required placeholder="Field name, e.g. City" aria-label="Field name"
-          className="rounded-md border border-border bg-surface px-2 py-1" />
-        <select name="type" aria-label="Field type" className="rounded-md border border-border bg-surface px-1.5 py-1">
+          className="field field-sm" />
+        <select name="type" aria-label="Field type" className="field field-sm">
           <option value="text">text</option><option value="number">number</option>
           <option value="date">date</option><option value="select">select</option>
         </select>
         <input name="options" placeholder="options, comma separated (select only)" aria-label="Options"
           className="min-w-48 flex-1 rounded-md border border-border bg-surface px-2 py-1" />
-        <button type="submit" className="rounded-md border border-border px-2.5 py-1 text-muted hover:bg-accent-soft">
+        <button type="submit" className="btn btn-sm">
           Add field (admin)
         </button>
       </form>

@@ -116,7 +116,7 @@ export function LinkPanel(
   return (
     <div className="mt-3">
       {connected && status === null && (
-        <p className="text-xs text-accent">Connected. If it stops receiving, use Unlink below to reset it.</p>
+        <p className="text-xs text-success">Connected. If it stops receiving, use Unlink below to reset it.</p>
       )}
 
       {!active && !connected && (
@@ -146,7 +146,7 @@ export function LinkPanel(
                 onChange={(e) => { setPhone(e.target.value); }}
                 placeholder="+919876543210"
                 inputMode="tel"
-                className="w-56 rounded-lg border border-border bg-canvas px-2.5 py-1.5 text-xs outline-none focus:border-accent"
+                className="w-56 field field-sm"
               />
               <p className="mt-1 text-[11px] text-muted">
                 The number being linked. WhatsApp shows the code on <em>that</em> phone, so this
@@ -160,7 +160,7 @@ export function LinkPanel(
               type="button"
               onClick={() => { void start(); }}
               disabled={starting}
-              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              className="btn btn-primary"
             >
               {starting ? 'Starting…' : expired ? 'Try again' : 'Link this number'}
             </button>
@@ -174,7 +174,7 @@ export function LinkPanel(
             type="button"
             onClick={() => { void unlink(); }}
             disabled={!linked || unlinking}
-            className="rounded-lg border border-danger/50 px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:border-border disabled:text-muted disabled:hover:bg-transparent"
+            className="btn btn-sm btn-danger"
           >
             {!linked ? 'Already unlinked' : unlinking ? 'Unlinking…' : 'Unlink / reset this number'}
           </button>
@@ -196,7 +196,7 @@ export function LinkPanel(
       )}
 
       {status?.state === 'connected' && (
-        <p className="mt-2 text-xs text-accent">
+        <p className="mt-2 text-xs text-success">
           ✓ {status.detail} Any queued message is sent by the gateway within a minute.
         </p>
       )}
