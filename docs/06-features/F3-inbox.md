@@ -45,8 +45,8 @@ The parts of the inbox and what they are for. Status as of this writing in brack
   reply" case simply for now.
 - **Live inbound** *(deferred, blocked by D-14)* — a new incoming message appearing in under a
   second without a refresh. The inbox polls every 5 s today.
-- **Search, snooze, priority, Meta 24-hour window UI, keyboard shortcuts** *(deferred — search is
-  open; snooze / Meta-window / keyboard are pinned as D-18)*.
+- **Search, snooze, priority, Meta 24-hour window UI, ~~keyboard shortcuts~~** *(deferred — search is
+  open; snooze / Meta-window are pinned as D-18; keyboard shortcuts struck out 2026-10-10)*.
 
 ## User stories
 
@@ -85,7 +85,7 @@ needs to know that before typing.
 - **AC-8** Media sends and receives through the storage driver; nothing is written to local disk.
 - **AC-9** The Meta window countdown is shown, and the composer switches to template-only when
   it expires.
-- **AC-10** Keyboard shortcuts for reply, assign, resolve, next/previous thread.
+- ~~**AC-10** Keyboard shortcuts for reply, assign, resolve, next/previous thread.~~ *(struck out, Kushal 2026-10-10)*
 
 ## API surface
 
