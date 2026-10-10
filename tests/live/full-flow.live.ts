@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn, nav, openDetails, CREDS_MISSING } from '../e2e/helpers';
 import { writeNaukriSample } from './naukri-sample';
+import { CURSOR_OVERLAY } from './cursor';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 
@@ -27,6 +28,8 @@ test.describe('live walkthrough', () => {
   test.skip(SEND_TO === '' || BROADCAST_TO.length === 0, 'set LIVE_SEND_TO and LIVE_BROADCAST_TO in .env');
 
   test('login → import → message → tag → broadcast → sign out', async ({ page }) => {
+    // Draw a pointer so a screen recording shows where the mouse is.
+    await page.context().addInitScript(CURSOR_OVERLAY);
     const stamp = String(Date.now());
     const headers = async (): Promise<Record<string, string>> => {
       const csrf = (await page.context().cookies()).find((c) => c.name === 'crm_csrf')?.value ?? '';
@@ -135,13 +138,12 @@ test.describe('live walkthrough', () => {
       await page.getByRole('button', { name: 'Confirm' }).click();
       await expect(page.getByText(new RegExp(`Done — ${String(BROADCAST_TO.length)} people added`))).toBeVisible();
 
-      // One person by hand.
-      await page.goto(`/contacts?q=${encodeURIComponent('Live Test One')}`);
+      // One person by hand: pick the tag on that person's row, then the tag's chip count proves it applied.
+      await page.goto(`/contacts?q=${encodeURIComponent(BROADCAST_TO[0]!.replace(/\D/g, ''))}`);
       const row = page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first();
       await row.getByLabel('Add a tag').selectOption({ label: handTag });
       await row.getByRole('button', { name: 'Add', exact: true }).click();
-      await expect(page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first()
-        .getByRole('button', { name: new RegExp(handTag) })).toBeVisible();
+      await expect(page.getByRole('link', { name: new RegExp(`${handTag} 1`) })).toBeVisible();
     });
 
     // ── 6 · broadcast to the tagged three ───────────────────────────────────────────────

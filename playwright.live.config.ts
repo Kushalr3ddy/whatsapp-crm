@@ -36,5 +36,5 @@ export default defineConfig({
     video: process.env.LIVE_VIDEO === '1' ? { mode: 'on', size: { width: 1360, height: 860 } } : 'off',
     trace: 'retain-on-failure'
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1360, height: 860 } } }]
 });

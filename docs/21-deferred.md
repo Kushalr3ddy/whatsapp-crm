@@ -1330,3 +1330,41 @@ rules) that fails if `apps/web` imports server code from `packages/*`/`apps/api`
 **Why parked:** depends on the OpenAPI spec (P9) for the contract half; the boundary check could be done sooner.
 
 **What brings it back:** P9, or the day a second client (JobPortal, a mobile app) consumes the API.
+
+---
+
+## D-51 · Deleted-message tracking
+
+**What:** WhatsApp lets a person "delete for everyone", which reaches us as a revoke event for a message we
+already stored. Today we do not act on it: the thread keeps showing the original text as if nothing happened.
+Pinned (Kushal, 2026-10-10): record that a message was deleted, by whom (the contact, or one of our own
+agents from the phone), and when.
+
+**Shape when it arrives, so it is not re-derived:** the gateway turns the revoke into an event, the message row
+gets `deleted_at` and `deleted_by` (the body is kept encrypted for audit unless an operator purges it), the
+thread shows "this message was deleted" in place of the text with the original reachable by an admin, and a
+`message.deleted` row goes in the audit log. Open question for Kushal: keep the original visible to agents, or
+hide it as WhatsApp does for the recipient. Edited messages are the sibling case and could share the work.
+
+**Why parked:** pinned, not scheduled.
+
+**What brings it back:** Kushal's go-ahead, or the first "where did that message go?" from an agent.
+
+---
+
+## D-52 · Deleting previous campaigns
+
+**What:** campaigns can be cancelled but not deleted, so old drafts, cancelled runs and test campaigns pile up
+in the Broadcast list (the dev database holds dozens). Pinned (Kushal, 2026-10-10): an operator needs to
+delete previous campaigns.
+
+**Shape when it arrives:** delete is allowed only for `draft`, `cancelled` and `completed` campaigns, never
+a running or paused one. Prefer a soft delete (`deleted_at`, hidden from the list) so the messages already
+sent, the per-recipient results and the audit trail stay intact; offer a purge for drafts that never ran. It
+must not release the recipient-experience gates (a contact messaged by a deleted campaign is still inside
+the 14-day cooldown), and it writes a `campaign.deleted` audit row. A "delete all cancelled" bulk action
+would also clean up test runs.
+
+**Why parked:** pinned, not scheduled.
+
+**What brings it back:** Kushal's go-ahead.

@@ -860,7 +860,7 @@ In the order Kushal set (2026-10-10). Items marked *pinned* are deliberately hel
 4. **Real-number pilot** — no code; a spare number for a week or two, watching the Numbers page.
 5. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
 6. *Pinned:* **D-47** signup + billing gate + beta override · **D-48** OWASP security tests · **D-49** e2e revamp ·
-   **D-50** frontend/backend modularity tests · **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
+   **D-50** frontend/backend modularity tests · **D-51** deleted-message tracking · **D-52** delete previous campaigns · **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
    opt-out · **D-35/36/40** · **D-34/37/38/39** Meta adapter · **D-42** AI takeover · **D-43** alert channels ·
    **D-44** Baileys 7 · **D-33** deployment / P1 close-out (`infra/compose/` is empty).
 

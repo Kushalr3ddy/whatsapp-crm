@@ -38,6 +38,10 @@ export async function writeNaukriSample(recipients: Array<{ name: string; phone:
   const header = ['Candidate Name', 'Mobile Number', 'Email ID', 'Total Experience', 'Current CTC', 'Current Location'];
   ws.addRow(header);
   for (const r of [...own, ...filler]) ws.addRow([r.name, r.phone, r.email, r.exp, r.ctc, r.city]);
+  // One filler row unique to this run: the importer refuses identical bytes twice, so a re-run
+  // of the demo would otherwise be rejected as "already imported".
+  const unique = String(Date.now()).slice(-6);
+  ws.addRow([`Run ${unique} Candidate`, `+91 9000 ${unique.slice(0, 3)} ${unique.slice(3)}`, `run${unique}@example.test`, '2 Years', '4 Lacs', 'Pune']);
   ws.addRow([]);
   ws.addRow([own[0]?.name ?? 'Duplicate', own[0]?.phone ?? '', 'dup@example.test', '5 Years', '12 Lacs', 'Bengaluru']);
 
