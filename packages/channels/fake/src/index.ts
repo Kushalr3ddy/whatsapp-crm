@@ -74,6 +74,12 @@ export class FakeChannelProvider implements ChannelProvider {
   private readonly waiters: Array<() => void> = [];
   private readonly options: FakeOptions;
   private counter = 0;
+  /**
+   * Distinguishes this instance's ids from a previous process's. The counter alone restarts at 1 on
+   * every gateway boot, and provider ids are unique in the database — a fake gateway that is
+   * restarted would otherwise collide with the messages the last run stored.
+   */
+  private readonly run = Math.random().toString(36).slice(2, 8);
   private closed = false;
 
   /** Builds a fake provider, optionally with an auth store and misbehaviour configured. */
@@ -132,7 +138,7 @@ export class FakeChannelProvider implements ChannelProvider {
     if (this.options.failAll || this.options.failFor?.includes(to.phoneE164)) {
       throw new Error(`fake send failure for ${to.phoneE164}`);
     }
-    const providerMessageId = `fake-msg-${++this.counter}`;
+    const providerMessageId = `fake-msg-${this.run}-${++this.counter}`;
     this.sent.push({ senderId: sender.id, to, content, providerMessageId, at: new Date() });
     this.emitStatus({
       providerMessageId, senderId: sender.id, status: 'sent', errorCode: null, at: new Date()
@@ -228,7 +234,7 @@ export class FakeChannelProvider implements ChannelProvider {
     event: Partial<NormalisedInboundEvent> & { senderId: string; fromProviderAddress: string },
     media?: InboundMedia
   ): void {
-    const providerMessageId = event.providerMessageId ?? `fake-in-${++this.counter}`;
+    const providerMessageId = event.providerMessageId ?? `fake-in-${this.run}-${++this.counter}`;
     let mediaRef = event.mediaRef ?? null;
     if (media !== undefined) {
       mediaRef = `fake-media-${providerMessageId}`;

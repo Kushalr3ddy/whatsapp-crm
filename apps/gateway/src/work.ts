@@ -808,11 +808,18 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
  * Credentials live in Postgres precisely so this is possible without anyone scanning a QR
  * again — the previous system needed every session reconnected by hand after each restart
  * (M29/M30).
+ *
+ * `providers` names which `sender_identity.provider` values this gateway's transport owns: the
+ * default is the real thing, and the fake-channel gateway passes `['fake']` so a seeded test number
+ * comes up connected while a UI-created one stays unlinked.
  */
-export async function restoreSessions(ctx: WorkContext): Promise<number> {
+export async function restoreSessions(
+  ctx: WorkContext, providers: readonly string[] = ['baileys']
+): Promise<number> {
   const rows = await ctx.db.execute(sql`
     SELECT si.id, si.phone_e164 AS phone FROM sender_identity si
-    WHERE si.provider = 'baileys' AND si.status IN ('active','degraded','quarantined')`);
+    WHERE si.provider IN (${sql.join(providers.map((p) => sql`${p}`), sql`, `)})
+      AND si.status IN ('active','degraded','quarantined')`);
   const senders = rows as unknown as Array<{ id: string; phone: string | null }>;
 
   let restored = 0;

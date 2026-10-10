@@ -105,6 +105,14 @@ jobs:
       API_KEY: ci-only-bootstrap-api-key-0123456789abcdef  # gitleaks:allow
       SEND_TYPING_SIMULATION: 'false'
       NODE_ENV: development
+      # The gateway runs the in-memory fake channel, so a broadcast can be verified end to end with
+      # nothing real sent. The day/night behaviours are off so the run does not depend on the clock,
+      # and sweeps are fast so a campaign finishes in seconds.
+      GATEWAY_CHANNEL: fake
+      GATEWAY_SWEEP_SECONDS: '3'
+      SEND_CIRCADIAN: 'false'
+      SEND_RECIPIENT_TIMEZONE: 'false'
+      SEND_BACKGROUND_ENTROPY: 'false'
       # The Playwright specs sign in with these (see playwright.config.ts).
       TEST_EMAIL: e2e@test.local
       TEST_PASSWORD: E2eTest!pass99
@@ -128,11 +136,15 @@ jobs:
           npm run admin -- org --name "E2E Test Org" --slug e2e-test
           --email "$TEST_EMAIL" --password "$TEST_PASSWORD"
 
-      # Start the API and web, wait until both answer, then run the browser specs. Playwright reuses
+      - name: seed the test org
+        run: npm run local:seed
+
+      # Start the API, gateway and web, wait until the API and web answer, then run the browser specs. Playwright reuses
       # this already-running stack (reuseExistingServer), so its own webServer command never fires.
       - name: start API and web
         run: |
           npm run dev > /tmp/api.log 2>&1 &
+          npm run gateway > /tmp/gateway.log 2>&1 &
           npm run web > /tmp/web.log 2>&1 &
           timeout 120 bash -c 'until curl -sf http://localhost:3000/ready >/dev/null; do sleep 2; done'
           timeout 120 bash -c 'until curl -sf http://localhost:3001/login >/dev/null; do sleep 2; done'
@@ -141,7 +153,7 @@ jobs:
 
       - name: server logs on failure
         if: failure()
-        run: tail -n 100 /tmp/api.log /tmp/web.log || true
+        run: tail -n 100 /tmp/api.log /tmp/gateway.log /tmp/web.log || true
 
   secrets-scan:
     runs-on: ubuntu-latest

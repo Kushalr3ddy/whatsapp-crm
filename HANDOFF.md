@@ -24,10 +24,13 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 tracking (migration 0022, own simulation workflow, `docs/27`) · #9 segments folded into campaigns
 (migration 0023; "Segments" left the sidebar and became **Saved audiences**).
 
-**Next, in Kushal's order:** the **UI test suite** (`scripts/local-seed.ts` + a fake-number gateway option
-so CI can verify sending; more Playwright specs for inbox / contacts / import / numbers / banner using the
-existing local creds; a manual checklist in `docs/24-local-testing.md`). A CSV fixture for import tests
-already exists at `tests/fixtures/import-contacts.csv`.
+**In review (branch `test/ui-suite-and-fake-gateway`):** the **UI test suite** — `npm run local:seed`
+(`scripts/local-seed.ts`), `GATEWAY_CHANNEL=fake` + `GATEWAY_SWEEP_SECONDS`, six new Playwright specs
+(`seeded-pages`, `send-flow`), CI starts the fake gateway, and a manual checklist in `docs/24-local-testing.md`.
+Also fixed: the fake channel's message ids restarted at 1 each boot and collided with stored ones.
+
+**Next, in Kushal's order:** **D-41** (gateway outside RLS) then **D-31** (key rotation), then the real-number
+pilot. **D-46** (UI feels laggy when used fast; measure first) is pinned.
 
 **Pinned / held (do not build):** **D-41** gateway runs outside RLS (**priority**) · **D-31** key rotation
 (**priority**) · D-19 templates · D-23 message search · D-27 opt-out (out of alpha) · D-35/36/40 ·
@@ -80,7 +83,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 **P1 is marked done but is not.** `infra/compose/` holds only a `.gitkeep`, so
 `docker compose --profile core up` — its own exit criterion — cannot run.
 
-**599 vitest · 10 Playwright e2e · 9 simulation scenarios · migrations 0000–0023.**
+**602 vitest · 16 Playwright e2e · 9 simulation scenarios · migrations 0000–0023.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -279,7 +282,7 @@ npm run web       # UI       :3001
 **[`docs/24-local-testing.md`](docs/24-local-testing.md)** is the by-hand testing recipe:
 getting a key, exercising the API, checking the attachment headers, reading the audit trail.
 
-Sign in at `localhost:3001/login`. `npm run check` runs typecheck (incl. web), lint and the 478
+Sign in at `localhost:3001/login`. `npm run check` runs typecheck (incl. web), lint and the 600+
 vitest tests. **`npm run test:e2e`** runs the Playwright browser tests — they reuse a running stack
 (`npm run dev:all`) and sign in with `TEST_EMAIL`/`TEST_PASSWORD` from `.env`. Those point at a
 dev-only throwaway admin, **`e2e@test.local`** (org slug `e2e-test`, admin), provisioned
@@ -446,11 +449,7 @@ PRs #1–#9; all are merged.
 
 **The order Kushal set, remaining:**
 
-1. **UI test suite** — `scripts/local-seed.ts` (seed the existing local test org with a fake connected
-   number, contacts, tags, conversations), a fake-number gateway option so CI can verify that a broadcast
-   actually sends, more Playwright specs (inbox, contacts, import, numbers, the restriction banner,
-   saved audiences) using the existing local creds, and a manual checklist in
-   `docs/24-local-testing.md`. `tests/fixtures/import-contacts.csv` already exists.
+1. **UI test suite** — built (see above), awaiting review and CI.
 2. **D-41** the gateway runs outside RLS — **priority**.
 3. **D-31** key rotation — **priority**.
 4. **Real-number pilot** — no code; a spare number, a week or two, watching the Numbers page. The only

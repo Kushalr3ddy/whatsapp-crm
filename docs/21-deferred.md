@@ -1193,3 +1193,28 @@ resolve), and 6.x has no on-demand lookup.
 
 **Why parked:** offered to Kushal, not yet scheduled (optional PR 6 of the 2026-10-09 plan). It is also the same change
 D-44 would force, so doing it first de-risks the upgrade.
+
+---
+
+## D-46 · UI responsiveness — the app feels laggy when used fast
+
+**What:** Kushal reports (2026-10-10) that the web app lags when he clicks through it quickly. His idea: keep Next.js
+only for the few screens that need live updates (the inbox/thread) and make the rest (campaigns, contacts, import,
+numbers, saved audiences) plain client-side React pages.
+
+**What we know (not yet measured):** the inbox polls by `router.refresh()` on a timer
+(`apps/web/app/inbox/auto-refresh.tsx`), which re-runs every server component for that route; the thread composer and the
+Numbers link panel also poll; every page is a server-rendered round trip through the web server to the API, and local
+use is `next dev`, which compiles each route on first visit. Which of these dominates is **unverified** — the first step is
+to measure, not to rewrite.
+
+**Candidate steps, cheapest first:** (1) measure on a production build (`next build && next start`) — dev mode alone may
+explain much of it; (2) cut polling work: refresh only the thread list or message list, not the whole route, and back off
+when the tab is hidden; (3) cache/dedupe the API reads the layout repeats on every navigation; (4) client-side data
+fetching with a cache (e.g. SWR/React Query) for the list-heavy pages, so moving between them does not re-render on the
+server; (5) only then the bigger split — a plain React SPA for the non-live pages — which is a large change that touches
+auth forwarding (the UI forwards the user's session) and every server action.
+
+**Why parked:** needs a measurement first, and a rewrite is a scope call for Kushal.
+
+**What brings it back:** decide after step 1–2 numbers; step 5 only if they are not enough.
