@@ -13,6 +13,15 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-10 — Live headed walkthrough (branch `test/live-headed-suite`)
+- **`npm run test:live`** (`playwright.live.config.ts`, `tests/live/`): a visible, slowed-down Chromium run of the whole
+  product against a running stack and a *real* linked number — sign in → link a number on screen if none is
+  connected → import a synthetic Naukri-style `.xlsx` → one message to your own phone, then a reply typed in the
+  inbox → mass-tag + hand-tag → broadcast to three numbers → sign out. Recipient numbers come from `.env`
+  (`LIVE_SEND_TO`, `LIVE_BROADCAST_TO`), never the repo. `LIVE_OVERRIDE_GATES=1` re-runs inside the 14-day cooldown.
+- The UI still has no "start a new conversation" button, so the first message goes via `POST /messages`.
+- **D-21 (mapping wizard) raised to priority.**
+
 ### 2026-10-10 — UI test suite and the fake gateway (branch `test/ui-suite-and-fake-gateway`)
 - **`npm run local:seed`** (`scripts/local-seed.ts`): into the `e2e-test` org, a fake connected number, 20 contacts,
   3 tags, a custom field, 3 conversations (unread · assigned · closed) and a saved audience. Fixed names,
@@ -844,11 +853,14 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set (2026-10-10). Items marked *pinned* are deliberately held:
 
-1. **D-41 — gateway outside RLS** (priority): enter each org's tenant transaction per job, plus a cross-org test.
-2. **D-31 — key rotation** (priority): a safe path to rotate `ENCRYPTION_KEY`.
-3. **Real-number pilot** — no code; a spare number for a week or two, watching the Numbers page.
-4. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
-5. *Pinned:* **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
+1. **D-21 — the import column-mapping wizard** (priority, raised 2026-10-10): production imports are a Naukri
+   Excel export; needs the real file (or a sample) so the wizard fits its columns.
+2. **D-41 — gateway outside RLS** (priority): enter each org's tenant transaction per job, plus a cross-org test.
+3. **D-31 — key rotation** (priority): a safe path to rotate `ENCRYPTION_KEY`.
+4. **Real-number pilot** — no code; a spare number for a week or two, watching the Numbers page.
+5. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
+6. *Pinned:* **D-47** signup + billing gate + beta override · **D-48** OWASP security tests · **D-49** e2e revamp ·
+   **D-50** frontend/backend modularity tests · **D-51** deleted-message tracking · **D-52** delete previous campaigns · **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
    opt-out · **D-35/36/40** · **D-34/37/38/39** Meta adapter · **D-42** AI takeover · **D-43** alert channels ·
    **D-44** Baileys 7 · **D-33** deployment / P1 close-out (`infra/compose/` is empty).
 

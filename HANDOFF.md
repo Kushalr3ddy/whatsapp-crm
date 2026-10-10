@@ -29,8 +29,11 @@ tracking (migration 0022, own simulation workflow, `docs/27`) · #9 segments fol
 (`seeded-pages`, `send-flow`), CI starts the fake gateway, and a manual checklist in `docs/24-local-testing.md`.
 Also fixed: the fake channel's message ids restarted at 1 each boot and collided with stored ones.
 
-**Next, in Kushal's order:** **D-41** (gateway outside RLS) then **D-31** (key rotation), then the real-number
-pilot. **D-46** (UI feels laggy when used fast; measure first) is pinned.
+**Next, in Kushal's order:** **D-21** (import mapping wizard; priority, needs the real Naukri file), **D-41** (gateway outside RLS) then **D-31** (key rotation), then the real-number
+pilot. **D-46** (UI feels laggy when used fast; measure first) is pinned, along with **D-47** (signup page +
+billing gate + beta override), **D-48** (OWASP security tests), **D-49** (e2e revamp to industry standard) and
+**D-50** (frontend/backend independence tests), **D-51** (deleted-message tracking) and **D-52** (delete
+previous campaigns).
 
 **Pinned / held (do not build):** **D-41** gateway runs outside RLS (**priority**) · **D-31** key rotation
 (**priority**) · D-19 templates · D-23 message search · D-27 opt-out (out of alpha) · D-35/36/40 ·
@@ -163,7 +166,7 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   cannot import twice whatever it is named; a deliberate re-import supersedes the old run. Ordered
   identity rules, phone normalisation on the way in, a per-row ledger, and a dry run that is the
   default. A sparse file cannot overwrite a name that is already there. The UI does the **simple**
-  mapping (pick phone/name/email); the full wizard is **D-21**, row-level dedup **D-22**.
+  mapping (pick phone/name/email); the full wizard is **D-21 (priority, 2026-10-10 — waits on a real Naukri export)**, row-level dedup **D-22**.
 - **Contact creation over HTTP**: `POST /contacts` (`contacts:write`) — the single-person route
   the host app uses. Phone/email (at least one), optional `customFields` and `externalRef` (the
   candidate-id hook). Phone through the one normaliser; an identity that already names someone is

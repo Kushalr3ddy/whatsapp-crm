@@ -675,7 +675,12 @@ helpers that already wrap it (`setTenant`, the gateway command channel), not spr
 
 ---
 
-## D-21 · The full import mapping wizard
+## D-21 · The full import mapping wizard — **PRIORITY (Kushal, 2026-10-10)**
+
+> **Priority:** raised on 2026-10-10 while building the live walkthrough: production imports come from a Naukri
+> Excel export, and its real layout is not in hand yet. Build this once that file (or a real sample of it) is
+> available, so the wizard is shaped by the actual columns rather than a guess. Until then the synthetic
+> Naukri-style workbook in `tests/live/naukri-sample.ts` stands in.
 
 **What:** the complete mapping experience from `docs/07-ingestion.md`, on top of the **simple**
 import tab being built now (upload .csv/.xlsx → pick the phone/name/email column → preview →
@@ -1259,3 +1264,107 @@ auth forwarding (the UI forwards the user's session) and every server action.
 **Why parked:** needs a measurement first, and a rewrite is a scope call for Kushal.
 
 **What brings it back:** decide after step 1–2 numbers; step 5 only if they are not enough.
+
+---
+
+## D-47 · Signup page, billing gate and beta-tester override
+
+**What:** there is **no signup page** today — accounts and orgs come only from `npm run admin` (or the admin API).
+Kushal wants a simple one (2026-10-10): a person signs up, and then (a) if they have **paid**, they land in the app
+(or are sent to Billing to pay), and (b) a **beta tester** is sent to sign in, because an admin can **override the
+payment requirement** for them so they can use the product without paying.
+
+**Open decisions (ask before building):** which payment provider and whether payment is real in alpha (Billing is a
+placeholder page today); whether signup creates a new *org* (self-serve tenant) or a user inside an existing org;
+email verification (email is an optional driver, so a non-email path is needed); how a beta override is stored
+(a per-org flag set by an admin, audited, with a reason — same shape as the DNC and gate overrides); abuse limits
+(signup is the first unauthenticated write endpoint: rate limit, CAPTCHA/bot cost, org-slug squatting).
+
+**Why parked:** it touches money, tenancy and the first public write route, so it needs Kushal's calls above first.
+
+**What brings it back:** Kushal choosing the payment provider and the signup-creates-org question.
+
+---
+
+## D-48 · Security test suite (OWASP)
+
+**What:** a deliberate, repeatable security test pass against the running app, mapped to the **OWASP Top 10** and
+**ASVS** for the API and the web UI. Candidate free / open-source tooling to evaluate (to be checked online before
+choosing, not yet verified): **OWASP ZAP** (baseline + API scan in CI), **Nuclei** (template-based checks),
+**Semgrep** (static rules for Node/TS/Next), **osv-scanner / `npm audit`** (dependencies), **gitleaks** (already in
+CI), **Schemathesis** (property-based API fuzzing once an OpenAPI spec exists), and a hand-written suite for what
+tools miss in *this* app: cross-org access (IDOR) on every route, CSRF on session routes, session fixation/expiry,
+login throttling, file upload and download headers, and authorization by role/scope.
+
+**Why parked:** needs the tool survey and a decision on what runs per-PR versus nightly; some pieces want an OpenAPI
+spec (P9) first.
+
+**What brings it back:** before any real customer data, and before the deployment decision (D-33).
+
+---
+
+## D-49 · Revamp the browser (e2e) suite to industry standard, covering every UI element
+
+**What:** the Playwright suite grew feature by feature. Rebuild it on current best practice: **page objects /
+fixtures** instead of copy-pasted selectors, role- and label-based locators only (no CSS), per-test isolated data
+(no shared dev DB noise), **accessibility checks** on every page (`@axe-core/playwright`), a **coverage map** of
+every page, control and state (empty, loading, error, permission-denied) so "all UI elements" is measurable,
+cross-browser and mobile-viewport projects, deterministic waits (no sleeps), trace/video on failure, and a
+smoke / full split so PRs stay fast. The live walkthrough (`tests/live/`) stays separate and manual.
+
+**Why parked:** large, and best done after the UI settles (D-46 responsiveness may change the page structure).
+
+**What brings it back:** the UI stops moving, or a regression the current specs miss.
+
+---
+
+## D-50 · Test the frontend and backend independently (modularity check)
+
+**What:** prove the two halves really are separable. **Backend alone:** exercise the API purely over HTTP with no
+browser and no web app (contract tests against an OpenAPI description, once it exists; Schemathesis-style
+generation). **Frontend alone:** run the web app against a **mocked API** (e.g. MSW or a recorded fixture server) so
+every page renders and behaves with no real backend, which also proves the UI only talks to the API over its
+documented contract (`CRM_API_URL`). Add an automated **boundary check** (e.g. `dependency-cruiser`/ESLint import
+rules) that fails if `apps/web` imports server code from `packages/*`/`apps/api` or the reverse.
+
+**Why parked:** depends on the OpenAPI spec (P9) for the contract half; the boundary check could be done sooner.
+
+**What brings it back:** P9, or the day a second client (JobPortal, a mobile app) consumes the API.
+
+---
+
+## D-51 · Deleted-message tracking
+
+**What:** WhatsApp lets a person "delete for everyone", which reaches us as a revoke event for a message we
+already stored. Today we do not act on it: the thread keeps showing the original text as if nothing happened.
+Pinned (Kushal, 2026-10-10): record that a message was deleted, by whom (the contact, or one of our own
+agents from the phone), and when.
+
+**Shape when it arrives, so it is not re-derived:** the gateway turns the revoke into an event, the message row
+gets `deleted_at` and `deleted_by` (the body is kept encrypted for audit unless an operator purges it), the
+thread shows "this message was deleted" in place of the text with the original reachable by an admin, and a
+`message.deleted` row goes in the audit log. Open question for Kushal: keep the original visible to agents, or
+hide it as WhatsApp does for the recipient. Edited messages are the sibling case and could share the work.
+
+**Why parked:** pinned, not scheduled.
+
+**What brings it back:** Kushal's go-ahead, or the first "where did that message go?" from an agent.
+
+---
+
+## D-52 · Deleting previous campaigns
+
+**What:** campaigns can be cancelled but not deleted, so old drafts, cancelled runs and test campaigns pile up
+in the Broadcast list (the dev database holds dozens). Pinned (Kushal, 2026-10-10): an operator needs to
+delete previous campaigns.
+
+**Shape when it arrives:** delete is allowed only for `draft`, `cancelled` and `completed` campaigns, never
+a running or paused one. Prefer a soft delete (`deleted_at`, hidden from the list) so the messages already
+sent, the per-recipient results and the audit trail stay intact; offer a purge for drafts that never ran. It
+must not release the recipient-experience gates (a contact messaged by a deleted campaign is still inside
+the 14-day cooldown), and it writes a `campaign.deleted` audit row. A "delete all cancelled" bulk action
+would also clean up test runs.
+
+**Why parked:** pinned, not scheduled.
+
+**What brings it back:** Kushal's go-ahead.

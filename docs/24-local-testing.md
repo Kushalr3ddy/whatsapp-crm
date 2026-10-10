@@ -434,6 +434,25 @@ Sign in at `localhost:3001/login` as the test admin, with the seed in place.
 
 ---
 
+## The live walkthrough (visible browser, real messages)
+
+One Chromium window you can watch, driving the whole product against a **real** linked number:
+
+```bash
+npm run dev:all        # the real gateway — NOT GATEWAY_CHANNEL=fake
+npm run test:live
+```
+
+It signs in → (if no number is connected, opens the link page and waits up to 10 minutes while you scan the
+QR) → imports a synthetic Naukri-style `.xlsx` → sends one message to `LIVE_SEND_TO` and replies in the inbox →
+mass-tags and hand-tags → broadcasts to `LIVE_BROADCAST_TO` → signs out. Real WhatsApp messages go to exactly
+the numbers in `.env` and nowhere else; the file's filler rows are imported but never messaged.
+
+Run it twice within 14 days and the second broadcast is skipped by the cooldown gate (by design); set
+`LIVE_OVERRIDE_GATES=1` to lift it with an audited admin override. `LIVE_SLOWMO=0` removes the slow-motion delay.
+
+---
+
 ## Running the tests instead
 
 ```bash
