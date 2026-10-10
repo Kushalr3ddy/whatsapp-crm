@@ -13,6 +13,46 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-10 — Silent-restriction tracking (#8) and segments inside campaigns (#9) — open PRs
+- **#8 Silent restriction.** WhatsApp does not announce a restriction; the detector (`restriction.ts`) infers
+  it from our own delivery records: stuck-at-sent ratio vs the number's baseline, median delivery time,
+  whether people who normally reply are affected, whether only strangers are (reachout-timelock shape),
+  inbound silence. Two independent signals → `suspected` (sending slowed ×3); a broad pattern → `likely`
+  (soft-ban recovery + that number's running campaigns paused, `pause_reason`). Rises at once, falls slowly,
+  one step at a time. Timeline in `sender_health_event`; surfaced as a Numbers banner + timeline, a sidebar
+  count badge, a composer warning, "sent · no delivery for 3h", and "paused automatically" on the campaign.
+  Found and fixed on the way: close code / reconnect count never written (dead score weights), delivery ERROR
+  ack dropped, unrequested logout now `hard_ban_suspected`, sweep throttle stalled on a backwards clock.
+  Simulation moved to `.github/workflows/simulation.yml` + three scenarios. Docs: `27-restriction-tracking.md`.
+  Migration 0022. 597 vitest, 9 Playwright.
+- **#9 Segments → campaigns.** The audience step offers tag / import / saved audience / **Build a filter** with a
+  live count and "save for reuse"; a one-off filter is a hidden segment (`segment.saved`, migration 0023).
+  "Segments" leaves the sidebar; the page is **Saved audiences**. 599 vitest, 10 Playwright.
+
+### 2026-10-10 — UI overhaul, LID linking, mass tagging, CI fix (#3–#7, merged)
+- **#7 UI overhaul** (after #5's restyle): Overview dashboard at `/`, structured Contacts, three-panel inbox
+  (day separators + contact side panel), grouped Broadcast list, campaign page with progress meter and sticky
+  message preview, three-step new-campaign form, Numbers cards with a risk meter, import step header,
+  split-screen login. e2e specs scoped to the sidebar and updated for collapsed panels.
+- **#6 LID → phone.** The Baileys adapter reads `key.senderPn` / `chats.phoneNumberShare`; the gateway links a
+  privacy address to its phone before storing; `linkLidToPhone` adds the identity or merges two contacts
+  (threads, notes, tags, recipients, import rows, custom fields; do-not-contact kept; audited).
+- **#3 Mass tagging.** `POST /tags/:id/bulk` (all [admin] / search / segment / ids; preview-first, expectedCount
+  guard, audited), tag-at-import, `GET /contacts/count`, Contacts bulk bar, `tests/fixtures/import-contacts.csv`,
+  browser flow import → mass tag → hand tag → broadcast.
+- **#4** secrets-scan job gets `pull-requests: read`.
+
+### 2026-10-09 — PR workflow, do-not-contact enforcement (#1, #2, merged)
+- **#1** every change is a PR (`scripts/open-pr.sh`); pins D-42 (AI takeover), D-43 (alert channels), D-44
+  (Baileys 7), D-45 (LID).
+- **#2 Do-not-contact was not enforced on any send path** (only segments honoured it, nothing could set it).
+  Now enforced on messages, files, campaign recipients and the gateway's last-line check, with `dnc` as a
+  fourth overridable gate: a signed-in admin can override per message or per campaign, with a reason, audited;
+  agents, API keys and advisory mode cannot. `PUT /contacts/:id/do-not-contact` + UI toggle. Migration 0021.
+
+### 2026-10-07 — Local walkthrough scripts
+- `npm run local:flow` (`--keep` / `--reset`) and the browser `broadcast-flow` spec; no real sends.
+
 ### 2026-10-07 — Local walkthrough scripts
 - **`npm run local:flow`** (`scripts/local-flow.ts`): local-only end-to-end walkthrough — real login route →
   5 contacts → draft a broadcast → dry-run preview → start → real gateway sweep against the fake number →
