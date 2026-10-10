@@ -3,12 +3,14 @@
 # this machine (the `gh` CLI is not installed). The token is read from `git credential fill` and never
 # printed. Never pushes to main.
 #
-#   scripts/open-pr.sh "short title" path/to/body.md
+#   scripts/open-pr.sh "short title" path/to/body.md [base-branch]   (base defaults to main; use the
+#   previous branch to stack a PR on one that is not merged yet)
 set -euo pipefail
 
 TITLE="${1:?usage: open-pr.sh \"title\" body-file}"
 BODY_FILE="${2:?usage: open-pr.sh \"title\" body-file}"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+BASE="${3:-main}"
 [ "$BRANCH" = "main" ] && { echo "refusing: you are on main — make a branch first" >&2; exit 1; }
 
 REPO="$(git remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
@@ -17,10 +19,10 @@ TOKEN="$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/d
 
 git push -u origin "$BRANCH"
 
-PAYLOAD="$(python3 - "$TITLE" "$BRANCH" "$BODY_FILE" <<'PY'
+PAYLOAD="$(python3 - "$TITLE" "$BRANCH" "$BODY_FILE" "$BASE" <<'PY'
 import json, sys
-title, branch, body_file = sys.argv[1:4]
-print(json.dumps({"title": title, "head": branch, "base": "main", "body": open(body_file).read()}))
+title, branch, body_file, base = sys.argv[1:5]
+print(json.dumps({"title": title, "head": branch, "base": base, "body": open(body_file).read()}))
 PY
 )"
 RESPONSE="$(curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \

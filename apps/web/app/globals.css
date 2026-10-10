@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Theme tokens.
+ * Design tokens and shared component classes.
  *
  * Tailwind v4 is CSS-first: every `--color-*` in `@theme` becomes a utility, so `bg-surface`
  * compiles to `background-color: var(--color-surface)`. Because the utility reads the variable
@@ -13,59 +13,211 @@
  *   2. when the OS asks for it AND they have not explicitly chosen light
  * Without the `:not([data-theme="light"])` guard, choosing light on a dark-set OS would do
  * nothing, because the media query would keep winning.
+ *
+ * Colour roles: `accent` is the brand (buttons, links, the active nav item); `success`, `warning`
+ * and `danger` carry meaning and are never used decoratively; `muted` is secondary text.
  */
 @theme {
-  --color-canvas: #f6f7f9;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --color-canvas: #f6f7fb;
   --color-surface: #ffffff;
-  --color-border: #e3e6ea;
-  --color-ink: #16191d;
-  --color-muted: #6b7280;
-  --color-accent: #1f7a5a;
-  --color-accent-soft: #e7f4ef;
-  --color-danger: #b42318;
-  --color-warning: #a6620b;
-  --color-warning-soft: #fbeeda;
+  --color-border: #e3e6ee;
+  --color-ink: #151a2d;
+  --color-muted: #667085;
+  --color-accent: #4f46e5;
+  --color-accent-soft: #eef0ff;
+  --color-on-accent: #ffffff;
+  --color-success: #12805c;
+  --color-success-soft: #e4f6ee;
+  --color-danger: #c4321c;
+  --color-warning: #a35f00;
+  --color-warning-soft: #fdf1dc;
+
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.04);
+  --shadow-pop: 0 8px 24px rgb(16 24 40 / 0.12);
 }
 
 @layer base {
-  /* Light unless something below says otherwise. `color-scheme` is what themes the
-     scrollbars and form controls the browser draws itself. */
   :root {
     color-scheme: light;
   }
 
   :root[data-theme="dark"] {
-    --color-canvas: #101316;
-    --color-surface: #171b1f;
-    --color-border: #272d33;
-    --color-ink: #e8eaed;
-    --color-muted: #9aa3ad;
-    --color-accent: #3fb489;
-    --color-accent-soft: #14312a;
-    --color-danger: #f97066;
-    --color-warning: #f0b866;
+    --color-canvas: #0d1117;
+    --color-surface: #151b26;
+    --color-border: #263042;
+    --color-ink: #e9edf5;
+    --color-muted: #94a0b4;
+    --color-accent: #8b93ff;
+    --color-accent-soft: #1d2340;
+    --color-on-accent: #0d1117;
+    --color-success: #4cc79b;
+    --color-success-soft: #123226;
+    --color-danger: #ff7b6b;
+    --color-warning: #f2bd6a;
     --color-warning-soft: #3a2e14;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
     color-scheme: dark;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --color-canvas: #101316;
-      --color-surface: #171b1f;
-      --color-border: #272d33;
-      --color-ink: #e8eaed;
-      --color-muted: #9aa3ad;
-      --color-accent: #3fb489;
-      --color-accent-soft: #14312a;
-      --color-danger: #f97066;
-      --color-warning: #f0b866;
+      --color-canvas: #0d1117;
+      --color-surface: #151b26;
+      --color-border: #263042;
+      --color-ink: #e9edf5;
+      --color-muted: #94a0b4;
+      --color-accent: #8b93ff;
+      --color-accent-soft: #1d2340;
+      --color-on-accent: #0d1117;
+    --color-on-accent: #0d1117;
+      --color-success: #4cc79b;
+      --color-success-soft: #123226;
+      --color-danger: #ff7b6b;
+      --color-warning: #f2bd6a;
       --color-warning-soft: #3a2e14;
+      --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+      --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
       color-scheme: dark;
     }
   }
+
+  html {
+    font-size: 15px;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Visible keyboard focus everywhere, without a ring on mouse clicks. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  code {
+    border-radius: 0.375rem;
+    background: var(--color-accent-soft);
+    padding: 0.05rem 0.35rem;
+    font-size: 0.85em;
+  }
 }
 
-body {
-  background: var(--color-canvas);
-  color: var(--color-ink);
+/*
+ * Shared building blocks. Pages compose these instead of repeating long utility strings, so the
+ * whole product changes by editing one place here.
+ */
+@layer components {
+  /* Buttons ------------------------------------------------------------------------------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 0.625rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    padding: 0.45rem 0.85rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25;
+    color: var(--color-ink);
+    box-shadow: var(--shadow-card);
+    cursor: pointer;
+    transition: background-color 120ms, border-color 120ms, opacity 120ms;
+  }
+  .btn:hover { background: var(--color-accent-soft); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary {
+    border-color: transparent;
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+  .btn-primary:hover { background: var(--color-accent); opacity: 0.9; }
+  .btn-danger { color: var(--color-danger); }
+  .btn-danger:hover { border-color: var(--color-danger); background: var(--color-surface); }
+  .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8125rem; border-radius: 0.5rem; box-shadow: none; }
+  .btn-ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--color-muted); }
+  .btn-ghost:hover { background: var(--color-accent-soft); color: var(--color-ink); }
+
+  /* Inputs -------------------------------------------------------------------------------- */
+  .field {
+    border-radius: 0.625rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    color: var(--color-ink);
+    transition: border-color 120ms, box-shadow 120ms;
+  }
+  .field::placeholder { color: var(--color-muted); opacity: 0.7; }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  }
+  .field-sm { padding: 0.25rem 0.5rem; font-size: 0.8125rem; border-radius: 0.5rem; }
+
+  /* Surfaces ------------------------------------------------------------------------------ */
+  .card {
+    border-radius: 0.875rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+  .list { display: flex; flex-direction: column; }
+  .list > li + li, .list > form + form { border-top: 1px solid var(--color-border); }
+
+  /* Page frame ---------------------------------------------------------------------------- */
+  .page { margin-inline: auto; width: 100%; max-width: 64rem; padding: 2rem 1.5rem 4rem; }
+  .page-narrow { max-width: 42rem; }
+  .page-title { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; }
+  .page-desc { margin-top: 0.35rem; font-size: 0.9375rem; color: var(--color-muted); }
+  .section-title { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; color: var(--color-muted); text-transform: uppercase; }
+
+  /* Small things ------------------------------------------------------------------------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    border: 1px solid var(--color-border);
+    padding: 0.1rem 0.55rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .badge-success { border-color: transparent; background: var(--color-success-soft); color: var(--color-success); }
+  .badge-warning { border-color: transparent; background: var(--color-warning-soft); color: var(--color-warning); }
+  .badge-danger { border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); color: var(--color-danger); }
+  .badge-accent { border-color: transparent; background: var(--color-accent-soft); color: var(--color-accent); }
+
+  .notice {
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    padding: 0.65rem 0.9rem;
+    font-size: 0.875rem;
+  }
+  .notice-danger { border-color: color-mix(in srgb, var(--color-danger) 45%, transparent); color: var(--color-danger); }
+  .notice-warning { border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); background: var(--color-warning-soft); color: var(--color-warning); }
+  .notice-success { border-color: transparent; background: var(--color-success-soft); color: var(--color-success); }
+
+  .avatar {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    font-weight: 600;
+  }
 }

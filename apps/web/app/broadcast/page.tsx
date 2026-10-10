@@ -31,24 +31,24 @@ export default async function BroadcastPage() {
   if (expired) redirect('/login?next=/broadcast');
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-8">
+    <main className="page">
       <header className="mb-5 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Broadcast</h1>
-          <p className="mt-1 text-sm text-muted">
+          <h1 className="page-title">Broadcast</h1>
+          <p className="page-desc">
             Send one message to many people, paced by the anti-ban engine so a burst can never go out
             at once. Open a campaign to see who it reached and who was skipped.
           </p>
         </div>
         <Link
           href="/broadcast/new"
-          className="shrink-0 rounded-md border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm text-ink hover:bg-accent-soft/70"
+          className="shrink-0 btn btn-primary"
         >
           New campaign
         </Link>
       </header>
 
-      <p className="mb-5 rounded-lg border border-border bg-accent-soft/40 px-3 py-2 text-xs text-muted">
+      <p className="mb-5 notice">
         Every send passes the anti-ban engine — warmup, per-minute/hour/day caps, jitter, circadian
         pacing, contact-graph gates, health scoring and a human-like typing delay. A campaign is
         deliberately slow; the forecast on each one says how long it will take.
@@ -64,7 +64,7 @@ export default async function BroadcastPage() {
       )}
 
       {campaigns.length > 0 && (
-        <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
+        <ul className="card list">
           {campaigns.map((c) => <CampaignRow key={c.id} campaign={c} />)}
         </ul>
       )}

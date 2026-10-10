@@ -60,7 +60,7 @@ export default async function CampaignPage(
   if (missing) notFound();
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-8">
+    <main className="page">
       <Link href="/broadcast" className="text-xs text-muted hover:text-ink">← All campaigns</Link>
 
       {failure !== null && <p className="mt-4 text-sm text-danger">{failure}</p>}
@@ -70,7 +70,7 @@ export default async function CampaignPage(
           <header className="mb-5 mt-2 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold tracking-tight">{campaign.name}</h1>
-              <p className="mt-1 text-sm text-muted">
+              <p className="page-desc">
                 {campaign.startedAt !== null
                   ? <>Started {new Date(campaign.startedAt).toLocaleString()}</>
                   : <>Draft — not started yet</>}
@@ -87,7 +87,7 @@ export default async function CampaignPage(
             : <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />}
 
           {campaign.gateOverrides.length > 0 && (
-            <p className="mb-3 rounded-md border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-xs text-warning">
+            <p className="mb-3 notice notice-warning">
               An admin lifted: {campaign.gateOverrides.map((g) => GATE_LABEL[g]?.split(' — ')[0] ?? g).join(', ')}
               {campaign.gateOverrideReason !== null && <> — “{campaign.gateOverrideReason}”</>}
             </p>
@@ -113,7 +113,7 @@ export default async function CampaignPage(
             )}
 
             {recipients.length > 0 && (
-              <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
+              <ul className="card list">
                 {recipients.map((r) => <RecipientRow key={r.id} recipient={r} />)}
               </ul>
             )}
@@ -140,9 +140,9 @@ function StatusBadge({ status }: { status: string }) {
  * finished one has none. Each is a plain form posting to a server action — no client JS.
  */
 function Controls({ id, status, isAdmin }: { id: string; status: string; isAdmin: boolean }) {
-  const primary = 'rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-xs text-ink hover:bg-accent-soft/70';
-  const plain = 'rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-accent-soft';
-  const danger = 'rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:border-danger/50 hover:text-danger';
+  const primary = 'btn btn-sm btn-primary';
+  const plain = 'btn btn-sm';
+  const danger = 'btn btn-sm btn-danger';
 
   const button = (action: (fd: FormData) => Promise<void>, label: string, cls: string) => (
     <form action={action}>
@@ -189,7 +189,7 @@ const GATE_LABEL: Record<string, string> = {
 function OverrideStart({ id }: { id: string }) {
   return (
     <details className="relative">
-      <summary className="cursor-pointer list-none rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-accent-soft">
+      <summary className="cursor-pointer list-none btn btn-sm">
         Start with overrides…
       </summary>
       <form action={startCampaignAction}
@@ -209,7 +209,7 @@ function OverrideStart({ id }: { id: string }) {
           placeholder="Why? (recorded in the audit log)"
           className="mt-2 w-full rounded-md border border-border bg-canvas p-1.5" />
         <button type="submit"
-          className="mt-2 rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-ink">
+          className="mt-2 btn btn-sm btn-primary">
           Start, lifting the ticked gates
         </button>
       </form>
@@ -346,11 +346,11 @@ function SearchBox({ id, activeStatus, query }: { id: string; activeStatus: stri
         defaultValue={query}
         placeholder="Search recipient name or number…"
         aria-label="Search recipients"
-        className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+        className="flex-1 field"
       />
       <button
         type="submit"
-        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent-soft"
+        className="btn"
       >
         Search
       </button>
@@ -380,7 +380,7 @@ function RecipientRow({ recipient }: { recipient: CampaignRecipient }) {
 function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
   const { status, skipReason, messageStatus } = recipient;
   const cls =
-    status === 'sent' ? 'text-accent border-accent/40 bg-accent-soft'
+    status === 'sent' ? 'text-success border-transparent bg-success-soft'
     : status === 'failed' ? 'text-danger border-danger/50'
     : status === 'skipped' ? 'text-warning border-warning/40 bg-warning-soft'
     : 'text-muted border-border';

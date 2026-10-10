@@ -8,35 +8,35 @@ export function LoginForm() {
   const [state, action, pending] = useActionState<SignInResult, FormData>(signIn, { error: '' });
 
   return (
-    <form action={action} className="flex flex-col gap-3">
+    <form action={action} className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Email</span>
+        <span className="text-sm font-medium">Email</span>
         <input
           name="email"
           type="email"
           autoComplete="username"
           required
-          className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+          className="field"
         />
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Password</span>
+        <span className="text-sm font-medium">Password</span>
         <input
           name="password"
           type="password"
           autoComplete="current-password"
           required
-          className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+          className="field"
         />
       </label>
 
-      {state.error !== '' && <p className="text-xs text-danger">{state.error}</p>}
+      {state.error !== '' && <p role="alert" className="notice notice-danger">{state.error}</p>}
 
       <button
         type="submit"
         disabled={pending}
-        className="mt-1 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        className="mt-1 btn btn-primary"
       >
         {pending ? 'Signing in…' : 'Sign in'}
       </button>

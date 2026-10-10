@@ -78,17 +78,17 @@ export default async function SegmentsPage(
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-8">
+    <main className="page">
       <header className="mb-5">
-        <h1 className="text-lg font-semibold tracking-tight">Segments</h1>
-        <p className="mt-1 text-sm text-muted">
+        <h1 className="page-title">Segments</h1>
+        <p className="page-desc">
           A saved filter that re-evaluates every time — "everyone tagged <code>pune</code> who
           replied" stays current on its own. Target one from a campaign; it freezes at launch.
         </p>
       </header>
 
       {sp.error !== undefined && (
-        <p className="mb-4 rounded-lg border border-danger/50 px-3 py-2 text-sm text-danger">
+        <p className="mb-4 notice notice-danger">
           {errorMessage(sp.error)}
         </p>
       )}
@@ -102,7 +102,7 @@ export default async function SegmentsPage(
         <p className="text-sm text-muted">None yet — build one above.</p>
       )}
       {segments.length > 0 && (
-        <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface">
+        <ul className="card list">
           {segments.map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
@@ -117,7 +117,7 @@ export default async function SegmentsPage(
                   <input type="hidden" name="id" value={s.id} />
                   <button
                     type="submit" title="Delete segment"
-                    className="rounded-md border border-border px-2 py-0.5 text-xs text-muted hover:border-danger/50 hover:text-danger"
+                    className="btn btn-sm"
                   >
                     Delete
                   </button>
@@ -152,14 +152,14 @@ function Builder(
       <input
         name="name" maxLength={100} placeholder="Segment name (e.g. Active Pune leads)"
         aria-label="Segment name"
-        className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+        className="field"
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs text-muted">Has tag</span>
           <select name="tagId" defaultValue={tagId}
-            className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm">
+            className="field">
             <option value="">— any —</option>
             {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
@@ -167,7 +167,7 @@ function Builder(
         <label className="flex flex-col gap-1">
           <span className="text-xs text-muted">Reply status</span>
           <select name="replied" defaultValue={replied}
-            className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm">
+            className="field">
             <option value="">— any —</option>
             <option value="ever">has replied</option>
             <option value="never">never replied</option>
@@ -177,17 +177,17 @@ function Builder(
           <span className="text-xs text-muted">Contacted within (days)</span>
           <input name="days" type="number" min={1} max={3650} defaultValue={days}
             placeholder="any"
-            className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm" />
+            className="field" />
         </label>
       </div>
 
       <div className="flex items-center gap-3">
         <button type="submit"
-          className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent-soft">
+          className="btn">
           Preview count
         </button>
         <button type="submit" formAction={createSegmentAction}
-          className="rounded-md border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm text-ink hover:bg-accent-soft/70">
+          className="btn btn-primary">
           Save segment
         </button>
         {previewing && (

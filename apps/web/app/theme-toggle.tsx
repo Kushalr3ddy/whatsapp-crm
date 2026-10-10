@@ -62,9 +62,10 @@ export function ThemeToggle() {
       onClick={cycle}
       title={`Theme: ${label.toLowerCase()} — click to change`}
       aria-label={`Theme: ${label.toLowerCase()}. Click to change.`}
-      className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:bg-accent-soft"
+      className="btn btn-ghost btn-sm w-full justify-start whitespace-nowrap"
     >
-      {mounted ? label : '    '}
+      <span className="md:hidden">{mounted ? label : 'Theme'}</span>
+      <span className="hidden md:inline">{mounted ? `Theme: ${label}` : 'Theme'}</span>
     </button>
   );
 }

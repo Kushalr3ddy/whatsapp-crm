@@ -97,7 +97,7 @@ function MessageBubble({ message }: { message: Message }) {
     <div
       className={[
         'max-w-[min(34rem,80%)] rounded-2xl px-3.5 py-2',
-        message.direction === 'outbound' ? 'bg-accent text-white' : 'border border-border bg-surface'
+        message.direction === 'outbound' ? 'bg-accent text-on-accent' : 'border border-border bg-surface'
       ].join(' ')}
     >
       <Attachment message={message} />
@@ -113,7 +113,7 @@ function MessageBubble({ message }: { message: Message }) {
       <p
         className={[
           'mt-1 text-[11px]',
-          message.direction === 'outbound' ? 'text-white/70' : 'text-muted'
+          message.direction === 'outbound' ? 'text-on-accent/70' : 'text-muted'
         ].join(' ')}
       >
         {stamp(message.createdAt)}
@@ -192,7 +192,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
             {conversation?.contactPhone ?? 'Privacy address — no phone shared'}
             {senderLabel !== null && ` · via ${senderLabel}`}
             {senderStatus !== null && (
-              <span className={senderStatus.canSend ? 'text-accent' : 'font-medium text-danger'}>
+              <span className={senderStatus.canSend ? 'text-success' : 'font-medium text-danger'}>
                 {' · '}{senderStatus.canSend ? '● connected' : senderStatus.reason === 'quarantined' ? '● quarantined' : '● not connected'}
               </span>
             )}

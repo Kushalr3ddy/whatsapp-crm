@@ -10,6 +10,14 @@ type AssigneeFilter = 'all' | 'mine' | 'unassigned';
 /** Which threads to show, by state. Open is the working view; closed is the archive. */
 type StatusFilter = 'open' | 'closed' | 'all';
 
+/** One or two letters for an avatar: the first letters of the first two words, or the last digit pair of a number. */
+function initials(name: string): string {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (/^\d+$/.test(words[0]!)) return words[0]!.slice(-2);
+  return words.slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+}
+
 /** Formats a timestamp for the conversation list: a time today, a date before that. */
 function shortTime(iso: string | null): string {
   if (iso === null) return '';
@@ -30,8 +38,8 @@ function Tab({ label, active, onClick }: { label: string; active: boolean; onCli
       type="button"
       onClick={onClick}
       className={[
-        'rounded-md px-2 py-1 text-xs font-medium transition-colors',
-        active ? 'bg-accent text-white' : 'text-muted hover:bg-accent-soft'
+        'rounded-lg px-2.5 py-1 text-xs font-medium transition-colors',
+        active ? 'bg-accent text-on-accent shadow-sm' : 'text-muted hover:bg-accent-soft'
       ].join(' ')}
     >
       {label}
@@ -88,59 +96,59 @@ export function ConversationList(
               : 'No conversations match this filter.'}
           </p>
         ) : (
-          shown.map((c) => (
-            <Link
-              key={c.id}
-              href={`/inbox/${c.id}`}
-              className="block border-b border-border px-4 py-3 hover:bg-accent-soft"
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="truncate text-sm font-medium">
-                  {c.contactName ?? c.contactPhone ?? 'Unknown'}
-                </span>
-                <span className="shrink-0 text-[11px] text-muted">
-                  {shortTime(c.lastInboundAt ?? c.lastOutboundAt)}
-                </span>
-              </div>
-              <div className="mt-0.5 flex items-center justify-between gap-2">
-                <span className="truncate text-xs text-muted">
-                  {c.queuedCount > 0 && (
-                    <span
-                      className="mr-1 text-danger"
-                      title={`${String(c.queuedCount)} message${c.queuedCount === 1 ? '' : 's'} queued — not sent yet`}
-                    >
-                      ⚠
+          shown.map((c) => {
+            const title = c.contactName ?? c.contactPhone ?? 'Unknown';
+            return (
+              <Link
+                key={c.id}
+                href={`/inbox/${c.id}`}
+                className="flex items-start gap-3 border-b border-border px-4 py-3 hover:bg-canvas"
+              >
+                <span className="avatar mt-0.5 size-9 text-sm" aria-hidden>{initials(title)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className={`truncate text-sm ${c.unreadCount > 0 ? 'font-semibold' : 'font-medium'}`}>
+                      {title}
                     </span>
-                  )}
-                  {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
-                  {c.senderLabel !== null && ` · ${c.senderLabel}`}
-                </span>
-                {c.unreadCount > 0 && (
-                  <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
-                    {c.unreadCount}
+                    <span className="shrink-0 text-[11px] text-muted">
+                      {shortTime(c.lastInboundAt ?? c.lastOutboundAt)}
+                    </span>
                   </span>
-                )}
-              </div>
-              <div className="mt-0.5 flex items-center gap-1.5">
-                {/* The owner, so the list answers "whose is this?" without opening it — the whole
-                    point of assignment. Closed threads say so too, since the status filter can
-                    show them. */}
-                <span
-                  className={[
-                    'truncate text-[11px]',
-                    c.assigneeName === null ? 'text-muted italic' : 'text-ink/70'
-                  ].join(' ')}
-                >
-                  {c.assigneeName ?? 'Unassigned'}
-                </span>
-                {c.status === 'closed' && (
-                  <span className="shrink-0 rounded bg-border px-1 py-0.5 text-[10px] text-muted">
-                    closed
+                  <span className="mt-0.5 flex items-center justify-between gap-2">
+                    <span className="truncate text-xs text-muted">
+                      {c.queuedCount > 0 && (
+                        <span
+                          className="mr-1 text-danger"
+                          title={`${String(c.queuedCount)} message${c.queuedCount === 1 ? '' : 's'} queued — not sent yet`}
+                        >
+                          ⚠
+                        </span>
+                      )}
+                      {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
+                      {c.senderLabel !== null && ` · ${c.senderLabel}`}
+                    </span>
+                    {c.unreadCount > 0 && (
+                      <span className="badge badge-accent shrink-0 tabular-nums">{c.unreadCount}</span>
+                    )}
                   </span>
-                )}
-              </div>
-            </Link>
-          ))
+                  {/* The owner, so the list answers "whose is this?" without opening it — the whole
+                      point of assignment. Closed threads say so too, since the status filter can
+                      show them. */}
+                  <span className="mt-0.5 flex items-center gap-1.5">
+                    <span
+                      className={[
+                        'truncate text-[11px]',
+                        c.assigneeName === null ? 'italic text-muted' : 'text-ink/70'
+                      ].join(' ')}
+                    >
+                      {c.assigneeName ?? 'Unassigned'}
+                    </span>
+                    {c.status === 'closed' && <span className="badge">closed</span>}
+                  </span>
+                </span>
+              </Link>
+            );
+          })
         )}
       </nav>
     </>
