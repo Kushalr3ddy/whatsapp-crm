@@ -394,6 +394,46 @@ admin). Specs scope sidebar links with the `nav(page)` helper and open collapsed
 
 ---
 
+## The seeded test org and the fake gateway
+
+For the browser tests (and for clicking around with real-looking data), seed the test org and run the
+gateway on the in-memory fake channel. **Nothing real can be sent** — the fake channel only handles numbers
+whose provider is `fake`, and the app refuses `GATEWAY_CHANNEL=fake` when `NODE_ENV=production`.
+
+```bash
+npm run local:seed                    # a fake connected number, 20 people, 3 tags, a field, 3 conversations, an audience
+npm run local:seed -- --reset         # remove exactly what the seed made (also clears the number's new-contact count)
+GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 SEND_CIRCADIAN=false SEND_RECIPIENT_TIMEZONE=false \
+  SEND_TYPING_SIMULATION=false npm run dev:all
+npm run test:e2e
+```
+
+The seed signs in as `TEST_EMAIL` / `TEST_PASSWORD` to the org `e2e-test` and is safe to run twice. The
+sending spec (`tests/e2e/send-flow.spec.ts`) skips itself unless the seeded number is connected, i.e. unless the
+gateway is the fake one. It adds one brand-new contact per run, and a stranger counts against the number's
+new-contact allowance (5 a day until people reply) — `--reset` then re-seed (and restart the gateway) starts a
+clean day. CI does all of this in the `e2e` job.
+
+### Manual checklist (about ten minutes)
+
+Sign in at `localhost:3001/login` as the test admin, with the seed in place.
+
+- **Overview** — counts match the seed; no console errors.
+- **Inbox** — Open shows Asha Rao and Bilal Khan, Closed shows Chitra Nair; *Mine* shows only Bilal; opening
+  Asha clears her unread badge; add a note (it appears, nothing is "sent"); Resolve then Reopen.
+- **Composer** — with the fake gateway up, reply to a thread and watch it go queued → sent; with it down the
+  composer locks to notes and says why.
+- **Contacts** — search "Farhan" narrows the list; tag chip filters; the do-not-contact toggle blocks a reply;
+  *Tag many at once* previews a count before it applies; export (admin) downloads CSV and vCard.
+- **Import** — upload `tests/fixtures/import-contacts.csv` (add a unique row, same bytes are refused), columns
+  map themselves, *Preview* writes nothing, *Import* creates people and tags them.
+- **Broadcast** — new campaign from a tag, from an import, from *Build a filter* (live count), preview, start,
+  pause, resume, cancel; per-recipient results filter by status.
+- **Numbers** — the seeded card shows its risk meter and health stats; advisory mode is behind its disclosure.
+- **Saved audiences** — "Seed — replied" is listed; preview count works and a segment can be saved.
+
+---
+
 ## Running the tests instead
 
 ```bash

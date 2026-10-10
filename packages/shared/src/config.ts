@@ -41,6 +41,13 @@ const configSchema = z.object({
   /** Which roles this process runs. `all` is the lean single-process default. */
   PROCESS_ROLE: z.enum(['all', 'api', 'worker', 'gateway']).default('all'),
 
+  // Which transport the gateway drives. `fake` is an in-memory channel for CI and local UI tests —
+  // it sends nothing real, so a broadcast can be verified end to end. Refused in production (below).
+  GATEWAY_CHANNEL: z.enum(['baileys', 'fake']).default('baileys'),
+  // How often the gateway's safety-net sweep runs (dispatching campaigns, reconciling results).
+  // 60 s is right for a real number; tests set it low so a broadcast finishes in seconds.
+  GATEWAY_SWEEP_SECONDS: z.coerce.number().int().min(1).max(600).default(60),
+
   // ---- drivers (docs/18-providers.md) ----------------------------------------------
   // Each defaults to the free, self-hostable option, so an empty .env still boots.
   PRESET: z.enum(['lean', 'standard', 'scale']).default('lean'),
@@ -91,6 +98,9 @@ const configSchema = z.object({
   // pending until the window frees up or the operator adds spintax. Only bites a no-variation blast —
   // spintax/`{{name}}` make bodies differ, so it never fires on a varied campaign.
   IDENTICAL_BODY_DAILY_CAP: z.coerce.number().int().positive().max(100000).default(50)
+}).refine((c) => !(c.GATEWAY_CHANNEL === 'fake' && c.NODE_ENV === 'production'), {
+  path: ['GATEWAY_CHANNEL'],
+  message: 'the fake channel sends nothing real and must never run with NODE_ENV=production'
 });
 
 /** True when the string names a timezone this runtime's Intl database recognises. */

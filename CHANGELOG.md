@@ -13,6 +13,21 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-10 — UI test suite and the fake gateway (branch `test/ui-suite-and-fake-gateway`)
+- **`npm run local:seed`** (`scripts/local-seed.ts`): into the `e2e-test` org, a fake connected number, 20 contacts,
+  3 tags, a custom field, 3 conversations (unread · assigned · closed) and a saved audience. Fixed names,
+  idempotent, `--reset`, local-database only.
+- **`GATEWAY_CHANNEL=fake`**: the gateway runs the in-memory fake channel (connects `provider='fake'` senders),
+  refused when `NODE_ENV=production`. `GATEWAY_SWEEP_SECONDS` makes the safety-net sweep configurable (default 60).
+- **Specs:** `seeded-pages` (inbox filters/notes/resolve, contacts search, import preview, numbers, saved audiences) and
+  `send-flow` (a started broadcast is really delivered through the engine on the fake number). CI's `e2e` job seeds and
+  starts the fake gateway. Manual checklist in `docs/24-local-testing.md`.
+- **Fixed:** the fake channel's message ids restarted at `fake-msg-1` on every gateway boot and hit the unique
+  provider-id index, failing the send. 3 new config tests.
+- **Pinned D-46:** the UI lags when used fast; measure on a production build first (Kushal's idea of plain React
+  for non-live pages is the last step, not the first).
+- Docs: the "To do" list below is brought current; test counts corrected.
+
 ### 2026-10-10 — Documentation refresh
 - `HANDOFF.md` brought current end to end (build table, what works, what does not exist, honest risk,
   known defects, what is next); `docs/15-api.md` (new endpoints), `05-data-model.md` (migrations
@@ -827,18 +842,15 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 ## To do (top = next)
 
-The anti-ban completion pass and the simulation harness are done. What remains, in the order Kushal
-set (2026-10-05) — items marked *pinned* are deliberately held:
+In the order Kushal set (2026-10-10). Items marked *pinned* are deliberately held:
 
-1. **A contacts feature set** — add one contact by hand, import a **vCard (.vcf)**, a **contacts
-   library** that keeps every imported person (not only the last file), and an **admin export of all
-   stored people to CSV/Excel** (discussed 2026-10-05; not yet specced).
-2. **Custom contact fields** (`contact_field_def`) — explained 2026-10-05, awaiting a go-ahead.
-3. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
-4. *Pinned:* **D-19** templates · **D-23** message-body search · **D-27** opt-out automation · **D-29**
-   advisory mode · the admin-overridable gates · **D-30** media-failure surfacing · **D-31** per-org
-   encryption keys · **D-32** encrypting contact identifiers · **D-33** P1 close-out / deployment ·
-   **D-34** Meta Cloud API + the real-number pilot.
+1. **D-41 — gateway outside RLS** (priority): enter each org's tenant transaction per job, plus a cross-org test.
+2. **D-31 — key rotation** (priority): a safe path to rotate `ENCRYPTION_KEY`.
+3. **Real-number pilot** — no code; a spare number for a week or two, watching the Numbers page.
+4. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
+5. *Pinned:* **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
+   opt-out · **D-35/36/40** · **D-34/37/38/39** Meta adapter · **D-42** AI takeover · **D-43** alert channels ·
+   **D-44** Baileys 7 · **D-33** deployment / P1 close-out (`infra/compose/` is empty).
 
 ## Blockers (detail in `HANDOFF.md`)
 
