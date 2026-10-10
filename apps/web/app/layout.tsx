@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { cookies } from 'next/headers';
 import { Nav } from './nav';
+import { listSenders } from '@/lib/crm';
 import './globals.css';
 
 /** Browser tab title and description. Generic on purpose — the product is not one company's. */
@@ -22,7 +24,16 @@ const applyThemeBeforePaint =
   "if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}";
 
 /** The root layout wrapping every page. */
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // How many numbers WhatsApp may be limiting, for the badge on "Numbers". Only when signed in, and
+  // never allowed to break a page: the badge is a convenience, the Numbers page is the source.
+  let alerts = 0;
+  if ((await cookies()).get('crm_session') !== undefined) {
+    try {
+      alerts = (await listSenders()).filter((s) => s.restrictionState !== 'ok').length;
+    } catch { alerts = 0; }
+  }
+
   // suppressHydrationWarning on <html> and <body> only: the theme script above sets `data-theme` on
   // <html> before hydration (by design, to avoid a flash), and browser extensions (Grammarly, etc.)
   // inject attributes onto <body>. Both are expected one-level attribute diffs — in Next dev a
@@ -34,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>
       <body className="flex h-screen flex-col overflow-hidden antialiased md:flex-row" suppressHydrationWarning>
-        <Nav />
+        <Nav alerts={alerts} />
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</div>
       </body>
     </html>

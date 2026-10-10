@@ -154,6 +154,9 @@ export interface Sender {
    * number that was connected before into the "previously linked" group.
    */
   linked: boolean;
+  /** The silent-restriction verdict: `ok`, `suspected` (WhatsApp may be limiting it) or `likely`. */
+  restrictionState: 'ok' | 'suspected' | 'likely';
+  restrictionSince: string | null;
   /** `enforce` (the default) or `advisory` (D-29): the anti-ban holds are recorded, not obeyed. */
   enforcement: 'enforce' | 'advisory';
   advisoryReason: string | null;
@@ -255,6 +258,8 @@ export interface CampaignDetail {
   /** Recipient-experience gates an admin lifted for this campaign, and why. */
   gateOverrides: string[];
   gateOverrideReason: string | null;
+  /** Set when the system, not a person, paused it (`restriction_likely`). */
+  pauseReason: string | null;
 }
 
 /** The prospective audience of a draft — a dry run's counts. Mirrors the `preview` route. */
@@ -582,6 +587,8 @@ export interface SenderStatus {
   label: string;
   connectionState: string | null;
   status: string;
+  /** Whether delivery from this number looks restricted (`ok` | `suspected` | `likely`). */
+  restrictionState: 'ok' | 'suspected' | 'likely';
   canSend: boolean;
   /** `not_connected`, `quarantined`, or null when it can send. */
   reason: string | null;
@@ -590,6 +597,20 @@ export interface SenderStatus {
 /** The thread's sender status, polled by the composer. */
 export async function getSenderStatus(conversationId: string): Promise<SenderStatus> {
   return request<SenderStatus>(`/conversations/${encodeURIComponent(conversationId)}/sender-status`);
+}
+
+/** One entry on a number's health timeline. Mirrors `GET /senders/:id/health-events`. */
+export interface HealthEvent {
+  id: string;
+  at: string;
+  kind: string;
+  severity: 'info' | 'warning' | 'critical';
+  summary: string;
+}
+
+/** The recent health timeline for one number, newest first. */
+export async function listHealthEvents(senderId: string): Promise<HealthEvent[]> {
+  return request<HealthEvent[]>(`/senders/${encodeURIComponent(senderId)}/health-events`);
 }
 
 /** Lists the org's WhatsApp numbers, so the UI can explain when none is linked. */

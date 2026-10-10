@@ -68,7 +68,7 @@ const TABS: Tab[] = [
  * nowhere — it makes the shape of the product legible, and makes it obvious that broadcasting
  * is a separate place rather than something that will appear inside the inbox.
  */
-export function Nav() {
+export function Nav({ alerts = 0 }: { alerts?: number }) {
   const pathname = usePathname();
 
   // Nothing to navigate to, and no one to sign out, before signing in.
@@ -103,6 +103,14 @@ export function Nav() {
             >
               {tab.icon}
               <span className="hidden md:inline">{tab.label}</span>
+              {tab.href === '/link' && alerts > 0 && (
+                <span
+                  className="ml-auto rounded-full bg-danger px-1.5 text-[11px] font-semibold text-white md:ml-auto"
+                  title={`${String(alerts)} number${alerts === 1 ? '' : 's'} may be restricted`}
+                >
+                  {alerts}
+                </span>
+              )}
               {tab.soon === true && (
                 <span className="hidden rounded-full bg-canvas px-1.5 text-[10px] text-muted md:inline">soon</span>
               )}

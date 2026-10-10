@@ -250,7 +250,19 @@ shows evidence rather than a bare number:
 | 463 reachout timelock | 24 h | 10% of cap | +15% |
 | 429 rate overlimit | 4 h | 25% | +25% |
 | Suspected soft ban (delivery collapse) | 48 h | 5% | +10% |
-| **Hard ban (401)** | — | **no recovery** — sender retired, operator alerted | — |
+| **Hard ban (401)** | — | **no recovery** — the number is flagged `hard_ban_suspected` on its timeline and shown as logged out; it is not auto-retired, because a ban and an unlink on the phone look identical at the socket | — |
+
+## Layer 6b — Silent restriction
+
+A restricted number is the worst case for an operator: nothing errors and nothing disconnects —
+messages just stay at one tick, arrive hours late, or never leave. The health score above cannot see
+it quickly (it averages a day and needs ten sends), so a dedicated detector reads **delivery
+evidence** — stuck-at-one-tick ratio against the number's own baseline, delivery latency, whether
+people who normally reply are affected, whether only new contacts are. It keeps a state
+(`ok` → `suspected` → `likely`) that moves both ways, writes every change to a per-number timeline,
+slows sending on `suspected`, and on `likely` opens a soft-ban recovery and pauses that number's
+running campaigns. Full design, thresholds and the operator runbook:
+[`27-restriction-tracking.md`](27-restriction-tracking.md).
 
 ## Two classes of gate
 

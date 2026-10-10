@@ -160,7 +160,7 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
 
         await tx.execute(sql`
           UPDATE campaign SET status = 'running', started_at = coalesce(started_at, now()),
-                              updated_at = now()
+                              pause_reason = NULL, updated_at = now()
           WHERE id = ${id} AND org_id = ${orgId}`);
 
         if (overrideGates.length > 0) {
@@ -244,7 +244,7 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
           SELECT c.id, c.name, c.status, c.body, c.sender_identity_id AS "senderIdentityId",
                  c.started_at AS "startedAt", c.completed_at AS "completedAt",
                  c.created_at AS "createdAt", c.gate_overrides AS "gateOverrides",
-                 c.gate_override_reason AS "gateOverrideReason",
+                 c.gate_override_reason AS "gateOverrideReason", c.pause_reason AS "pauseReason",
                  si.warmup_started_at AS "warmupStartedAt",
                  si.daily_cap_override AS "dailyCapOverride",
                  si.last_inbound_at AS "lastInboundAt"

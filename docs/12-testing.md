@@ -81,6 +81,9 @@ Scenarios run in CI on `main`:
 | 10k campaign over a warmed number | Completes; never banned; never exceeds documented limits |
 | Reconnect then burst | No flood after reconnect |
 | Low-reply-ratio spiral | Engine brakes before the simulation downgrades quality |
+| Silent restriction (deliveries stop, nothing errors) | Noticed from delivery evidence; the number is held; its campaign is paused; sends stop |
+| Restriction that heals | Returns to `ok` once delivery is normal and the old evidence ages out; the timeline shows suspected → easing → cleared |
+| A third of phones simply off | Never flagged — the detector does not cry wolf |
 | 5 workers, one sender | Shared budget respected; no double-spend |
 | Timing distribution over 1,000 sends | Gaussian; no detectable fixed period |
 

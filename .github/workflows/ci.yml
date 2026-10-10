@@ -75,12 +75,8 @@ jobs:
       - name: migrations are idempotent
         run: npm run db:migrate:test
 
-      # The anti-ban simulation: days of simulated traffic through the real engine against a virtual
-      # WhatsApp that bans when it is misbehaved with. A ban is a build failure (docs/12-testing.md).
-      # Main only — it takes a few minutes, so it gates the trunk rather than every pull request.
-      - name: anti-ban simulation
-        if: github.ref == 'refs/heads/main'
-        run: npm run test:sim
+  # The anti-ban simulation is its own workflow now (.github/workflows/simulation.yml): it takes
+  # several minutes and has its own trigger rules, so it neither slows this job nor hides in it.
 
   e2e:
     runs-on: ubuntu-latest

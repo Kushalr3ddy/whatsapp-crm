@@ -58,6 +58,11 @@ export class World {
   now: Date;
   senderId = '';
   orgId = '';
+  /**
+   * A silent restriction: from `from` on, deliveries stop arriving (or arrive far too late) for
+   * `who`, with no error and no disconnect — which is how WhatsApp really does it. `null` is healthy.
+   */
+  #restriction: { from: number; who: 'everyone' | 'strangers' } | null = null;
   readonly #pending: Pending[] = [];
   readonly #seen = new Set<string>();
   readonly #kms: LocalKms;
@@ -122,6 +127,30 @@ export class World {
     ref.world = world;
     world.senderId = senderId; world.orgId = orgId;
     return world;
+  }
+
+  /** Starts a silent restriction now: sends still succeed, but deliveries stop arriving. */
+  restrict(who: 'everyone' | 'strangers' = 'everyone'): void {
+    this.#restriction = { from: this.now.getTime(), who };
+  }
+
+  /** Ends the restriction: deliveries flow again. */
+  heal(): void {
+    this.#restriction = null;
+  }
+
+  /** The detector's current verdict for the number, read straight from the database. */
+  async restrictionState(): Promise<string> {
+    const r = await this.db.execute(sql`
+      SELECT restriction_state AS s FROM sender_identity WHERE id = ${this.senderId}`);
+    return (r as unknown as Array<{ s: string }>)[0]!.s;
+  }
+
+  /** The kinds of health events recorded so far, oldest first. */
+  async healthEvents(): Promise<string[]> {
+    const r = await this.db.execute(sql`
+      SELECT kind FROM sender_health_event WHERE sender_identity_id = ${this.senderId} ORDER BY at, id`);
+    return (r as unknown as Array<{ kind: string }>).map((x) => x.kind);
   }
 
   /** Moves the clock forward and lets the world react to anything that has become due. */
@@ -229,6 +258,11 @@ export class World {
     const delivered = new Set<string>();
     for (const p of due) {
       if (p.kind === 'deliver') {
+        // Silently restricted: the send was accepted, the receipt never comes.
+        const r = this.#restriction;
+        const withheld = r !== null && p.at >= r.from
+          && (r.who === 'everyone' || !this.sim.repliedPhones.has(p.phone));
+        if (withheld) continue;
         const ok = this.#rng() < this.options.behaviour.deliveryRate * this.sim.deliveryMultiplier();
         if (ok) { delivered.add(p.providerMessageId); await applyDeliveryStatus(this.db, this.orgId, p.providerMessageId, 'delivered'); }
       } else if (this.#rng() < this.options.behaviour.replyRate) {

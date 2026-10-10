@@ -267,6 +267,13 @@ export const senderIdentity = pgTable('sender_identity', {
   advisorySetBy: uuid('advisory_set_by').references(() => appUser.id, { onDelete: 'set null' }),
   advisorySetAt: timestamp('advisory_set_at', { withTimezone: true }),
   advisoryBypassCount: integer('advisory_bypass_count').notNull().default(0),
+
+  // Silent-restriction tracking (docs/27-restriction-tracking.md). WhatsApp does not say when it
+  // restricts a number — messages just sit at one tick or arrive hours late — so the gateway infers
+  // it from delivery evidence. `ok` | `suspected` | `likely`; `restriction_since` is when it entered
+  // the current state, which the detector uses to avoid flapping.
+  restrictionState: text('restriction_state').notNull().default('ok'),
+  restrictionSince: timestamp('restriction_since', { withTimezone: true }),
   advisoryLastBypass: text('advisory_last_bypass'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -448,6 +455,29 @@ export const cannedReply = pgTable('canned_reply', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
   uniqueIndex('canned_reply_org_shortcut_uidx').on(t.orgId, t.shortcut)
+]);
+
+/**
+ * A timeline entry about a number's health: a suspected restriction raised or cleared, a possible
+ * hard ban, a recovery started. The detector writes one on every state change, so an operator can
+ * read what happened to a number (and when) instead of only seeing today's score.
+ */
+export const senderHealthEvent = pgTable('sender_health_event', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  senderIdentityId: uuid('sender_identity_id').notNull()
+    .references(() => senderIdentity.id, { onDelete: 'cascade' }),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  /** `restriction_suspected`, `restriction_likely`, `restriction_cleared`, `hard_ban_suspected`, … */
+  kind: text('kind').notNull(),
+  /** `info` | `warning` | `critical`. */
+  severity: text('severity').notNull().default('info'),
+  /** One plain sentence an operator can act on. */
+  summary: text('summary').notNull(),
+  /** The numbers behind the decision, so it can be audited rather than trusted. */
+  evidence: jsonb('evidence').notNull().default({})
+}, (t) => [
+  index('sender_health_event_sender_idx').on(t.senderIdentityId, t.at)
 ]);
 
 /**
@@ -695,6 +725,8 @@ export const campaign = pgTable('campaign', {
    */
   gateOverrides: text('gate_overrides').array().notNull().default(sql`'{}'::text[]`),
   gateOverrideReason: text('gate_override_reason'),
+  /** Why a campaign was paused by the system rather than a person (e.g. `restriction_suspected`). */
+  pauseReason: text('pause_reason'),
 
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),

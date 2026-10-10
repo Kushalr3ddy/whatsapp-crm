@@ -388,7 +388,9 @@ export class BaileysChannelProvider implements ChannelProvider {
       conn.state = reason === 'logged_out' ? 'logged_out' : 'closed';
       this.#connections.delete(senderId);
       this.#options.logger.warn({ senderId, statusCode, reason }, 'whatsapp connection closed');
-      this.#connectionEvents.push({ senderId, state: conn.state, reason, at: new Date() });
+      this.#connectionEvents.push({
+        senderId, state: conn.state, reason, code: statusCode ?? null, at: new Date()
+      });
       this.#scheduleReconnect(senderId, reason);
     }
   }
@@ -547,6 +549,7 @@ export function mapDisconnectReason(code: number | null): DisconnectReason {
 /** Maps Baileys' numeric delivery status onto our four states. */
 export function mapStatus(code: number): NormalisedStatusEvent['status'] | null {
   switch (code) {
+    case 0: return 'failed';     // ERROR — the server refused it; counted as a failed send
     case 1: return 'sent';       // pending
     case 2: return 'sent';       // server ack
     case 3: return 'delivered';  // delivery ack

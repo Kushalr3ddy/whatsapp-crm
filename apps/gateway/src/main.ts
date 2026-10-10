@@ -4,7 +4,8 @@ import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
-  DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone } from '@crm/core';
+  DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
+  markMessageFailedByProviderId } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import type { NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -217,7 +218,12 @@ async function main(): Promise<void> {
       try {
         const org = await orgForSender(db, event.senderId);
         if (org === null) continue;
-        if (event.status === 'failed') continue;   // handled at send time
+        // A delivery ERROR ack from the server: the message did not go. Recorded as a failed send so
+        // the health score and the restriction detector see it, instead of leaving it at "sent".
+        if (event.status === 'failed') {
+          await markMessageFailedByProviderId(db, org, event.providerMessageId, 'delivery_error');
+          continue;
+        }
         await applyDeliveryStatus(db, org, event.providerMessageId, event.status);
       } catch (error) {
         logger.error(

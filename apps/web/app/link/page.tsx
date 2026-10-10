@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
-import { listSenders, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { Sender } from '@/lib/crm';
+import { listSenders, listHealthEvents, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { Sender, HealthEvent } from '@/lib/crm';
 import { LinkPanel } from './link-panel';
 import { PageHeader, EmptyState } from '../ui';
 import { setEnforcementAction } from './actions';
@@ -17,11 +17,16 @@ export const dynamic = 'force-dynamic';
  */
 export default async function LinkPage() {
   let senders: Sender[] = [];
+  const events = new Map<string, HealthEvent[]>();
   let isAdmin = false;
   let failure: string | null = null;
   let expired = false;
   try {
     [senders, isAdmin] = await Promise.all([listSenders(), getMe().then((m) => m.role === 'admin')]);
+    // The timeline is secondary: if it cannot be read the page still works.
+    await Promise.all(senders.map(async (s) => {
+      events.set(s.id, await listHealthEvents(s.id).catch((): HealthEvent[] => []));
+    }));
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
     failure = error instanceof CrmApiError
@@ -59,7 +64,7 @@ export default async function LinkPage() {
       )}
 
       <ul className="grid items-start gap-4 lg:grid-cols-2">
-        {active.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} />)}
+        {active.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} events={events.get(s.id) ?? []} />)}
       </ul>
 
       {previouslyLinked.length > 0 && (
@@ -70,7 +75,7 @@ export default async function LinkPage() {
             reconnect it.
           </p>
           <ul className="grid items-start gap-4 opacity-80 lg:grid-cols-2">
-            {previouslyLinked.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} />)}
+            {previouslyLinked.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} events={events.get(s.id) ?? []} />)}
           </ul>
         </section>
       )}
@@ -79,7 +84,7 @@ export default async function LinkPage() {
 }
 
 /** One number's card: its label and live state, the health panel, and the link/unlink panel. */
-function SenderCard({ sender, isAdmin }: { sender: Sender; isAdmin: boolean }) {
+function SenderCard({ sender, isAdmin, events }: { sender: Sender; isAdmin: boolean; events: HealthEvent[] }) {
   return (
     <li className="card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -99,7 +104,9 @@ function SenderCard({ sender, isAdmin }: { sender: Sender; isAdmin: boolean }) {
         </span>
       </div>
       <AdvisoryBanner sender={sender} />
+      <RestrictionBanner sender={sender} />
       <HealthPanel sender={sender} />
+      <HealthTimeline events={events} />
       {isAdmin && <EnforcementControl sender={sender} />}
       <LinkPanel
         senderId={sender.id}
@@ -107,6 +114,55 @@ function SenderCard({ sender, isAdmin }: { sender: Sender; isAdmin: boolean }) {
         linked={sender.linked}
       />
     </li>
+  );
+}
+
+/**
+ * WhatsApp does not announce a restriction; the detector infers it from delivery (docs/27). This is
+ * where that inference is shown: what we suspect, why, and what the system has already done.
+ */
+function RestrictionBanner({ sender }: { sender: Sender }) {
+  if (sender.restrictionState === 'ok') return null;
+  const likely = sender.restrictionState === 'likely';
+  return (
+    <div role="alert" className={`notice mt-4 ${likely ? 'notice-danger' : 'notice-warning'}`}>
+      <p className="font-semibold">
+        {likely ? 'This number looks restricted by WhatsApp.' : 'WhatsApp may be limiting this number.'}
+      </p>
+      <p className="mt-1 text-sm">
+        {likely
+          ? 'Messages are not being delivered. Its campaigns are paused and it is cooling off — do not '
+            + 'push more through it. Check the health timeline below for what was seen.'
+          : 'Delivery has slowed or messages are stuck at one tick. Sending is slowed while this is checked; '
+            + 'it clears itself if delivery recovers.'}
+        {sender.restrictionSince !== null && <> Since {new Date(sender.restrictionSince).toLocaleString()}.</>}
+      </p>
+    </div>
+  );
+}
+
+/** What has happened to this number lately: restrictions raised and cleared, possible bans. */
+function HealthTimeline({ events }: { events: HealthEvent[] }) {
+  if (events.length === 0) return null;
+  return (
+    <details className="mt-3 text-sm">
+      <summary className="cursor-pointer text-muted hover:text-ink">Health timeline ({events.length})</summary>
+      <ol className="mt-2 flex flex-col gap-2">
+        {events.map((e) => (
+          <li key={e.id} className="flex gap-2">
+            <span
+              aria-hidden
+              className={`mt-1.5 size-2 shrink-0 rounded-full ${
+                e.severity === 'critical' ? 'bg-danger' : e.severity === 'warning' ? 'bg-warning' : 'bg-success'}`}
+            />
+            <div>
+              <p>{e.summary}</p>
+              <p className="text-xs text-muted">{new Date(e.at).toLocaleString()}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 

@@ -460,19 +460,22 @@ export function messagesRouter(
   router.get('/conversations/:id/sender-status', requireUuidParam('id'), requireScope('conversations:read'),
     async (req: Request, res: Response) => {
       const rows = await req.tenant!((tx) => tx.execute(sql`
-        SELECT si.label, si.status, si.enforcement, cs.connection_state AS "connectionState"
+        SELECT si.label, si.status, si.enforcement, si.restriction_state AS "restrictionState",
+               cs.connection_state AS "connectionState"
         FROM conversation v
         JOIN sender_identity si ON si.id = v.sender_identity_id
         LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
         WHERE v.id = ${String(req.params.id)} AND v.org_id = ${req.crm!.orgId}`));
       const s = (rows as unknown as Array<{
-        label: string; status: string; enforcement: string; connectionState: string | null;
+        label: string; status: string; enforcement: string; restrictionState: string;
+        connectionState: string | null;
       }>)[0];
       if (!s) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.')); return; }
       const connected = s.connectionState === 'open';
       const reason = !connected ? 'not_connected' : s.status === 'quarantined' ? 'quarantined' : null;
       res.json({ data: {
         label: s.label, connectionState: s.connectionState, status: s.status,
+        restrictionState: s.restrictionState,
         canSend: reason === null || s.enforcement === 'advisory' && connected, reason
       } });
     });

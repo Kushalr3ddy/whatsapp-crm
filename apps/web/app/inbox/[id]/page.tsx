@@ -79,10 +79,16 @@ function DeliveryState({ message }: { message: Message }) {
   // 'queued' is the one status people misread as done. It means the API accepted the message
   // and nothing has left yet — so it is spelled out rather than shown as a bare word.
   const queued = message.status === 'queued';
+  // "sent" with no delivery after a while is the silent-restriction symptom, so say how long.
+  const stuckHours = message.status === 'sent' && message.sentAt !== null
+    ? (Date.now() - new Date(message.sentAt).getTime()) / 3_600_000 : 0;
+  const stuck = stuckHours >= 0.5;
   return (
-    <span className={failed || queued ? 'font-medium text-danger' : 'text-muted'}>
+    <span className={failed || queued || stuck ? 'font-medium text-danger' : 'text-muted'}>
       {' · '}
-      {queued ? `⚠ waiting: ${holdLabel(message.holdReason)}` : message.status}
+      {queued ? `⚠ waiting: ${holdLabel(message.holdReason)}`
+        : stuck ? `sent · no delivery for ${stuckHours >= 1 ? `${String(Math.floor(stuckHours))}h` : `${String(Math.round(stuckHours * 60))}m`}`
+        : message.status}
       {message.errorCode !== null && ` (${message.errorCode})`}
     </span>
   );

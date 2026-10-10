@@ -52,6 +52,8 @@ export function sendersRouter(): Router {
              si.advisory_set_at AS "advisorySetAt",
              si.advisory_bypass_count AS "advisoryBypassCount",
              si.advisory_last_bypass AS "advisoryLastBypass",
+             -- Silent-restriction verdict (docs/27-restriction-tracking.md).
+             si.restriction_state AS "restrictionState", si.restriction_since AS "restrictionSince",
              -- Layer 6 recovery state, turned into a phase/fraction below for the health panel.
              si.recovery_incident AS "recoveryIncident", si.recovery_until AS "recoveryUntil",
              -- The health scorer's evidence (band, delivery ratio, counts), for the health panel.
@@ -147,6 +149,20 @@ export function sendersRouter(): Router {
         return;
       }
       res.json({ data: { senderId: id, enforcement: mode } });
+    });
+
+  /**
+   * The timeline for one number: restrictions suspected or cleared, possible hard bans, newest
+   * first. This is how an operator reads *what happened and when*, rather than only today's score.
+   */
+  router.get('/:id/health-events', requireUuidParam('id'), requireScope('senders:read'),
+    async (req: Request, res: Response) => {
+      const rows = await req.tenant!((tx) => tx.execute(sql`
+        SELECT id, at, kind, severity, summary, evidence
+        FROM sender_health_event
+        WHERE sender_identity_id = ${String(req.params.id)} AND org_id = ${req.crm!.orgId}
+        ORDER BY at DESC LIMIT 30`));
+      res.json({ data: rows });
     });
 
   /** Creates a sender. It exists but is not connected until it has been linked. */

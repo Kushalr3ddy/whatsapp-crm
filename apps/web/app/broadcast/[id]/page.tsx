@@ -83,6 +83,13 @@ export default async function CampaignPage(
             <Controls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
           </header>
 
+          {campaign.pauseReason === 'restriction_likely' && campaign.status === 'paused' && (
+            <p role="alert" className="mb-4 notice notice-danger">
+              Paused automatically: delivery from this number looks restricted by WhatsApp. Check the Numbers
+              page before resuming.
+            </p>
+          )}
+
           {campaign.gateOverrides.length > 0 && (
             <p className="mb-4 notice notice-warning">
               An admin lifted: {campaign.gateOverrides.map((g) => GATE_LABEL[g]?.split(' — ')[0] ?? g).join(', ')}

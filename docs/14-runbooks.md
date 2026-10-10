@@ -200,3 +200,8 @@ degrades its feature rather than the app.
 
 RPO ≤ 24 h, RTO ≤ 1 h. If step 5 fails, the KEK is wrong or missing — the database alone is
 not sufficient to recover.
+
+
+## A number is delayed, stuck or silently restricted
+
+See [`27-restriction-tracking.md`](27-restriction-tracking.md): how it is detected, what the system does on its own, and the steps to take.
