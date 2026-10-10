@@ -76,6 +76,12 @@ export interface NormalisedInboundEvent {
   readonly fromPhoneE164: string | null;
   /** The provider's own id for the sender — may be a privacy id with no phone number attached. */
   readonly fromProviderAddress: string;
+  /**
+   * The sender's phone number when `fromProviderAddress` is a privacy id but the provider also
+   * supplied the number (Baileys: `key.senderPn`). Lets the caller attach the number to the same
+   * contact instead of leaving a person with no phone. Absent when the provider did not say.
+   */
+  readonly linkedPhoneE164?: string | null;
   readonly body: string;
   readonly contentType: 'text' | 'image' | 'document' | 'audio' | 'video' | 'other';
   /**
@@ -89,6 +95,13 @@ export interface NormalisedInboundEvent {
   readonly receivedAt: Date;
   /** The untouched provider payload, persisted before processing so it can be replayed. */
   readonly raw: unknown;
+}
+
+/** A privacy address and the phone number the provider says it belongs to. */
+export interface NormalisedIdentityLink {
+  readonly senderId: string;
+  readonly providerAddress: string;
+  readonly phoneE164: string;
 }
 
 /**
@@ -242,6 +255,12 @@ export interface ChannelProvider {
 
   /** Delivery-state changes, normalised. */
   status(): AsyncIterable<NormalisedStatusEvent>;
+
+  /**
+   * Optional. Moments when the provider reveals which phone number a privacy address belongs to
+   * (WhatsApp: a person shares their number). The caller links the two onto one contact.
+   */
+  identityLinks?(): AsyncIterable<NormalisedIdentityLink>;
 
   /**
    * Connection state changes, so a caller can persist them and react the instant a socket

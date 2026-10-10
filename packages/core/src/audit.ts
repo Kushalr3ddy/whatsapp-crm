@@ -128,6 +128,8 @@ export const AUDIT = {
   senderEnforcementChanged: 'sender.enforcement_changed',
   // Do-not-contact: flagging someone, and an admin knowingly messaging a flagged contact anyway.
   contactDncChanged: 'contact.dnc_changed',
+  // Two contacts turned out to be one person (a privacy address was linked to a phone number).
+  contactMerged: 'contact.merged',
   messageDncOverridden: 'message.dnc_overridden',
   contactsBulkTagged: 'contacts.bulk_tagged',
   contactsBulkUntagged: 'contacts.bulk_untagged',

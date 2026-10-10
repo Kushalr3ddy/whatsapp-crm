@@ -4,7 +4,7 @@ import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
-  DecryptFailureTracker, markDecryptBurst, EntropyScheduler } from '@crm/core';
+  DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import type { NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -96,6 +96,26 @@ async function main(): Promise<void> {
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   };
 
+  // ── identity links: a person shared their number, so a privacy address now has one ───────
+  if (provider.identityLinks) {
+    void (async () => {
+      for await (const link of provider.identityLinks!()) {
+        try {
+          const org = await orgForSender(db, link.senderId);
+          if (org === null) continue;
+          const outcome = await linkLidToPhone(db, org, {
+            lid: link.providerAddress, phoneE164: link.phoneE164
+          });
+          if (outcome !== 'nothing_to_link') {
+            logger.info({ senderId: link.senderId, outcome }, 'privacy address linked to its phone number');
+          }
+        } catch (error) {
+          logger.error({ err: error }, 'could not link a privacy address to its number');
+        }
+      }
+    })();
+  }
+
   // ── inbound: whatever arrives on any connected number ────────────────────────────────
   void (async () => {
     for await (const event of provider.inbound()) {
@@ -105,11 +125,23 @@ async function main(): Promise<void> {
           logger.warn({ senderId: event.senderId }, 'inbound for an unknown sender — ignoring');
           continue;
         }
+        // A privacy address that WhatsApp also gave us the number for: link the two onto one contact
+        // first, so this message lands on the right person instead of a number-less duplicate.
+        let fromPhone = event.fromPhoneE164;
+        if (fromPhone === null && event.linkedPhoneE164 !== undefined && event.linkedPhoneE164 !== null) {
+          const outcome = await linkLidToPhone(db, org, {
+            lid: event.fromProviderAddress, phoneE164: event.linkedPhoneE164
+          });
+          if (outcome !== 'nothing_to_link') {
+            logger.info({ senderId: event.senderId, outcome }, 'privacy address linked to its phone number');
+          }
+          fromPhone = event.linkedPhoneE164;
+        }
         const stored = await storeInboundMessage(db, kms, {
           orgId: org,
           senderIdentityId: event.senderId,
           providerMessageId: event.providerMessageId,
-          fromPhoneE164: event.fromPhoneE164,
+          fromPhoneE164: fromPhone,
           fromProviderAddress: event.fromProviderAddress,
           body: event.body,
           contentType: event.contentType,

@@ -103,3 +103,4 @@ export {
   POLICY_GATES, POLICY_SKIP_REASON, ENGAGEMENT_WINDOW_HOURS, COOLDOWN_DAYS, isPolicyGate,
   blockingPolicyGate, type PolicyGate
 } from './policy-gates.js';
+export { linkLidToPhone, type LinkOutcome } from './identity-linking.js';
