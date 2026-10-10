@@ -163,7 +163,8 @@ export interface RunResult {
 export async function runSheet(
   id: string,
   cols: { phone: string; name: string | null; email: string | null },
-  dryRun: boolean
+  dryRun: boolean,
+  tagName?: string
 ): Promise<RunResult> {
   const identities: unknown[] = [{ kind: 'phone', from: cols.phone, transform: ['trim'] }];
   if (cols.email !== null) identities.push({ kind: 'email', from: cols.email, transform: ['trim', 'lower'] });
@@ -175,7 +176,7 @@ export async function runSheet(
     unmapped: 'keep'
   };
   try {
-    const summary = await runImportMapping(id, mapping, dryRun);
+    const summary = await runImportMapping(id, mapping, dryRun, tagName?.trim() || undefined);
     if (!dryRun) revalidatePath('/inbox');
     return { ok: true, summary };
   } catch (error) {

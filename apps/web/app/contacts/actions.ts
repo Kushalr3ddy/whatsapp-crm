@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   createTag, attachTag, detachTag, createCampaign, createCustomField, deleteCustomField,
-  setContactFields, setDoNotContact, CrmApiError, NotAuthenticatedError
+  setContactFields, setDoNotContact, bulkTagContacts, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
 
 /**
@@ -112,4 +112,82 @@ export async function setDncAction(formData: FormData): Promise<void> {
   const value = formData.get('value') === 'true';
   const reason = String(formData.get('reason') ?? '').trim();
   await run(() => setDoNotContact(contactId, value, reason === '' ? undefined : reason));
+}
+
+/** Builds the `/contacts` URL to return to, keeping the current search and tag filter. */
+function backTo(q: string, tag: string, extra: Record<string, string>): string {
+  const p = new URLSearchParams();
+  if (q !== '') p.set('q', q);
+  if (tag !== '') p.set('tag', tag);
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  return `/contacts?${p.toString()}`;
+}
+
+/**
+ * Previews a bulk tag over everyone matching the current search/tag filter (or everyone). Nothing is
+ * written: it redirects back with the count so the person confirms the real number before it happens.
+ */
+export async function bulkTagPreviewAction(formData: FormData): Promise<void> {
+  const q = String(formData.get('q') ?? '');
+  const tag = String(formData.get('tag') ?? '');
+  const bulkTag = String(formData.get('bulkTag') ?? '');
+  const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
+  const bulkScope = formData.get('bulkScope') === 'all' ? 'all' : 'matching';
+  if (bulkTag === '') redirect(backTo(q, tag, { bulkError: 'pick_tag' }));
+
+  let matched: number;
+  try {
+    const target = bulkScope === 'all'
+      ? { kind: 'all' as const }
+      : { kind: 'search' as const, ...(q !== '' ? { q } : {}), ...(tag !== '' ? { tagId: tag } : {}) };
+    matched = (await bulkTagContacts(bulkTag, { action: bulkAction, target, dryRun: true })).matched;
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
+    redirect(backTo(q, tag, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
+  }
+  redirect(backTo(q, tag, { bulkTag, bulkAction, bulkScope, bulkCount: String(matched) }));
+}
+
+/** Applies the previewed bulk tag, refusing if the audience changed since the preview. */
+export async function bulkTagConfirmAction(formData: FormData): Promise<void> {
+  const q = String(formData.get('q') ?? '');
+  const tag = String(formData.get('tag') ?? '');
+  const bulkTag = String(formData.get('bulkTag') ?? '');
+  const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
+  const bulkScope = formData.get('bulkScope') === 'all' ? 'all' : 'matching';
+  const expected = Number(formData.get('bulkCount') ?? '0');
+
+  let changed: number;
+  try {
+    const target = bulkScope === 'all'
+      ? { kind: 'all' as const }
+      : { kind: 'search' as const, ...(q !== '' ? { q } : {}), ...(tag !== '' ? { tagId: tag } : {}) };
+    changed = (await bulkTagContacts(bulkTag, {
+      action: bulkAction, target, dryRun: false, expectedCount: expected
+    })).changed;
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
+    redirect(backTo(q, tag, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
+  }
+  revalidatePath('/contacts');
+  redirect(backTo(q, tag, { bulkDone: String(changed), bulkAction }));
+}
+
+/** Tags (or untags) exactly the people ticked on the page, at once. */
+export async function bulkTagCheckedAction(formData: FormData): Promise<void> {
+  const ids = formData.getAll('contactId').map(String).filter((v) => v !== '');
+  const bulkTag = String(formData.get('bulkTag') ?? '');
+  const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
+  if (ids.length === 0 || bulkTag === '') redirect('/contacts?bulkError=pick_people');
+  let changed: number;
+  try {
+    changed = (await bulkTagContacts(bulkTag, {
+      action: bulkAction, target: { kind: 'ids', ids }, dryRun: false
+    })).changed;
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
+    redirect(`/contacts?bulkError=${error instanceof CrmApiError ? error.code : 'ERROR'}`);
+  }
+  revalidatePath('/contacts');
+  redirect(`/contacts?bulkDone=${String(changed)}&bulkAction=${bulkAction}`);
 }

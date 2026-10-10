@@ -4,6 +4,7 @@ import { listContacts, listTags, listSenders, listCustomFields, CrmApiError, Not
 import type { Contact, Tag, Sender, CustomField } from '@/lib/crm';
 import {
   createFieldAction, deleteFieldAction, saveContactFieldsAction, setDncAction,
+  bulkTagPreviewAction, bulkTagConfirmAction, bulkTagCheckedAction,
   createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
 } from './actions';
 
@@ -18,9 +19,16 @@ export const dynamic = 'force-dynamic';
  * of an imported book, which is the raw material for hand-picking a campaign audience.
  */
 export default async function ContactsPage(
-  { searchParams }: { searchParams: Promise<{ q?: string; tag?: string; campaignError?: string }> }
+  { searchParams }: {
+    searchParams: Promise<{
+      q?: string; tag?: string; campaignError?: string;
+      bulkTag?: string; bulkAction?: string; bulkScope?: string; bulkCount?: string;
+      bulkDone?: string; bulkError?: string;
+    }>;
+  }
 ) {
-  const { q, tag, campaignError } = await searchParams;
+  const sp = await searchParams;
+  const { q, tag, campaignError } = sp;
   const query = typeof q === 'string' ? q : '';
   const activeTag = typeof tag === 'string' ? tag : '';
 
@@ -82,6 +90,16 @@ export default async function ContactsPage(
 
       <FieldsAdmin fields={fields} />
 
+      <BulkTagBar
+        tags={tags} q={query} activeTag={activeTag}
+        preview={sp.bulkTag !== undefined && sp.bulkCount !== undefined ? {
+          tagId: sp.bulkTag, action: sp.bulkAction === 'remove' ? 'remove' : 'add',
+          scope: sp.bulkScope === 'all' ? 'all' : 'matching', count: Number(sp.bulkCount)
+        } : null}
+        done={sp.bulkDone !== undefined ? { count: Number(sp.bulkDone), action: sp.bulkAction === 'remove' ? 'removed' : 'added' } : null}
+        error={sp.bulkError ?? null}
+      />
+
       {failure !== null && <p className="text-sm text-danger">{failure}</p>}
 
       {failure === null && contacts.length === 0 && (
@@ -93,7 +111,7 @@ export default async function ContactsPage(
       )}
 
       {contacts.length > 0 && (
-        <CampaignFromSelection senders={senders} error={campaignError} />
+        <CampaignFromSelection senders={senders} error={campaignError} tags={tags} />
       )}
 
       {contacts.length > 0 && (
@@ -110,6 +128,83 @@ export default async function ContactsPage(
         </p>
       )}
     </main>
+  );
+}
+
+/** Plain-language text for a bulk-tag error code. */
+const BULK_ERROR: Record<string, string> = {
+  pick_tag: 'Choose a tag first.',
+  pick_people: 'Tick at least one contact, and choose a tag.',
+  COUNT_CHANGED: 'The audience changed while you were looking. Preview again.',
+  FORBIDDEN: 'Only an admin can tag everyone at once.',
+  NOT_FOUND: 'That tag no longer exists.'
+};
+
+/**
+ * Tag many people at once: everyone matching the current search/filter, or everyone (admin). It
+ * previews the real count first and only then asks for confirmation. Ticked people are tagged from
+ * the list below, with the same tag picker.
+ */
+function BulkTagBar(
+  { tags, q, activeTag, preview, done, error }: {
+    tags: Tag[]; q: string; activeTag: string;
+    preview: { tagId: string; action: 'add' | 'remove'; scope: 'matching' | 'all'; count: number } | null;
+    done: { count: number; action: string } | null;
+    error: string | null;
+  }
+) {
+  if (tags.length === 0) return null;
+  const tagName = (id: string): string => tags.find((t) => t.id === id)?.name ?? 'this tag';
+  return (
+    <section aria-label="Tag many people at once" className="mb-4 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+      <p className="font-medium">Tag many at once</p>
+      {error !== null && <p role="alert" className="mt-1 text-danger">{BULK_ERROR[error] ?? 'Could not do that. Try again.'}</p>}
+      {done !== null && (
+        <p role="status" className="mt-1 text-accent">
+          Done — {done.count} {done.count === 1 ? 'person' : 'people'} {done.action}.
+        </p>
+      )}
+      {preview !== null ? (
+        <form action={bulkTagConfirmAction} className="mt-2 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="q" value={q} />
+          <input type="hidden" name="tag" value={activeTag} />
+          <input type="hidden" name="bulkTag" value={preview.tagId} />
+          <input type="hidden" name="bulkAction" value={preview.action} />
+          <input type="hidden" name="bulkScope" value={preview.scope} />
+          <input type="hidden" name="bulkCount" value={String(preview.count)} />
+          <span>
+            {preview.action === 'add' ? 'Add' : 'Remove'} tag <strong>{tagName(preview.tagId)}</strong>{' '}
+            {preview.action === 'add' ? 'to' : 'from'} <strong>{preview.count}</strong>{' '}
+            {preview.count === 1 ? 'person' : 'people'}
+            {preview.scope === 'all' ? ' (everyone)' : q !== '' || activeTag !== '' ? ' (matching the current filter)' : ' (everyone listed)'}?
+          </span>
+          <button type="submit" className="rounded-md border border-accent/50 bg-accent-soft px-2.5 py-1 text-xs">
+            Confirm
+          </button>
+          <a href="/contacts" className="text-xs text-muted underline">Cancel</a>
+        </form>
+      ) : (
+        <form action={bulkTagPreviewAction} className="mt-2 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="q" value={q} />
+          <input type="hidden" name="tag" value={activeTag} />
+          <select name="bulkAction" aria-label="Add or remove" className="rounded-md border border-border bg-surface px-2 py-1">
+            <option value="add">Add tag</option>
+            <option value="remove">Remove tag</option>
+          </select>
+          <select name="bulkTag" aria-label="Tag to apply" defaultValue="" className="rounded-md border border-border bg-surface px-2 py-1">
+            <option value="" disabled>choose a tag…</option>
+            {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <select name="bulkScope" aria-label="Who" className="rounded-md border border-border bg-surface px-2 py-1">
+            <option value="matching">everyone matching the current search / tag filter</option>
+            <option value="all">everyone in the book (admin)</option>
+          </select>
+          <button type="submit" className="rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-accent-soft">
+            Preview
+          </button>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -171,7 +266,7 @@ function NewTagForm() {
  * this is for an ad-hoc "these specific people, right now".
  */
 function CampaignFromSelection(
-  { senders, error }: { senders: Sender[]; error: string | undefined }
+  { senders, error, tags }: { senders: Sender[]; error: string | undefined; tags: Tag[] }
 ) {
   const errMsg = error === 'missing'
     ? 'Check at least one contact, and fill in a name, a message and a number.'
@@ -201,6 +296,21 @@ function CampaignFromSelection(
               aria-label="Campaign message"
               className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
             />
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
+              <span className="text-muted">Or just tag the ticked people:</span>
+              <select name="bulkAction" aria-label="Add or remove (ticked)" className="rounded-md border border-border bg-surface px-1.5 py-0.5">
+                <option value="add">Add tag</option>
+                <option value="remove">Remove tag</option>
+              </select>
+              <select name="bulkTag" aria-label="Tag for ticked people" defaultValue="" className="rounded-md border border-border bg-surface px-1.5 py-0.5">
+                <option value="" disabled>choose a tag…</option>
+                {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button type="submit" formAction={bulkTagCheckedAction} formNoValidate
+                className="rounded-md border border-border px-2 py-0.5 text-muted hover:bg-accent-soft">
+                Tag ticked
+              </button>
+            </div>
             <span className="text-xs text-muted">
               <code>{'{{name}}'}</code> fills the contact&apos;s name; <code>{'{Hi|Hey}'}</code>{' '}
               varies the wording per recipient.

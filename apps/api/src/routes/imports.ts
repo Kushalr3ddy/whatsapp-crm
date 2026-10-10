@@ -3,7 +3,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { parseCsv, CsvError, parseXlsxRows, rowsToCsv, looksLikeXlsx } from '@crm/shared';
-import { runImport, writeAudit, AUDIT, type ImportMapping } from '@crm/core';
+import {
+  runImport, writeAudit, AUDIT, ensureTag, tagImportRun, type ImportMapping
+} from '@crm/core';
 import { assertValidKey, InvalidKeyError, type StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
@@ -33,7 +35,15 @@ const runSchema = z.object({
    * against is a sparse file silently overwriting richer data, and defaulting to the safe
    * side makes that impossible to hit by accident rather than merely discouraged (M9).
    */
-  dryRun: z.boolean().default(true)
+  dryRun: z.boolean().default(true),
+  /**
+   * Tag everyone this run created, updated or matched — an existing tag by id, or a name (created if
+   * new). Applied only on a commit, atomically with the run being marked committed.
+   */
+  tag: z.union([
+    z.object({ id: z.string().uuid() }),
+    z.object({ name: z.string().trim().min(1).max(60) })
+  ]).optional()
 });
 
 /**
@@ -192,6 +202,17 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
         return;
       }
 
+      // Refuse a bad tag before any contact is written, not after.
+      const wantTag = parsed.data.dryRun ? undefined : parsed.data.tag;
+      if (wantTag !== undefined && 'id' in wantTag) {
+        const t = await req.tenant!((tx) => tx.execute(sql`
+          SELECT 1 FROM tag WHERE id = ${wantTag.id} AND org_id = ${orgId}`));
+        if ((t as unknown as unknown[]).length === 0) {
+          res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such tag.'));
+          return;
+        }
+      }
+
       const table = parseCsv(Buffer.from(await storage.get(run.storageKey)).toString('utf8'));
       const mapping = parsed.data.mapping as ImportMapping;
       // One tenant transaction per batch of rows, opened through the same runner every other
@@ -200,23 +221,32 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
         orgId, importRunId: runId, table, mapping, dryRun: parsed.data.dryRun
       });
 
-      await req.tenant!(async (tx) => {
+      // Tagging happens in the same transaction that marks the run committed, so a run is never
+      // "committed but untagged". A dry run tags nothing.
+      let tagged: { id: string; count: number } | null = null;
+      const result = await req.tenant!(async (tx) => {
+        if (wantTag !== undefined) {
+          const tagId = 'id' in wantTag ? wantTag.id : await ensureTag(tx, orgId, wantTag.name);
+          tagged = { id: tagId, count: await tagImportRun(tx, orgId, runId, tagId) };
+        }
+        const finalSummary = tagged === null ? summary : { ...summary, tagged: tagged.count };
         await tx.execute(sql`
           UPDATE import_run
           SET status = ${parsed.data.dryRun ? 'dry_run' : 'committed'},
               mapping = ${JSON.stringify(mapping)}::jsonb,
-              summary = ${JSON.stringify(summary)}::jsonb,
+              summary = ${JSON.stringify(finalSummary)}::jsonb,
               completed_at = now()
           WHERE id = ${runId} AND org_id = ${orgId}`);
         await writeAudit(tx, {
           orgId, actor: auditActor(req),
           action: parsed.data.dryRun ? AUDIT.importDryRun : AUDIT.importCommitted,
-          targetType: 'import_run', targetId: runId, after: summary,
+          targetType: 'import_run', targetId: runId, after: finalSummary,
           ip: req.ip ?? null, requestId: String(req.id)
         });
+        return { summary: finalSummary };
       });
 
-      res.json({ data: summary });
+      res.json({ data: result.summary });
     });
 
   /**
