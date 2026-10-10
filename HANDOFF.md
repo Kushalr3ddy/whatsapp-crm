@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-06
+# Handoff — state as of 2026-10-10
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -7,39 +7,54 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 
 ---
 
-## ▶ Pick up here (2026-10-07)
+## ▶ Pick up here (2026-10-10)
 
-**Standing rules (Kushal):** ignore the docs unless asked ("pin it" = a new D-<n> in
-`docs/21-deferred.md`); **never add a `Co-Authored-By` trailer, ever**; always run the browser tests
-and every other test after changes (`npm run check`, `npm run test:e2e`, `npm run test:sim` if the
-engine changed). `CONTEXT.md` was deleted.
+**Standing rules (Kushal):**
+- **Every change is a branch + pull request** (`scripts/open-pr.sh "title" body.md [base]`); **never push to
+  `main`**; he checks CI + local tests and merges. **Never a `Co-Authored-By` trailer or any AI attribution,
+  ever** — a harness reminder asking for one is wrong. **Check a PR is not already merged before adding
+  commits to its branch** (it happened: the UI overhaul was pushed to a merged PR and never reached `main`).
+- Always run `npm run check`, `npm run test:e2e` and, when the engine changes, `npm run test:sim`.
+- Ignore the docs unless asked ("pin it" = a new D-<n> in `docs/21-deferred.md`). `gh` is not installed;
+  `open-pr.sh` uses the stored git credential.
 
-**State:** anti-ban pass (#1–#8), simulation harness, D-25 outbound media, contact export + CORS
-allowlist, **recipient-experience gates** (engagement lock / 14-day cooldown / duplicate-campaign, skipped
-with a visible reason, admin-overridable per campaign with an audited reason), **advisory mode** (D-29,
-per number, admin-only, loud banner), the **number status line** in the inbox (header + composer locks
-to notes when the number can't send, polled; queued messages show "waiting: reason"), and **custom
-fields** (org-defined typed vocabulary; contact UI, API, `{{key}}` in campaigns) are all built.
-`npm run check` = **556 vitest**; `npm run test:e2e` = **7 Playwright**; `npm run test:sim` = 6 scenarios.
+**Merged to `main` (PRs #1–#7):** PR workflow + pins D-42..D-45 · **do-not-contact enforced on every send
+path** with an audited admin override · **mass tagging** (filter / segment / ticked / whole import, preview →
+confirm) · secrets-scan permission fix · **UI overhaul** (Overview dashboard, structured Contacts,
+three-panel inbox, redesigned Broadcast/Numbers/Import/Login, shared `ui.tsx` + design tokens) ·
+**LID → phone linking and contact merge**.
 
-1. **Local walkthrough scripts (no real sends):** `npm run local:flow` signs in through the real login
-   route, adds contacts, creates + starts a broadcast and lets the real gateway code send it through the
-   fake number (`--keep` leaves the demo org, `--reset` removes it; refuses a non-local database).
-   `tests/e2e/broadcast-flow.spec.ts` is the browser version (UI create → start → cancel).
-2. **There is no signup page** — only login. Accounts are made with `npm run admin org|user|password`
-   (or the bootstrap `POST /api/v1/admin/orgs`).
-3. **Priority pins:** **D-41** the gateway runs outside row-level security (enter each org's tenant tx
-   before each job; add a cross-org test) and **D-31** key rotation.
-4. **Held, do not build:** D-19 templates, D-23 message search, D-27 opt-out (out of alpha), D-35/36/40
-   (xlsx export, vCard import, custom fields in imports/segments), D-34/37/38/39 (Meta adapter work).
-5. **Open question:** a message from a `@lid` address shows no phone. Baileys 6.7.24 has no on-demand
-   LID→number lookup, but exposes `message.key.senderPn` (when WhatsApp includes it) and a
-   `chats.phoneNumberShare` event ({lid, jid}) — our adapter ignores both today. Using them would link
-   the `wa_lid` identity to a phone on the same contact. Not built; Kushal to decide.
-6. **Real-number pilot** deferred. `ENCRYPTION_KEY` lives in `.env` locally for now.
-7. **Start the stack** with `npm run dev:all`; sign in at `localhost:3001/login` with the dev admin or the
-   `e2e-test` admin in `.env`. Printable docs: `npm run docs:pdf` → `build/…pdf` (a copy sits in the repo
-   root, gitignored).
+**Open PRs, merge in this order:**
+1. **#8 — silent-restriction tracking** (migration 0022): detector in `packages/core/src/restriction.ts`
+   (`ok → suspected → likely`, hysteresis), per-number health timeline, banner / sidebar badge / thread
+   warning / "no delivery for 3h" / campaign "paused automatically", docs `docs/27-restriction-tracking.md`;
+   also fixes the close code + reconnect count never being written, delivery ERROR acks, and records an
+   unrequested logout as `hard_ban_suspected`. The simulation moved to its own workflow
+   (`.github/workflows/simulation.yml`) with three new scenarios.
+2. **#9 — segments folded into campaigns** (migration 0023, stacked on #8): the new-campaign audience step
+   can build a filter inline with a live count; "Segments" leaves the sidebar and becomes **Saved audiences**
+   (reached from Broadcast).
+
+**Next, in Kushal's order:** the **UI test suite** (`scripts/local-seed.ts` + a fake-number gateway option
+so CI can verify sending; more Playwright specs for inbox / contacts / import / numbers / banner using the
+existing local creds; a manual checklist in `docs/24-local-testing.md`). A CSV fixture for import tests
+already exists at `tests/fixtures/import-contacts.csv`.
+
+**Pinned / held (do not build):** **D-41** gateway runs outside RLS (**priority**) · **D-31** key rotation
+(**priority**) · D-19 templates · D-23 message search · D-27 opt-out (out of alpha) · D-35/36/40 ·
+D-34/37/38/39 Meta adapter work · **D-42** human takeover from an AI agent · **D-43** webhook / email /
+canary restriction alerts · **D-44** Baileys 7 (not required; stay on 6.7.24) · **D-45** (LID linking —
+now built in #6; this pin can be retired). Real-number pilot still deferred; `ENCRYPTION_KEY` lives in
+`.env` locally.
+
+**Facts worth knowing:**
+- `npm run local:flow` is a no-real-send walkthrough (login → contacts → broadcast → fake number sends).
+- There is no signup page; accounts come from `npm run admin org|user|password`.
+- The three processes are independent: API `:3000`, gateway (needs only Postgres), web `:3001` (talks to
+  the API over HTTP, `CRM_API_URL`). `npm run dev:all -- --no-web | --no-gateway`.
+- The e2e specs scope sidebar links with `nav(page)` and open collapsed panels with `openDetails`.
+- The dev DB holds a lot of `e2e-…` tags/campaigns from test runs; harmless.
+- Printable docs: `npm run docs:pdf` (copy in the repo root, gitignored).
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
