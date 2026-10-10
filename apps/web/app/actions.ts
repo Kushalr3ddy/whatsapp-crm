@@ -21,12 +21,14 @@ export interface SendResult {
  * returned rather than thrown: a rejected send is an ordinary outcome the composer should
  * display — an unreachable number, or no linked sender — not a crashed page.
  */
-export async function sendReply(conversationId: string, body: string): Promise<SendResult> {
+export async function sendReply(
+  conversationId: string, body: string, override?: { reason: string }
+): Promise<SendResult> {
   const text = body.trim();
   if (text === '') return { ok: false, error: 'Nothing to send.' };
 
   try {
-    await queueReply(conversationId, text);
+    await queueReply(conversationId, text, override);
   } catch (error) {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     return { ok: false, error: 'Could not reach the API.' };

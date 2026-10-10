@@ -912,6 +912,8 @@ whole-import targeting cover it.
 
 ## D-29 · An anti-ban "advisory mode" — warn but do not enforce — **BUILT 2026-10-06**
 
+> **Update 2026-10-09:** do-not-contact is now actually enforced on every send path, and an admin can lift it per message or campaign (audited, with a reason); advisory mode still does not bypass it. The line below saying it stays hard is superseded.
+>
 > **Built** as a per-number `enforcement` setting (admin-only, reason required, audited via `sender.enforcement_changed`; `POST /senders/:id/enforcement`). Advisory lets a number past the pacing / health / recovery / contact-graph / recipient-hours holds and the identical-body cap, counting each bypass (`advisory_bypass_count`, `advisory_last_bypass`) and showing a persistent red banner on the Numbers page. `do_not_contact`, consent and a disconnected socket stay hard. The recipient-experience gates (engagement lock, 14-day cooldown, duplicate-campaign) are built too and overridable per campaign by an admin (`POST /campaigns/:id/start` with `overrideGates` + `reason`). The text below is the original pin.
 
 **What:** an operator toggle that keeps the anti-ban engine **computing and surfacing** its

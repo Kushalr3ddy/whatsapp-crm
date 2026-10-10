@@ -325,10 +325,11 @@ export async function dispatchCampaign(
 
       const created = await tx.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                             body_enc, body_hmac, sent_by, campaign_id)
+                             body_enc, body_hmac, sent_by, campaign_id, dnc_override)
         VALUES (${input.orgId}, ${conversationId}, 'outbound', 'queued', 'text',
                 ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
-                ${hmac}, 'system', ${input.campaignId})
+                ${hmac}, 'system', ${input.campaignId},
+                ${(input.gateOverrides ?? []).includes('dnc')})
         RETURNING id`);
       const messageId = (created as unknown as Array<{ id: string }>)[0]!.id;
 

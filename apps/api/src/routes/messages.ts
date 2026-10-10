@@ -22,10 +22,50 @@ const sendMessage = z.object({
   to: z.string().min(4).optional(),
   conversationId: z.string().uuid().optional(),
   body: z.string().min(1).max(4096),
-  senderId: z.string().uuid().optional()
+  senderId: z.string().uuid().optional(),
+  /** An admin knowingly messaging a do-not-contact person: explicit, with a reason, audited. */
+  overrideDnc: z.boolean().optional(),
+  overrideReason: z.string().trim().min(10).max(500).optional()
 }).refine((v) => (v.to === undefined) !== (v.conversationId === undefined), {
   message: 'send exactly one of `to` or `conversationId`'
+}).refine((v) => v.overrideDnc !== true || v.overrideReason !== undefined, {
+  message: 'a reason of at least 10 characters is required to override do-not-contact', path: ['overrideReason']
 });
+
+/**
+ * What to do about a send to someone who may be flagged do-not-contact. Not flagged: proceed. Flagged:
+ * refuse, unless the caller is a signed-in admin who asked to override (`overrideDnc` + a reason), in
+ * which case proceed and record the override. An agent or an API key can never override.
+ */
+function dncVerdict(
+  req: Request, flagged: boolean, overrideDnc: boolean | undefined
+): 'proceed' | 'override' | 'blocked' | 'forbidden' {
+  if (!flagged) return 'proceed';
+  if (overrideDnc !== true) return 'blocked';
+  return req.crm!.kind === 'session' && req.crm!.role === 'admin' ? 'override' : 'forbidden';
+}
+
+/** Writes the audit row for an override, in the same transaction as the message it allowed. */
+async function auditDncOverride(
+  req: Request, tx: Parameters<Parameters<NonNullable<Request['tenant']>>[0]>[0], orgId: string,
+  conversationId: string, reason: string | undefined
+): Promise<void> {
+  await writeAudit(tx, {
+    orgId, actor: auditActor(req), action: AUDIT.messageDncOverridden,
+    targetType: 'conversation', targetId: conversationId, after: { reason },
+    ip: req.ip ?? null, requestId: String(req.id)
+  });
+}
+
+/** The two refusals, shared by every send path. */
+function sendDncRefusal(req: Request, res: Response, verdict: 'blocked' | 'forbidden'): void {
+  if (verdict === 'blocked') {
+    res.status(422).json(problem(req, 422, 'DO_NOT_CONTACT',
+      'This contact is marked do-not-contact. An admin can send anyway with overrideDnc and a reason.'));
+  } else {
+    res.status(403).json(problem(req, 403, 'FORBIDDEN', 'Only a signed-in admin can override do-not-contact.'));
+  }
+}
 
 /**
  * Filters for the conversation list.
@@ -121,6 +161,7 @@ export function messagesRouter(
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
              v.assignee_user_id AS "assigneeUserId", au.display_name AS "assigneeName",
              c.id AS "contactId", c.display_name AS "contactName",
+             c.do_not_contact AS "doNotContact",
              -- A subquery rather than a join: a contact may hold more than one phone
              -- identity, and joining would silently duplicate the conversation row.
              -- Prefers the primary, falls back to the oldest, always yields exactly one.
@@ -181,6 +222,7 @@ export function messagesRouter(
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
              v.assignee_user_id AS "assigneeUserId", au.display_name AS "assigneeName",
              c.id AS "contactId", c.display_name AS "contactName",
+             c.do_not_contact AS "doNotContact",
              (SELECT ci.value_normalized FROM contact_identity ci
                WHERE ci.contact_id = c.id AND ci.kind = 'phone'
                ORDER BY ci.is_primary DESC, ci.created_at ASC
@@ -565,6 +607,12 @@ export function messagesRouter(
           return { locked: true as const };
         }
 
+        const flagged = (await tx.execute(sql`
+          SELECT c.do_not_contact AS flagged FROM conversation v JOIN contact c ON c.id = v.contact_id
+          WHERE v.id = ${conversationId} AND v.org_id = ${orgId}`)
+        ) as unknown as Array<{ flagged: boolean }>;
+        if (flagged[0]?.flagged === true) return { dnc: true as const };
+
         const stored = await storeOutboundMedia(tx, storage, { orgId, bytes, filename });
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
@@ -586,6 +634,11 @@ export function messagesRouter(
           'This thread is assigned to another agent. Reassign it to yourself, or ask an admin, to reply.'));
         return;
       }
+      if ('dnc' in result) {
+        res.status(422).json(problem(req, 422, 'DO_NOT_CONTACT',
+          'This contact is marked do-not-contact; files cannot be sent to them.'));
+        return;
+      }
       res.status(202).json({ data: result.row });
     });
 
@@ -596,7 +649,7 @@ export function messagesRouter(
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
-    const { to, conversationId, body, senderId } = parsed.data;
+    const { to, conversationId, body, senderId, overrideDnc, overrideReason } = parsed.data;
     const orgIdEarly = req.crm!.orgId;
 
     // Replying into an existing thread. No phone is involved, so no normalisation applies —
@@ -621,16 +674,25 @@ export function messagesRouter(
           return { locked: true as const };
         }
 
+        const flagged = (await tx.execute(sql`
+          SELECT c.do_not_contact AS flagged FROM conversation v JOIN contact c ON c.id = v.contact_id
+          WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}`)
+        ) as unknown as Array<{ flagged: boolean }>;
+        const verdict = dncVerdict(req, flagged[0]?.flagged === true, overrideDnc);
+        if (verdict === 'blocked' || verdict === 'forbidden') return { dncRefused: verdict };
+
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                               body_enc, body_hmac, sent_by)
+                               body_enc, body_hmac, sent_by, dnc_override, dnc_override_reason)
           SELECT ${orgIdEarly}, v.id, 'outbound', 'queued', 'text',
                  ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
-                 ${kms.blindIndex(body)}, 'api'
+                 ${kms.blindIndex(body)}, 'api', ${verdict === 'override'},
+                 ${verdict === 'override' ? overrideReason ?? null : null}
           FROM conversation v
           WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}
           RETURNING id, conversation_id AS "conversationId", status`)
         ) as unknown as Array<{ id: string; conversationId: string; status: string }>;
+        if (verdict === 'override') await auditDncOverride(req, tx, orgIdEarly, conversationId, overrideReason);
         return { row: inserted[0]! };
       });
 
@@ -644,6 +706,7 @@ export function messagesRouter(
           'This thread is assigned to another agent. Reassign it to yourself, or ask an admin, to reply.'));
         return;
       }
+      if ('dncRefused' in result) { sendDncRefusal(req, res, result.dncRefused); return; }
       res.status(202).json({ data: result.row });
       return;
     }
@@ -664,7 +727,14 @@ export function messagesRouter(
     }
 
     const orgId = req.crm!.orgId;
-    const rows = await req.tenant!((tx) => tx.execute(sql`
+    const outcome = await req.tenant!(async (tx) => {
+      const known = (await tx.execute(sql`
+        SELECT c.do_not_contact AS flagged FROM contact_identity ci JOIN contact c ON c.id = ci.contact_id
+        WHERE ci.org_id = ${orgId} AND ci.kind = 'phone' AND ci.value_normalized = ${phone.value.e164}`)
+      ) as unknown as Array<{ flagged: boolean }>;
+      const verdict = dncVerdict(req, known[0]?.flagged === true, overrideDnc);
+      if (verdict === 'blocked' || verdict === 'forbidden') return { dncRefused: verdict };
+      const rows = await tx.execute(sql`
       WITH chosen_sender AS (
         SELECT id FROM sender_identity
         WHERE org_id = ${orgId}
@@ -692,14 +762,20 @@ export function messagesRouter(
         RETURNING id
       )
       INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                           body_enc, body_hmac, sent_by)
+                           body_enc, body_hmac, sent_by, dnc_override, dnc_override_reason)
       SELECT ${orgId}, conv.id, 'outbound', 'queued', 'text',
              ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
-             ${kms.blindIndex(body)}, 'api'
+             ${kms.blindIndex(body)}, 'api', ${verdict === 'override'},
+             ${verdict === 'override' ? overrideReason ?? null : null}
       FROM conv
-      RETURNING id, conversation_id AS "conversationId", status`));
+      RETURNING id, conversation_id AS "conversationId", status`);
+      const made = (rows as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
+      if (made && verdict === 'override') await auditDncOverride(req, tx, orgId, made.conversationId, overrideReason);
+      return { made };
+    });
+    if ('dncRefused' in outcome) { sendDncRefusal(req, res, outcome.dncRefused); return; }
 
-    const created = (rows as unknown as Array<{ id: string; conversationId: string; status: string }>)[0];
+    const created = outcome.made;
     if (!created) {
       // The only way the chain produces nothing is having no usable sender.
       res.status(409).json(problem(req, 409, 'NO_ACTIVE_SENDER',

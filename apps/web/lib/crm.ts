@@ -20,6 +20,8 @@ export interface Conversation {
   lastInboundAt: string | null;
   lastOutboundAt: string | null;
   contactId: string;
+  /** Flagged do-not-contact: replies are blocked unless an admin overrides, with a reason. */
+  doNotContact: boolean;
   contactName: string | null;
   /** The contact's primary phone in E.164. Null when they have no phone identity. */
   contactPhone: string | null;
@@ -679,11 +681,21 @@ export async function queueMessage(to: string, body: string): Promise<{ id: stri
  * The conversation already knows how to reach them.
  */
 export async function queueReply(
-  conversationId: string, body: string
+  conversationId: string, body: string, override?: { reason: string }
 ): Promise<{ id: string; conversationId: string }> {
   return request<{ id: string; conversationId: string }>('/messages', {
     method: 'POST',
-    body: JSON.stringify({ conversationId, body })
+    body: JSON.stringify({
+      conversationId, body,
+      ...(override ? { overrideDnc: true, overrideReason: override.reason } : {})
+    })
+  });
+}
+
+/** Flags or clears do-not-contact on a contact. */
+export async function setDoNotContact(contactId: string, value: boolean, reason?: string): Promise<void> {
+  return requestVoid(`/contacts/${encodeURIComponent(contactId)}/do-not-contact`, {
+    method: 'PUT', body: JSON.stringify({ value, ...(reason ? { reason } : {}) })
   });
 }
 

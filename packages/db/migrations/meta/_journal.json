@@ -148,6 +148,13 @@
       "when": 1791278884168,
       "tag": "0020_bored_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791566425069,
+      "tag": "0021_jittery_moon_knight",
+      "breakpoints": true
     }
   ]
 }
