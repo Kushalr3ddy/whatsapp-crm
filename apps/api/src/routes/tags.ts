@@ -1,7 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { requireScope } from '../auth.js';
+import {
+  resolveTarget, countMatching, bulkTag, bulkUntag, writeAudit, AUDIT, type TagTarget
+} from '@crm/core';
+import { auditActor, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
 
@@ -9,6 +12,23 @@ import { problem } from '../problem.js';
 const createTag = z.object({
   name: z.string().trim().min(1).max(60),
   colour: z.string().trim().max(20).optional()
+});
+
+/**
+ * Body for tagging or untagging many contacts at once. The audience is a `target` resolved on the
+ * server. It is a dry run unless `dryRun: false` is sent, like an import; `expectedCount` (the number a
+ * preview returned) makes a commit refuse if the audience has changed underneath it.
+ */
+const bulkBody = z.object({
+  action: z.enum(['add', 'remove']),
+  target: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('all') }),
+    z.object({ kind: z.literal('search'), q: z.string().trim().max(100).optional(), tagId: z.string().uuid().optional() }),
+    z.object({ kind: z.literal('segment'), segmentId: z.string().uuid() }),
+    z.object({ kind: z.literal('ids'), ids: z.array(z.string().uuid()).min(1).max(5000) })
+  ]),
+  dryRun: z.boolean().default(true),
+  expectedCount: z.number().int().min(0).optional()
 });
 
 /**
@@ -52,6 +72,70 @@ export function tagsRouter(): Router {
     }
     res.status(201).json({ data: created });
   });
+
+  /**
+   * Adds or removes this tag across many contacts in one statement: everyone, everyone matching a
+   * search / tag filter, everyone in a segment, or an explicit list. Previews by default. Tagging
+   * *everyone* is admin-only. Do-not-contact people are tagged like anyone else — tagging is not
+   * messaging, and the send gate is what stops a message to them.
+   */
+  router.post('/:id/bulk', requireUuidParam('id'), requireScope('contacts:write'),
+    async (req: Request, res: Response) => {
+      const parsed = bulkBody.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+          (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+        return;
+      }
+      const { action, dryRun, expectedCount } = parsed.data;
+      const target = parsed.data.target as TagTarget;
+      if (target.kind === 'all' && !dryRun
+        && !(req.crm!.kind === 'session' && req.crm!.role === 'admin')) {
+        res.status(403).json(problem(req, 403, 'FORBIDDEN', 'Only an admin can tag everyone at once.'));
+        return;
+      }
+      const orgId = req.crm!.orgId;
+      const tagId = String(req.params.id);
+
+      const outcome = await req.tenant!(async (tx) => {
+        const tag = await tx.execute(sql`SELECT 1 FROM tag WHERE id = ${tagId} AND org_id = ${orgId}`);
+        if ((tag as unknown as unknown[]).length === 0) return { error: 'no_tag' as const };
+        const predicate = await resolveTarget(tx, orgId, target);
+        if (predicate === null) return { error: 'no_segment' as const };
+
+        const matched = await countMatching(tx, predicate);
+        if (dryRun) return { matched, changed: 0 };
+        if (expectedCount !== undefined && expectedCount !== matched) {
+          return { error: 'count_changed' as const, matched };
+        }
+        const changed = action === 'add'
+          ? await bulkTag(tx, orgId, tagId, predicate)
+          : await bulkUntag(tx, orgId, tagId, predicate);
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req),
+          action: action === 'add' ? AUDIT.contactsBulkTagged : AUDIT.contactsBulkUntagged,
+          targetType: 'tag', targetId: tagId,
+          after: { target: target.kind, matched, changed },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+        return { matched, changed };
+      });
+
+      if ('error' in outcome) {
+        if (outcome.error === 'count_changed') {
+          res.status(409).json({
+            ...problem(req, 409, 'COUNT_CHANGED',
+              `The audience changed: ${String(outcome.matched)} people match now. Review and confirm again.`),
+            matched: outcome.matched
+          });
+          return;
+        }
+        const detail = outcome.error === 'no_tag' ? 'No such tag.' : 'No such segment.';
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', detail));
+        return;
+      }
+      res.json({ data: { action, dryRun, matched: outcome.matched, changed: outcome.changed } });
+    });
 
   /** Deletes a tag; its `contact_tag` links cascade away with it. */
   router.delete('/:id', requireUuidParam('id'), requireScope('contacts:write'),

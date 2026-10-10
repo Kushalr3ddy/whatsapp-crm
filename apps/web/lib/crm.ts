@@ -621,8 +621,12 @@ export interface ImportUpload {
 export interface ImportSummary {
   read: number;
   created: number;
+  updated: number;
+  skipped: number;
   errors: number;
   dryRun: boolean;
+  /** People tagged by this run, when a tag was asked for on a commit. */
+  tagged?: number;
 }
 
 /**
@@ -654,11 +658,35 @@ export async function uploadImport(
 
 /** Runs a mapping over an uploaded file — a dry run to preview, or a commit to write contacts. */
 export async function runImportMapping(
-  id: string, mapping: unknown, dryRun: boolean
+  id: string, mapping: unknown, dryRun: boolean, tagName?: string
 ): Promise<ImportSummary> {
   return request<ImportSummary>(`/imports/${encodeURIComponent(id)}/run`, {
     method: 'POST',
-    body: JSON.stringify({ mapping, dryRun })
+    body: JSON.stringify({ mapping, dryRun, ...(tagName ? { tag: { name: tagName } } : {}) })
+  });
+}
+
+/** What a bulk tag action would do or did. Mirrors `POST /tags/:id/bulk`. */
+export interface BulkTagResult {
+  action: 'add' | 'remove';
+  dryRun: boolean;
+  matched: number;
+  changed: number;
+}
+
+/** Who a bulk tag action applies to. */
+export type BulkTarget =
+  | { kind: 'all' }
+  | { kind: 'search'; q?: string; tagId?: string }
+  | { kind: 'ids'; ids: string[] };
+
+/** Previews (default) or applies adding/removing one tag across many contacts. */
+export async function bulkTagContacts(
+  tagId: string,
+  body: { action: 'add' | 'remove'; target: BulkTarget; dryRun: boolean; expectedCount?: number }
+): Promise<BulkTagResult> {
+  return request<BulkTagResult>(`/tags/${encodeURIComponent(tagId)}/bulk`, {
+    method: 'POST', body: JSON.stringify(body)
   });
 }
 

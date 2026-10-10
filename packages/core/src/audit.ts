@@ -131,6 +131,8 @@ export const AUDIT = {
   // Two contacts turned out to be one person (a privacy address was linked to a phone number).
   contactMerged: 'contact.merged',
   messageDncOverridden: 'message.dnc_overridden',
+  contactsBulkTagged: 'contacts.bulk_tagged',
+  contactsBulkUntagged: 'contacts.bulk_untagged',
   customFieldCreated: 'custom_field.created',
   customFieldDeleted: 'custom_field.deleted'
 } as const;

@@ -92,6 +92,10 @@ export {
   type CampaignProgress, type AudiencePreview, type CampaignForecast
 } from './campaigns.js';
 export {
+  searchPredicate, resolveTarget, countMatching, bulkTag, bulkUntag, tagImportRun, ensureTag,
+  type TagTarget
+} from './tagging.js';
+export {
   CUSTOM_FIELD_TYPES, FIELD_KEY, checkFieldValue, validateCustomFields, loadCustomFields,
   type CustomFieldDef, type CustomFieldType
 } from './custom-fields.js';
