@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { listSenders, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Sender } from '@/lib/crm';
 import { LinkPanel } from './link-panel';
+import { PageHeader, EmptyState } from '../ui';
 import { setEnforcementAction } from './actions';
 
 /** Rendered per request — linking state changes second by second. */
@@ -37,24 +38,27 @@ export default async function LinkPage() {
   const previouslyLinked = senders.filter((s) => !s.linked && s.lastConnectedAt !== null);
 
   return (
-    <main className="page page-narrow">
-      <header className="mb-6">
-        <h1 className="page-title">Numbers</h1>
-        <p className="page-desc">
-          Scan the QR from WhatsApp on your phone: <strong>Settings → Linked Devices → Link a
-          device</strong>. The gateway must be running — <code>npm run gateway</code>.
-        </p>
-      </header>
+    <main className="page">
+      <PageHeader
+        title="Numbers"
+        description={
+          <>
+            Scan the QR from WhatsApp on your phone: <strong>Settings → Linked Devices → Link a device</strong>.
+            The gateway must be running — <code>npm run gateway</code>.
+          </>
+        }
+      />
 
-      {failure !== null && <p className="text-sm text-danger">{failure}</p>}
+      {failure !== null && <p className="notice notice-danger">{failure}</p>}
 
       {failure === null && senders.length === 0 && (
-        <p className="text-sm text-muted">
-          No senders exist yet. Create one first: <code>POST /api/v1/senders</code>.
-        </p>
+        <EmptyState
+          title="No numbers yet"
+          body={<>Create one first: <code>POST /api/v1/senders</code>, then link it here.</>}
+        />
       )}
 
-      <ul className="flex flex-col gap-3">
+      <ul className="grid items-start gap-4 lg:grid-cols-2">
         {active.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} />)}
       </ul>
 
@@ -65,7 +69,7 @@ export default async function LinkPage() {
             Unlinked, kept so their conversations stay reachable in the inbox. Link one again to
             reconnect it.
           </p>
-          <ul className="flex flex-col gap-3 opacity-80">
+          <ul className="grid items-start gap-4 opacity-80 lg:grid-cols-2">
             {previouslyLinked.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} />)}
           </ul>
         </section>
@@ -77,15 +81,22 @@ export default async function LinkPage() {
 /** One number's card: its label and live state, the health panel, and the link/unlink panel. */
 function SenderCard({ sender, isAdmin }: { sender: Sender; isAdmin: boolean }) {
   return (
-    <li className="card p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">{sender.label ?? 'Unnamed sender'}</p>
-          <p className="mt-0.5 text-xs text-muted">
-            {sender.phoneE164 ?? 'no number yet'} · socket{' '}
-            <code>{sender.connectionState ?? 'none'}</code>
-          </p>
+    <li className="card p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="avatar size-11" aria-hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold">{sender.label ?? 'Unnamed sender'}</p>
+            <p className="truncate text-sm text-muted">{sender.phoneE164 ?? 'no number yet'}</p>
+          </div>
         </div>
+        <span className={`badge ${sender.connectionState === 'open' ? 'badge-success' : 'badge-warning'}`}>
+          {sender.connectionState === 'open' ? 'Connected' : sender.connectionState === 'connecting' ? 'Connecting' : 'Not connected'}
+        </span>
       </div>
       <AdvisoryBanner sender={sender} />
       <HealthPanel sender={sender} />
@@ -222,7 +233,7 @@ function RecoveryBanner({ sender }: { sender: Sender }) {
 /** One labelled figure in the health panel's stat row. */
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-surface px-2 py-1.5">
+    <div className="rounded-lg border border-border bg-surface px-3 py-2">
       <dt className="text-muted">{label}</dt>
       <dd className="mt-0.5 tabular-nums font-medium text-ink">{value}</dd>
     </div>
@@ -244,32 +255,39 @@ function HealthPanel({ sender }: { sender: Sender }) {
     : null;
   const delivery = sender.health.deliveryRatio;
 
+  const risk = Math.max(0, Math.min(100, sender.riskScore));
+  const riskCls = risk >= 60 ? 'bg-danger' : risk >= 30 ? 'bg-warning' : 'bg-success';
+
   return (
-    <div className="mt-3 rounded-lg border border-border bg-canvas p-3">
+    <div className="mt-4 rounded-xl border border-border bg-canvas p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
-          {badge.label}
+        <span className={`badge ${badge.cls}`}>{badge.label}</span>
+        <span className="text-sm text-muted">
+          Risk <span className="font-semibold tabular-nums text-ink">{sender.riskScore}</span>/100
         </span>
-        <span className="text-xs text-muted">
-          risk <span className="tabular-nums text-ink">{sender.riskScore}</span>/100
-        </span>
+      </div>
+      <div
+        role="progressbar" aria-label="Risk score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={risk}
+        className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-border"
+      >
+        <div className={`h-full rounded-full ${riskCls}`} style={{ width: `${String(risk)}%` }} />
       </div>
 
       <RecoveryBanner sender={sender} />
 
       {scored ? (
-        <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+        <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
           <Stat label="Delivery" value={delivery !== undefined ? `${String(Math.round(delivery * 100))}%` : '—'} />
           <Stat label="Sent · 24h" value={String(sender.health.sentRecent ?? 0)} />
           <Stat label="Failed · 24h" value={String(sender.health.failedRecent ?? 0)} />
         </dl>
       ) : (
-        <p className="mt-2 text-xs text-muted">
+        <p className="mt-3 text-sm text-muted">
           Not scored yet — the gateway scores each number as it runs.
         </p>
       )}
 
-      <p className="mt-2 text-xs text-muted">
+      <p className="mt-3 text-sm text-muted">
         Contacts: <span className="font-medium text-ink">{sender.knownContacts}</span> replied
         {' · '}
         <span className="font-medium text-ink">{sender.contactedContacts}</span> no reply

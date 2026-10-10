@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, nav, openDetails, CREDS_MISSING } from './helpers';
 
 /**
  * The main pages render for a signed-in operator, and the segment builder's live count works — the
@@ -18,7 +18,7 @@ test.describe('signed-in walkthrough', () => {
       ['Broadcast', 'Broadcast'],
       ['Numbers', 'Numbers']
     ] as const) {
-      await page.getByRole('link', { name: link, exact: true }).click();
+      await nav(page).getByRole('link', { name: link, exact: true }).click();
       await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
     }
   });
@@ -29,6 +29,7 @@ test.describe('signed-in walkthrough', () => {
     // A fresh tag so the run does not depend on existing data.
     const tag = `e2e-${String(Date.now())}`;
     await page.goto('/contacts');
+    await openDetails(page, /^New tag/);
     await page.getByPlaceholder('New tag name…').fill(tag);
     await page.getByRole('button', { name: 'Add tag' }).click();
     // The tag chip's accessible name also carries its contact count, so match by substring.

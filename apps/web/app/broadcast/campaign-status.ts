@@ -7,13 +7,13 @@
 export function campaignStatusBadge(status: string): { label: string; cls: string } {
   switch (status) {
     case 'running':
-      return { label: 'Running', cls: 'text-accent border-accent/40 bg-accent-soft' };
+      return { label: 'Running', cls: 'text-accent border-transparent bg-accent-soft' };
     case 'paused':
-      return { label: 'Paused', cls: 'text-warning border-warning/40 bg-warning-soft' };
+      return { label: 'Paused', cls: 'text-warning border-transparent bg-warning-soft' };
     case 'completed':
-      return { label: 'Completed', cls: 'text-muted border-border' };
+      return { label: 'Completed', cls: 'text-success border-transparent bg-success-soft' };
     case 'cancelled':
-      return { label: 'Cancelled', cls: 'text-danger border-danger/50' };
+      return { label: 'Cancelled', cls: 'text-danger border-danger/40' };
     case 'draft':
       return { label: 'Draft', cls: 'text-muted border-border' };
     default:

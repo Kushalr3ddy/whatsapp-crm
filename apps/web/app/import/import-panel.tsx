@@ -80,6 +80,26 @@ export function ImportPanel() {
         identical bytes is refused with a pointer to the original.
       </p>
 
+      <ol className="mt-6 grid grid-cols-3 gap-2 text-sm" aria-label="Import steps">
+        {['Upload', 'Match columns', 'Review & import'].map((label, i) => {
+          const current = upload === null ? 0 : summary === null ? 1 : 2;
+          const state = i < current ? 'done' : i === current ? 'now' : 'todo';
+          return (
+            <li
+              key={label}
+              aria-current={state === 'now' ? 'step' : undefined}
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${
+                state === 'now' ? 'border-accent bg-accent-soft font-semibold text-accent'
+                : state === 'done' ? 'border-transparent bg-success-soft text-success'
+                : 'border-border text-muted'}`}
+            >
+              <span className="avatar size-6 bg-transparent text-xs" aria-hidden>{state === 'done' ? '✓' : i + 1}</span>
+              <span className="truncate">{label}</span>
+            </li>
+          );
+        })}
+      </ol>
+
       {error !== null && (
         <p className="mt-4 notice notice-danger">
           {error}

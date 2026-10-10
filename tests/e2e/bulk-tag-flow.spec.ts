@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, openDetails, CREDS_MISSING } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
@@ -62,6 +62,7 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     await expect(page.getByLabel(/^Select /).first()).toBeVisible();
 
     // 3. Mass-tag everyone matching that filter: preview shows the real count, confirm applies it.
+    await openDetails(page, 'Tag many at once');
     await page.getByLabel('Add or remove').first().selectOption('add');
     await page.getByLabel('Tag to apply').selectOption({ label: massTag });
     await page.getByRole('button', { name: 'Preview' }).click();

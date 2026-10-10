@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, nav, CREDS_MISSING } from './helpers';
 
 /**
  * The two operator-facing additions: defining a custom field on the Contacts page, and the
@@ -11,7 +11,7 @@ test.describe('custom fields and the numbers page', () => {
 
   test('an admin defines a custom field, sees its {{variable}}, and removes it', async ({ page }) => {
     await signIn(page);
-    await page.getByRole('link', { name: 'Contacts', exact: true }).click();
+    await nav(page).getByRole('link', { name: 'Contacts', exact: true }).click();
 
     const label = `E2E City ${String(Date.now())}`;
     const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -36,7 +36,7 @@ test.describe('custom fields and the numbers page', () => {
 
   test('the Numbers page offers advisory mode to an admin', async ({ page }) => {
     await signIn(page);
-    await page.getByRole('link', { name: 'Numbers', exact: true }).click();
+    await nav(page).getByRole('link', { name: 'Numbers', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Numbers', exact: true })).toBeVisible();
     // Only present when at least one number exists; the control is hidden behind a disclosure.
     const any = await page.getByText('Advisory mode…').count();

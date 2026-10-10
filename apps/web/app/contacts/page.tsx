@@ -7,6 +7,7 @@ import {
   bulkTagPreviewAction, bulkTagConfirmAction, bulkTagCheckedAction,
   createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
 } from './actions';
+import { PageHeader, EmptyState, initialsOf } from '../ui';
 
 /** Rendered per request — the search term and tag filter come from the query string. */
 export const dynamic = 'force-dynamic';
@@ -54,60 +55,76 @@ export default async function ContactsPage(
 
   if (expired) redirect('/login?next=/contacts');
 
+  const bulkOpen = sp.bulkTag !== undefined || sp.bulkDone !== undefined || sp.bulkError !== undefined;
+  const activeTagName = tags.find((t) => t.id === activeTag)?.name;
+
   return (
     <main className="page">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">Contacts</h1>
-          <p className="page-desc">Search by name, phone or email; label people with tags.</p>
-        </div>
-        <div className="flex items-center gap-2" title="Exporting is for admins">
-          <a href="/contacts/export?format=csv" className="btn btn-sm">Export CSV</a>
-          <a href="/contacts/export?format=vcf" className="btn btn-sm">Export vCard</a>
-        </div>
-      </header>
-
-      <form className="mb-3 flex gap-2">
-        {activeTag !== '' && <input type="hidden" name="tag" value={activeTag} />}
-        <input
-          name="q"
-          defaultValue={query}
-          placeholder="Search name, phone or email…"
-          aria-label="Search contacts"
-          className="flex-1 field"
-        />
-        <button
-          type="submit"
-          className="btn"
-        >
-          Search
-        </button>
-      </form>
-
-      <TagFilterBar tags={tags} activeTag={activeTag} query={query} />
-
-      <NewTagForm />
-
-      <FieldsAdmin fields={fields} />
-
-      <BulkTagBar
-        tags={tags} q={query} activeTag={activeTag}
-        preview={sp.bulkTag !== undefined && sp.bulkCount !== undefined ? {
-          tagId: sp.bulkTag, action: sp.bulkAction === 'remove' ? 'remove' : 'add',
-          scope: sp.bulkScope === 'all' ? 'all' : 'matching', count: Number(sp.bulkCount)
-        } : null}
-        done={sp.bulkDone !== undefined ? { count: Number(sp.bulkDone), action: sp.bulkAction === 'remove' ? 'removed' : 'added' } : null}
-        error={sp.bulkError ?? null}
+      <PageHeader
+        title="Contacts"
+        description={
+          failure === null
+            ? `${String(contacts.length)}${contacts.length >= 50 ? '+' : ''} ${contacts.length === 1 ? 'person' : 'people'}${query !== '' || activeTag !== '' ? ' match' : ''}.`
+            : undefined
+        }
+        actions={
+          <>
+            <a href="/contacts/export?format=csv" className="btn btn-sm" title="Admins only">Export CSV</a>
+            <a href="/contacts/export?format=vcf" className="btn btn-sm" title="Admins only">Export vCard</a>
+            <Link href="/import" className="btn btn-primary">Import contacts</Link>
+          </>
+        }
       />
 
-      {failure !== null && <p className="text-sm text-danger">{failure}</p>}
+      <div className="card mb-4 p-3">
+        <form className="flex flex-wrap gap-2">
+          {activeTag !== '' && <input type="hidden" name="tag" value={activeTag} />}
+          <input
+            name="q" defaultValue={query} aria-label="Search contacts"
+            placeholder="Search by name, phone or email…" className="field min-w-56 flex-1"
+          />
+          <button type="submit" className="btn">Search</button>
+          {(query !== '' || activeTag !== '') && <Link href="/contacts" className="btn btn-ghost">Clear</Link>}
+        </form>
+        <TagFilterBar tags={tags} activeTag={activeTag} query={query} />
+        {activeTagName !== undefined && (
+          <p className="mt-2 text-sm text-muted">Showing people tagged <strong className="text-ink">{activeTagName}</strong>.</p>
+        )}
+      </div>
+
+      <div className="mb-4 grid gap-2 sm:grid-cols-3">
+        <details className="card px-4 py-2.5" open={bulkOpen}>
+          <summary className="cursor-pointer text-sm font-medium">Tag many at once</summary>
+          <div className="mt-3">
+            <BulkTagBar
+              tags={tags} q={query} activeTag={activeTag}
+              preview={sp.bulkTag !== undefined && sp.bulkCount !== undefined ? {
+                tagId: sp.bulkTag, action: sp.bulkAction === 'remove' ? 'remove' : 'add',
+                scope: sp.bulkScope === 'all' ? 'all' : 'matching', count: Number(sp.bulkCount)
+              } : null}
+              done={sp.bulkDone !== undefined ? { count: Number(sp.bulkDone), action: sp.bulkAction === 'remove' ? 'removed' : 'added' } : null}
+              error={sp.bulkError ?? null}
+            />
+          </div>
+        </details>
+        <details className="card px-4 py-2.5">
+          <summary className="cursor-pointer text-sm font-medium">New tag</summary>
+          <div className="mt-3"><NewTagForm /></div>
+        </details>
+        <FieldsAdmin fields={fields} />
+      </div>
+
+      {failure !== null && <p className="notice notice-danger">{failure}</p>}
 
       {failure === null && contacts.length === 0 && (
-        <p className="text-sm text-muted">
-          {query === '' && activeTag === ''
-            ? 'No contacts yet — import a spreadsheet from the Import tab, or add one over the API.'
-            : 'No contacts match this filter.'}
-        </p>
+        <EmptyState
+          title={query === '' && activeTag === '' ? 'No contacts yet' : 'No one matches'}
+          body={query === '' && activeTag === ''
+            ? 'Import a spreadsheet to bring people in, or add them over the API.'
+            : 'Try a different search or clear the tag filter.'}
+          action={query === '' && activeTag === ''
+            ? <Link href="/import" className="btn btn-primary btn-sm">Import contacts</Link> : undefined}
+        />
       )}
 
       {contacts.length > 0 && (
@@ -115,28 +132,19 @@ export default async function ContactsPage(
       )}
 
       {contacts.length > 0 && (
-        <ul className="card list">
+        <ul className="card list overflow-hidden">
           {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} fields={fields} />)}
         </ul>
       )}
 
       {contacts.length > 0 && (
-        <p className="mt-3 text-xs text-muted">
+        <p className="mt-3 text-sm text-muted">
           Showing {contacts.length} contact{contacts.length === 1 ? '' : 's'}
-          {contacts.length >= 50 ? ' (first page)' : ''}. Check people above to hand-pick a
-          campaign audience.
+          {contacts.length >= 50 ? ' (the first page)' : ''}. Tick people to build a campaign or tag them.
         </p>
       )}
     </main>
   );
-}
-
-/** One or two letters for an avatar: first letters of the first two words, or a number's last digits. */
-function initialsOf(name: string): string {
-  const words = name.replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  if (/^\d+$/.test(words[0]!)) return words[0]!.slice(-2);
-  return words.slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
 }
 
 /** Plain-language text for a bulk-tag error code. */
@@ -164,8 +172,7 @@ function BulkTagBar(
   if (tags.length === 0) return null;
   const tagName = (id: string): string => tags.find((t) => t.id === id)?.name ?? 'this tag';
   return (
-    <section aria-label="Tag many people at once" className="mb-4 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
-      <p className="font-medium">Tag many at once</p>
+    <section aria-label="Tag many people at once" className="text-sm">
       {error !== null && <p role="alert" className="mt-1 text-danger">{BULK_ERROR[error] ?? 'Could not do that. Try again.'}</p>}
       {done !== null && (
         <p role="status" className="mt-1 text-success">
@@ -227,11 +234,11 @@ function TagFilterBar({ tags, activeTag, query }: { tags: Tag[]; activeTag: stri
     return `/contacts${qs === '' ? '' : `?${qs}`}`;
   };
   const chip = (active: boolean): string =>
-    `badge ${active ? 'badge-accent !border-accent/40 font-semibold' : 'text-muted hover:bg-accent-soft'}`;
+    `badge shrink-0 ${active ? 'badge-accent !border-accent/40 font-semibold' : 'text-muted hover:bg-accent-soft'}`;
 
   return (
-    <div className="mb-4 flex max-h-28 flex-wrap items-center gap-1.5 overflow-y-auto">
-      <span className="text-xs text-muted">Filter:</span>
+    <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1">
+      <span className="shrink-0 text-sm text-muted">Tag:</span>
       <Link href={href('')} className={chip(activeTag === '')}>All</Link>
       {tags.map((t) => (
         <Link key={t.id} href={href(t.id)} className={chip(activeTag === t.id)}>
@@ -355,91 +362,95 @@ function CampaignFromSelection(
 function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: Tag[]; fields: CustomField[] }) {
   const phone = contact.identities.find((i) => i.kind === 'phone')?.value;
   const email = contact.identities.find((i) => i.kind === 'email')?.value;
-  const detail = [phone, email].filter((v) => v !== undefined).join(' · ');
+  const name = contact.displayName ?? phone ?? email ?? 'Unnamed contact';
   const attached = new Set(contact.tags.map((t) => t.id));
   const available = allTags.filter((t) => !attached.has(t.id));
   // A do-not-contact person cannot be messaged, so they cannot be picked into a campaign.
   const pickable = !contact.doNotContact;
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
+    <li className="px-4 py-3.5">
+      <div className="grid items-start gap-x-4 gap-y-2 md:grid-cols-[minmax(0,18rem)_1fr_auto]">
+        <div className="flex min-w-0 items-center gap-3">
           {/* Belongs to the campaign form by its `form` id, so no nested-form is needed. */}
           <input
             type="checkbox" name="contactId" value={contact.id} form="pick-campaign"
             disabled={!pickable} aria-label={`Select ${contact.displayName ?? 'contact'}`}
             className="size-4 shrink-0 accent-accent disabled:opacity-30"
           />
-          <span className="avatar size-9 text-sm" aria-hidden>
-            {initialsOf(contact.displayName ?? phone ?? email ?? '?')}
-          </span>
+          <span className="avatar size-10 text-sm" aria-hidden>{initialsOf(name)}</span>
           <div className="min-w-0">
-          <p className="truncate text-sm font-medium">
-            {contact.displayName ?? phone ?? email ?? 'Unnamed contact'}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-muted">
-            {detail === '' ? 'no contact details' : detail}
-            {contact.source !== null && <> · from {contact.source}</>}
-          </p>
+            <p className="truncate font-medium">{name}</p>
+            <p className="truncate text-sm text-muted">
+              {[phone, email].filter((v) => v !== undefined).join(' · ') || 'no contact details'}
+            </p>
+            {contact.source !== null && <p className="truncate text-xs text-muted">from {contact.source}</p>}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {contact.doNotContact && (
-            <span className="notice notice-danger">
-              do not contact
-            </span>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {contact.tags.slice(0, 5).map((t) => (
+            <form key={t.id} action={detachTagAction} className="inline-flex">
+              <input type="hidden" name="contactId" value={contact.id} />
+              <input type="hidden" name="tagId" value={t.id} />
+              <button
+                type="submit" title="Remove tag"
+                className="badge badge-accent cursor-pointer hover:!border-danger hover:!text-danger"
+              >
+                {t.name} <span aria-hidden className="opacity-60">×</span>
+              </button>
+            </form>
+          ))}
+          {contact.tags.length > 5 && (
+            <details className="inline-flex flex-wrap items-center gap-1.5">
+              <summary className="badge cursor-pointer text-muted">+{contact.tags.length - 5} more</summary>
+              {contact.tags.slice(5).map((t) => (
+            <form key={t.id} action={detachTagAction} className="inline-flex">
+              <input type="hidden" name="contactId" value={contact.id} />
+              <input type="hidden" name="tagId" value={t.id} />
+              <button
+                type="submit" title="Remove tag"
+                className="badge badge-accent cursor-pointer hover:!border-danger hover:!text-danger"
+              >
+                {t.name} <span aria-hidden className="opacity-60">×</span>
+              </button>
+            </form>
+              ))}
+            </details>
           )}
+          {available.length > 0 && (
+            <form action={attachTagAction} className="inline-flex items-center gap-1">
+              <input type="hidden" name="contactId" value={contact.id} />
+              <select name="tagId" aria-label="Add a tag" defaultValue="" className="field field-sm">
+                <option value="" disabled>+ tag…</option>
+                {available.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button type="submit" className="btn btn-sm">Add</button>
+            </form>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 md:justify-end">
+          {contact.doNotContact && <span className="badge badge-danger">do not contact</span>}
           <form action={setDncAction}>
             <input type="hidden" name="contactId" value={contact.id} />
             <input type="hidden" name="value" value={contact.doNotContact ? 'false' : 'true'} />
-            <button type="submit" title={contact.doNotContact
-              ? 'Allow messaging this person again' : 'Never message this person (an admin can still override)'}
-              className="btn btn-sm">
+            <button
+              type="submit"
+              title={contact.doNotContact
+                ? 'Allow messaging this person again'
+                : 'Never message this person (an admin can still override)'}
+              className="btn btn-sm"
+            >
               {contact.doNotContact ? 'Allow contact' : 'Do not contact'}
             </button>
           </form>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {contact.tags.map((t) => (
-          <form key={t.id} action={detachTagAction} className="inline-flex">
-            <input type="hidden" name="contactId" value={contact.id} />
-            <input type="hidden" name="tagId" value={t.id} />
-            <button
-              type="submit"
-              title="Remove tag"
-              className="inline-flex items-center btn btn-sm"
-            >
-              {t.name} <span aria-hidden className="opacity-60">×</span>
-            </button>
-          </form>
-        ))}
-
-        {available.length > 0 && (
-          <form action={attachTagAction} className="inline-flex items-center gap-1">
-            <input type="hidden" name="contactId" value={contact.id} />
-            <select
-              name="tagId"
-              aria-label="Add a tag"
-              defaultValue=""
-              className="field field-sm"
-            >
-              <option value="" disabled>+ tag…</option>
-              {available.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <button
-              type="submit"
-              className="btn btn-sm"
-            >
-              Add
-            </button>
-          </form>
-        )}
-      </div>
-
-      {fields.length > 0 && <ContactFields contact={contact} fields={fields} />}
+      {fields.length > 0 && (
+        <div className="mt-2 md:pl-[4.75rem]"><ContactFields contact={contact} fields={fields} /></div>
+      )}
     </li>
   );
 }
@@ -485,10 +496,13 @@ function ContactFields({ contact, fields }: { contact: Contact; fields: CustomFi
  */
 function FieldsAdmin({ fields }: { fields: CustomField[] }) {
   return (
-    <details className="mb-4 text-xs">
-      <summary className="cursor-pointer text-muted hover:text-ink">
-        Custom fields ({fields.length}) — extra details on each contact, usable as {'{{field}}'} in a campaign
+    <details className="card px-4 py-2.5 text-sm">
+      <summary className="cursor-pointer font-medium">
+        Custom fields ({fields.length})
       </summary>
+      <p className="mt-2 text-muted">
+        Extra details on each contact, usable as {'{{field}}'} in a campaign message.
+      </p>
       <ul className="mt-2 flex flex-col gap-1">
         {fields.map((f) => (
           <li key={f.key} className="flex items-center gap-2">
