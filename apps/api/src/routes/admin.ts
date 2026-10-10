@@ -3,12 +3,11 @@ import { z } from 'zod';
 import type { Database } from '@crm/db';
 import type { PasswordHasher } from '@crm/auth-builtin';
 import {
-  createOrgWithAdmin, addUserToOrg, setOrgBilling, issueApiKey, listApiKeys, revokeApiKey,
+  createOrgWithAdmin, addUserToOrg, issueApiKey, listApiKeys, revokeApiKey,
   API_SCOPES, AlreadyExistsError, writeAuditInTenant, AUDIT
 } from '@crm/core';
 import { auditActor, requireBootstrap, requireRole } from '../auth.js';
 import { problem } from '../problem.js';
-import { forgetBilling } from '../billing-gate.js';
 
 /** Body for provisioning an organisation and its first admin. */
 const createOrg = z.object({
@@ -69,29 +68,6 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
         return;
       }
       throw error;
-    }
-  });
-
-  /**
-   * Sets an org's billing status — the payment override. Deployment-level only (the bootstrap key),
-   * because "who may waive payment" is an operator decision, never a tenant's own.
-   */
-  router.put('/orgs/:id/billing', requireBootstrap, async (req: Request, res: Response) => {
-    const parsed = z.object({
-      status: z.enum(['unpaid', 'paid', 'exempt']),
-      note: z.string().trim().min(3).max(500)
-    }).safeParse(req.body);
-    const id = String(req.params.id);
-    if (!parsed.success || !/^[0-9a-f-]{36}$/i.test(id)) {
-      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'status (unpaid|paid|exempt) and a note of 3+ characters are required.'));
-      return;
-    }
-    try {
-      const { previous } = await setOrgBilling(db, id, parsed.data.status, parsed.data.note, auditActor(req));
-      forgetBilling(id);
-      res.json({ data: { orgId: id, previous, status: parsed.data.status } });
-    } catch {
-      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such organisation.'));
     }
   });
 

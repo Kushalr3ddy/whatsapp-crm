@@ -4,9 +4,6 @@ import { setTenant, type Database } from '@crm/db';
 import { writeAudit, AUDIT, SYSTEM_ACTOR, type AuditActor } from './audit.js';
 import type { PasswordHasher } from '@crm/auth-builtin';
 
-/** Whether an org may use the product. See `org.billing_status`. */
-export type BillingStatus = 'unpaid' | 'paid' | 'exempt';
-
 /** What provisioning produced. */
 export interface ProvisionedOrg {
   readonly orgId: string;
@@ -38,11 +35,7 @@ export class AlreadyExistsError extends Error {
 export async function createOrgWithAdmin(
   db: Database,
   hasher: PasswordHasher,
-  input: {
-    orgName: string; slug: string; email: string; password: string; displayName: string;
-    /** `exempt` for an admin-provisioned org; the self-serve signup passes `unpaid`. */
-    billingStatus?: BillingStatus;
-  },
+  input: { orgName: string; slug: string; email: string; password: string; displayName: string },
   /** Who provisioned this. The CLI and the bootstrap key are both the system acting. */
   actor: AuditActor = SYSTEM_ACTOR
 ): Promise<ProvisionedOrg> {
@@ -54,8 +47,7 @@ export async function createOrgWithAdmin(
     await setTenant(tx, orgId);
 
     const orgRows = await tx.execute(sql`
-      INSERT INTO org (id, name, slug, billing_status)
-      VALUES (${orgId}, ${input.orgName}, ${input.slug}, ${input.billingStatus ?? 'exempt'})
+      INSERT INTO org (id, name, slug) VALUES (${orgId}, ${input.orgName}, ${input.slug})
       ON CONFLICT (slug) DO NOTHING
       RETURNING id`);
     if ((orgRows as unknown as unknown[]).length === 0) throw new AlreadyExistsError('slug');
@@ -79,7 +71,7 @@ export async function createOrgWithAdmin(
     // second copy of the problem it exists to detect.
     await writeAudit(tx, {
       orgId, actor, action: AUDIT.orgCreated, targetType: 'org', targetId: orgId,
-      after: { name: input.orgName, slug: input.slug, billingStatus: input.billingStatus ?? 'exempt' }
+      after: { name: input.orgName, slug: input.slug }
     });
     await writeAudit(tx, {
       orgId, actor, action: AUDIT.userAdded, targetType: 'app_user', targetId: userId,
@@ -177,32 +169,5 @@ export async function setPassword(
     }
 
     return { userId, sessionsRevoked };
-  });
-}
-
-/**
- * Sets an org's billing status — the "admin can override the payment requirement" switch.
- *
- * Audited with a note, in the org it concerns, like every other override in this system. Payment
- * itself is not built, so this is how an org becomes `paid`, or `exempt` (a beta tester).
- */
-export async function setOrgBilling(
-  db: Database, orgId: string, status: BillingStatus, note: string | null,
-  actor: AuditActor = SYSTEM_ACTOR
-): Promise<{ previous: BillingStatus }> {
-  return db.transaction(async (tx) => {
-    await setTenant(tx, orgId);
-    const rows = await tx.execute(sql`
-      SELECT billing_status AS "status" FROM org WHERE id = ${orgId} FOR UPDATE`);
-    const previous = (rows as unknown as Array<{ status: BillingStatus }>)[0]?.status;
-    if (previous === undefined) throw new Error(`no org ${orgId}`);
-    await tx.execute(sql`
-      UPDATE org SET billing_status = ${status}, billing_note = ${note}, updated_at = now()
-      WHERE id = ${orgId}`);
-    await writeAudit(tx, {
-      orgId, actor, action: AUDIT.orgBillingChanged, targetType: 'org', targetId: orgId,
-      before: { billingStatus: previous }, after: { billingStatus: status, note }
-    });
-    return { previous };
   });
 }

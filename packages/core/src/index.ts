@@ -15,8 +15,8 @@ export {
 } from './api-keys.js';
 
 export {
-  createOrgWithAdmin, addUserToOrg, setPassword, setOrgBilling, AlreadyExistsError,
-  type ProvisionedOrg, type BillingStatus
+  createOrgWithAdmin, addUserToOrg, setPassword, AlreadyExistsError,
+  type ProvisionedOrg
 } from './provisioning.js';
 
 export {

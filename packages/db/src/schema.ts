@@ -23,15 +23,6 @@ export const org = pgTable('org', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
-  /**
-   * Whether this org may use the product: `unpaid` (self-signed-up, not yet cleared), `paid`, or
-   * `exempt` (an admin waived payment, e.g. a beta tester). Orgs provisioned by `npm run admin` are
-   * `exempt` by default so nothing already installed changes behaviour. Payment itself is not built;
-   * today an operator sets this by hand (`npm run admin -- billing`).
-   */
-  billingStatus: text('billing_status').notNull().default('exempt'),
-  /** Why the status is what it is, set by whoever changed it (e.g. "beta tester — Asha"). */
-  billingNote: text('billing_note'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });

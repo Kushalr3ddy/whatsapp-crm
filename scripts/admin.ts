@@ -4,7 +4,6 @@
  *   npm run admin org      --name "Hiring Studios" --slug hiring-studios --email a@b.com
  *   npm run admin user     --org <uuid> --email c@d.com --role agent
  *   npm run admin password --email a@b.com
- *   npm run admin billing --slug acme --status exempt --note "beta tester"   (unpaid | paid | exempt)
  *   npm run admin key      --org <uuid> --name "job portal" --scopes messages:send,contacts:read
  *   npm run admin keys     --org <uuid>
  *
@@ -22,7 +21,7 @@ import { createDatabase } from '@crm/db';
 import { loadConfig, createLogger } from '@crm/shared';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import {
-  createOrgWithAdmin, addUserToOrg, setPassword, setOrgBilling, issueApiKey, listApiKeys,
+  createOrgWithAdmin, addUserToOrg, setPassword, issueApiKey, listApiKeys,
   API_SCOPES, AlreadyExistsError
 } from '@crm/core';
 
@@ -79,20 +78,6 @@ async function main(): Promise<void> {
         say(`  password ${password}`);
         say();
         say('  Save the password now — it is hashed immediately and cannot be shown again.');
-        break;
-      }
-
-      case 'billing': {
-        // The payment override: `npm run admin -- billing --slug acme --status exempt --note "beta tester"`.
-        const status = need(f, 'status');
-        if (status !== 'unpaid' && status !== 'paid' && status !== 'exempt') {
-          say('--status must be unpaid, paid or exempt'); process.exit(1);
-        }
-        const rows = (await db.execute(sql`SELECT id FROM org WHERE slug = ${need(f, 'slug')}`)) as unknown as
-          Array<{ id: string }>;
-        if (rows[0] === undefined) { say(`no organisation with slug ${need(f, 'slug')}`); process.exit(1); }
-        const { previous } = await setOrgBilling(db, rows[0].id, status, need(f, 'note'));
-        say(`  ${need(f, 'slug')}: ${previous} → ${status}`);
         break;
       }
 

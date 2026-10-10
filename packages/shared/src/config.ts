@@ -44,12 +44,6 @@ const configSchema = z.object({
   // Which transport the gateway drives. `fake` is an in-memory channel for CI and local UI tests —
   // it sends nothing real, so a broadcast can be verified end to end. Refused in production (below).
   GATEWAY_CHANNEL: z.enum(['baileys', 'fake']).default('baileys'),
-  // Public self-service signup (`POST /auth/signup`, the web /signup page). OFF by default: a single-team
-  // install must not let strangers create tenants. A new signup is `unpaid` until an operator marks the
-  // org `paid` or `exempt` (docs/21-deferred.md D-47).
-  SIGNUP_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
-  // Signups allowed per hour from one address. A low default: it is the first unauthenticated write route.
-  SIGNUP_PER_HOUR: z.coerce.number().int().min(1).max(10000).default(5),
   // How often the gateway's safety-net sweep runs (dispatching campaigns, reconciling results).
   // 60 s is right for a real number; tests set it low so a broadcast finishes in seconds.
   GATEWAY_SWEEP_SECONDS: z.coerce.number().int().min(1).max(600).default(60),

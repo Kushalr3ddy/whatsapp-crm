@@ -30,8 +30,8 @@ export function middleware(req: NextRequest) {
 /**
  * Everything except the sign-in screen, Next's own internals and static files.
  *
- * `/login` must be excluded or signing in would redirect to itself forever; `/signup` is public for the same reason.
+ * `/login` must be excluded or signing in would redirect to itself forever.
  */
 export const config = {
-  matcher: ['/((?!login|signup|_next/static|_next/image|favicon.ico).*)']
+  matcher: ['/((?!login|_next/static|_next/image|favicon.ico).*)']
 };

@@ -28,18 +28,6 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   for non-live pages is the last step, not the first).
 - Docs: the "To do" list below is brought current; test counts corrected.
 
-### 2026-10-10 — Signup page and the billing gate (branch `feat/signup-and-billing-gate`)
-- **`/signup`** (web) + `POST /auth/signup`: creates a new org and its first admin, signs them in, lands on Billing.
-  **Off by default** (`SIGNUP_ENABLED`), 5 per hour per address (`SIGNUP_PER_HOUR`); the sign-in page only offers
-  "Create an account" when it is on (`GET /auth/config`). Same provisioning seam as the CLI (`createOrgWithAdmin`).
-- **Billing gate:** `org.billing_status` (`unpaid` | `paid` | `exempt`, migration 0024; admin-provisioned orgs default
-  to `exempt`, so nothing existing changes). An `unpaid` org gets `402` on every data route and the web app redirects
-  it to Billing. No payment provider yet: an operator marks it `paid`, or waives it for a beta tester with
-  `npm run admin -- billing --slug … --status exempt --note …` (or `PUT /admin/orgs/:id/billing`, bootstrap key only,
-  audited). The person then clicks "Check again" / signs in and is in.
-- Web: shared `lib/session.ts` for sign-in and signup cookies; the signup form keeps what was typed after a failed submit.
-- 9 integration tests, 1 Playwright spec.
-
 ### 2026-10-10 — Documentation refresh
 - `HANDOFF.md` brought current end to end (build table, what works, what does not exist, honest risk,
   known defects, what is next); `docs/15-api.md` (new endpoints), `05-data-model.md` (migrations

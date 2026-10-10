@@ -12,7 +12,6 @@ import { withTenant } from './tenant.js';
 import { rateLimitApiKey } from './rate-limit.js';
 import { corsAllowlist } from './cors.js';
 import { authRouter } from './routes/auth.js';
-import { requireBilling } from './billing-gate.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
 import { messagesRouter } from './routes/messages.js';
@@ -162,12 +161,10 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(rateLimitApiKey);
   api.use(requireCsrf);
   // Before the door closes: logging in is how a credential is obtained.
-  api.use('/auth', authRouter(deps.db, deps.hasher, deps.config.NODE_ENV === 'production',
-    deps.config.SIGNUP_ENABLED === true, deps.config.SIGNUP_PER_HOUR ?? 5));
+  api.use('/auth', authRouter(deps.db, deps.hasher, deps.config.NODE_ENV === 'production'));
   api.use(requireAuthenticated);
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
-  api.use(requireBilling(deps.db));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));

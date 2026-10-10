@@ -85,9 +85,7 @@ document (templates, webhooks, policy delegation, the SDK, OpenAPI) is design, n
 | Area | Method · path | Notes |
 |---|---|---|
 | Health | `GET /health` · `GET /ready` | No auth. `/ready` also checks Postgres |
-| Auth | `POST /api/v1/auth/login` · `/logout` · `GET /auth/me` | Session + CSRF cookies; `me` says who the caller is and its org's `billingStatus` |
-| Signup | `POST /api/v1/auth/signup` · `GET /auth/config` | Off unless `SIGNUP_ENABLED=true`. Creates a new org + its first admin (`unpaid`), signs them in; 5/hour/address (`SIGNUP_PER_HOUR`). An `unpaid` org's data routes answer `402 BILLING_REQUIRED` |
-| Billing override | `PUT /api/v1/admin/orgs/:id/billing` `{status: unpaid\|paid\|exempt, note}` | Bootstrap key only (also `npm run admin -- billing`); audited as `org.billing_changed` |
+| Auth | `POST /api/v1/auth/login` · `/logout` · `GET /auth/me` | Session + CSRF cookies; `me` says who the caller is |
 | Admin | `POST /admin/orgs` · `POST/GET/DELETE /admin/keys` · `POST /admin/users` | `orgs` is bootstrap-key only; the rest an admin session |
 | Senders | `GET/POST /senders` · `POST/GET /senders/:id/link` · `POST /senders/:id/unlink` | Live connection state, health evidence, recovery state; link by QR or pairing code |
 | Inbox | `GET /conversations` (filters) · `GET/PATCH /conversations/:id` · `POST /conversations/:id/read` | Status, assignee, unread |
