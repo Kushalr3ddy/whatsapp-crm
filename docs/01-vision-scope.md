@@ -96,7 +96,7 @@ screenshots below are the ones that were publicly available.
 |---|---|---|
 | WhatsApp-first (official API, SaaS) | **Wati**, **Interakt**, **AiSensy**, Zoko, Gallabox, ChatDaddy | Shared inbox + broadcast + no-code bot, sold per seat plus a 12–25% markup on Meta's per-message rate |
 | Omnichannel inbox | **Respond.io**, Trengo, **Chatwoot** (open source) | One inbox across WhatsApp, Instagram, Messenger, email, live chat; routing, SLA, reports |
-| General CRM | **HubSpot**, **Pipedrive**, **Twenty** (open source), Zoho CRM | Contacts, deals pipeline, tasks, email, reports; WhatsApp is an add-on |
+| General CRM | **HubSpot**, **Pipedrive**, **Twenty** (open source) | Contacts, deals pipeline, tasks, email, reports; WhatsApp is an add-on |
 | Recruitment | **Zoho Recruit**, **Bullhorn**, **Naukri RMS**, Manatal | ATS + CRM: resume parsing, job boards, candidate pipelines, interview scheduling |
 
 ### Features they have and we do not (yet)
