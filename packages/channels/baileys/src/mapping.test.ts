@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { extractBody, extractStatusCode, mapDisconnectReason, mapStatus, toDate } from './index.js';
+import {
+  extractBody, extractStatusCode, mapDisconnectReason, mapStatus, phoneFromJid, toDate
+} from './index.js';
 
 describe('mapDisconnectReason', () => {
   it('maps the codes that each imply a DIFFERENT response', () => {
@@ -91,5 +93,19 @@ describe('toDate', () => {
   });
   it('falls back to now when the timestamp is missing', () => {
     expect(Math.abs(toDate(undefined).getTime() - Date.now())).toBeLessThan(2000);
+  });
+});
+
+describe('phoneFromJid', () => {
+  it('reads the number from a phone address, with or without a device suffix', () => {
+    expect(phoneFromJid('919876543210@s.whatsapp.net')).toBe('+919876543210');
+    expect(phoneFromJid('919876543210:12@s.whatsapp.net')).toBe('+919876543210');
+  });
+
+  it('is null for anything that is not a phone address', () => {
+    expect(phoneFromJid('44887374303340@lid')).toBeNull();
+    expect(phoneFromJid('120363025@g.us')).toBeNull();
+    expect(phoneFromJid(undefined)).toBeNull();
+    expect(phoneFromJid('12@s.whatsapp.net')).toBeNull();          // too short to be a number
   });
 });

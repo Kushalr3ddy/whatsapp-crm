@@ -6,7 +6,8 @@ import makeWASocket, {
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, InboundMedia,
   LinkChallenge,
-  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent,
+  NormalisedConnectionEvent, NormalisedIdentityLink, NormalisedInboundEvent, NormalisedStatusEvent,
+  OutboundContent,
   ProviderHealth, Recipient,
   SenderRef, SendResult
 } from '@crm/channels';
@@ -98,6 +99,7 @@ export class BaileysChannelProvider implements ChannelProvider {
 
   readonly #connections = new Map<string, Connection>();
   readonly #inbound = new EventStream<NormalisedInboundEvent>();
+  readonly #links = new EventStream<NormalisedIdentityLink>();
   readonly #status = new EventStream<NormalisedStatusEvent>();
   readonly #connectionEvents = new EventStream<NormalisedConnectionEvent>();
   /** Consecutive failed reconnects per sender, so backoff grows and eventually gives up. */
@@ -231,6 +233,11 @@ export class BaileysChannelProvider implements ChannelProvider {
     return this.#inbound;
   }
 
+  /** A privacy address and its phone number, whenever WhatsApp shows them together. */
+  identityLinks(): AsyncIterable<NormalisedIdentityLink> {
+    return this.#links;
+  }
+
   /** Delivery receipts, normalised to one status vocabulary across every provider. */
   status(): AsyncIterable<NormalisedStatusEvent> {
     return this.#status;
@@ -298,6 +305,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     }
     this.#inbound.close();
     this.#status.close();
+    this.#links.close();
   }
 
   /** Opens a socket and wires every Baileys event onto our normalised streams. */
@@ -338,6 +346,16 @@ export class BaileysChannelProvider implements ChannelProvider {
     socket.ev.on('messages.update', (updates) => {
       for (const u of updates) this.#emitStatus(senderId, u);
     });
+    // A person sharing their number reveals which phone a privacy address is. Baileys 6.x emits it
+    // as `{ lid, jid }`; the shape is read defensively because it is not part of the typed events.
+    (socket.ev as unknown as { on: (e: string, h: (p: unknown) => void) => void })
+      .on('chats.phoneNumberShare', (p) => {
+        const share = p as { lid?: string; jid?: string };
+        const phone = phoneFromJid(share.jid);
+        if (!this.#shuttingDown && typeof share.lid === 'string' && phone !== null) {
+          this.#links.push({ senderId, providerAddress: share.lid, phoneE164: phone });
+        }
+      });
 
     return conn;
   }
@@ -433,7 +451,7 @@ export class BaileysChannelProvider implements ChannelProvider {
   #emitInbound(senderId: string, raw: unknown): void {
     if (this.#shuttingDown) return;
     const m = raw as {
-      key?: { id?: string; remoteJid?: string; fromMe?: boolean };
+      key?: { id?: string; remoteJid?: string; fromMe?: boolean; senderPn?: string; participantPn?: string };
       message?: Record<string, unknown> | null;
       messageTimestamp?: number | Long;
     };
@@ -454,7 +472,9 @@ export class BaileysChannelProvider implements ChannelProvider {
       senderId,
       // A "@lid" address is WhatsApp's privacy id and carries no phone number. Resolving it is
       // the caller's job via contact_identity — it is simply another identity for one person.
-      fromPhoneE164: jid.endsWith('@s.whatsapp.net') ? `+${jid.split('@')[0] ?? ''}` : null,
+      fromPhoneE164: phoneFromJid(jid),
+      // For a privacy address, WhatsApp sometimes also says which number it is (`senderPn`).
+      linkedPhoneE164: jid.endsWith('@lid') ? phoneFromJid(m.key.senderPn ?? m.key.participantPn) : null,
       fromProviderAddress: jid,
       body,
       contentType,
@@ -480,6 +500,16 @@ export class BaileysChannelProvider implements ChannelProvider {
 
 /** Baileys timestamps arrive as a number or a protobuf Long; both mean seconds. */
 type Long = { toNumber(): number };
+
+/**
+ * The E.164 number inside a phone JID (`919876543210@s.whatsapp.net`, optionally with a device
+ * suffix `:12`), or null for anything else — a group, a privacy address, a missing value.
+ */
+export function phoneFromJid(jid: string | undefined | null): string | null {
+  if (typeof jid !== 'string' || !jid.endsWith('@s.whatsapp.net')) return null;
+  const user = (jid.split('@')[0] ?? '').split(':')[0] ?? '';
+  return /^\d{7,15}$/.test(user) ? `+${user}` : null;
+}
 
 /** Normalises a Baileys timestamp into a Date, falling back to now when absent. */
 export function toDate(ts: number | Long | undefined): Date {
