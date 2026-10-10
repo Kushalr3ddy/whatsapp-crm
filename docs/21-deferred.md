@@ -8,6 +8,10 @@ answer has actually happened.
 
 Format: what · why parked · **what brings it back** · what it would cost to do later.
 
+**Marks.** ✅ = built (fully or as the slice that was scoped). ~~Struck out~~ = not needed in this
+repository: it belongs to the other project or to its own module (Kushal, 2026-10-10), kept only so it
+is not re-proposed.
+
 ---
 
 ## D-1 · A lightweight database browser (Drizzle Studio or similar)
@@ -70,7 +74,9 @@ either/or.
 
 ---
 
-## D-2 · Jurisdiction-specific compliance (data residency, consent enforcement, DLT, …)
+## ~~D-2 · Jurisdiction-specific compliance (data residency, consent enforcement, DLT, …)~~
+
+> ~~**Struck out (Kushal, 2026-10-10).** Region-specific legal machinery is the operator's, in the other project or its own module, not this repository's.~~ What stays here is only the anti-ban side (`do_not_contact`, D-27).
 
 **What:** any *region-specific* legal machinery an operator's jurisdiction demands — data residency
 (e.g. India's DPDP requiring in-region hosting), enforced purpose-separated consent, DLT
@@ -154,6 +160,19 @@ out.
 ---
 
 ## D-7 · Turborepo, and splitting the queue driver
+
+> **In plain terms.** Two separate "maybe later" upgrades to how the code is built and how background jobs run.
+>
+> - **Turborepo** is a build helper for projects made of many packages (this one has an API, a gateway, a
+>   web app and shared libraries). It remembers what it already built and skips it next time, so builds get
+>   faster. Today `npm` workspaces are enough, because the project is small and builds are quick.
+> - **The queue driver** is the part that hands background work (sending a message, importing a file) to
+>   something that does it. Right now that something is **pg-boss**, which keeps the job list inside the
+>   Postgres database we already have, so there is no extra server to run. **BullMQ** is the heavier option
+>   that uses Redis and copes with many workers at once. We only switch when one machine of workers is not
+>   enough, and because the queue sits behind an interface, switching does not touch the rest of the code.
+>
+> Nothing is broken and nothing needs doing until builds feel slow or the work outgrows one worker.
 
 **Why parked:** npm workspaces are enough at this size, and `pg-boss` avoids running Redis at
 all in the lean preset.
@@ -266,7 +285,7 @@ arrives before this is decided.
 
 ---
 
-## D-11 · Media at rest — encryption, retention, scanning, compliance
+## D-11 · Media at rest — encryption, retention, scanning, compliance · ✅ serving built, the rest parked
 
 **What:** everything about received files *except* storing and serving them, which is built as
 the filesystem `StorageDriver` with provider-neutral keys.
@@ -277,7 +296,7 @@ the filesystem `StorageDriver` with provider-neutral keys.
 |---|---|
 | **Encryption at rest** | Message bodies are encrypted; files would not be. A CV is *more* sensitive than the message carrying it — name, phone, address, salary. Encrypting costs cheap range requests and streaming, so it is a trade to make deliberately rather than by default |
 | **Retention** | Specced at one year in `09-security.md`, with a nightly hard-delete job that does not exist |
-| **DPDP / erasure** | A deletion request has to reach the files, not only the rows — see D-2 |
+| ~~**DPDP / erasure**~~ | ~~A deletion request has to reach the files, not only the rows — see D-2~~ Struck out (legal, 2026-10-10) |
 | **Antivirus** | `SCANNER_DRIVER=clamav`, opt-in, ~1 GB RAM for daemon plus signatures, against a `lean` target of ~1 GB total |
 | **Size caps and quotas** | WhatsApp permits ~16 MB images and ~100 MB documents. Candidate CVs accumulate quickly |
 
@@ -326,7 +345,9 @@ so a mixed estate is readable during a migration.
 
 ---
 
-## D-12 · Resume parsing and ATS-friendliness scoring
+## ~~D-12 · Resume parsing and ATS-friendliness scoring~~
+
+> ~~**Struck out (Kushal, 2026-10-10).** Lives in the job-portal project / its own module. Already out of scope here; recorded so it is not re-proposed.~~
 
 **Not deferred — out of scope for this repository, permanently.**
 
@@ -346,7 +367,7 @@ contact it came from. Nothing more.
 
 ---
 
-## D-13 · Access auditing — who *read* what · **LANDED**
+## D-13 · Access auditing — who *read* what · ✅ **LANDED**
 
 **What:** recording reads, not just changes. Who opened this conversation, who downloaded this
 attachment, who ran this export. The DPDP-shaped question.
@@ -402,7 +423,10 @@ a WORM bucket or an external log sink — and is a different problem.
 
 ---
 
-## D-14 · The linked number receives nothing — `Bad MAC` on every inbound
+## D-14 · The linked number receives nothing — `Bad MAC` on every inbound · ✅ **CLOSED 2026-09-28**
+
+> **Closed.** The number was re-linked, inbound was verified and media was proven end to end against a real
+> WhatsApp file. The text below is the diagnosis, kept so the evidence is not re-derived.
 
 **What:** the companion WhatsApp session can **send** but cannot **receive**. Re-linking the
 number is the fix; it is parked until there is a reason to spend the number's stability on it.
@@ -491,7 +515,9 @@ the API document claiming an OpenAPI endpoint that did not exist.
 
 ---
 
-## D-16 · The legal front door (terms, privacy) — the operator's to provide
+## ~~D-16 · The legal front door (terms, privacy) — the operator's to provide~~
+
+> ~~**Struck out (Kushal, 2026-10-10).** Terms, privacy and acceptance tracking are not built here.~~ The Baileys ban-risk warning shown before linking a number stays; that is honesty about risk, not legal boilerplate.
 
 **What:** the terms and privacy policy a product puts in front of a person, and a record of who
 accepted which version. **This is a generic worldwide tool, so the product ships none of these
@@ -553,7 +579,7 @@ same contact, which polling's 5 s window narrows but does not close.
 
 ---
 
-## D-18 · Inbox niceties: snooze, the Meta 24-hour window UI, keyboard shortcuts
+## D-18 · Inbox niceties: snooze, the Meta 24-hour window UI, ~~keyboard shortcuts~~
 
 **What:** three F3 acceptance criteria deferred as not-needed-now.
 
@@ -561,7 +587,7 @@ same contact, which polling's 5 s window narrows but does not close.
 |---|---|---|
 | **Snooze** | AC-6 | Hide a thread until a chosen time, then re-open it. Needs a `snooze_until` column and something to un-hide it on schedule. |
 | **Meta 24-hour window countdown + template-only composer** | AC-9 | WhatsApp's *official* API only allows free-form replies within 24 h of the contact's last message; after that only approved templates. The UI would show the countdown and lock the composer. |
-| **Keyboard shortcuts** | AC-10 | Hotkeys for reply / assign / resolve / next-previous thread. |
+| ~~**Keyboard shortcuts**~~ | ~~AC-10~~ | ~~Hotkeys for reply / assign / resolve / next-previous thread.~~ **Struck out (Kushal, 2026-10-10): not needed.** |
 
 **Why parked:** none is load-bearing for the CRM working. Snooze is a workflow convenience; keyboard
 shortcuts are a power-user speed-up; and the **Meta window UI is meaningless until the Meta Cloud API
@@ -572,7 +598,7 @@ window. Kushal called all three not required for now.
 
 1. **Snooze** — an operator asking to defer threads to "tomorrow" as a routine.
 2. **Meta window UI** — the Meta adapter (P8) landing; build it *with* that adapter, not before.
-3. **Keyboard shortcuts** — enough daily inbox volume that mouse-driving becomes the bottleneck.
+3. ~~**Keyboard shortcuts** — enough daily inbox volume that mouse-driving becomes the bottleneck.~~ (struck out)
 
 **How hard later:** snooze is **small** (one column + a sweep query, reusing the same pattern as the
 rest of the inbox); keyboard shortcuts are **small** and pure front-end; the Meta window UI is
@@ -725,7 +751,13 @@ the encrypted-body question.
 
 ---
 
-## D-24 · Typing simulation (P6 anti-ban layer 3) — **LANDED 2026-09-29**
+## D-24 · Typing simulation (P6 anti-ban layer 3) — ✅ **LANDED 2026-09-29**
+
+> **In plain terms.** When a person messages on WhatsApp, the other side briefly sees "typing…" before the
+> message arrives. A bot that sends instantly never shows that, and WhatsApp can notice. Typing simulation
+> makes each automated send show "typing…" for a short, length-based moment first, then send, so it looks
+> like a person. It is one of the anti-ban behaviours. It is **not** the "someone is typing" indicator
+> between teammates in the inbox; that is D-17.
 
 **Built.** Before each send the gateway emits a `composing` presence to the recipient, pauses a
 beat proportional to the message length (`typingDelayMs` in `@crm/core` — Gaussian on the per-char
@@ -772,7 +804,7 @@ already provide the actual burst protection.
 
 ---
 
-## D-25 · Outbound media (sending files) — **LANDED 2026-10-05**
+## D-25 · Outbound media (sending files) — ✅ **LANDED 2026-10-05**
 
 > **Built.** `POST /api/v1/conversations/:id/attachments?filename=&caption=` takes the file as the raw
 > request body (16 MB cap, `FILE_TOO_LARGE` otherwise). The type is decided from the bytes
@@ -816,7 +848,7 @@ capability, not a defect.
 
 ---
 
-## D-26 · Campaign body variation (spintax + per-recipient) — **LANDED (both halves)**
+## D-26 · Campaign body variation (spintax + per-recipient) — ✅ **LANDED (both halves)**
 
 > **Built (2026-09-29):** the per-recipient rendering is done. `renderBody` in `@crm/core`
 > (`body-variation.ts`) resolves **spintax** (`{Hi|Hey|Hello}`, nested, resolved first on the
@@ -875,7 +907,16 @@ a missed opt-out becomes a block/report and a ban signal.
 
 ---
 
-## D-28 · Dynamic audience segments ("segregation") — **MINIMAL SLICE LANDED 2026-09-30**
+## D-28 · Dynamic audience segments ("segregation") — ✅ **MINIMAL SLICE LANDED 2026-09-30**
+
+> **In plain terms.** A *segment* is a saved rule that picks people automatically, such as "everyone tagged
+> `pune` who replied in the last 30 days". A tag is a fixed list you maintain by hand; a segment is a
+> question the system re-asks every time, so the answer is always current. (The word "segregation" in the
+> title was Kushal's shorthand for this: separating the contacts into groups.) What is built is the small
+> version: tag, replied or never replied, and contacted within N days, combined with AND. It is used when you
+> create a campaign, where it shows a live count of matches and can be saved as an "audience" for reuse. Rules
+> like "city equals Pune" or OR-groups were left out on purpose, so it stays a CRM filter and not a query
+> language.
 
 > **Update 2026-10-10:** segments are now built **inline in the new-campaign form** (a filter with a live count,
 > optionally saved for reuse); the standalone screen became **Saved audiences**, reached from Broadcast. One-off
@@ -914,7 +955,7 @@ whole-import targeting cover it.
 
 ---
 
-## D-29 · An anti-ban "advisory mode" — warn but do not enforce — **BUILT 2026-10-06**
+## D-29 · An anti-ban "advisory mode" — warn but do not enforce — ✅ **BUILT 2026-10-06**
 
 > **Update 2026-10-09:** do-not-contact is now actually enforced on every send path, and an admin can lift it per message or campaign (audited, with a reason); advisory mode still does not bypass it. The line below saying it stays hard is superseded.
 >
@@ -1179,7 +1220,7 @@ touch Baileys.
 
 ---
 
-## D-45 · Link a `@lid` address to its phone number — **BUILT 2026-10-10 (PR #6)**
+## D-45 · Link a `@lid` address to its phone number — ✅ **BUILT 2026-10-10 (PR #6)**
 
 > **Built:** the adapter reads `key.senderPn` / `participantPn` and `chats.phoneNumberShare`, the gateway links the
 > address to the phone before storing the message, and `linkLidToPhone` adds the identity or merges two contacts.
