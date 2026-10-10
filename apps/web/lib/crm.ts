@@ -503,10 +503,10 @@ export async function previewSegmentCount(definition: SegmentDefinition): Promis
 
 /** Creates a segment. Throws `CrmApiError` (`SEGMENT_EXISTS`) if the name is taken. */
 export async function createSegment(
-  name: string, definition: SegmentDefinition
+  name: string, definition: SegmentDefinition, saved = true
 ): Promise<{ id: string; name: string }> {
   return request<{ id: string; name: string }>('/segments', {
-    method: 'POST', body: JSON.stringify({ name, definition })
+    method: 'POST', body: JSON.stringify({ name, definition, saved })
   });
 }
 

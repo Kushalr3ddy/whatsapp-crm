@@ -5,6 +5,7 @@ import {
 } from '@/lib/crm';
 import type { Sender, Tag, ImportRun, Segment } from '@/lib/crm';
 import { createCampaignAction } from '../actions';
+import { AudiencePicker } from './audience-picker';
 
 /** Rendered per request — the sender and tag pickers reflect live data. */
 export const dynamic = 'force-dynamic';
@@ -51,7 +52,8 @@ export default async function NewCampaignPage(
   if (expired) redirect('/login?next=/broadcast/new');
 
   // A campaign needs a number to send from and an audience — a tag, an import, or a segment.
-  const canSend = senders.length > 0 && (tags.length > 0 || imports.length > 0 || segments.length > 0);
+  // A filter can always be built inline, so a number is the only prerequisite.
+  const canSend = senders.length > 0;
 
   /** A numbered step heading, so the form reads as three decisions rather than one long list. */
   const step = (n: number, title: string, hint?: string) => (
@@ -79,7 +81,7 @@ export default async function NewCampaignPage(
         <p className="notice">
           {senders.length === 0
             ? 'Link a WhatsApp number first, on the Numbers tab.'
-            : 'No audience yet — tag some contacts on the Contacts tab, or import a spreadsheet on the Import tab. A campaign aims at a tag, an import or a segment.'}
+            : 'Something went wrong loading this form. Try again.'}
         </p>
       )}
 
@@ -107,45 +109,14 @@ export default async function NewCampaignPage(
 
           <section className="card p-5">
             {step(2, 'Choose who gets it', 'Pick one. The audience is frozen when you start, so later changes will not alter the run.')}
-            <div className="grid gap-3 sm:grid-cols-3">
-              {tags.length > 0 && (
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-sm font-medium">Everyone tagged</span>
-                  <select name="fromTagId" defaultValue="" className="field">
-                    <option value="">— no tag —</option>
-                    {tags.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}{t.contactCount !== undefined ? ` · ${t.contactCount} contacts` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {imports.length > 0 && (
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-sm font-medium">From an import</span>
-                  <select name="fromImportRunId" defaultValue="" className="field">
-                    <option value="">— no import —</option>
-                    {imports.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.filename ?? 'import'} · {r.contactCount} contacts · {new Date(r.createdAt).toLocaleDateString()}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {segments.length > 0 && (
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-sm font-medium">Matching a segment</span>
-                  <select name="fromSegmentId" defaultValue="" className="field">
-                    <option value="">— no segment —</option>
-                    {segments.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} · {s.contactCount} match</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </div>
+            <AudiencePicker
+              tags={tags}
+              imports={imports.map((r) => ({
+                id: r.id,
+                label: `${r.filename ?? 'import'} · ${String(r.contactCount)} contacts · ${new Date(r.createdAt).toLocaleDateString()}`
+              }))}
+              segments={segments}
+            />
             <p className="mt-3 text-sm text-muted">
               To pick specific people instead, tick them on the Contacts tab.
             </p>

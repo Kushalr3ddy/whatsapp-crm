@@ -1,0 +1,1 @@
+ALTER TABLE "segment" ADD COLUMN "saved" boolean DEFAULT true NOT NULL;

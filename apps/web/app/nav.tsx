@@ -40,10 +40,6 @@ const TABS: Tab[] = [
     icon: <Icon><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M16.5 5.3a3 3 0 0 1 0 5.4M18 14.8c1.8.7 3 2.3 3 5.2" /></Icon>
   },
   {
-    href: '/segments', label: 'Segments',
-    icon: <Icon><path d="M3 5h18l-7 8v6l-4-2v-4z" /></Icon>
-  },
-  {
     href: '/link', label: 'Numbers',
     icon: <Icon><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" /></Icon>
   },

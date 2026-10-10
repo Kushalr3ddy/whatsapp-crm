@@ -21,7 +21,9 @@ const definitionSchema = z.object({
 /** Body for creating a segment: a name and its filter. */
 const createSegment = z.object({
   name: z.string().trim().min(1).max(100),
-  definition: definitionSchema
+  definition: definitionSchema,
+  /** False for a one-off audience built inline in a campaign: usable, but not listed for reuse. */
+  saved: z.boolean().default(true)
 });
 
 /** Body for a preview: just the filter, to count matches before saving. */
@@ -41,7 +43,7 @@ export function segmentsRouter(): Router {
     const data = await req.tenant!(async (tx) => {
       const rows = await tx.execute(sql`
         SELECT id, name, definition, created_at AS "createdAt"
-        FROM segment WHERE org_id = ${orgId} ORDER BY name ASC`);
+        FROM segment WHERE org_id = ${orgId} AND saved ORDER BY name ASC`);
       const segments = rows as unknown as Array<{
         id: string; name: string; definition: SegmentDefinition; createdAt: string;
       }>;
@@ -76,10 +78,10 @@ export function segmentsRouter(): Router {
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
-    const { name, definition } = parsed.data;
+    const { name, definition, saved } = parsed.data;
     const rows = await req.tenant!((tx) => tx.execute(sql`
-      INSERT INTO segment (org_id, name, kind, definition)
-      VALUES (${req.crm!.orgId}, ${name}, 'dynamic', ${JSON.stringify(definition)}::jsonb)
+      INSERT INTO segment (org_id, name, kind, definition, saved)
+      VALUES (${req.crm!.orgId}, ${name}, 'dynamic', ${JSON.stringify(definition)}::jsonb, ${saved})
       ON CONFLICT (org_id, name) DO NOTHING
       RETURNING id, name, definition`));
     const created = (rows as unknown as unknown[])[0];
