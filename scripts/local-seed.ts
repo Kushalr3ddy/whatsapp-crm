@@ -26,15 +26,15 @@ import { buildApp } from '../apps/api/src/app.js';
 
 const ORG_SLUG = process.env.TEST_ORG_SLUG ?? 'e2e-test';
 const SENDER_LABEL = 'Seed number';
-const SENDER_PHONE = '+919000000077';
+const SENDER_PHONE = '+12025550199';
 const TAGS = ['seed-leads', 'seed-customers', 'seed-vip'];
 const PEOPLE = [
   'Asha Rao', 'Bilal Khan', 'Chitra Nair', 'Dev Patel', 'Esha Gupta', 'Farhan Ali', 'Gita Iyer',
   'Hari Menon', 'Isha Verma', 'Jai Singh', 'Kavya Reddy', 'Lakshmi Pillai', 'Manoj Das',
   'Neha Joshi', 'Omar Sheikh', 'Priya Shah', 'Qasim Mir', 'Rhea Kapoor', 'Sunil Bose', 'Tara Menon'
 ];
-/** Phones are 9198765 + a 5-digit tail, far from the numbers the other specs create. */
-const phoneOf = (i: number): string => `+91987650${String(1000 + i)}`;
+/** Fiction-range numbers (+1 202 555 0100..0199 are reserved and never assigned), so nothing can reach a real person. */
+const phoneOf = (i: number): string => `+1202555${String(120 + i).padStart(4, '0')}`;
 
 /** Prints a line. This is a CLI: stdout is the interface. */
 function say(line = ''): void {
