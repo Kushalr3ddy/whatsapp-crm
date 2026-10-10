@@ -13,7 +13,7 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
-### 2026-10-10 — Silent-restriction tracking (#8) and segments inside campaigns (#9) — open PRs
+### 2026-10-10 — Silent-restriction tracking (#8, merged) and segments inside campaigns (#9, open)
 - **#8 Silent restriction.** WhatsApp does not announce a restriction; the detector (`restriction.ts`) infers
   it from our own delivery records: stuck-at-sent ratio vs the number's baseline, median delivery time,
   whether people who normally reply are affected, whether only strangers are (reachout-timelock shape),

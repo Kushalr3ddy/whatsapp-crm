@@ -18,22 +18,22 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 - Ignore the docs unless asked ("pin it" = a new D-<n> in `docs/21-deferred.md`). `gh` is not installed;
   `open-pr.sh` uses the stored git credential.
 
-**Merged to `main` (PRs #1–#7):** PR workflow + pins D-42..D-45 · **do-not-contact enforced on every send
+**Merged to `main` (PRs #1–#8):** PR workflow + pins D-42..D-45 · **do-not-contact enforced on every send
 path** with an audited admin override · **mass tagging** (filter / segment / ticked / whole import, preview →
 confirm) · secrets-scan permission fix · **UI overhaul** (Overview dashboard, structured Contacts,
 three-panel inbox, redesigned Broadcast/Numbers/Import/Login, shared `ui.tsx` + design tokens) ·
 **LID → phone linking and contact merge**.
 
-**Open PRs, merge in this order:**
-1. **#8 — silent-restriction tracking** (migration 0022): detector in `packages/core/src/restriction.ts`
-   (`ok → suspected → likely`, hysteresis), per-number health timeline, banner / sidebar badge / thread
-   warning / "no delivery for 3h" / campaign "paused automatically", docs `docs/27-restriction-tracking.md`;
-   also fixes the close code + reconnect count never being written, delivery ERROR acks, and records an
-   unrequested logout as `hard_ban_suspected`. The simulation moved to its own workflow
-   (`.github/workflows/simulation.yml`) with three new scenarios.
-2. **#9 — segments folded into campaigns** (migration 0023, stacked on #8): the new-campaign audience step
-   can build a filter inline with a live count; "Segments" leaves the sidebar and becomes **Saved audiences**
-   (reached from Broadcast).
+**Also merged: #8 — silent-restriction tracking** (migration 0022): detector in
+`packages/core/src/restriction.ts` (`ok → suspected → likely`, hysteresis), per-number health timeline,
+banner / sidebar badge / thread warning / "no delivery for 3h" / campaign "paused automatically", docs
+`docs/27-restriction-tracking.md`; also fixes the close code + reconnect count never being written, delivery
+ERROR acks, and records an unrequested logout as `hard_ban_suspected`. The simulation has its own workflow
+(`.github/workflows/simulation.yml`) with three new scenarios.
+
+**Open PR: #9 — segments folded into campaigns** (migration 0023): the new-campaign audience step can build
+a filter inline with a live count; "Segments" leaves the sidebar and becomes **Saved audiences** (reached
+from Broadcast). This PR also carries this handoff and the changelog.
 
 **Next, in Kushal's order:** the **UI test suite** (`scripts/local-seed.ts` + a fake-number gateway option
 so CI can verify sending; more Playwright specs for inbox / contacts / import / numbers / banner using the
