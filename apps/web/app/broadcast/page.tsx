@@ -38,7 +38,12 @@ export default async function BroadcastPage() {
       <PageHeader
         title="Broadcast"
         description="Send one message to many people, paced by the anti-ban engine so a burst can never go out at once."
-        actions={<Link href="/broadcast/new" className="btn btn-primary">New campaign</Link>}
+        actions={
+          <>
+            <Link href="/segments" className="btn">Saved audiences</Link>
+            <Link href="/broadcast/new" className="btn btn-primary">New campaign</Link>
+          </>
+        }
       />
 
       <details className="card mb-6 px-4 py-2.5 text-sm">

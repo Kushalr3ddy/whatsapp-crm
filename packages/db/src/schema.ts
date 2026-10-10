@@ -547,6 +547,12 @@ export const segment = pgTable('segment', {
   kind: text('kind').notNull().default('dynamic'),
   /** The allowlisted filter criteria. Interpreted only by the engine, never turned into raw SQL. */
   definition: jsonb('definition').notNull().default({}),
+  /**
+   * False for the one-off filter built inline while creating a campaign and not kept for reuse. The
+   * campaign still targets it (so the audience is frozen the same way), but it does not clutter the
+   * list of saved audiences.
+   */
+  saved: boolean('saved').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [

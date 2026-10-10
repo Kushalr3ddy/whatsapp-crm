@@ -162,6 +162,13 @@
       "when": 1791635579207,
       "tag": "0022_chemical_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791638427408,
+      "tag": "0023_dusty_havok",
+      "breakpoints": true
     }
   ]
 }

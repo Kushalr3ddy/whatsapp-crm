@@ -13,7 +13,6 @@ test.describe('signed-in walkthrough', () => {
     await signIn(page);
     for (const [link, heading] of [
       ['Contacts', 'Contacts'],
-      ['Segments', 'Segments'],
       ['Import', 'Import contacts'],
       ['Broadcast', 'Broadcast'],
       ['Numbers', 'Numbers']

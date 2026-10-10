@@ -3,10 +3,41 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  createCampaign, startCampaign, pauseCampaign, cancelCampaign,
+  createCampaign, startCampaign, pauseCampaign, cancelCampaign, createSegment, previewSegmentCount,
   CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { CampaignTarget } from '@/lib/crm';
+import type { CampaignTarget, SegmentDefinition } from '@/lib/crm';
+
+/** Builds a segment filter from the inline audience builder, including only criteria that were set. */
+function filterFromForm(get: (name: string) => string): SegmentDefinition {
+  const def: SegmentDefinition = {};
+  const tagId = get('filterTagId');
+  if (tagId !== '') def.tagIds = [tagId];
+  const replied = get('filterReplied');
+  if (replied === 'ever' || replied === 'never') def.replied = replied;
+  const days = Number(get('filterDays'));
+  if (Number.isInteger(days) && days > 0) def.lastContactedWithinDays = days;
+  return def;
+}
+
+/**
+ * Counts who an inline filter would reach, for the audience builder's live number. Called from the
+ * browser as the person changes a field; returns null when the count could not be read, so the
+ * builder shows nothing rather than a wrong number.
+ */
+export async function previewAudienceAction(
+  filter: { tagId: string; replied: string; days: string }
+): Promise<number | null> {
+  const def = filterFromForm((n) => ({
+    filterTagId: filter.tagId, filterReplied: filter.replied, filterDays: filter.days
+  } as Record<string, string>)[n] ?? '');
+  if (Object.keys(def).length === 0) return null;
+  try {
+    return await previewSegmentCount(def);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Runs one campaign control (start/pause/cancel) on the server, then refreshes that campaign's
@@ -37,12 +68,36 @@ export async function createCampaignAction(formData: FormData): Promise<void> {
   const fromImportRunId = String(formData.get('fromImportRunId') ?? '');
   const fromSegmentId = String(formData.get('fromSegmentId') ?? '');
 
+  // Inline audience: a filter built right in the form. It becomes a segment (so it is resolved and
+  // frozen at launch like any other audience); `keepAudience` decides whether it is listed for reuse.
+  let inlineSegmentId = '';
+  if (String(formData.get('audienceMode') ?? '') === 'filter') {
+    const def = filterFromForm((n) => String(formData.get(n) ?? ''));
+    const keep = formData.get('keepAudience') === 'on';
+    const keptName = String(formData.get('audienceName') ?? '').trim();
+    // Never "everyone" by accident: an empty filter is not an audience.
+    if (Object.keys(def).length === 0 || (keep && keptName === '') || name === '') {
+      redirect('/broadcast/new?error=missing');
+    }
+    try {
+      const made = await createSegment(
+        keep ? keptName : `${name} · audience ${Date.now().toString(36)}`, def, keep
+      );
+      inlineSegmentId = made.id;
+    } catch (error) {
+      if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');
+      const code = error instanceof CrmApiError ? error.code : 'ERROR';
+      redirect(`/broadcast/new?error=${encodeURIComponent(code)}`);
+    }
+  }
+
   // The audience is a tag, an import, or a segment — exactly one. The form offers all three selects
   // with a "none" default; picking neither or more than one is a mistake worth a clear message.
   const chosen: CampaignTarget[] = [];
+  if (inlineSegmentId !== '') chosen.push({ fromSegmentId: inlineSegmentId });
   if (fromTagId !== '') chosen.push({ fromTagId });
   if (fromImportRunId !== '') chosen.push({ fromImportRunId });
-  if (fromSegmentId !== '') chosen.push({ fromSegmentId });
+  if (fromSegmentId !== '' && inlineSegmentId === '') chosen.push({ fromSegmentId });
 
   if (name === '' || body === '' || senderIdentityId === '' || chosen.length !== 1) {
     redirect('/broadcast/new?error=missing');

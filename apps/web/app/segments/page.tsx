@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import {
   listSegments, listTags, previewSegmentCount, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
@@ -80,7 +81,8 @@ export default async function SegmentsPage(
   return (
     <main className="page">
       <header className="mb-5">
-        <h1 className="page-title">Segments</h1>
+        <Link href="/broadcast" className="text-sm text-muted hover:text-ink">← Broadcast</Link>
+        <h1 className="page-title mt-2">Saved audiences</h1>
         <p className="page-desc">
           A saved filter that re-evaluates every time — "everyone tagged <code>pune</code> who
           replied" stays current on its own. Target one from a campaign; it freezes at launch.
