@@ -32,7 +32,7 @@ Also fixed: the fake channel's message ids restarted at 1 each boot and collided
 **Next, in Kushal's order:** **D-21** (import mapping wizard; priority, needs the real Naukri file), **D-41** (gateway outside RLS) then **D-31** (key rotation), then the real-number
 pilot. **D-46** (UI feels laggy when used fast; measure first) is pinned, along with **D-47** (signup page +
 billing gate + beta override), **D-48** (OWASP security tests), **D-49** (e2e revamp to industry standard) and
-**D-50** (frontend/backend independence tests), **D-51** (deleted-message tracking) and **D-52** (delete
+**D-50** (frontend/backend independence tests), **D-17 + D-53** (presence / typing / who is assigned / who wrote each message — **priority**), **D-51** (deleted-message tracking) and **D-52** (delete
 previous campaigns).
 
 **Pinned / held (do not build):** **D-41** gateway runs outside RLS (**priority**) · **D-31** key rotation

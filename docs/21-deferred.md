@@ -541,7 +541,19 @@ ban-risk disclosure — is already surfaced everywhere it needs to be.
 
 ---
 
-## D-17 · Presence, typing indicators and collision detection (F3 realtime)
+## D-17 · Presence, typing indicators and collision detection (F3 realtime) — **PRIORITY (Kushal, 2026-10-10)**
+
+> **Priority.** Raised 2026-10-10 together with D-53 (assignment model and message authorship): knowing who
+> is looking at a chat, who is typing, and who wrote each message is one feature set. Build them in the same
+> slice, on one realtime channel.
+>
+> **What the screen should show:** "Asha is viewing" and "Bilal is typing…" on a thread (and a small dot
+> on the conversation list), a warning in the composer when someone else is already typing, and presence
+> only for people who can see the thread. **What it must not do:** show anything to the contact; this is
+> teammates only (the WhatsApp "typing…" the contact sees is D-24, a different thing).
+>
+> **State today (verified 2026-10-10):** nothing realtime. The inbox refreshes by polling every 5 s, and the
+> thread lock (409 `THREAD_ASSIGNED`) is the only collision protection.
 
 **What:** the live parts of the shared inbox — showing that another agent is *viewing* a thread,
 that they are *typing*, and by extension collision detection (two people not answering the same
@@ -1368,3 +1380,32 @@ would also clean up test runs.
 **Why parked:** pinned, not scheduled.
 
 **What brings it back:** Kushal's go-ahead.
+
+---
+
+## D-53 · Assignment model and message authorship — **PRIORITY (Kushal, 2026-10-10)**
+
+**The questions, answered so they are not re-asked:**
+
+| Question | Today | Proposed |
+|---|---|---|
+| **Two or more chats assigned to one person?** | **Works.** `conversation.assignee_user_id` is per chat, so one person can own any number. There is no view of workload and no cap. | Keep. Add a count per person on the assignee list and in a "My chats" header, and optionally a per-agent capacity (Chatwoot and Respond.io both have one) that auto-assignment respects. |
+| **One chat assigned to several people?** | **Not possible.** The column holds one user. | Keep **one owner** and add **participants**: a `conversation_participant` table (`conversation_id`, `user_id`, `role` = owner / collaborator / watcher, `added_by`, `added_at`, RLS like `internal_note`). The owner is who the chat is "assigned to"; collaborators are added by @mention or by the owner. This is also the table D-17 already wanted, so it is paid for once. |
+| **What does the thread lock do with several people?** | Only the assignee (or an admin) may reply. | Owner and collaborators may reply; watchers may only add notes. Unassigned chats are open to everyone. A reassignment writes an audit row and an inline event in the thread. |
+| **Who is typing / viewing?** | Nothing. | D-17: presence on the same realtime channel, per participant. |
+| **Who wrote each message?** | **Stored in the schema, never written, never shown.** `message.sent_by` and `message.sent_by_user_id` exist, but replies from the UI record `sent_by = 'api'` and leave the user empty, and the thread shows no author on outbound messages (only notes show one). | Record the signed-in user on every reply (`sent_by = 'agent'`, `sent_by_user_id`), `campaign:<id>` for broadcast sends, `api` for an API key, `bot` later. Show a small author name and avatar on each outbound bubble and a "via campaign X" label on broadcast messages. Inbound messages show the contact, and the number they arrived on. |
+
+**Edge cases to decide when it is built:**
+- When the owner leaves the org or is deactivated, the chat becomes unassigned (the column already
+  `SET NULL`s) and an audit row says why; collaborators stay.
+- A contact with chats on two numbers is two conversations, so two possible owners. Keep that, and show the
+  other conversation as a link in the contact panel.
+- An admin and an API key bypass the lock today; keep that, and record who acted either way.
+- Bulk reassign (everything of a leaving agent to another) belongs with this work.
+
+**Why parked:** pinned as a priority, not scheduled; it needs Kushal's go-ahead on the owner-plus-participants
+shape before any migration.
+
+**What brings it back:** Kushal's go-ahead. Authorship (writing `sent_by_user_id` and showing it) is a
+small first slice that needs no realtime and can ship alone.
+
