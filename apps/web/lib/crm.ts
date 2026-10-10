@@ -50,6 +50,8 @@ export interface Me {
   userId: string | null;
   role: string | null;
   scopes: string[];
+  /** `unpaid` sends the person to Billing; `paid` / `exempt` (an admin waived it) let them in. */
+  billingStatus: 'unpaid' | 'paid' | 'exempt' | null;
 }
 
 /** One message in a thread. Mirrors `GET /api/v1/conversations/:id/messages`. */
@@ -423,6 +425,17 @@ export async function getConversation(id: string): Promise<Conversation> {
 /** Lists the org's members, so the inbox can offer an assignee. */
 export async function listUsers(): Promise<OrgUser[]> {
   return request<OrgUser[]>('/users');
+}
+
+/** Whether this install offers self-service signup. Public, so it works before anyone is signed in. */
+export async function getPublicConfig(): Promise<{ signupEnabled: boolean }> {
+  try {
+    const res = await fetch(`${baseUrl()}/api/v1/auth/config`, { cache: 'no-store' });
+    const body = (await res.json()) as { data?: { signupEnabled?: boolean } };
+    return { signupEnabled: body.data?.signupEnabled === true };
+  } catch {
+    return { signupEnabled: false };
+  }
 }
 
 /** Reads the signed-in principal, so the UI can tell which threads are "mine". */

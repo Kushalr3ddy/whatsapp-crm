@@ -86,6 +86,7 @@ export const AUDIT = {
   logout: 'auth.logout',
   passwordChanged: 'auth.password.changed',
   orgCreated: 'org.created',
+  orgBillingChanged: 'org.billing_changed',
   userAdded: 'user.added',
   apiKeyIssued: 'api_key.issued',
   apiKeyRevoked: 'api_key.revoked',

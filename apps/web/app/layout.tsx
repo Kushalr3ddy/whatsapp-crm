@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { Nav } from './nav';
-import { listSenders } from '@/lib/crm';
+import { listSenders, getMe } from '@/lib/crm';
+import { BillingGate } from './billing-gate';
 import './globals.css';
 
 /** Browser tab title and description. Generic on purpose — the product is not one company's. */
@@ -28,9 +29,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // How many numbers WhatsApp may be limiting, for the badge on "Numbers". Only when signed in, and
   // never allowed to break a page: the badge is a convenience, the Numbers page is the source.
   let alerts = 0;
+  let unpaid = false;
   if ((await cookies()).get('crm_session') !== undefined) {
     try {
-      alerts = (await listSenders()).filter((s) => s.restrictionState !== 'ok').length;
+      // Who am I first: an unpaid org's data routes answer 402, so there is nothing to count for it.
+      unpaid = (await getMe()).billingStatus === 'unpaid';
+      if (!unpaid) alerts = (await listSenders()).filter((s) => s.restrictionState !== 'ok').length;
     } catch { alerts = 0; }
   }
 
@@ -45,6 +49,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>
       <body className="flex h-screen flex-col overflow-hidden antialiased md:flex-row" suppressHydrationWarning>
+        <BillingGate unpaid={unpaid} />
         <Nav alerts={alerts} />
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</div>
       </body>

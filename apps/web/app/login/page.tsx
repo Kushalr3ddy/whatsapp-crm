@@ -1,3 +1,5 @@
+import Link from 'next/link';
+import { getPublicConfig } from '@/lib/crm';
 import { LoginForm } from './login-form';
 
 /** Rendered per request: whether someone is signed in is never a build-time fact. */
@@ -7,7 +9,8 @@ export const dynamic = 'force-dynamic';
  * The sign-in screen: the form on one side, and on wide screens a panel saying what the product is
  * for, so the first thing someone sees is not a bare box.
  */
-export default function LoginPage() {
+export default async function LoginPage() {
+  const { signupEnabled } = await getPublicConfig();
   return (
     <main className="grid min-h-full w-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <section className="flex items-center justify-center px-6 py-16">
@@ -19,6 +22,11 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
           <p className="mb-6 mt-1 text-muted">Welcome back. Enter your details to continue.</p>
           <LoginForm />
+          {signupEnabled && (
+            <p className="mt-4 text-sm text-muted">
+              New here? <Link href="/signup" className="underline underline-offset-2">Create an account</Link>
+            </p>
+          )}
           <p className="mt-6 text-xs text-muted">
             There is no self-service password reset yet. An administrator can set one with{' '}
             <code>npm run admin -- password</code>.

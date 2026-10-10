@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 import type { PasswordHasher } from '@crm/auth-builtin';
-import { createSession, revokeSession, writeAuditInTenant, AUDIT, SYSTEM_ACTOR } from '@crm/core';
+import {
+  createSession, revokeSession, writeAuditInTenant, createOrgWithAdmin, AlreadyExistsError, AUDIT, SYSTEM_ACTOR
+} from '@crm/core';
 import { SESSION_COOKIE, CSRF_COOKIE } from '../auth.js';
 import { problem } from '../problem.js';
 
@@ -13,6 +15,39 @@ const login = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(512)
 });
+
+/** Body for self-service signup: a new organisation and its first admin. */
+const signup = z.object({
+  orgName: z.string().trim().min(2).max(100),
+  displayName: z.string().trim().min(1).max(200),
+  email: z.string().trim().email().max(320),
+  password: z.string().min(12, 'at least 12 characters').max(512)
+});
+
+/** Signups allowed from one address per window — the first unauthenticated write route, so it is capped. */
+const SIGNUP_WINDOW_MS = 60 * 60_000;
+
+/**
+ * A per-address signup allowance, one window long. In-process, like the login throttle (P9 moves both
+ * into the shared rate-limit layer). Returns a checker that records the attempt when it is allowed.
+ */
+function signupLimiter(perHour: number): (ip: string) => boolean {
+  const log = new Map<string, number[]>();
+  return (ip) => {
+    const now = Date.now();
+    const recent = (log.get(ip) ?? []).filter((t) => now - t < SIGNUP_WINDOW_MS);
+    if (recent.length >= perHour) { log.set(ip, recent); return false; }
+    recent.push(now);
+    log.set(ip, recent);
+    return true;
+  };
+}
+
+/** A URL-safe org slug from a display name, with a random tail so two "Acme"s do not collide. */
+function slugFor(name: string): string {
+  const base = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return `${base === '' ? 'org' : base}-${randomBytes(3).toString('hex')}`;
+}
 
 /** After this many consecutive failures for one email, refuse for a while. */
 const LOCKOUT_AFTER = 5;
@@ -63,8 +98,88 @@ function recordSuccess(email: string): void {
  * Mounted **before** the authentication middleware, because logging in is how you obtain a
  * credential and cannot itself require one.
  */
-export function authRouter(db: Database, hasher: PasswordHasher, isProduction: boolean): Router {
+export function authRouter(
+  db: Database, hasher: PasswordHasher, isProduction: boolean, signupEnabled = false, signupPerHour = 5
+): Router {
   const router = Router();
+  const signupAllowed = signupLimiter(signupPerHour);
+
+  /** An org's billing status, for the UI to decide between the app and the Billing page. */
+  const billingOf = async (orgId: string): Promise<string> => {
+    const rows = (await db.execute(sql`SELECT billing_status AS status FROM org WHERE id = ${orgId}`)) as
+      unknown as Array<{ status: string }>;
+    return rows[0]?.status ?? 'exempt';
+  };
+
+  /** Sets the session and CSRF cookies on a response. One place, so login and signup cannot drift. */
+  const setSessionCookies = (res: Response, token: string): string => {
+    const csrf = randomBytes(24).toString('base64url');
+    const secure = isProduction ? ' Secure;' : '';
+    res.setHeader('Set-Cookie', [
+      // HttpOnly: script must never be able to read the session token.
+      `${SESSION_COOKIE}=${token}; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=${String(7 * 24 * 60 * 60)}`,
+      // Deliberately readable — the browser has to echo it back in a header. That is the
+      // double-submit pattern, and it is why this one is not HttpOnly.
+      `${CSRF_COOKIE}=${csrf};${secure} SameSite=Lax; Path=/; Max-Age=${String(7 * 24 * 60 * 60)}`
+    ]);
+    return csrf;
+  };
+
+  /** What the sign-in screen needs before anyone is signed in: whether to offer "create an account". */
+  router.get('/config', (_req: Request, res: Response) => {
+    res.json({ data: { signupEnabled: signupEnabled } });
+  });
+
+  /**
+   * Self-service signup: a new organisation with its first admin, signed in straight away.
+   *
+   * Off unless `SIGNUP_ENABLED=true`. The org starts `unpaid`, so the UI sends the person to Billing
+   * until an operator marks it `paid` or `exempt` (a beta tester). Same provisioning seam as the CLI.
+   */
+  router.post('/signup', async (req: Request, res: Response) => {
+    if (!signupEnabled) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'Signup is not enabled on this install.'));
+      return;
+    }
+    if (!signupAllowed(req.ip ?? 'unknown')) {
+      res.status(429).json(problem(req, 429, 'TOO_MANY_SIGNUPS', 'Too many signups from this address. Try again later.'));
+      return;
+    }
+    const parsed = signup.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED',
+        parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const { orgName, displayName, email, password } = parsed.data;
+    let created: { orgId: string; userId: string } | null = null;
+    for (let attempt = 0; attempt < 3 && created === null; attempt++) {
+      try {
+        created = await createOrgWithAdmin(db, hasher, {
+          orgName, slug: slugFor(orgName), email, password, displayName, billingStatus: 'unpaid'
+        });
+      } catch (error) {
+        if (!(error instanceof AlreadyExistsError)) throw error;
+        if (error.field === 'email') {
+          res.status(409).json(problem(req, 409, 'EMAIL_TAKEN', 'That email already has an account. Sign in instead.'));
+          return;
+        }
+        // A slug collision: loop and draw a new random tail.
+      }
+    }
+    if (created === null) {
+      res.status(503).json(problem(req, 503, 'SIGNUP_FAILED', 'Could not create the organisation. Try again.'));
+      return;
+    }
+    const issued = await createSession(db, {
+      userId: created.userId, orgId: created.orgId,
+      ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null
+    });
+    const csrf = setSessionCookies(res, issued.token);
+    res.status(201).json({ data: {
+      userId: created.userId, orgId: created.orgId, role: 'admin', csrf, billingStatus: 'unpaid'
+    } });
+  });
 
   /** Exchanges an email and password for a session cookie. */
   router.post('/login', async (req: Request, res: Response) => {
@@ -129,16 +244,10 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
       ip: req.ip ?? null, requestId: String(req.id)
     });
 
-    const csrf = randomBytes(24).toString('base64url');
-    const secure = isProduction ? ' Secure;' : '';
-    res.setHeader('Set-Cookie', [
-      // HttpOnly: script must never be able to read the session token.
-      `${SESSION_COOKIE}=${issued.token}; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=${String(7 * 24 * 60 * 60)}`,
-      // Deliberately readable — the browser has to echo it back in a header. That is the
-      // double-submit pattern, and it is why this one is not HttpOnly.
-      `${CSRF_COOKIE}=${csrf};${secure} SameSite=Lax; Path=/; Max-Age=${String(7 * 24 * 60 * 60)}`
-    ]);
-    res.status(200).json({ data: { userId: user.id, orgId: user.orgId, role: user.role, csrf } });
+    const csrf = setSessionCookies(res, issued.token);
+    res.status(200).json({ data: {
+      userId: user.id, orgId: user.orgId, role: user.role, csrf, billingStatus: await billingOf(user.orgId)
+    } });
   });
 
   /** Ends the current session and clears both cookies. */
@@ -160,14 +269,16 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
   });
 
   /** Reports who the caller is. The UI uses it to decide whether to show a login screen. */
-  router.get('/me', (req: Request, res: Response) => {
+  router.get('/me', async (req: Request, res: Response) => {
     if (req.crm === undefined) {
       res.status(401).json(problem(req, 401, 'UNAUTHORIZED', 'Not authenticated.'));
       return;
     }
+    // The bootstrap key holds no org, so it has no billing status to report.
+    const billingStatus = req.crm.kind === 'bootstrap' ? null : await billingOf(req.crm.orgId);
     res.json({ data: {
       kind: req.crm.kind, orgId: req.crm.orgId, userId: req.crm.userId,
-      role: req.crm.role, scopes: req.crm.scopes
+      role: req.crm.role, scopes: req.crm.scopes, billingStatus
     } });
   });
 

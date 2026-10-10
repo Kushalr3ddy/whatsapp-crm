@@ -2,28 +2,11 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { storeSession } from '@/lib/session';
 
 /** What the form gets back. Success redirects, so only a failure ever returns. */
 export interface SignInResult {
   error: string;
-}
-
-/** Cookie names, matching what the API issues. Kept together so they cannot drift apart. */
-const SESSION = 'crm_session';
-const CSRF = 'crm_csrf';
-
-/**
- * Pulls one cookie's value out of a `Set-Cookie` list.
- *
- * The API's own flags are not reused. This response is being written by *this* app to *this*
- * origin, so the flags are set here deliberately rather than copied from a header that was
- * describing a different hop.
- */
-function valueOf(setCookies: readonly string[], name: string): string {
-  for (const c of setCookies) {
-    if (c.startsWith(`${name}=`)) return c.slice(name.length + 1).split(';')[0] ?? '';
-  }
-  return '';
 }
 
 /**
@@ -60,26 +43,19 @@ export async function signIn(_prev: SignInResult, form: FormData): Promise<SignI
     return { error: problem?.detail ?? 'Email or password is wrong.' };
   }
 
-  const setCookies = response.headers.getSetCookie();
-  const session = valueOf(setCookies, SESSION);
-  const csrf = valueOf(setCookies, CSRF);
-  if (session === '') return { error: 'The API accepted the sign-in but issued no session.' };
+  const stored = await storeSession(response.headers.getSetCookie());
+  if (!stored) return { error: 'The API accepted the sign-in but issued no session.' };
 
-  const jar = await cookies();
-  const secure = process.env.NODE_ENV === 'production';
-  const maxAge = 7 * 24 * 60 * 60;
-
-  // httpOnly on the session: no script should ever be able to read it.
-  jar.set(SESSION, session, { httpOnly: true, secure, sameSite: 'lax', path: '/', maxAge });
-  // NOT httpOnly: this one is read back and echoed as a header. That is the double-submit
-  // pattern, and it only works because script can read it.
-  jar.set(CSRF, csrf, { httpOnly: false, secure, sameSite: 'lax', path: '/', maxAge });
-
+  // An org that has not paid (and has not been waived by an admin) goes to Billing, not the app.
+  const body = (await response.json().catch(() => null)) as { data?: { billingStatus?: string } } | null;
+  if (body?.data?.billingStatus === 'unpaid') redirect('/billing');
   redirect('/');
 }
 
 /** Ends the session at the API and clears it from this browser. */
 export async function signOut(): Promise<void> {
+  const SESSION = 'crm_session';
+  const CSRF = 'crm_csrf';
   const jar = await cookies();
   const session = jar.get(SESSION)?.value ?? '';
   const csrf = jar.get(CSRF)?.value ?? '';

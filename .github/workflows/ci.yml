@@ -105,6 +105,9 @@ jobs:
       API_KEY: ci-only-bootstrap-api-key-0123456789abcdef  # gitleaks:allow
       SEND_TYPING_SIMULATION: 'false'
       NODE_ENV: development
+      # The signup spec creates a throwaway org and waives its payment with the bootstrap key.
+      SIGNUP_ENABLED: 'true'
+      SIGNUP_PER_HOUR: '100'
       # The gateway runs the in-memory fake channel, so a broadcast can be verified end to end with
       # nothing real sent. The day/night behaviours are off so the run does not depend on the clock,
       # and sweeps are fast so a campaign finishes in seconds.
