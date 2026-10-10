@@ -28,6 +28,10 @@ function Icon({ children }: { children: ReactNode }) {
 
 const TABS: Tab[] = [
   {
+    href: '/', label: 'Overview',
+    icon: <Icon><rect x="3" y="3" width="7.5" height="9" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="5.5" rx="1.5" /><rect x="13.5" y="11.5" width="7.5" height="9.5" rx="1.5" /><rect x="3" y="15" width="7.5" height="6" rx="1.5" /></Icon>
+  },
+  {
     href: '/inbox', label: 'Inbox',
     icon: <Icon><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></Icon>
   },
@@ -75,14 +79,14 @@ export function Nav() {
       aria-label="Main"
       className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-3 py-2 md:w-56 md:flex-col md:items-stretch md:gap-1 md:border-b-0 md:border-r md:px-3 md:py-4"
     >
-      <Link href="/inbox" className="mr-2 flex items-center gap-2 px-2 md:mb-4 md:mr-0">
+      <Link href="/" className="mr-2 flex items-center gap-2 px-2 md:mb-4 md:mr-0">
         <span className="avatar size-8 text-sm" aria-hidden>W</span>
         <span className="hidden text-[15px] font-semibold tracking-tight md:inline">WhatsApp CRM</span>
       </Link>
 
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto md:flex-none md:flex-col md:items-stretch md:overflow-visible">
         {TABS.map((tab) => {
-          const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+          const active = tab.href === '/' ? pathname === '/' : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
           return (
             <Link
               key={tab.href}

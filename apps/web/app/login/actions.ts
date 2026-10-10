@@ -75,7 +75,7 @@ export async function signIn(_prev: SignInResult, form: FormData): Promise<SignI
   // pattern, and it only works because script can read it.
   jar.set(CSRF, csrf, { httpOnly: false, secure, sameSite: 'lax', path: '/', maxAge });
 
-  redirect('/inbox');
+  redirect('/');
 }
 
 /** Ends the session at the API and clears it from this browser. */

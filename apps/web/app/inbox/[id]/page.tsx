@@ -1,8 +1,10 @@
+import Link from 'next/link';
 import {
   getConversation, getSenderStatus, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
 } from '@/lib/crm';
 import type { SenderStatus, Message, OrgUser, Note, CannedReply, Me, Conversation } from '@/lib/crm';
 import { Composer } from './composer';
+import { initialsOf } from '../../ui';
 import { ThreadControls } from './thread-controls';
 
 /** Plain words for why a queued message has not gone out yet. */
@@ -183,69 +185,142 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
   const title = conversation?.contactName ?? conversation?.contactPhone ?? 'Conversation';
   const senderLabel = conversation?.senderLabel ?? null;
 
+  // A date heading each time the day changes, so a long thread reads in chapters.
+  const dayOf = (iso: string): string => new Date(iso).toLocaleDateString([], {
+    weekday: 'long', day: 'numeric', month: 'long'
+  });
+  const connected = senderStatus?.canSend === true;
+  const statusLabel = senderStatus === null ? null
+    : connected ? 'Connected'
+    : senderStatus.reason === 'quarantined' ? 'Quarantined' : 'Not connected';
+
   return (
-    <>
-      <header className="flex items-start justify-between gap-4 border-b border-border bg-surface px-5 py-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold">{title}</h2>
-          <p className="mt-0.5 text-xs text-muted">
-            {conversation?.contactPhone ?? 'Privacy address — no phone shared'}
-            {senderLabel !== null && ` · via ${senderLabel}`}
-            {senderStatus !== null && (
-              <span className={senderStatus.canSend ? 'text-success' : 'font-medium text-danger'}>
-                {' · '}{senderStatus.canSend ? '● connected' : senderStatus.reason === 'quarantined' ? '● quarantined' : '● not connected'}
-              </span>
-            )}
-          </p>
-        </div>
-        {/* Absent only if the fetch failed or the id is not in this org; otherwise every thread
-            has its controls, however far down the list it is. */}
-        {conversation !== null && (
-          <ThreadControls
-            conversationId={id}
-            users={users}
-            assigneeUserId={conversation.assigneeUserId}
-            status={conversation.status}
-          />
-        )}
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {failure !== null && <p className="text-sm text-danger">{failure}</p>}
-
-        {failure === null && timeline.length === 0 && (
-          <p className="text-sm text-muted">No messages in this conversation yet.</p>
-        )}
-
-        <ol className="flex flex-col gap-3">
-          {timeline.map((entry) =>
-            entry.kind === 'note' ? (
-              <li key={`note-${entry.item.id}`} className="flex justify-center">
-                <NoteBubble note={entry.item} />
-              </li>
-            ) : (
-              <li
-                key={entry.item.id}
-                className={entry.item.direction === 'outbound' ? 'flex justify-end' : 'flex justify-start'}
-              >
-                <MessageBubble message={entry.item} />
-              </li>
-            )
+    <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-5 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="avatar size-10 text-sm" aria-hidden>{initialsOf(title)}</span>
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold">{title}</h2>
+              <p className="truncate text-sm text-muted">
+                {conversation?.contactPhone ?? 'Privacy address — no phone shared'}
+                {senderLabel !== null && ` · via ${senderLabel}`}
+                {statusLabel !== null && (
+                  <span className={connected ? 'text-success' : 'font-medium text-danger'}>
+                    {' · '}● {statusLabel.toLowerCase()}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          {/* Absent only if the fetch failed or the id is not in this org; otherwise every thread
+              has its controls, however far down the list it is. */}
+          {conversation !== null && (
+            <ThreadControls
+              conversationId={id}
+              users={users}
+              assigneeUserId={conversation.assigneeUserId}
+              status={conversation.status}
+            />
           )}
-        </ol>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          {failure !== null && <p className="notice notice-danger">{failure}</p>}
+
+          {failure === null && timeline.length === 0 && (
+            <p className="mt-10 text-center text-sm text-muted">No messages in this conversation yet.</p>
+          )}
+
+          <ol className="flex flex-col gap-3">
+            {timeline.map((entry, i) => {
+              const day = dayOf(entry.at);
+              const showDay = i === 0 || dayOf(timeline[i - 1]!.at) !== day;
+              return (
+                <li key={`${entry.kind}-${entry.item.id}`} className="contents">
+                  {showDay && (
+                    <div className="my-1 flex items-center gap-3 text-xs text-muted">
+                      <span className="h-px flex-1 bg-border" />
+                      <span>{day}</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  )}
+                  {entry.kind === 'note' ? (
+                    <div className="flex justify-center"><NoteBubble note={entry.item} /></div>
+                  ) : (
+                    <div className={entry.item.direction === 'outbound' ? 'flex justify-end' : 'flex justify-start'}>
+                      <MessageBubble message={entry.item} />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
+        <Composer
+          conversationId={id}
+          to={conversation?.contactPhone ?? null}
+          cannedReplies={cannedReplies}
+          contactName={conversation?.contactName ?? null}
+          replyLocked={lockedByOther}
+          lockedBy={lockedByOther ? conversation?.assigneeName ?? 'another agent' : null}
+          initialStatus={senderStatus}
+          doNotContact={conversation?.doNotContact ?? false}
+          isAdmin={me?.role === 'admin'}
+        />
       </div>
 
-      <Composer
-        conversationId={id}
-        to={conversation?.contactPhone ?? null}
-        cannedReplies={cannedReplies}
-        contactName={conversation?.contactName ?? null}
-        replyLocked={lockedByOther}
-        lockedBy={lockedByOther ? conversation?.assigneeName ?? 'another agent' : null}
-        initialStatus={senderStatus}
-        doNotContact={conversation?.doNotContact ?? false}
-        isAdmin={me?.role === 'admin'}
-      />
-    </>
+      {conversation !== null && (
+        <aside className="hidden w-72 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border bg-surface p-5 xl:flex">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <span className="avatar size-16 text-xl" aria-hidden>{initialsOf(title)}</span>
+            <div>
+              <p className="font-semibold">{title}</p>
+              <p className="text-sm text-muted">{conversation.contactPhone ?? 'No phone shared'}</p>
+            </div>
+            {conversation.doNotContact && <span className="badge badge-danger">do not contact</span>}
+          </div>
+
+          <dl className="flex flex-col gap-3 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">Number</dt>
+              <dd className="text-right font-medium">{senderLabel ?? '—'}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">Assigned to</dt>
+              <dd className="text-right font-medium">{conversation.assigneeName ?? 'Unassigned'}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">Status</dt>
+              <dd className="text-right font-medium capitalize">{conversation.status}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">Messages</dt>
+              <dd className="text-right font-medium tabular-nums">{conversation.messageCount}</dd>
+            </div>
+            {conversation.lastInboundAt !== null && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">Last reply</dt>
+                <dd className="text-right font-medium">{stamp(conversation.lastInboundAt)}</dd>
+              </div>
+            )}
+          </dl>
+
+          {conversation.queuedCount > 0 && (
+            <p className="notice notice-warning">
+              {conversation.queuedCount} message{conversation.queuedCount === 1 ? ' is' : 's are'} waiting to be sent.
+            </p>
+          )}
+
+          <Link
+            href={`/contacts?q=${encodeURIComponent(conversation.contactPhone ?? title)}`}
+            className="btn btn-sm w-full"
+          >
+            Open in Contacts
+          </Link>
+        </aside>
+      )}
+    </div>
   );
 }

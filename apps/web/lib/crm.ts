@@ -437,6 +437,15 @@ export async function listContacts(opts: { q?: string; tag?: string } = {}): Pro
   return request<Contact[]>(`/contacts${qs === '' ? '' : `?${qs}`}`);
 }
 
+/** How many contacts match a search / tag filter (all of them with no filter). */
+export async function countContacts(opts: { q?: string; tag?: string } = {}): Promise<number> {
+  const p = new URLSearchParams();
+  if (opts.q) p.set('q', opts.q);
+  if (opts.tag) p.set('tag', opts.tag);
+  const qs = p.toString();
+  return (await request<{ total: number }>(`/contacts/count${qs === '' ? '' : `?${qs}`}`)).total;
+}
+
 /** Lists the org's tags with contact counts — for the filter bar and the tag picker. */
 export async function listTags(): Promise<Tag[]> {
   return request<Tag[]>('/tags');

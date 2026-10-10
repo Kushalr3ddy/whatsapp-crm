@@ -5,6 +5,7 @@ import {
 } from '@/lib/crm';
 import type { Me, CampaignDetail, CampaignRecipient, CampaignPreview } from '@/lib/crm';
 import { campaignStatusBadge } from '../campaign-status';
+import { Meter, initialsOf } from '../../ui';
 import { startCampaignAction, pauseCampaignAction, cancelCampaignAction } from '../actions';
 
 /** Rendered per request — progress and the status/search filters come live from the query string. */
@@ -61,63 +62,69 @@ export default async function CampaignPage(
 
   return (
     <main className="page">
-      <Link href="/broadcast" className="text-xs text-muted hover:text-ink">← All campaigns</Link>
+      <Link href="/broadcast" className="text-sm text-muted hover:text-ink">← All campaigns</Link>
 
-      {failure !== null && <p className="mt-4 text-sm text-danger">{failure}</p>}
+      {failure !== null && <p className="notice notice-danger mt-4">{failure}</p>}
 
       {campaign !== null && (
         <>
-          <header className="mb-5 mt-2 flex items-start justify-between gap-3">
+          <header className="mb-6 mt-3 flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold tracking-tight">{campaign.name}</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="page-title truncate">{campaign.name}</h1>
+                <StatusBadge status={campaign.status} />
+              </div>
               <p className="page-desc">
                 {campaign.startedAt !== null
                   ? <>Started {new Date(campaign.startedAt).toLocaleString()}</>
                   : <>Draft — not started yet</>}
               </p>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <StatusBadge status={campaign.status} />
-              <Controls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
-            </div>
+            <Controls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
           </header>
 
-          {campaign.status === 'draft' && preview !== null
-            ? <DraftPreview preview={preview} />
-            : <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />}
-
           {campaign.gateOverrides.length > 0 && (
-            <p className="mb-3 notice notice-warning">
+            <p className="mb-4 notice notice-warning">
               An admin lifted: {campaign.gateOverrides.map((g) => GATE_LABEL[g]?.split(' — ')[0] ?? g).join(', ')}
               {campaign.gateOverrideReason !== null && <> — “{campaign.gateOverrideReason}”</>}
             </p>
           )}
 
-          <MessageBody body={campaign.body} />
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="min-w-0">
+              {campaign.status === 'draft' && preview !== null
+                ? <DraftPreview preview={preview} />
+                : <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />}
 
-          <section className="mt-6">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Recipients</h2>
-              <span className="text-xs text-muted">{recipients.length} shown</span>
+              <section className="mt-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-base font-semibold tracking-tight">Recipients</h2>
+                  <span className="text-sm text-muted">{recipients.length} shown</span>
+                </div>
+
+                <StatusFilterBar id={id} activeStatus={activeStatus} query={query} />
+                <SearchBox id={id} activeStatus={activeStatus} query={query} />
+
+                {recipients.length === 0 && (
+                  <p className="text-sm text-muted">
+                    {campaign.progress.total === 0
+                      ? 'No recipients yet — this campaign has not been started, so its audience is not frozen.'
+                      : 'No recipients match this filter.'}
+                  </p>
+                )}
+
+                {recipients.length > 0 && (
+                  <ul className="card list overflow-hidden">
+                    {recipients.map((r) => <RecipientRow key={r.id} recipient={r} />)}
+                  </ul>
+                )}
+              </section>
             </div>
 
-            <StatusFilterBar id={id} activeStatus={activeStatus} query={query} />
-            <SearchBox id={id} activeStatus={activeStatus} query={query} />
-
-            {recipients.length === 0 && (
-              <p className="text-sm text-muted">
-                {campaign.progress.total === 0
-                  ? 'No recipients yet — this campaign has not been started, so its audience is not frozen.'
-                  : 'No recipients match this filter.'}
-              </p>
-            )}
-
-            {recipients.length > 0 && (
-              <ul className="card list">
-                {recipients.map((r) => <RecipientRow key={r.id} recipient={r} />)}
-              </ul>
-            )}
-          </section>
+            <aside className="lg:sticky lg:top-6">
+              <MessageBody body={campaign.body} />
+            </aside>
+          </div>
         </>
       )}
     </main>
@@ -128,7 +135,7 @@ export default async function CampaignPage(
 function StatusBadge({ status }: { status: string }) {
   const badge = campaignStatusBadge(status);
   return (
-    <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${badge.cls}`}>
+    <span className={`badge ${badge.cls}`}>
       {badge.label}
     </span>
   );
@@ -236,27 +243,40 @@ function ProgressTiles(
   ];
   const showForecast = campaign.status === 'running' || campaign.status === 'paused';
 
+  const done = p.sent + p.skipped + p.failed;
   return (
     <>
+      <div className="card mb-3 p-4">
+        <div className="mb-2 flex items-baseline justify-between">
+          <p className="font-medium">
+            <span className="tabular-nums">{done}</span> of <span className="tabular-nums">{p.total}</span> done
+          </p>
+          <p className="text-sm tabular-nums text-muted">
+            {p.total === 0 ? 0 : Math.round((done / p.total) * 100)}%
+          </p>
+        </div>
+        <Meter value={done} max={p.total} label="Campaign progress" />
+      </div>
+
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
         {tiles.map((t) => (
           <Link
             key={t.key}
             href={hrefFor(id, t.filter, query)}
-            className={`rounded-lg border px-3 py-2 ${
+            className={`card px-3 py-2.5 transition-colors ${
               (activeStatus === t.filter || (t.filter === '' && activeStatus === ''))
-                ? 'border-accent/50 bg-accent-soft'
-                : 'border-border bg-surface hover:bg-accent-soft/40'
+                ? '!border-accent bg-accent-soft'
+                : 'hover:border-accent/50'
             }`}
           >
-            <div className="text-base font-semibold tabular-nums">{t.value}</div>
-            <div className="text-[11px] text-muted">{t.label}</div>
+            <div className="text-xl font-semibold tabular-nums">{t.value}</div>
+            <div className="text-xs text-muted">{t.label}</div>
           </Link>
         ))}
       </div>
 
       {showForecast && (
-        <p className="mt-2 text-xs text-muted">
+        <p className="mt-3 text-sm text-muted">
           {campaign.forecast.remaining} left ·{' '}
           {campaign.forecast.daysToFinish === 0
             ? 'finishes today'
@@ -308,10 +328,14 @@ function DraftPreview({ preview }: { preview: CampaignPreview }) {
 /** The message every recipient is sent — shown so the results are read next to what went out. */
 function MessageBody({ body }: { body: string }) {
   return (
-    <section className="mt-5">
-      <h2 className="mb-1.5 text-sm font-semibold">Message</h2>
-      <p className="whitespace-pre-wrap rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-        {body}
+    <section className="card p-4">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Message</h2>
+      <div className="rounded-2xl rounded-tl-sm bg-accent-soft px-4 py-3">
+        <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{body}</p>
+      </div>
+      <p className="mt-3 text-xs text-muted">
+        Each person gets their own copy: <code>{'{{name}}'}</code> and any <code>{'{a|b}'}</code> choices are
+        filled in per recipient.
       </p>
     </section>
   );
@@ -322,9 +346,7 @@ function StatusFilterBar(
   { id, activeStatus, query }: { id: string; activeStatus: string; query: string }
 ) {
   const chip = (active: boolean): string =>
-    `rounded-md border px-2 py-0.5 text-xs capitalize ${
-      active ? 'border-accent/50 bg-accent-soft text-ink' : 'border-border text-muted hover:bg-accent-soft'
-    }`;
+    `badge capitalize ${active ? 'badge-accent !border-accent/40 font-semibold' : 'text-muted hover:bg-accent-soft'}`;
   return (
     <div className="mb-3 flex flex-wrap items-center gap-1.5">
       <span className="text-xs text-muted">Status:</span>
@@ -361,15 +383,20 @@ function SearchBox({ id, activeStatus, query }: { id: string; activeStatus: stri
 /** One recipient: who they are, where they ended up, and why (for a skip or failure). */
 function RecipientRow({ recipient }: { recipient: CampaignRecipient }) {
   return (
-    <li className="flex items-center justify-between gap-3 px-4 py-2.5">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">
-          {recipient.displayName ?? recipient.identity ?? 'Unnamed contact'}
-        </p>
-        <p className="mt-0.5 truncate text-xs text-muted">
-          {recipient.identity ?? 'no contact details'}
-          {recipient.attemptedAt !== null && <> · {new Date(recipient.attemptedAt).toLocaleString()}</>}
-        </p>
+    <li className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="avatar size-9 text-sm" aria-hidden>
+          {initialsOf(recipient.displayName ?? recipient.identity ?? '?')}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-medium">
+            {recipient.displayName ?? recipient.identity ?? 'Unnamed contact'}
+          </p>
+          <p className="truncate text-sm text-muted">
+            {recipient.identity ?? 'no contact details'}
+            {recipient.attemptedAt !== null && <> · {new Date(recipient.attemptedAt).toLocaleString()}</>}
+          </p>
+        </div>
       </div>
       <RecipientStatus recipient={recipient} />
     </li>
@@ -390,8 +417,8 @@ function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
     : status;
   return (
     <div className="flex shrink-0 items-center gap-2">
-      {(skipReason !== null) && <span className="text-[11px] text-muted">{SKIP_LABEL[skipReason] ?? skipReason}</span>}
-      <span className={`rounded-md border px-2 py-0.5 text-[11px] capitalize ${cls}`}>{label}</span>
+      {(skipReason !== null) && <span className="text-xs text-muted">{SKIP_LABEL[skipReason] ?? skipReason}</span>}
+      <span className={`badge capitalize ${cls}`}>{label}</span>
     </div>
   );
 }

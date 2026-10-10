@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, nav, CREDS_MISSING } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
@@ -44,7 +44,7 @@ test.describe('the broadcast flow, in the browser', () => {
     await page.request.post(`${API}/contacts/${contactId}/tags`, { headers, data: { tagId } });
 
     // The flow itself, through the UI.
-    await page.getByRole('link', { name: 'Broadcast', exact: true }).click();
+    await nav(page).getByRole('link', { name: 'Broadcast', exact: true }).click();
     await page.goto('/broadcast/new');
     const name = `E2E flow ${String(Date.now())}`;
     await page.locator('input[name="name"]').fill(name);
