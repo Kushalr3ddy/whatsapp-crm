@@ -877,6 +877,10 @@ a missed opt-out becomes a block/report and a ban signal.
 
 ## D-28 · Dynamic audience segments ("segregation") — **MINIMAL SLICE LANDED 2026-09-30**
 
+> **Update 2026-10-10:** segments are now built **inline in the new-campaign form** (a filter with a live count,
+> optionally saved for reuse); the standalone screen became **Saved audiences**, reached from Broadcast. One-off
+> filters are `segment.saved = false`. Custom-field filters remain pinned (D-40).
+
 > **Built (2026-09-30), minimal slice as scoped with Kushal.** A `segment` table (migration 0017,
 > RLS forced) stores an allowlisted `definition`; `@crm/core` `segments.ts` turns it into a **bound**
 > SQL predicate (`buildSegmentPredicate` / `countSegmentMatches`) — the JSON-to-SQL seam is closed by
@@ -1175,7 +1179,11 @@ touch Baileys.
 
 ---
 
-## D-45 · Link a `@lid` address to its phone number
+## D-45 · Link a `@lid` address to its phone number — **BUILT 2026-10-10 (PR #6)**
+
+> **Built:** the adapter reads `key.senderPn` / `participantPn` and `chats.phoneNumberShare`, the gateway links the
+> address to the phone before storing the message, and `linkLidToPhone` adds the identity or merges two contacts.
+> Limits stand: WhatsApp only sometimes supplies the number. The text below is the original pin.
 
 **What:** messages from a `...@lid` address carry no number, so the contact shows none. Baileys 6.7.24 already exposes
 the number sometimes: `message.key.senderPn` / `participantPn`, and the `chats.phoneNumberShare` event (`{lid, jid}`).

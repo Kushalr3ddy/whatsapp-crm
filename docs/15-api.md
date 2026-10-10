@@ -202,6 +202,32 @@ Worked examples with real responses, including every failure case, are in
 
 ---
 
+## Endpoints added since the first slice (2026-10)
+
+All under `/api/v1`, all tenant-scoped. "admin" means a signed-in admin session (an API key never
+qualifies). Errors use the problem shape above.
+
+| Method · path | Scope / role | What it does |
+|---|---|---|
+| `GET /contacts/count?q=&tag=` | `contacts:read` | How many contacts match a search / tag filter — the number a bulk action would touch |
+| `GET /contacts/export?format=csv\|vcf` | admin | Streams every contact (CSV for a spreadsheet, vCard for a phone). Audited; 5 per hour |
+| `PUT /contacts/:id/do-not-contact` | `contacts:write` | `{ value, reason? }` — flags or clears do-not-contact. Audited |
+| `PUT /contacts/:id/custom-fields` | `contacts:write` | `{ values: { key: value \| null } }` — set/clear custom field values, validated against the org's definitions |
+| `GET/POST /custom-fields`, `DELETE /custom-fields/:key` | read / admin | The org's typed field vocabulary (`text`, `number`, `date`, `select`); removing one clears it from every contact |
+| `POST /tags/:id/bulk` | `contacts:write` (`all` = admin) | `{ action: add\|remove, target: all\|search\|segment\|ids, dryRun (default true), expectedCount? }` — set-based, idempotent, previews first, `409 COUNT_CHANGED` if the audience moved |
+| `POST /imports/:id/run` | `contacts:write` | Now takes `tag: { id } \| { name }` — tags everyone the run created/updated, atomically with the commit |
+| `POST /messages` | `messages:send` | Now `422 DO_NOT_CONTACT` for a flagged contact unless an admin sends `overrideDnc: true` + `overrideReason` |
+| `POST /conversations/:id/attachments` | `messages:send` | Raw-body file upload (≤ 16 MB; type decided from the bytes); `422` for a flagged contact |
+| `GET /conversations/:id/sender-status` | `conversations:read` | `{ canSend, reason, connectionState, restrictionState }` for the number behind a thread — drives the composer lock |
+| `POST /campaigns/:id/start` | `messages:send` | Optional `overrideGates: [dnc\|engagement\|cooldown\|duplicate_campaign]` + `reason` (admin only, audited) |
+| `GET /campaigns/:id` | `conversations:read` | Now includes `gateOverrides`, `gateOverrideReason`, `pauseReason` |
+| `POST /senders/:id/enforcement` | admin | `{ mode: enforce\|advisory, reason }` — advisory mode (D-29); audited |
+| `GET /senders/:id/health-events` | `senders:read` | The number's health timeline (restrictions raised/cleared, possible bans), newest first |
+| `GET /senders` | `senders:read` | Now includes `enforcement`, `advisory*`, `restrictionState`, `restrictionSince` |
+| `POST /segments` | `contacts:write` | Now takes `saved` (default `true`); `false` makes a one-off inline audience that is not listed |
+
+---
+
 ## Resources — the intended surface
 
 ⬜ **Almost none of this is built.** Kept as the target shape so the pieces that do land fit

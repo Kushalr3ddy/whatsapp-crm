@@ -705,3 +705,28 @@ Configurable per org, enforced by a nightly job that writes a summary audit row:
 
 A per-contact delete request is a separate, immediate path — "remove my data" is not a retention
 policy, whatever jurisdiction the request comes under.
+
+
+---
+
+## Added after the first design (2026-10)
+
+What the migrations from 0016 onward added, in one place. The per-table sections above describe the
+original shape; these are the deltas.
+
+| Table · column | Migration | What it is |
+|---|---|---|
+| `channel_session.decrypt_burst_at` | 0018 | When a burst of decrypt failures was last seen (a health signal; live for 15 min) |
+| `sender_identity.enforcement`, `advisory_reason`, `advisory_set_by`, `advisory_set_at`, `advisory_bypass_count`, `advisory_last_bypass` | 0019 | Advisory mode (D-29): `enforce` / `advisory`, who/why, and how often a hold was bypassed |
+| `campaign.gate_overrides`, `gate_override_reason` | 0019 | Recipient-experience gates (and do-not-contact) an admin lifted for this campaign, with the reason |
+| `custom_field` | 0020 | The org's typed field vocabulary: `key`, `label`, `type` (`text`/`number`/`date`/`select`), `options` (RLS forced) |
+| `message.hold_reason` | 0020 | Why a still-queued message is waiting (`sender_not_connected`, `quarantined`, `paced:…`) — cleared on send |
+| `message.dnc_override`, `dnc_override_reason` | 0021 | An admin knowingly sent to a do-not-contact person; the gateway refuses such a message without it |
+| `sender_identity.restriction_state`, `restriction_since` | 0022 | Silent-restriction verdict (`ok`/`suspected`/`likely`) and when it entered it (docs/27) |
+| `sender_health_event` | 0022 | A number's health timeline: `kind`, `severity`, a plain `summary`, the `evidence` behind it (RLS forced) |
+| `campaign.pause_reason` | 0022 | Set when the system paused a campaign (`restriction_likely`) |
+| `segment.saved` | 0023 | `false` for a one-off inline audience built while creating a campaign; hidden from the saved list |
+
+Contacts also gain behaviour without new columns: a `wa_lid` identity can be linked to a `phone`
+identity on the same contact, or two contacts merged (`contact.merged` audit; the absorbed contact is
+soft-deleted).

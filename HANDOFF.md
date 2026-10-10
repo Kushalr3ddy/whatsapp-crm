@@ -18,22 +18,11 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 - Ignore the docs unless asked ("pin it" = a new D-<n> in `docs/21-deferred.md`). `gh` is not installed;
   `open-pr.sh` uses the stored git credential.
 
-**Merged to `main` (PRs #1–#8):** PR workflow + pins D-42..D-45 · **do-not-contact enforced on every send
-path** with an audited admin override · **mass tagging** (filter / segment / ticked / whole import, preview →
-confirm) · secrets-scan permission fix · **UI overhaul** (Overview dashboard, structured Contacts,
-three-panel inbox, redesigned Broadcast/Numbers/Import/Login, shared `ui.tsx` + design tokens) ·
-**LID → phone linking and contact merge**.
-
-**Also merged: #8 — silent-restriction tracking** (migration 0022): detector in
-`packages/core/src/restriction.ts` (`ok → suspected → likely`, hysteresis), per-number health timeline,
-banner / sidebar badge / thread warning / "no delivery for 3h" / campaign "paused automatically", docs
-`docs/27-restriction-tracking.md`; also fixes the close code + reconnect count never being written, delivery
-ERROR acks, and records an unrequested logout as `hard_ban_suspected`. The simulation has its own workflow
-(`.github/workflows/simulation.yml`) with three new scenarios.
-
-**Open PR: #9 — segments folded into campaigns** (migration 0023): the new-campaign audience step can build
-a filter inline with a live count; "Segments" leaves the sidebar and becomes **Saved audiences** (reached
-from Broadcast). This PR also carries this handoff and the changelog.
+**Everything is merged (PRs #1–#9). Nothing is in flight.** What each was: #1 PR workflow + pins ·
+#2 do-not-contact enforcement with an admin override · #3 mass tagging · #4 secrets-scan permission ·
+#5 + #7 the UI (restyle, then the real overhaul) · #6 LID → phone linking · #8 silent-restriction
+tracking (migration 0022, own simulation workflow, `docs/27`) · #9 segments folded into campaigns
+(migration 0023; "Segments" left the sidebar and became **Saved audiences**).
 
 **Next, in Kushal's order:** the **UI test suite** (`scripts/local-seed.ts` + a fake-number gateway option
 so CI can verify sending; more Playwright specs for inbox / contacts / import / numbers / banner using the
@@ -78,24 +67,20 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 
 | | | |
 |---|---|---|
-| P0 | Docs — 42 files | ✅ |
-| P1 | Skeleton — Express, config gate, migrations, CI | **overstated** |
-| P2 | Core domain — orgs, users, sessions, API keys, RLS; contacts (create, **list + search**), **tags** | **mostly** |
-| P3 | Channels — Baileys adapter, gateway, HTTP API | ✅ |
-| P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments | **partial** (search + realtime left) |
-| P5 | Ingestion — CSV **+ Excel** import | **first slice** |
-| P6 | Anti-ban — warmup, ceilings, jitter, circadian, contact-graph, health scoring, typing sim, **recovery orchestration** | **✅ complete** (all six layers + Layer 6 recovery) |
-| P7 | Campaigns — bulk send, paced; **Broadcast UI complete** (create by tag/import/hand-pick · dry-run preview · start/pause/resume/cancel · per-recipient results) | **first slice** |
-| P8 | Meta Cloud API | not started |
-
-**D-14 is CLOSED (2026-09-28).** Inbound is alive again after a re-link, and media was verified
-end to end against a real WhatsApp file for the first time — see *What landed most recently*.
+| P0 | Docs — 44 files incl. the restriction-tracking design | ✅ |
+| P1 | Skeleton — Express, config gate, migrations, CI | **overstated** (no `infra/compose/`; only the kms + storage drivers exist) |
+| P2 | Core domain — orgs, users, sessions, API keys, RLS; contacts (create, list/search, **do-not-contact**, **custom fields**), **tags + mass tagging** | ✅ for alpha |
+| P3 | Channels — Baileys adapter, gateway, HTTP API, **LID → phone linking** | ✅ |
+| P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments (in and out), **number status line + "waiting: reason"**, contact side panel | **mostly** (search + realtime left) |
+| P5 | Ingestion — CSV + Excel import, **tag at import** | **first slice** |
+| P6 | Anti-ban — all six layers, all eight refinements, simulation harness, **recipient-experience gates + admin override, advisory mode, silent-restriction tracking** | ✅ **complete** (real-number pilot pending) |
+| P7 | Campaigns — paced bulk send, **audience built inline (tag / import / saved audience / filter)**, preview, start/pause/resume/cancel, per-recipient results | ✅ for alpha |
+| P8 | Meta Cloud API | not started (pinned D-34, D-37..D-39) |
 
 **P1 is marked done but is not.** `infra/compose/` holds only a `.gitkeep`, so
-`docker compose --profile core up` — its own exit criterion — cannot run. Of the four drivers
-it called for (`storage` `email` `kms` `secrets`) only **kms** and now **storage** exist.
+`docker compose --profile core up` — its own exit criterion — cannot run.
 
-**532 vitest tests + 4 Playwright e2e · 25 of 35 specced tables · 19 migrations (through 0018).**
+**599 vitest · 10 Playwright e2e · 9 simulation scenarios · migrations 0000–0023.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -208,33 +193,48 @@ defects and gotchas; the changelog covers what has been built and what is left, 
   transaction. The data routers hold no pool handle, so a new route cannot query around it.
   Proved by tests that query with **no `org_id` filter** and watch Postgres withhold the rows.
 
+**Added since the list above was written (2026-10-05 → 10-10):**
+
+- **Anti-ban, finished:** reply-ratio floor, decrypt-failure signal, read-receipt behaviour, background
+  entropy, recipient-timezone inference, the **simulation harness** (`npm run test:sim`, own workflow),
+  **recipient-experience gates** (engagement lock · 14-day cooldown · duplicate-campaign — skipped with a
+  reason, admin-overridable per campaign with an audited reason), **advisory mode** per number (D-29),
+  and **silent-restriction tracking** (`docs/27-restriction-tracking.md`).
+- **Do-not-contact** is enforced on messages, files, campaign recipients and the gateway's last line, and
+  an admin can override per message or campaign (reason + audit); settable via
+  `PUT /contacts/:id/do-not-contact` and a toggle on the Contacts page.
+- **Mass tagging:** `POST /tags/:id/bulk` (everyone [admin] / search / segment / ticked; preview → confirm),
+  tag-at-import, `GET /contacts/count`; **custom fields** (typed vocabulary, `{{key}}` in campaigns).
+- **Inbox:** number status line (the composer locks to notes when the number cannot send), "waiting:
+  reason" on queued messages, "no delivery for 3h" on stuck ones, a contact side panel, day separators.
+- **Contacts:** admin export (CSV + vCard), CORS allowlist for browsers.
+- **Campaigns:** the audience can be built inline with a live count and saved for reuse.
+- **LID linking:** a privacy address is linked to its phone when WhatsApp supplies it, and duplicate
+  contacts are merged.
+- **UI:** Overview dashboard at `/`, sidebar shell, shared building blocks (`globals.css`, `ui.tsx`).
+
 ### What does not exist
 
-No outbound media in **campaigns** or templates (agents can send a file in a thread, D-25) · no encryption at
-rest for files, no retention job, no antivirus (all D-11) · no self-service password reset ·
-no message templates (a campaign carries a plain body) · **anti-ban: complete** (all six layers + the
-simulation); not built: the admin-overridable gates (engagement lock / cooldown / duplicate-campaign
-guard) and Meta-side tracking · no webhooks, OpenAPI or SDK · no inbox search · no Meta adapter · no
-deployment.
+Outbound media in **campaigns** and templates (agents can send one file in a thread) · message
+templates · encryption at rest for files, a retention job, antivirus (D-11) · self-service password
+reset and **a signup page** (accounts come from `npm run admin`) · webhooks, OpenAPI, SDK · inbox/
+message-body search (D-23) · opt-out keyword handling (D-27, out of alpha) · the Meta adapter and
+Meta-side tracking (D-34, D-37..D-39) · human takeover from an AI agent (D-42, no AI exists yet) ·
+webhook/email/canary alerts (D-43) · key rotation (D-31) · a deployment.
 
 ---
 
 ## The honest risk
 
 Baileys is unofficial and violates WhatsApp's Terms of Service. A banned number is gone with no
-appeal. **Pacing now exists** — warmup, per minute/hour/day ceilings and jitter, enforced at the
-one point every send passes through — so a burst is capped rather than sent.
-
-That is now well past a floor. **Circadian pacing** (day/night curve, silent overnight),
-**contact-graph gates** (stranger sends paced 2.5×, new-stranger volume capped at 5/hour · 20/day)
-and **health scoring** (a per-sender risk score that auto-degrades → quarantines a number on bad
-delivery/failure/disconnect signals, and recovers it both ways when they clear) are all built and
-enforced at the one send chokepoint, and **typing simulation** (D-24) now makes each send look
-human rather than instant. What is still unbuilt: the **per-incident recovery schedules**
-(Layer 6 timed pause/resume ramps — status recovery works, the timed schedules do not). So a
-campaign is capped, timed like a human, cautious with strangers,
-and a struggling number now brakes and recovers itself — but bulk from a fresh number is still
-inherently risky, since no engine removes the underlying ToS violation.
+appeal. The engine is complete and enforced at the one send chokepoint: warmup, per-minute/hour/day
+ceilings, jitter, circadian pacing (sender and recipient timezone), contact-graph gates with a
+reply-ratio floor, health scoring, per-incident recovery, typing / read-receipt / entropy behaviour,
+**and now silent-restriction detection** — which infers a restricted number from delivery evidence,
+slows it, pauses its campaigns and says so in the UI. All of it is proven against a **simulation**,
+and the simulation is our model of WhatsApp, not WhatsApp. **The real-number pilot has still not
+happened**, so the thresholds are unproven against the real thing. No engine removes the underlying
+ToS violation.
 
 ---
 
@@ -326,16 +326,17 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 | Where | Problem |
 |---|---|
-| **Gateway** | Writes inbound messages and attachments as the connecting role, outside the tenant transaction the API now uses. Not a leak — it is not serving anyone's request — but it is the remaining place where a forgotten `org_id` would not be caught by the database |
-| ~~The linked number receives nothing~~ | **RESOLVED 2026-09-28 (D-14).** Inbound was dead 2026-09-20 → 2026-09-28 (`Bad MAC` on every frame — a corrupt companion session, not our code). The unlink→re-link recovery fixed it: after a fresh QR scan, 5 inbound rows landed, zero decrypt failures, and media was verified end to end against a real JPEG. Kept in the table as a signpost; the recovery path (`POST /senders/:id/unlink` + a web Unlink button) and the gateway/DB/phone sync are written up in [`docs/26-linking-lifecycle.md`](docs/26-linking-lifecycle.md). |
-| Pacing has no window (partly addressed) | A message held back by the anti-ban gate still sits at `queued` like a disconnected sender's. **Now partly surfaced:** the Numbers page shows a per-number at-risk / cooling-off banner (recovery pause + resume time, degraded/quarantined reason), and a campaign's per-recipient view shows pending/skipped states — so "why has this not gone?" is answerable at the number and campaign level. What's still missing is a per-*message* "held by pacing vs sender down" indicator in the thread |
-| Media | A file whose bytes fail to store leaves the message without it and **only a log line says so** — there is no retry and nothing surfaces it for an operator. Also: no size cap on a download yet (D-11 records the quota question) |
-| `infra/compose/` | **Empty.** There is no compose file, so the documented `docker compose --profile core up` does not exist |
-| Login throttle · key rate limit | Both are **in-process**, so several replicas would each count separately and a key's effective ceiling becomes the limit times the replica count. Stated rather than hidden; both move into the shared rate-limit layer in P9 |
-| ~~**Campaigns UI**~~ **— feature-complete for the alpha** (2026-09-29) | The **Broadcast** tab is a real, operable page: list → **create** (name, message, sender, audience by **tag / import / hand-picked contacts**) → **pre-start dry-run preview** → **start / pause / resume / cancel** → **per-recipient results** (status filter + name/number search, progress tiles, forecast, message body). Endpoints: `GET /campaigns/:id/recipients`, `GET /campaigns/:id/preview`, `GET /imports` (audience list), and `from_tag_id` targeting (migration 0015, resolved at snapshot). Hand-pick is on the Contacts page (row checkboxes → "campaign from checked", `form=` association so no nested forms). The old placeholder and its **false warning** are gone. **Only enhancement left:** **D-26** body variation (spintax) in the compose step, pinned separately. |
-| ~~Dev hydration overlay~~ **— FIXED 2026-09-30** | The "can't see anything but the error" symptom: in Next **dev** a hydration-attribute mismatch threw the full-screen overlay. Two benign causes — the theme-before-paint script setting `data-theme` on `<html>`, and browser extensions (Grammarly) touching `<body>`. Fixed with `suppressHydrationWarning` on `<html>` and `<body>` in `apps/web/app/layout.tsx` (suppresses only those two elements' own attributes, never page content). |
-| Copy nit (cosmetic) | Audience pickers say "1 contacts" / "1 match" without singular/plural handling. |
-| No "add one contact" in the UI | Contacts arrive only via **Import** or the **API** (`POST /contacts`); there is no form to add a single person by hand. Fine if intended (import/API by design), a gap if an operator expects it. |
+| **Gateway (D-41, priority)** | Writes inbound messages, attachments, health, restriction and identity-link changes as the connecting role, **outside** the tenant transaction the API uses, so row-level security is not the safety net there — only each query's own `org_id` filter. Harmless for one team plus JobPortal; a real cross-org risk the day unrelated customers share an install. Fix: enter each org's tenant tx per job + a cross-org test |
+| Restriction detection is inference | It cannot know; thresholds (`docs/27-restriction-tracking.md`) are starting values, untested against a real restricted number. Alerts are in-app only (D-43) |
+| Key rotation (D-31, priority) | `ENCRYPTION_KEY` lives in `.env` locally and must be backed up separately from the database; there is no rotation path |
+| Media | A file whose bytes fail to store leaves the message without it and only a log line says so; no retry, no size cap on downloads (D-11, D-30) |
+| `infra/compose/` | Empty — no compose file, so `docker compose --profile core up` does not exist |
+| Login throttle · key rate limit | In-process, so replicas would count separately (move to the shared rate-limit layer in P9) |
+| Saved audiences page | Still the older GET-preview builder form; it could reuse the inline audience picker |
+| Segments exclude do-not-contact | By their own rule, so tagging a segment tags fewer people than "everyone" (the preview says so) |
+| `@lid` contacts | Only resolve to a number when WhatsApp supplies it (`senderPn` / number share); people who hide theirs stay number-less. Untested against a real account |
+| No "add one contact" form | Contacts arrive via Import or `POST /contacts` |
+| Dev data noise | The dev database holds many `e2e-…` tags/campaigns from test runs; harmless, makes the Contacts page busy |
 
 ---
 
@@ -430,263 +431,35 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ---
 
-## What landed most recently, and what it cost
+## What landed most recently
 
-**Most recent (2026-10-05): anti-ban #4, the reply-ratio floor (4 of 8)** — see `CHANGELOG.md`; the
-entry below is the pass before it. **Before that (2026-09-30): anti-ban completion pass (3 of 8) + CI + the hydration fix.** Working
-through the remaining anti-ban refinements one by one (full list + status in *Next*):
-**#1 outbound-only daily clamp** (never-replied sender → 20/day), **#2 identical-body guard**
-(≤ `IDENTICAL_BODY_DAILY_CAP`/24h, completes D-26), **#3 continuous delivery→speed curve**
-(`deliveryDelayMultiplier`, replaces degraded=half) — all enforced in `handleSend`/dispatch with
-unit + integration tests. **Still pending then: #5 decrypt-failure signal ·
-#6 read behaviour · #7 background entropy · #8 recipient-timezone inference.** Also: **GitHub
-Actions rewritten** to actually run the vitest suite (migrate test DB first) and a new **e2e job**
-(`npm run test:e2e`) — unvalidated on GitHub, watch the first run; and the root
-**`suppressHydrationWarning`** re-applied (clears the Next dev overlay). 485 vitest + 4 e2e, green.
-
-**Before that (2026-09-30): Playwright E2E + a segments-UI fix found by driving the app.** Added
-browser end-to-end tests — `@playwright/test` + Chromium, `playwright.config.ts` (reads
-`TEST_EMAIL`/`TEST_PASSWORD` from `.env`, `webServer` reuses a running stack), specs under
-`tests/e2e/*.spec.ts` (`npm run test:e2e`): wrong-password refused, sign-in→sign-out drops the
-session, every main page renders, and build-a-segment→preview→save. **4 e2e, all green.** Driving
-the whole flow in a browser surfaced a real bug: the Segments **"Preview count" button did nothing**
-— the builder `<form>` used a function server action, so React intercepted the submit and swallowed
-the button's GET override. Fixed (plain GET form + `formAction` on Save); the e2e test now guards it.
-The full walkthrough (login → inbox → contacts → tags → segments → campaign create/start/pause →
-logout) otherwise passed. Also **reverted** the earlier root `suppressHydrationWarning` at Kushal's
-request — see *Known defects* for why it is likely still wanted.
-
-**Before that (2026-09-30): D-28 dynamic segments — minimal slice.** A **saved, criteria-based
-audience** that re-evaluates on read. New `segment` table (migration 0017, RLS forced) storing an
-allowlisted `definition`; `@crm/core` `segments.ts` turns it into a **bound** SQL predicate — the
-JSON-to-SQL seam is closed by construction (only known keys emit SQL, every value bound, unknown
-keys dropped, `.strict()` zod rejects them at the API). Criteria: **has-tag / replied ever-never /
-last-contacted-within-N-days**, AND-only, `do_not_contact` + soft-deleted always excluded.
-`GET/POST/DELETE /segments` + `POST /segments/preview` (live count); a fourth campaign targeting mode
-`from_segment_id`, resolved and **frozen** in `snapshotAudience`/`previewAudience` like every other
-audience. A `/segments` page (nav tab added; Broadcast's stale `soon` flag dropped) builds a segment
-with a live "N match" count and the new-campaign form can target one. 13 new tests including
-injection-safety (unknown key → 422, non-uuid → 422, valid-but-unknown id → 0 not error) and
-freeze-at-launch. **Deliberately not built** (the "not a query language" line): custom-field equals,
-AND/OR, nested trees. **The agreed P6 → D-26 → D-28 queue is now complete.**
-
-**Before that (2026-09-29): D-26 campaign body variation (spintax + `{{name}}`).** A campaign no
-longer sends byte-identical text to everyone. `renderBody` in `@crm/core` (`body-variation.ts`)
-resolves **spintax** (`{Hi|Hey|Hello}`, nested, resolved first on the operator's template) then
-fills **variables** (`{{name}}` / `{{contact.name}}` from the contact, inserted last so an odd
-display name cannot corrupt the parse); `dispatchCampaign` renders each recipient's copy before
-encrypting it, and both campaign compose UIs hint at the syntax. 7 new tests (spintax pick/nest,
-variable fill, spintax-before-vars safety, per-recipient variance, and an end-to-end dispatch that
-decrypts three messages and checks each is a rendered copy). Still open — the smaller half — is the
-dispatcher's **"refuse >N identical bodies in a window"** guard (moot when spintax is used, unbuilt
-for a no-variation body). Also pinned this round: **D-29** anti-ban advisory mode (warn-but-don't-
-enforce override — resisted by design, so recorded not built).
-
-**Before that (2026-09-29): P6 recovery orchestration (Layer 6) — the anti-ban engine is now
-complete.** A typed incident starts a **timed** response beyond the scorer's status recovery: a
-**463** timelock → 24 h pause then 10 % of cap, +15 %/week; a **429** → 4 h then 25 %, +25 %/week; a
-delivery-collapse **soft ban** → 48 h then 5 %, +10 %/week. State is three `sender_identity` columns
-(migration 0016); `recoveryState` in `@crm/core` derives the phase and cap fraction from them, so
-nothing is kept in sync. The **pause** is a full hold at the send chokepoint (queued, never failed),
-the **ramp** scales the daily ceiling and can only lower it, and detection is wired where the signals
-already surface: 463/429 in `applyConnectionEvent`, soft ban in the health sweep. A guard makes a
-storm of the same signal a no-op so the pause never perpetually resets. The **Numbers page** shows a
-per-number at-risk / cooling-off banner (pause + resume time, or the reduced-cap ramp, or a plain
-degraded/quarantined reason) — the frontend warning Kushal asked for. `GET /senders` derives the
-state server-side and hides the raw columns. 401 hard ban deliberately stays on the unlink→re-link
-path, not auto-retire (a ban and a user unlink look identical at the socket). 11 new tests → **458
-total**; typecheck/lint/suite/`web:build` green. **Next: D-26 body variation.**
-
-**Before that (2026-09-29): Broadcast UI — the last two targeting modes, feature-complete for the
-alpha.** **By import:** `GET /imports` lists committed, non-superseded
-runs with a `contactCount`, and the new-campaign form offers audience by **tag OR import** (two
-selects, exactly one). **Hand-picked:** the Contacts page grew a checkbox per row (disabled for
-do-not-contact) and a "Campaign from checked contacts" panel that creates a draft with
-`explicitContactIds` and jumps to it — the checkboxes belong to the panel's form by the HTML
-`form=` attribute, so nothing nests (rows already carry tag forms). 2 API tests (imports list:
-committed-only + counts, superseded hidden) → **447 total**; typecheck/lint/suite/`web:build`
-green. The whole Broadcast loop now works from the browser: create (tag/import/hand-pick) → dry-run
-preview → start/pause/resume/cancel → per-recipient results. Only **D-26** body variation is left,
-pinned. Next: **P6 recovery orchestration** (+ at-risk frontend warnings).
-
-**Before that (2026-09-29): Broadcast UI — pre-start dry-run preview (F5 AC-1).** A draft's page now
-shows what starting *would* do before you commit: "would message N · K skipped (no number) · T in
-the audience", plus the forecast, computed with **no writes**. New `GET /campaigns/:id/preview` +
-core `previewAudience()`, which reuses `snapshotAudience`'s exact audience rule as a reachability
-COUNT — so the preview can't drift from what start freezes (a test pins
-`preview.reachable === progress.pending`). If the audience has no reachable numbers it says so in
-red rather than letting a send-to-nobody start. 3 API tests → **445 total**; typecheck/lint/suite
-green. Next: the remaining UI targeting modes (import/hand-pick), or on to P6 recovery.
-
-**Before that (2026-09-29): Broadcast UI, slice 2 — create a campaign, and operate it.**
-The Broadcast tab can now run a campaign end to end from the browser: **`/broadcast/new`** creates a
-draft (name, message, sender, **audience by tag**), the detail page carries **Start / Pause / Resume
-/ Cancel** controls (server actions over the existing endpoints), and starting freezes the audience
-and shows the forecast + per-recipient results. New targeting mode **`from_tag_id`** (migration
-0015, a nullable FK to `tag`, resolved in `snapshotAudience` like an import run — so tagging someone
-*after* launch never changes a running audience); the create endpoint now accepts exactly one of
-`fromImportRunId` / `explicitContactIds` / `fromTagId`, with a 404 for an unknown tag. 4 API tests
-(freeze-the-tagged, post-launch-tag-ignored, unknown-tag-404, exactly-one-of-three) → **442 total**;
-root+web typecheck, lint, full suite and `web:build` green. **Not** eye-verified signed-in (dev
-password). **Still to add:** import/hand-pick targeting *in the UI*, and a pre-start dry-run preview.
-
-**Before that (2026-09-29): Broadcast UI, slice 1 — the campaigns list + per-recipient results.**
-The Broadcast tab was a `ComingSoon` placeholder whose warning was **false** (it claimed "no rate
-limiting anywhere" while the whole engine exists). It is now a real, read-only page: a **campaign
-list** (`/broadcast`) and a **campaign detail** (`/broadcast/[id]`) with progress tiles that double
-as status filters, the forecast, the message body, and the **per-recipient results** — every
-recipient with its status (`sent`/`queued`/`pending`/`skipped`/`failed`), the reason for a skip, and
-the message's own delivery state, filterable by status and searchable by name or number. Backed by a
-new **`GET /campaigns/:id/recipients`** (`?status=`, `?q=`, keyset on the row id; 404 for an unknown
-campaign, never an empty list) — F5 AC-5. 5 API tests → **438 total**; root+web typecheck, lint,
-full suite and `web:build` all green. **Not** eye-verified in a signed-in browser (needs the dev
-account password). **Still to build:** slice 2 (create → target → forecast → start) and slice 3
-(pause/resume/cancel controls) — those campaign actions are API-only today.
-
-**Before that (2026-09-29): typing simulation (D-24) + a fixture/export cleanup.** Before each
-send the gateway now shows a `composing` "typing…" presence, pauses a beat proportional to the
-message length (`typingDelayMs` in `@crm/core` — Gaussian on the per-char rate, clamped 0.7–8 s),
-then clears it — so a send looks human rather than instant. The `ChannelProvider` port gained an
-optional `typing(sender, to, state)`, implemented by Baileys (`sendPresenceUpdate`) and the fake
-(records calls for tests). Opt-in via `SEND_TYPING_SIMULATION` (default on), cosmetic and
-best-effort — a failed presence never fails the send. The beat is deliberately **compressed**, not
-literal 45-WPM typing time: a 30-second bubble before every send would stall the paced queue for no
-gain (the tell being removed is the *instant* send, not a fast one). 6 new tests (3 unit on the
-delay bounds/variation, 3 in the send path) → **433 total**. Also: the `[TEST DATA]` dev-DB
-fixtures deleted and the stray Insomnia export removed (commit `288c361`). **Next in P6:
-per-incident recovery orchestration** (Layer 6 timed pause/resume ramps + a frontend at-risk
-warning), then D-10 / D-26 / D-28.
-
-**Before that (2026-09-29): P6 anti-ban engine completed + the contacts/tags foundation.**
-Three anti-ban layers landed at the one send chokepoint, each opt-in and tested: **circadian
-pacing** (day/night cosine curve, silent overnight, `SEND_TIMEZONE`), **contact-graph gates**
-(relationship delay 1.0/1.8/2.5× + new-stranger cap 5/hr·20/day), and **health scoring**
-(per-sender risk from delivery/failure/disconnect → auto-degrade → quarantine, recovering both
-directions with hysteresis). A **sender-health panel** surfaces them on the Numbers page. Then the
-contacts side: **contact list + search** (`GET /contacts`, plain `ILIKE`) and **tags** (`tag` +
-`contact_tag`, migration 0014, attach/detach, `?tag=` filter, a Contacts page with filter bar +
-chips + new-tag form). Also: **compliance reframed** as the operator's responsibility
-(jurisdiction-neutral, keeping the anti-ban-crucial `do_not_contact`/opt-out/no-purchased-lists);
-**plain-terms explanations** added to `20-orientation.md`; **`GETTING_STARTED.md`** runbook at the
-repo root. 427 tests. Everything eye-verified against the real dev DB where it had a UI.
-
-**Before that (2026-09-28): D-14 closed + a documentation-consistency pass.** The `kushal test
-number` was re-linked from a fresh QR and inbound came back to life — 5 rows landed, **zero**
-`Bad MAC` failures (was 17 frames failing), and an inbound image stored as a genuine JPEG
-(1126×600, 49,408 bytes, `image/jpeg` from magic bytes, sha256 set, bytes-on-disk matching): the
-first end-to-end proof that media works against a real WhatsApp file. Then four doc contradictions
-were fixed — `ENCRYPTION_KEK`→`ENCRYPTION_KEY` typo in `13-deployment.md`; the Git conventions in
-`11-conventions.md` rewritten to match reality (straight to main, no branches, no AI attribution,
-CONTEXT.md retired); `sender_identity.status` standardised on
-`linking/active/degraded/quarantined/retired`; and the feature index de-overclaimed
-(F2/F4/F5/F6/F7/F8 → ⚠️ partial). Typing simulation was parked as **D-24**.
-
-Before that, all P4 inbox: **thread lock** (assignment-based, admin override) → **notes +
-canned replies** (migration 0012, tables `internal_note` and `canned_reply`) → **attachments in
-the thread UI** (a web-side `/media/:id` proxy) → **assignment, status and list filters** (commit
-`4474697`). The whole P4 UI was finally **eye-verified in the browser** this round — filters,
-assignee + resolve, attachments as download links, the Reply/Note toggle and a note round-trip —
-signing in as the dev admin account.
-
-Before that, six pieces in order: **row-level security on the request path** → **media** →
-**send pacing (P6 layers 1–2)** → **CSV import (P5)** → **campaigns (P7)**, plus two small defect
-fixes (malformed UUID now 422 not 500; `problem()` no longer emits `"status": 0`) and per-key
-rate limiting actually being enforced.
-
-Three of those were verified by **deliberately breaking them** and watching tests fail, which
-is worth repeating for anything safety-critical: disabling the RLS role switch fails five
-tests, disabling the pacing gate fails two, and removing the campaign ceiling fails two more —
-including the one that hands the gateway ten messages with a ceiling of four.
-
-**Now finished:** verifying media end to end against a real WhatsApp file — the thing D-14
-blocked. Inbound was dead 20–28 September (`Bad MAC` on every frame, not our bug); the
-unlink→re-link recovery cleared the corrupt session and a fresh QR brought it back. Proven, not
-assumed: 5 rows in, zero decrypt failures, a real JPEG stored and byte-matched.
+The detailed, dated record is [`CHANGELOG.md`](CHANGELOG.md). In one paragraph, since 2026-10-05:
+anti-ban refinements #4–#8, the simulation harness, outbound media, contact export + CORS, the
+recipient-experience gates and advisory mode, the number status line, custom fields, **do-not-contact
+enforcement (it had never been enforced on a send path)**, mass tagging, the UI overhaul, LID → phone
+linking, **silent-restriction tracking**, and segments folded into campaigns. Everything went through
+PRs #1–#9; all are merged.
 
 ---
 
 ## Next
 
-**The plan Kushal set, updated 2026-09-29:**
+**The order Kushal set, remaining:**
 
-1. ~~Close D-14~~ — **done.** Inbound alive, media verified end to end.
-2. ~~Circadian pacing~~ — **done** (day/night send curve, silent overnight; `SEND_TIMEZONE`).
-3. ~~Contact-graph gates~~ — **done** (relationship delay multipliers + new-stranger throttle).
-4. ~~Health scoring~~ — **done.** Per-sender `risk_score` from delivery/failure/disconnect
-   signals, written to `risk_score` + `health` jsonb, with status auto-degrading → quarantining
-   and **recovering both ways**. Enforced in `handleSend` (quarantine holds sends, degraded halves
-   speed), scored in the gateway sweep.
-5. ~~Typing simulation (D-24)~~ — **done (2026-09-29).** `composing` presence + a
-   length-proportional beat (0.7–8 s, Gaussian, clamped) before each send, at the `handleSend`
-   chokepoint; opt-in via `SEND_TYPING_SIMULATION`, best-effort. **P6 now has one piece left:** the
-   **per-incident recovery orchestration** (Layer 6 timed pause/resume/ramp schedules — status
-   recovery works, the timed incident schedules do not). Next up, and it ships **with a frontend
-   at-risk warning + recovery-state display** on the Numbers page (Kushal, 2026-09-29). Then D-10,
-   D-26, D-28 in that order.
-6. ~~Sender-health UI panel~~ — **done.** Each card on `/link` shows the band badge, risk score,
-   delivery/sent/failed evidence and the replied-vs-no-reply breakdown; `GET /senders` carries the
-   `health` jsonb + relationship counts. Data eye-verified against the real dev DB; the logged-in
-   visual is still worth a glance (needs the dev password to sign in).
-7. **Build queue (Kushal, 2026-09-29)** — all P2–P7 alpha core:
-   - ~~**Contact list + search**~~ — **done.** `GET /contacts` (name/phone/email substring, plain
-     `ILIKE`, keyset-paginated) + a `/contacts` web page and nav tab. Finds specific imported people.
-   - ~~**Tags**~~ — **done.** `tag` + `contact_tag` (migration 0014, RLS forced), `GET/POST /tags`,
-     `DELETE /tags/:id`, attach/detach on `/contacts/:id/tags`, `?tag=` filter on the contact list,
-     and a Contacts-page filter bar + chips + add/remove + new-tag form (server actions).
-   - ~~**Per-recipient results**~~ — **done (2026-09-29), as Broadcast UI slice 1.**
-     `GET /campaigns/:id/recipients` + the `/broadcast` list and `/broadcast/[id]` results view.
-   - ~~**Broadcast UI**~~ — **feature-complete for the alpha (Kushal, 2026-09-29).** list · create
-     (tag / import / hand-picked) · dry-run preview · start/pause/resume/cancel · per-recipient
-     results; the false-warning placeholder is gone. **D-10** (broadcast output vs the inbox) is
-     settled by the separate Broadcast surface.
-   - ~~**P6 recovery orchestration**~~ — **done (2026-09-29).** Layer 6 timed pause/ramp schedules
-     (463/429/soft-ban) + the Numbers-page at-risk / cooling-off banner. The anti-ban engine is now
-     complete (all six layers).
-   - ~~**D-26 body variation**~~ — **mostly done (2026-09-29).** Spintax + `{{name}}` rendered
-     per recipient at dispatch (`renderBody`); the "refuse N identical bodies" guard is the small
-     remaining half (moot when spintax is used).
-   - ~~**D-28 dynamic segments**~~ — **minimal slice done (2026-09-30).** `segment` table + an
-     allowlisted filter engine (tag / replied / last-contacted, AND-only, bound params), a
-     `/segments` builder with live count, and campaign targeting by segment. Fuller filter
-     (custom-field equals, AND/OR) deliberately deferred.
-   - **The agreed queue (P6 → D-26 → D-28) is done.** Remaining pins, Kushal's call on order:
-     **D-25** outbound media (high), **D-19** templates, **D-23** message-body search, **D-27**
-     opt-out automation, **D-29** anti-ban advisory mode.
-   - **Anti-ban completion pass (Kushal, 2026-09-30)** — finishing every remaining anti-ban
-     refinement, one by one, marking each done in `08-antiban.md`:
-     - ~~**#1 outbound-only daily clamp**~~ — **done.** Never-replied sender capped 20/day
-       (`OUTBOUND_ONLY_DAILY_CAP` in `dailyCeiling`), enforced in `handleSend` + dispatch + forecast.
-     - ~~**#2** body-variation "refuse N identical bodies in a window"~~ — **done.** A sender holds
-       ≤ `IDENTICAL_BODY_DAILY_CAP` (default 50) identical `body_hmac` per 24h in `dispatchCampaign`;
-       excess left pending. Completes D-26. Moot under spintax; brakes a no-variation blast.
-     - ~~**#3** continuous delivery→speed curve~~ — **done.** `deliveryDelayMultiplier` scales the
-       send delay ×1 (≥85% delivery) → ×4 (<55%), linear between, in `handleSend`; a degraded sender
-       still held to ≥ half speed. Replaces the blunt degraded=half.
-     - ~~**#4** reply-ratio floor~~ — **done (2026-10-05).** Daily new-contact cap earned by ≥30 %
-       replies from ≥10 new contacts in 7 d (48 h grace), else 5/day; `newContactDailyAllowance`.
-     - ~~**#5** decrypt-failure signal~~ — **done (2026-10-05).** Logger tap → tracker → `decrypt_burst_at` → +60 score while <15 min old; recovers by time.
-     - ~~**#6** read behaviour~~ — **done (2026-10-05).** `sweepReadReceipts` + `ChannelProvider.markRead`.
-     - ~~**#7** background entropy~~ — **done (2026-10-05).** `sweepEntropy` + `ChannelProvider.presence`.
-     - ~~**#8** recipient-timezone inference~~ — **done (2026-10-05).** `timezoneForPhone` + a deferral/stretch in `handleSend`; `SEND_RECIPIENT_TIMEZONE`.
-   - **Pinned, priority:** **D-19** templates; **D-25** outbound media (high).
-   - **Pinned, later:** **D-23** chat/message-body search (encrypted-body decision; something
-     simpler first); **D-28** dynamic segments ("segregation" — criteria-based audiences);
-     **D-29** anti-ban **advisory mode** (warn-but-don't-enforce override; pinned 2026-09-29 —
-     resisted by design, `do_not_contact`/consent stay hard, admin-scoped + audited if ever built).
-   Legal/compliance reframed as the operator's job (jurisdiction-neutral); opt-out is **D-27**.
+1. **UI test suite** — `scripts/local-seed.ts` (seed the existing local test org with a fake connected
+   number, contacts, tags, conversations), a fake-number gateway option so CI can verify that a broadcast
+   actually sends, more Playwright specs (inbox, contacts, import, numbers, the restriction banner,
+   saved audiences) using the existing local creds, and a manual checklist in
+   `docs/24-local-testing.md`. `tests/fixtures/import-contacts.csv` already exists.
+2. **D-41** the gateway runs outside RLS — **priority**.
+3. **D-31** key rotation — **priority**.
+4. **Real-number pilot** — no code; a spare number, a week or two, watching the Numbers page. The only
+   thing that proves the anti-ban thresholds on real WhatsApp.
 
-**Deferred / parked (not now):**
-- **P8 Meta Cloud API adapter** — beyond the alpha core.
-- **P1 close-out** (compose file, `email`/`secrets` drivers) — deliberately left for now.
-- ~~**`[TEST DATA]` fixtures**~~ — **deleted 2026-09-29.** Rows and stub files gone; only the real D-14 JPEG remains.
-- **D-17** live inbound + presence/collision (WebSocket) · **D-18** snooze/Meta-window/keyboard ·
-  **D-19** rich templates · **D-20** SQLite · **D-21** full import wizard · **D-22** row-level
-  dedup. (**D-24** typing simulation is now **built** — no longer parked.)
-- **Deployment** — where the production database is decided. **`ENCRYPTION_KEY` must be backed up
-  separately from the database** — losing it loses every linked number and every stored message.
+**Held / pinned (do not build without asking):** D-19 templates · D-23 message search · D-27 opt-out
+(out of alpha) · D-35/36/40 (xlsx export, vCard import, custom fields in imports/segments) ·
+D-34/37/38/39 Meta adapter work · D-42 AI takeover · D-43 extra alert channels · D-44 Baileys 7
+(not required; stay on 6.7.24).
 
-**Both loose ends closed 2026-09-29:** the `[TEST DATA]` fixtures were deleted (above), and the
-stray Insomnia workspace export at the repo root (`whatsapp-crm (local)-wrk_*.yaml`) was removed
-— it was tracked, not untracked as previously noted — with a `.gitignore` rule added so per-workspace
-Insomnia exports can't be committed again (the curated collection stays at
-`tools/insomnia-collection.json`). Committed straight to main (`288c361`).
+**Deployment:** where the production database lives is undecided (D-33). `ENCRYPTION_KEY` must be
+backed up separately from the database — losing it loses every linked number and every stored message.
