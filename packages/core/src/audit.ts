@@ -129,6 +129,8 @@ export const AUDIT = {
   // Do-not-contact: flagging someone, and an admin knowingly messaging a flagged contact anyway.
   contactDncChanged: 'contact.dnc_changed',
   messageDncOverridden: 'message.dnc_overridden',
+  contactsBulkTagged: 'contacts.bulk_tagged',
+  contactsBulkUntagged: 'contacts.bulk_untagged',
   customFieldCreated: 'custom_field.created',
   customFieldDeleted: 'custom_field.deleted'
 } as const;

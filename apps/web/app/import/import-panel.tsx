@@ -23,6 +23,8 @@ export function ImportPanel() {
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [summary, setSummary] = useState<{ result: ImportSummary; committed: boolean } | null>(null);
+  // Optional: tag everyone this file creates or updates (the tag is created if new).
+  const [tagName, setTagName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -52,7 +54,8 @@ export function ImportPanel() {
       const result = await runSheet(
         upload.id,
         { phone, name: name === '' ? null : name, email: email === '' ? null : email },
-        dryRun
+        dryRun,
+        tagName
       );
       if (!result.ok || result.summary === undefined) {
         setError(result.error ?? 'Run failed.');
@@ -117,6 +120,15 @@ export function ImportPanel() {
 
           <Sample upload={upload} />
 
+          <label className="mb-2 flex flex-col gap-1 text-xs font-medium text-muted">
+            Tag everyone in this file (optional)
+            <input
+              value={tagName} onChange={(e) => { setTagName(e.target.value); }} maxLength={60}
+              placeholder="e.g. october-batch" aria-label="Tag everyone in this file"
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-normal text-ink"
+            />
+          </label>
+
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -150,7 +162,11 @@ export function ImportPanel() {
               </p>
               <p className="mt-0.5 text-muted">
                 {summary.result.read} read · {summary.result.created} contacts{' '}
-                {summary.committed ? 'created' : 'would be created'} · {summary.result.errors} errors
+                {summary.committed ? 'created' : 'would be created'} · {summary.result.updated} updated ·{' '}
+                {summary.result.errors} errors
+                {summary.committed && summary.result.tagged !== undefined && (
+                  <> · {summary.result.tagged} tagged “{tagName.trim()}”</>
+                )}
               </p>
             </div>
           )}

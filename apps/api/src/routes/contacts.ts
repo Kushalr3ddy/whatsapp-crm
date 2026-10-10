@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { normalisePhone } from '@crm/shared';
 import { writeAudit, AUDIT, csvHeader, csvLine, vcardEntry, fetchExportBatch } from '@crm/core';
 import { requireScope, requireRole, auditActor } from '../auth.js';
-import { loadCustomFields, validateCustomFields } from '@crm/core';
+import { loadCustomFields, validateCustomFields, searchPredicate } from '@crm/core';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
 
@@ -201,6 +201,20 @@ export function contactsRouter(defaultCountry: string): Router {
     });
   });
 
+  /** How many contacts match a search / tag filter — the number a bulk action would affect. */
+  router.get('/count', requireScope('contacts:read'), async (req: Request, res: Response) => {
+    const parsed = listContactsQuery.pick({ q: true, tag: true }).safeParse(req.query);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Invalid filter.'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const rows = await req.tenant!((tx) => tx.execute(sql`
+      SELECT count(*)::int AS n FROM contact c
+      WHERE ${searchPredicate(orgId, { q: parsed.data.q, tagId: parsed.data.tag })}`));
+    res.json({ data: { total: (rows as unknown as Array<{ n: number }>)[0]!.n } });
+  });
+
   /**
    * Lists and searches contacts, newest first.
    *
@@ -218,9 +232,9 @@ export function contactsRouter(defaultCountry: string): Router {
     }
     const { q, tag, limit, cursor } = parsed.data;
     const orgId = req.crm!.orgId;
-    const like = q === undefined ? null : `%${q}%`;
-    const tagId = tag ?? null;
     const before = cursor ?? null;
+    // The same search / tag rule bulk tagging resolves, so what is listed is what gets tagged.
+    const filter = searchPredicate(orgId, { q, tagId: tag });
 
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT c.id, c.display_name AS "displayName", c.source,
@@ -239,15 +253,7 @@ export function contactsRouter(defaultCountry: string): Router {
                WHERE ct.contact_id = c.id AND ct.org_id = ${orgId}
              ), '[]'::json) AS tags
       FROM contact c
-      WHERE c.org_id = ${orgId}
-        AND c.deleted_at IS NULL
-        AND (${like}::text IS NULL
-             OR c.display_name ILIKE ${like}
-             OR EXISTS (SELECT 1 FROM contact_identity ci2
-                        WHERE ci2.contact_id = c.id AND ci2.value_normalized ILIKE ${like}))
-        AND (${tagId}::uuid IS NULL
-             OR EXISTS (SELECT 1 FROM contact_tag ct2
-                        WHERE ct2.contact_id = c.id AND ct2.tag_id = ${tagId}::uuid))
+      WHERE ${filter}
         AND (${before}::timestamptz IS NULL OR c.created_at < ${before}::timestamptz)
       ORDER BY c.created_at DESC
       LIMIT ${limit}`));
