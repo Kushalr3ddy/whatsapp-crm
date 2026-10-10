@@ -86,9 +86,11 @@ A second pass over the field, done to find gaps (the earlier pass is
 [`03-competitive-analysis.md`](03-competitive-analysis.md), which this extends rather than replaces).
 **How much to trust it:** feature lists come from each vendor's own pages; pricing and the "cons" come
 from review sites and *competitors'* blog posts, which are not neutral. Treat the pricing as an order of
-magnitude and re-check before quoting. The WhatsApp-first tools (Wati, Interakt, AiSensy, Zoko) keep
-their product UI behind a login, so their interface is described from docs and marketing only — the
-screenshots below are the ones that were publicly available.
+magnitude and re-check before quoting. The WhatsApp-first tools keep their live product behind a
+login, so no account was opened. Their screens come from the vendors' own public help-centre articles
+(Wati, Interakt, AiSensy) and product pages (Zoho Recruit), which show real UI but at low resolution, and
+AiSensy's is a schematic. Zoko, Gallabox, ChatDaddy, Trengo, HubSpot, Bullhorn and Naukri RMS have no
+screenshot here and are described from text only.
 
 ### Who was looked at
 
@@ -115,6 +117,9 @@ Ordered by how often it appeared and how much it matters to the people this prod
 | **Snooze**, **@mentions**, collisions, "collaborations" inbox | Respond.io, Chatwoot | Thread lock only; D-17 / D-18 |
 | **Saved custom inboxes** (e.g. "Morning shift", "VIP customers") | Respond.io | Only mine / unassigned / all × open / closed |
 | **SLA, business hours, auto-assignment, agent capacity** | Chatwoot, Respond.io | Not built |
+| **Account limit and quality shown beside campaign results** (daily messaging limit, quality rating) | Wati | Meta tier tracking is pinned D-37; our number health panel is the nearest thing |
+| **Opt-in status on the contact** ("WhatsApp opted: yes") | Interakt | Do-not-contact exists; an explicit opted-in flag does not (D-27 is opt-out only) |
+| **Bot-to-human handoff queue** (Active / Requesting / Intervened) | AiSensy | Waits on a bot (D-42) |
 | **Slash snippets with variables** (`/` snippet, `$` variable, `:` emoji) and a command bar | Respond.io, Chatwoot | We have a saved-reply picker; no inline `/` |
 | **Contact merge suggestions** | Respond.io | We merge LID duplicates automatically; no manual suggestion UI |
 | **Click-to-WhatsApp ads**, attribution, **WhatsApp Flows / forms**, catalogue, in-chat payments | Wati, Interakt, AiSensy | Commerce is out of scope; CTWA attribution and Flows are listed as schema-ready |
@@ -151,11 +156,21 @@ one costs.
 | **Kanban with stage totals and a "schedule activity" popover** | Pipedrive | The pipeline *is* the home screen | Only worth it if we add stages |
 | **Table + kanban views over user-defined objects, Notion-like** | Twenty | One model, many views; fast | A big build; our "no domain objects" principle points the same way |
 | **Merge-suggestion banner in the contact panel** | Respond.io | Duplicate people are surfaced where the agent is looking | Needs a duplicate-detection rule |
+| **Filter sidebar inside the inbox**: channels, then All / Active / Assigned to me / Unassigned / Favourite / Solved / tags, any filter pinnable, two groups combinable | Wati | Saved views without leaving the inbox; "Assigned to me" and "Open" can be combined | Counts were replaced by markers in Wati's own redesign, which suggests live counts are costly |
+| **Campaign overview with the account's health on top**: daily Meta messaging limit, consecutive days messaging, messaging quality, then Sent / Delivered / Read / Replied / Failed tiles | Wati | The number's limits sit next to the results, which is where a sender looks | We already compute the health of a number; it lives on a different page |
+| **Reply and Notes tabs, "Choose template" when the 24-hour window is closed**, and a contact panel with opt-in status, tags and notes | Interakt | The window state is stated in the composer; opt-in is visible per contact | Needs the Meta window (D-18) and an opt-in field (D-27) |
+| **Bot lanes: Active, Requesting, Intervened**, with an Intervene button and Resolve | AiSensy | Makes a bot-to-human handoff a visible queue | Only meaningful once a bot exists (D-42) |
+| **Pipeline matrix**: one row per job, one column per stage (Assessment, Screening, Submissions, Interview, Hired), a count in each cell | Zoho Recruit | A manager sees every opening's funnel on one screen | Needs stages and a notion of "job", which is the host app's data |
 
 ![respond.io inbox](assets/competitors/respondio-inbox.jpg)
 ![Chatwoot conversations](assets/competitors/chatwoot-inbox.jpg)
 ![Pipedrive pipeline](assets/competitors/pipedrive-pipeline.jpg)
 ![Twenty CRM](assets/competitors/twenty-crm.jpg)
+![Wati campaigns overview](assets/competitors/wati-campaigns-overview.jpg)
+![Wati team inbox filter sidebar](assets/competitors/wati-team-inbox-filters.jpg)
+![Interakt shared inbox](assets/competitors/interakt-shared-inbox.jpg)
+![AiSensy live chat lanes (schematic)](assets/competitors/aisensy-live-chat-lanes.jpg)
+![Zoho Recruit pipeline view](assets/competitors/zohorecruit-pipeline-view.jpg)
 
 Our UI after #7 already has the three-panel inbox, day separators, a contact side panel and a risk
 meter on numbers, so the gap is in *behaviour* (saved inboxes, inline events, snooze, counts), not in
