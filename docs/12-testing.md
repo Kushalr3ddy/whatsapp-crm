@@ -30,7 +30,7 @@ cleared, and it is why the ports exist at all.
 | **Contract** | Vitest + LocalStack, Keycloak, MailHog | Every adapter and every driver | One conformance suite per port — `ChannelProvider`, `SourceConnector`, `StorageDriver`, `AuthProvider`, `QueueDriver`, `EmailDriver`, `KmsDriver`. New adapters are correct by construction; swapping drivers provably changes nothing. |
 | **Integration** | Vitest + Testcontainers | Repositories, queues, workers | Real Postgres, real queue, no mocks at the boundary. Migrations up and down. **RLS isolation asserted per table.** |
 | **API** | Supertest + Testcontainers | Every endpoint | Happy path, authz matrix (every role × every endpoint), validation, pagination, idempotency, rate limits, error shapes |
-| **E2E** | Playwright | Critical journeys | Link a number (fake), import a dirty spreadsheet, build a segment, run a campaign, receive a reply, reassign, opt out |
+| **E2E** | Playwright | Critical journeys | **Built (10 specs):** sign in/out, every page renders, import a CSV and tag it, mass-tag, tag one by hand, build a broadcast (from a tag and from an inline filter), flag do-not-contact, define a custom field, advisory-mode control. **Still to add:** inbox thread flows, the restriction banner (needs seeded state), sending verified in CI (needs a fake-number gateway) |
 | **Simulation** | Custom harness | The anti-ban engine | See below |
 | **Load** | k6 | Throughput and soak | 10k campaign · 100 msg/s inbound burst · 50k-row import · 24 h soak |
 | **Security** | ZAP, Semgrep, gitleaks, Trivy, custom | Every PR | OWASP Top 10, cross-tenant IDOR, SSRF, authz bypass, injection |

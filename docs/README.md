@@ -23,6 +23,9 @@ WhatsApp's API assumed. It also decodes the `M`, `P`, `F` and `FR` codes used th
 **To understand linking** — [26 Linking lifecycle](26-linking-lifecycle.md) (how the gateway,
 the database and the phone stay in sync, and why "connected" is not "receiving")
 
+**To understand anti-ban and restrictions** — [08 Anti-ban](08-antiban.md) →
+[27 Silent-restriction tracking](27-restriction-tracking.md) → [12 Testing](12-testing.md) (the simulation)
+
 **To deploy or operate it** — [13 Deployment](13-deployment.md) →
 [19 Capacity](19-capacity.md) → [14 Runbooks](14-runbooks.md) →
 [09 Security](09-security.md) → [22 Encryption](22-encryption.md) →
@@ -59,6 +62,7 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 | [24 Testing it by hand](24-local-testing.md) | Start the stack, get a key, exercise every endpoint, read the headers that matter |
 | [25 Ingestion guide](25-ingestion-guide.md) | Every source, how deduping works at both layers, and a hands-on walkthrough |
 | [26 Linking lifecycle](26-linking-lifecycle.md) | How the gateway, database and phone stay in sync on link status; the command channel; why "connected" ≠ "receiving" (D-14) |
+| [27 Silent-restriction tracking](27-restriction-tracking.md) | How a number WhatsApp has quietly limited is detected from delivery evidence, what the system does about it, and the operator runbook |
 | [Getting started](../GETTING_STARTED.md) | (Repo root) fresh clone → running, signed-in instance, in nine steps |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 

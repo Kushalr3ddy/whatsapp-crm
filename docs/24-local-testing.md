@@ -361,6 +361,39 @@ curl -s -X POST localhost:3000/api/v1/senders/<sender-id>/unlink -H "Authorizati
 
 ---
 
+## The scripted walkthrough (no real sends)
+
+```bash
+npm run local:flow             # sign in → 5 contacts → draft → dry run → start → fake number "sends"
+npm run local:flow -- --keep   # leave the demo org so you can sign in and look at it
+npm run local:flow -- --reset  # remove it
+```
+
+It uses the real login route and the real gateway code against an in-memory fake number, so
+nothing leaves the machine; it refuses a database that is not on this host. The browser version is
+`tests/e2e/broadcast-flow.spec.ts`.
+
+### What the app looks like now
+
+Sign in lands on **Overview**. The sidebar is Overview · Inbox · Contacts · Numbers · Import ·
+Broadcast. **Saved audiences** (what Segments became) is reached from Broadcast; a campaign's audience
+can also be built inline with a live count. **Numbers** shows a banner and a health timeline when a
+number looks restricted, and a red count on the sidebar item.
+
+### Sample data
+
+`tests/fixtures/import-contacts.csv` — 29 rows with numbers written five different ways, a duplicate,
+two unusable rows and a landline. Fake `+91 98765 6xxxx` numbers only. Import it from **Import**, or
+use it as the fixture the browser tests upload.
+
+### Browser tests
+
+`npm run test:e2e` signs in with `TEST_EMAIL` / `TEST_PASSWORD` from `.env` (the existing local
+admin). Specs scope sidebar links with the `nav(page)` helper and open collapsed panels with
+`openDetails`. It starts the stack itself if it is not already up.
+
+---
+
 ## Running the tests instead
 
 ```bash
