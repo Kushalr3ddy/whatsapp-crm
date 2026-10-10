@@ -361,6 +361,7 @@ re-linking a number silently broke sending.
 | `last_inbound_at` | timestamptz NULL | A number that has never received a message is capped to 20/day — outbound-only is exactly what the graph heuristics punish. |
 | `risk_score` | int | 0–100, computed from `send_risk_event`. ≥60 auto-pauses campaigns; ≥85 quarantines. |
 | `daily_cap_override` | int NULL | Lets an admin lower the cap. **Cannot raise it above the safety ceiling** — no code path exists. |
+| `restriction_state` / `restriction_since` | text / timestamptz | The silent-restriction detector's verdict (`ok`, `suspected`, `likely`) and when it entered that state (docs/27). |
 | `meta_waba_id` / `meta_phone_number_id` | text NULL | Meta Cloud API identifiers, for official senders only. |
 | `meta_quality_rating` | text NULL | `high` / `medium` / `low` from Meta. Marketing sends **hard-stop at low**. |
 | `meta_messaging_tier` | text NULL | 250 / 1k / 10k / 100k / unlimited. The dispatcher will not exceed the known tier. |

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { openSimDatabase, closeSimDatabase, type SimDb } from './sim-clock.js';
 import { World } from './world.js';
@@ -151,5 +152,72 @@ describe('a low-reply-ratio spiral', () => {
     }
     perDay.forEach((n) => { expect(n).toBeLessThanOrEqual(5); });
     report('spiral — new contacts started per day', [...perDay.entries()]);
+  });
+});
+
+describe('a silent restriction — nothing errors, deliveries just stop', () => {
+  it('is noticed from delivery evidence, the number is held, and its campaign is paused', async () => {
+    const w = await World.create(db, {
+      start: START, accountAgeDays: 30, hasInboundHistory: true,
+      behaviour: { replyRate: 0.2, deliveryRate: 0.97 },
+      limits: { perDay: 600 },
+      ctxOverrides: { restrictionSweepEveryMs: 0 }
+    });
+    const campaign = await w.startCampaign(await w.addContacts(700, true), '{Hi|Hello|Hey} {{name}}, an update for you');
+    await w.run(3 * HOUR, 5 * MIN);                              // healthy for a while
+    expect(await w.restrictionState()).toBe('ok');
+
+    w.restrict('everyone');                                      // WhatsApp starts withholding deliveries
+    const restrictedAt = w.now.getTime();
+    await w.run(3 * HOUR, 5 * MIN);
+
+    // Noticed, and acted on: the state says so, the campaign is paused, the timeline recorded it.
+    expect(await w.restrictionState()).toBe('likely');
+    const status = ((await db.execute(sql`SELECT status, pause_reason AS why FROM campaign WHERE id = ${campaign}`)) as
+      unknown as Array<{ status: string; why: string | null }>)[0]!;
+    expect(status).toEqual({ status: 'paused', why: 'restriction_likely' });
+    expect(await w.healthEvents()).toContain('restriction_likely');
+
+    // And it stopped feeding the number: almost nothing left after detection.
+    const afterDetection = w.sim.sends.filter((s) => s.at.getTime() > restrictedAt + 2 * HOUR).length;
+    report('silent restriction — sends in the 2h after it began', w.sim.sends.filter((s) => s.at.getTime() > restrictedAt && s.at.getTime() <= restrictedAt + 2 * HOUR).length,
+      'after detection', afterDetection, 'state', await w.restrictionState());
+    expect(afterDetection).toBeLessThanOrEqual(10);
+    expect(w.sim.bannedAt).toBeNull();
+  });
+
+  it('clears itself once delivery is normal again and the old evidence ages out', async () => {
+    const w = await World.create(db, {
+      start: START, accountAgeDays: 30, hasInboundHistory: true,
+      behaviour: { replyRate: 0.2, deliveryRate: 0.97 },
+      limits: { perDay: 600 },
+      ctxOverrides: { restrictionSweepEveryMs: 0 }
+    });
+    await w.startCampaign(await w.addContacts(500, true), '{Hi|Hello|Hey} {{name}}, an update for you');
+    await w.run(2 * HOUR, 5 * MIN);
+    w.restrict('everyone');
+    await w.run(3 * HOUR, 5 * MIN);
+    expect(await w.restrictionState()).not.toBe('ok');
+
+    w.heal();
+    await w.run(14 * HOUR, 15 * MIN);                           // the stuck sends age out of the window
+    expect(await w.restrictionState()).toBe('ok');
+    const events = await w.healthEvents();
+    expect(events).toContain('restriction_cleared');
+    report('restriction cleared — timeline', events);
+  });
+
+  it('does not cry wolf when a third of recipients simply have their phones off', async () => {
+    const w = await World.create(db, {
+      start: START, accountAgeDays: 30, hasInboundHistory: true,
+      behaviour: { replyRate: 0.2, deliveryRate: 0.7 },
+      limits: { perDay: 600 },
+      ctxOverrides: { restrictionSweepEveryMs: 0 }
+    });
+    await w.startCampaign(await w.addContacts(400, true), '{Hi|Hello|Hey} {{name}}, an update for you');
+    await w.run(1 * DAY, 10 * MIN);
+    expect(await w.restrictionState()).toBe('ok');
+    expect(await w.healthEvents()).not.toContain('restriction_suspected');
+    expect(await w.healthEvents()).not.toContain('restriction_likely');
   });
 });

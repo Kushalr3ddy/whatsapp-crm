@@ -135,6 +135,20 @@ export async function markMessageFailed(
     WHERE id = ${messageId}`);
 }
 
+/**
+ * Marks a message failed from a provider-side delivery error (matched on the provider's id).
+ * Only a message that has not already been delivered or read is touched: a late error must not
+ * undo a success.
+ */
+export async function markMessageFailedByProviderId(
+  db: Database, orgId: string, providerMessageId: string, errorCode: string
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE message SET status = 'failed', error_code = ${errorCode.slice(0, 200)}
+    WHERE org_id = ${orgId} AND provider_message_id = ${providerMessageId}
+      AND direction = 'outbound' AND status IN ('queued', 'sent')`);
+}
+
 /** Applies a delivery receipt, matched on the provider's own message id. */
 export async function applyDeliveryStatus(
   db: Database, orgId: string, providerMessageId: string, status: 'sent' | 'delivered' | 'read'

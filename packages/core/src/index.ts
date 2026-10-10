@@ -103,4 +103,10 @@ export {
   POLICY_GATES, POLICY_SKIP_REASON, ENGAGEMENT_WINDOW_HOURS, COOLDOWN_DAYS, isPolicyGate,
   blockingPolicyGate, type PolicyGate
 } from './policy-gates.js';
+export { markMessageFailedByProviderId } from './messages.js';
 export { linkLidToPhone, type LinkOutcome } from './identity-linking.js';
+export {
+  classifyRestriction, nextRestrictionState, gatherRestrictionStats, checkRestriction, recordHealthEvent,
+  STUCK_AFTER_MS, HOLD_MS, MIN_SENDS,
+  type RestrictionState, type RestrictionStats, type RestrictionVerdict, type RestrictionSignal, type RestrictionOutcome
+} from './restriction.js';

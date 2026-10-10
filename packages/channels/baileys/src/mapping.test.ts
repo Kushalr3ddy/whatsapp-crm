@@ -36,6 +36,10 @@ describe('extractStatusCode', () => {
 });
 
 describe('mapStatus', () => {
+  it('treats a server ERROR ack as a failed send', () => {
+    expect(mapStatus(0)).toBe('failed');
+  });
+
   it('collapses WhatsApp ticks into our four states', () => {
     expect(mapStatus(1)).toBe('sent');
     expect(mapStatus(2)).toBe('sent');
@@ -44,7 +48,6 @@ describe('mapStatus', () => {
     expect(mapStatus(5)).toBe('read');
   });
   it('ignores codes it does not recognise instead of inventing a status', () => {
-    expect(mapStatus(0)).toBeNull();
     expect(mapStatus(99)).toBeNull();
   });
 });

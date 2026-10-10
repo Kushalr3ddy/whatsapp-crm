@@ -168,6 +168,8 @@ export interface NormalisedConnectionEvent {
   readonly state: ProviderHealth['state'];
   /** Why it closed, when it closed. Null on a successful open. */
   readonly reason: DisconnectReason | null;
+  /** The provider's raw close code (WhatsApp: 401, 403, 428, 463, …), when it gave one. */
+  readonly code?: number | null;
   readonly at: Date;
 }
 

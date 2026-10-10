@@ -6,7 +6,7 @@ import {
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
   recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
   type ReplyFloorConfig, readIsDue, circadianActivity, localHour, entropyPlan, type EntropyScheduler,
-  timezoneForPhone, circadianDelayMs, CIRCADIAN_QUIET_THRESHOLD
+  timezoneForPhone, circadianDelayMs, CIRCADIAN_QUIET_THRESHOLD, checkRestriction, recordHealthEvent
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -44,6 +44,8 @@ interface QueuedSend {
   /** Layer 6 recovery state, read with the job: the incident class and when its pause ends. */
   readonly recoveryIncident: string | null;
   readonly recoveryUntil: string | null;
+  /** `ok` | `suspected` | `likely` — the silent-restriction detector's verdict for this number. */
+  readonly restrictionState: string;
   /** The sender's recent delivery ratio (from `health`), for the Layer 5 adaptive-speed curve. */
   readonly deliveryRatio: number;
 }
@@ -105,6 +107,8 @@ export interface WorkContext {
   readonly readReceipts?: boolean;
   /** How many of the oldest queued messages one sweep attempts. Default 200; the simulation lowers it. */
   readonly sweepBatchSize?: number;
+  /** Minimum gap between restriction sweeps. Default 60 000 ms; tests pass 0. */
+  readonly restrictionSweepEveryMs?: number;
   /**
    * Where stored files live, so a queued message that carries one can be read back and sent
    * (D-25). Absent in tests that only send text; a media message with no storage fails visibly.
@@ -365,7 +369,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
            si.last_inbound_at AS "lastInboundAt",
            cs.last_connected_at AS "lastConnectedAt",
            si.recovery_incident AS "recoveryIncident",
-           si.recovery_until AS "recoveryUntil",
+           si.recovery_until AS "recoveryUntil", si.restriction_state AS "restrictionState",
            COALESCE((si.health->>'deliveryRatio')::float, 1) AS "deliveryRatio",
            v.contact_id AS "contactId", ct.do_not_contact AS "doNotContact",
            m.dnc_override AS "dncOverride",
@@ -563,6 +567,9 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
     // delivery looks like, since it may be degraded for failures or disconnects, not delivery.
     let healthFactor = deliveryDelayMultiplier(job.deliveryRatio);
     if (job.senderStatus === 'degraded') healthFactor = Math.max(healthFactor, 2);
+    // A number WhatsApp may be limiting: slow down while the evidence is gathered, rather than keep
+    // feeding a queue that is not being delivered.
+    if (job.restrictionState !== 'ok') healthFactor = Math.max(healthFactor, 3);
     delayMs = Math.min(30_000, Math.round(delayMs * healthFactor));
 
     // The jittered pause. Deliberately before the send rather than after, so a burst arriving
@@ -699,6 +706,45 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
   return queued;
 }
 
+/** When the restriction sweep last ran in this process; it is a minutes-scale signal, not a seconds one. */
+let lastRestrictionSweep = 0;
+
+/**
+ * Runs the silent-restriction detector over every linked number, at most once per
+ * `restrictionSweepEveryMs` (default one minute). A number with too little recent traffic simply
+ * classifies as `ok`, so this is cheap on an idle install.
+ */
+export async function sweepRestriction(ctx: WorkContext): Promise<number> {
+  const every = ctx.restrictionSweepEveryMs ?? 60_000;
+  const now = Date.now();
+  // `now >= last` guard: if the clock has moved backwards (a simulation restarting its timeline, or a
+  // clock correction) the throttle must reset, not wait for the old time to be reached again.
+  if (now >= lastRestrictionSweep && now - lastRestrictionSweep < every) return 0;
+  lastRestrictionSweep = now;
+
+  const rows = await ctx.db.execute(sql`
+    SELECT id FROM sender_identity WHERE status IN ('active', 'degraded')`);
+  let changed = 0;
+  for (const r of rows as unknown as Array<{ id: string }>) {
+    try {
+      const outcome = await checkRestriction(ctx.db, r.id);
+      if (outcome?.changed) {
+        changed += 1;
+        ctx.logger.warn(
+          { senderId: r.id, from: outcome.from, to: outcome.to, signals: outcome.signals.map((s) => s.id) },
+          'restriction state changed'
+        );
+      }
+    } catch (error) {
+      ctx.logger.error(
+        { senderId: r.id, err: error instanceof Error ? error.message : String(error) },
+        'restriction check failed'
+      );
+    }
+  }
+  return changed;
+}
+
 /** A tenant-scoped runner for the gateway, which has no request to take one from. */
 function tenantRunner(ctx: WorkContext, orgId: string) {
   return <T>(work: (tx: Transaction) => Promise<T>): Promise<T> =>
@@ -739,6 +785,9 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   // struggle is degraded or quarantined — and a recovered one restored to active — before the
   // next batch of campaign sends is queued against it.
   await scoreConnectedSenders(ctx.db);
+
+  // Silent-restriction detection: delivery evidence per number, on its own (slower) cadence.
+  await sweepRestriction(ctx);
 
   // Read receipts that have come due (human-like read delay, active hours only).
   await sweepReadReceipts(ctx);
@@ -794,14 +843,30 @@ export async function applyConnectionEvent(
   ctx: WorkContext, event: NormalisedConnectionEvent
 ): Promise<void> {
   const openedAt = event.state === 'open' ? event.at.toISOString() : null;
+  // Did a person ask for this unlink? Read before the update below, because an unlink in flight is
+  // what tells a deliberate logout from WhatsApp logging the number out on its own.
+  const unlinkRow = event.state === 'logged_out'
+    ? (await ctx.db.execute(sql`
+        SELECT unlink_requested_at AS "at" FROM channel_session
+        WHERE sender_identity_id = ${event.senderId}`) as unknown as Array<{ at: string | null }>)[0]
+    : undefined;
+  const deliberateUnlink = unlinkRow?.at !== null && unlinkRow?.at !== undefined;
 
   await ctx.db.execute(sql`
     INSERT INTO channel_session (sender_identity_id, connection_state, disconnect_reason,
-                                 last_connected_at)
-    VALUES (${event.senderId}, ${event.state}, ${event.reason}, ${openedAt})
+                                 disconnect_code, reconnect_attempts, last_connected_at)
+    VALUES (${event.senderId}, ${event.state}, ${event.reason}, ${event.code ?? null}::int,
+            ${event.state === 'open' ? 0 : event.state === 'closed' ? 1 : 0}, ${openedAt})
     ON CONFLICT (sender_identity_id) DO UPDATE
       SET connection_state = ${event.state},
           disconnect_reason = ${event.reason},
+          -- The raw close code and the number of closes in a row feed the health score (401/403/463/429
+          -- weights, reconnect churn). An open clears the run; a close extends it.
+          disconnect_code = CASE WHEN ${event.state} = 'open' THEN NULL ELSE ${event.code ?? null}::int END,
+          reconnect_attempts = CASE
+            WHEN ${event.state} = 'open' THEN 0
+            WHEN ${event.state} = 'closed' THEN channel_session.reconnect_attempts + 1
+            ELSE channel_session.reconnect_attempts END,
           last_connected_at = COALESCE(${openedAt}, channel_session.last_connected_at),
           -- A completed link has no further use for the challenge, and leaving it behind would
           -- let the UI keep offering a QR for a number that is already connected.
@@ -828,6 +893,25 @@ export async function applyConnectionEvent(
     await ctx.db.execute(sql`
       UPDATE sender_identity SET status = 'linking', updated_at = now()
       WHERE id = ${event.senderId}`);
+
+    // Nobody asked for this logout, so WhatsApp ended the session: that is what a ban looks like from
+    // the socket (and also what unlinking from the phone looks like). Say so on the timeline instead
+    // of letting the number quietly turn up as "not connected".
+    if (!deliberateUnlink) {
+      const org = (await ctx.db.execute(sql`
+        SELECT org_id AS "orgId" FROM sender_identity WHERE id = ${event.senderId}`
+      ) as unknown as Array<{ orgId: string }>)[0];
+      if (org) {
+        await recordHealthEvent(ctx.db, {
+          orgId: org.orgId, senderIdentityId: event.senderId, kind: 'hard_ban_suspected',
+          severity: 'critical', at: event.at,
+          summary: 'WhatsApp logged this number out without being asked. That is either a ban or someone '
+            + 'unlinking it on the phone. Check the phone, and do not relink in a hurry.',
+          evidence: { code: event.code ?? null, reason: event.reason }
+        });
+        ctx.logger.error({ senderId: event.senderId }, 'number logged out by WhatsApp — possible ban');
+      }
+    }
   }
 
   // Layer 6: a typed reachout-timelock (463) or rate overlimit (429) starts a timed recovery — a

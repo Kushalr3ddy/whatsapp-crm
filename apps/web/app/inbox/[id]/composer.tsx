@@ -151,6 +151,13 @@ export function Composer(
         </div>
       )}
 
+      {!numberDown && senderStatus !== null && senderStatus.restrictionState !== 'ok' && (
+        <p role="status" className="mb-2 notice notice-warning text-[13px]">
+          WhatsApp may be limiting <strong>{senderStatus.label}</strong> — messages from it could arrive
+          late or not at all. You can still send; they are being paced more slowly.
+        </p>
+      )}
+
       {numberDown && (
         <p role="alert" className="mb-2 notice notice-danger">
           {senderStatus.reason === 'quarantined'
