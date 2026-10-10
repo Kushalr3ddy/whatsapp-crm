@@ -55,6 +55,8 @@ test.describe('live walkthrough', () => {
           });
         }
         await page.goto('/link');
+        // Start the link so the QR is on screen without anyone clicking; best effort, the page may differ.
+        await page.getByRole('button', { name: 'Link this number' }).first().click({ timeout: 15_000 }).catch(() => undefined);
         test.info().annotations.push({ type: 'action', description: 'Scan the QR with WhatsApp → Linked devices' });
         // eslint-disable-next-line no-console
         console.log('\n>>> No connected number. Link one in the browser window now (QR on /link); waiting up to 10 min…\n');

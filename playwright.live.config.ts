@@ -32,6 +32,8 @@ export default defineConfig({
     // Slow enough to follow with your eyes; override with LIVE_SLOWMO=0 for a quick run.
     launchOptions: { slowMo: Number(process.env.LIVE_SLOWMO ?? 350) },
     viewport: { width: 1360, height: 860 },
+    // LIVE_VIDEO=1 records the whole run to test-results/**/video.webm (also works headed), for demos.
+    video: process.env.LIVE_VIDEO === '1' ? { mode: 'on', size: { width: 1360, height: 860 } } : 'off',
     trace: 'retain-on-failure'
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
