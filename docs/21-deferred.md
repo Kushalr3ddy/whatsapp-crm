@@ -649,7 +649,12 @@ helpers that already wrap it (`setTenant`, the gateway command channel), not spr
 
 ---
 
-## D-21 · The full import mapping wizard
+## D-21 · The full import mapping wizard — **PRIORITY (Kushal, 2026-10-10)**
+
+> **Priority:** raised on 2026-10-10 while building the live walkthrough: production imports come from a Naukri
+> Excel export, and its real layout is not in hand yet. Build this once that file (or a real sample of it) is
+> available, so the wizard is shaped by the actual columns rather than a guess. Until then the synthetic
+> Naukri-style workbook in `tests/live/naukri-sample.ts` stands in.
 
 **What:** the complete mapping experience from `docs/07-ingestion.md`, on top of the **simple**
 import tab being built now (upload .csv/.xlsx → pick the phone/name/email column → preview →
