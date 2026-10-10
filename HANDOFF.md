@@ -30,7 +30,9 @@ tracking (migration 0022, own simulation workflow, `docs/27`) · #9 segments fol
 Also fixed: the fake channel's message ids restarted at 1 each boot and collided with stored ones.
 
 **Next, in Kushal's order:** **D-21** (import mapping wizard; priority, needs the real Naukri file), **D-41** (gateway outside RLS) then **D-31** (key rotation), then the real-number
-pilot. **D-46** (UI feels laggy when used fast; measure first) is pinned.
+pilot. **D-46** (UI feels laggy when used fast; measure first) is pinned, along with **D-47** (signup page +
+billing gate + beta override), **D-48** (OWASP security tests), **D-49** (e2e revamp to industry standard) and
+**D-50** (frontend/backend independence tests).
 
 **Pinned / held (do not build):** **D-41** gateway runs outside RLS (**priority**) · **D-31** key rotation
 (**priority**) · D-19 templates · D-23 message search · D-27 opt-out (out of alpha) · D-35/36/40 ·
