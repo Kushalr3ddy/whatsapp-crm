@@ -6,6 +6,7 @@ import type { SenderStatus, Message, OrgUser, Note, CannedReply, Me, Conversatio
 import { Composer } from './composer';
 import { initialsOf } from '../../ui';
 import { ThreadControls } from './thread-controls';
+import { PresenceBeat } from './presence-beat';
 
 /** Plain words for why a queued message has not gone out yet. */
 function holdLabel(reason: string | null): string {
@@ -216,6 +217,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
+        <PresenceBeat conversationId={id} />
         <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="avatar size-10 text-sm" aria-hidden>{initialsOf(title)}</span>
@@ -230,6 +232,14 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
                   </span>
                 )}
               </p>
+              {conversation !== null && conversation.viewers.length > 0 && (
+                // Others with this thread open now. Informational: the reply lock, not this, is
+                // what decides who may send.
+                <p className="truncate text-[11px] font-medium text-accent" aria-live="polite">
+                  ● {conversation.viewers.map((v) => v.name).join(', ')}
+                  {conversation.viewers.length === 1 ? ' is' : ' are'} viewing
+                </p>
+              )}
             </div>
           </div>
           {/* Absent only if the fetch failed or the id is not in this org; otherwise every thread

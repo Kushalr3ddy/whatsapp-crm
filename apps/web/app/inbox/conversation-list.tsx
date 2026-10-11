@@ -148,6 +148,11 @@ export function ConversationList(
                       {c.assigneeName ?? 'Unassigned'}
                       {c.participants.length > 0 && ` +${String(c.participants.length)}`}
                     </span>
+                    {c.viewers.length > 0 && (
+                      <span className="truncate text-[11px] text-accent" title="Viewing now">
+                        ● {c.viewers.map((v) => v.name).join(', ')}
+                      </span>
+                    )}
                     {c.status === 'closed' && <span className="badge">closed</span>}
                   </span>
                 </span>

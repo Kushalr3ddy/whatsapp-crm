@@ -386,6 +386,22 @@ export const conversationParticipant = pgTable('conversation_participant', {
 ]);
 
 /**
+ * Who has a conversation open right now (D-17). A thread open in a browser heartbeats into its
+ * row every ~15 s, and anyone seen in the last 30 s counts as viewing. Rows are disposable: a
+ * stale one means nothing, and the API sweeps old ones, so nothing here is history.
+ */
+export const conversationPresence = pgTable('conversation_presence', {
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').notNull()
+    .references(() => conversation.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => appUser.id, { onDelete: 'cascade' }),
+  seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  primaryKey({ columns: [t.conversationId, t.userId] }),
+  index('conversation_presence_seen_idx').on(t.seenAt)
+]);
+
+/**
  * One message, in or out. Bodies are encrypted at rest; `bodyHmac` lets duplicates be detected
  * without decrypting a whole table, which the previous system had to do (M25).
  */
