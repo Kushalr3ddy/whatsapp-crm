@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { setTenant, type Database, type Transaction } from '@crm/db';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
+  classifyLinkFailure, encodeLinkError,
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
   recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
@@ -277,6 +278,15 @@ export async function handleLinkRequest(ctx: WorkContext, sessionId: string): Pr
   if (!req) return;                     // already handled, or superseded
 
   try {
+    // A number that is not currently connected may still hold the credentials of a session WhatsApp
+    // already ended (logged out on the phone). Linking on top of those makes WhatsApp refuse the login
+    // and never show a QR, so clear them first. Never done for a live connection.
+    const state = (await ctx.db.execute(sql`
+      SELECT connection_state AS s FROM channel_session WHERE id = ${req.sessionId}`
+    ) as unknown as Array<{ s: string | null }>)[0]?.s ?? null;
+    if (state !== 'open') {
+      await ctx.provider.logout(req.senderIdentityId).catch(() => undefined);
+    }
     const challenge = await ctx.provider.link(
       req.senderIdentityId, req.mode, req.phone ?? undefined
     );
@@ -292,11 +302,21 @@ export async function handleLinkRequest(ctx: WorkContext, sessionId: string): Pr
   } catch (error) {
     // Surface the failure on the row so the API can tell the caller, rather than leaving them
     // polling an endpoint that never resolves.
+    const info = classifyLinkFailure(error);
     const message = error instanceof Error ? error.message : String(error);
+    // The request is closed with the failure: leaving link_requested_at set made the sweep retry the
+    // same doomed link every minute. The operator presses Link again when they want another try.
     await ctx.db.execute(sql`
-      UPDATE channel_session SET link_error = ${message.slice(0, 500)}, updated_at = now()
+      UPDATE channel_session
+      SET link_error = ${encodeLinkError(info)}, link_requested_at = NULL,
+          link_requested_mode = NULL, link_requested_phone = NULL,
+          connection_state = CASE WHEN connection_state = 'connecting' THEN 'closed' ELSE connection_state END,
+          updated_at = now()
       WHERE id = ${req.sessionId}`);
-    ctx.logger.error({ senderId: req.senderIdentityId, err: message }, 'link request failed');
+    ctx.logger.error(
+      { senderId: req.senderIdentityId, code: info.code, statusCode: info.statusCode ?? null, err: message },
+      'link request failed'
+    );
   }
 }
 
@@ -854,10 +874,12 @@ export async function applyConnectionEvent(
   // what tells a deliberate logout from WhatsApp logging the number out on its own.
   const unlinkRow = event.state === 'logged_out'
     ? (await ctx.db.execute(sql`
-        SELECT unlink_requested_at AS "at" FROM channel_session
-        WHERE sender_identity_id = ${event.senderId}`) as unknown as Array<{ at: string | null }>)[0]
+        SELECT unlink_requested_at AS "at", connection_state AS "previous"
+        FROM channel_session
+        WHERE sender_identity_id = ${event.senderId}`) as unknown as Array<{ at: string | null; previous: string | null }>)[0]
     : undefined;
   const deliberateUnlink = unlinkRow?.at !== null && unlinkRow?.at !== undefined;
+  const alreadyLoggedOut = unlinkRow?.previous === 'logged_out';
 
   await ctx.db.execute(sql`
     INSERT INTO channel_session (sender_identity_id, connection_state, disconnect_reason,
@@ -879,6 +901,13 @@ export async function applyConnectionEvent(
           -- let the UI keep offering a QR for a number that is already connected.
           link_challenge = CASE WHEN ${event.state} = 'open'
             THEN NULL ELSE channel_session.link_challenge END,
+          -- Same for the request itself: left set, the sweep kept asking for a link on a number that
+          -- was already connected, and each attempt disturbed the live session.
+          link_requested_at = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_requested_at END,
+          link_requested_mode = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_requested_mode END,
+          link_requested_phone = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_requested_phone END,
+          link_error = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_error END,
+          qr_expires_at = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.qr_expires_at END,
           updated_at = now()`);
 
   if (event.state === 'open') {
@@ -904,7 +933,19 @@ export async function applyConnectionEvent(
     // Nobody asked for this logout, so WhatsApp ended the session: that is what a ban looks like from
     // the socket (and also what unlinking from the phone looks like). Say so on the timeline instead
     // of letting the number quietly turn up as "not connected".
-    if (!deliberateUnlink) {
+    // WhatsApp ended this session, so the stored credentials are dead. Clear them now, so the next
+    // Link starts clean instead of retrying a login that can only fail.
+    if (!deliberateUnlink && !alreadyLoggedOut) {
+      await ctx.provider.logout(event.senderId).catch(() => undefined);
+    }
+
+    // Say it once per logout. A failed re-login on the same dead session reports `logged_out` again,
+    // and recording each one buried the real signal under a pile of identical "possible ban" alarms.
+    const recent = (await ctx.db.execute(sql`
+      SELECT 1 FROM sender_health_event
+      WHERE sender_identity_id = ${event.senderId} AND kind = 'hard_ban_suspected'
+        AND at > now() - interval '30 minutes' LIMIT 1`) as unknown as unknown[]).length > 0;
+    if (!deliberateUnlink && !alreadyLoggedOut && !recent) {
       const org = (await ctx.db.execute(sql`
         SELECT org_id AS "orgId" FROM sender_identity WHERE id = ${event.senderId}`
       ) as unknown as Array<{ orgId: string }>)[0];

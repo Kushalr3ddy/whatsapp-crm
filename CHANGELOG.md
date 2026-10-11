@@ -22,6 +22,23 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 - The UI still has no "start a new conversation" button, so the first message goes via `POST /messages`.
 - **D-21 (mapping wizard) raised to priority.**
 
+### 2026-10-11 — Link flow fixes and readable link errors (branch `fix/link-flow-and-errors`)
+Found by running the live walkthrough against a real number, which stuck on "waiting for QR" for ten minutes.
+- **Stale credentials:** after a logout from the phone the gateway kept the dead credentials and every re-link
+  retried a login WhatsApp refused, so no QR ever came. They are now cleared on the logout (and before a link on a
+  number that is not connected; never for a live one).
+- **Link request flag:** a completed or failed link left `link_requested_at` set, so the sweep re-requested a link
+  every minute and disturbed a live session. It is cleared on connect and on failure.
+- **Wrong card:** the in-memory test channel ("fake") showed a Link button; it now says "nothing to link". The live
+  suite targets its own sender's card.
+- **Ban-suspected spam:** one `hard_ban_suspected` event per logout (not per failed re-login, nor within 30 minutes).
+- **Readable errors:** a failed link is classified (`qr_timeout`, `stale_session`, `connection_closed`,
+  `rate_limited`, `needs_phone`, `gateway_error`, `unknown`) with a title, one-line summary and next step, stored in
+  `link_error` as JSON (legacy strings still decode), returned by `GET /senders/:id/link` as `state: "error"` and on
+  `GET /senders`, and shown in the link panel and as a banner on the number's card. A close while waiting for a QR now
+  fails at once instead of after the timeout, and the half-open socket is torn down.
+- 10 new tests; 610 vitest.
+
 ### 2026-10-10 — UI test suite and the fake gateway (branch `test/ui-suite-and-fake-gateway`)
 - **`npm run local:seed`** (`scripts/local-seed.ts`): into the `e2e-test` org, a fake connected number, 20 contacts,
   3 tags, a custom field, 3 conversations (unread · assigned · closed) and a saved audience. Fixed names,

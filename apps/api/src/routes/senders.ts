@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { recoveryState, writeAudit, AUDIT } from '@crm/core';
+import { recoveryState, writeAudit, AUDIT, decodeLinkError } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
@@ -60,6 +60,7 @@ export function sendersRouter(): Router {
              si.health AS health,
              cs.connection_state AS "connectionState", cs.disconnect_reason AS "disconnectReason",
              cs.last_connected_at AS "lastConnectedAt",
+             cs.link_error AS "linkErrorRaw",
              -- Whether credentials are stored: the truth of "is this number linked", independent
              -- of the live socket. A corrupt session can be connected but this is the one that
              -- says there is something to unlink, and drives the button state in the UI.
@@ -87,14 +88,16 @@ export function sendersRouter(): Router {
     // Turn the two raw recovery columns into the derived phase/fraction the UI shows, so the client
     // never re-implements the Layer 6 schedule. The raw columns are dropped from the response.
     const data = (rows as unknown as Array<Record<string, unknown> & {
-      recoveryIncident: string | null; recoveryUntil: string | null;
-    }>).map(({ recoveryIncident, recoveryUntil, ...sender }) => {
+      recoveryIncident: string | null; recoveryUntil: string | null; linkErrorRaw: string | null;
+    }>).map(({ recoveryIncident, recoveryUntil, linkErrorRaw, ...sender }) => {
       const state = recoveryState({
         incident: recoveryIncident,
         recoveryUntil: recoveryUntil === null ? null : new Date(recoveryUntil)
       });
       return {
         ...sender,
+        // The last link failure, in plain words, so the Numbers page can say why a number is not up.
+        linkError: decodeLinkError(linkErrorRaw),
         recovery: state.phase === 'none' ? null : {
           incident: state.incident, phase: state.phase,
           capFraction: state.capFraction,
@@ -274,13 +277,12 @@ export function sendersRouter(): Router {
       res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such sender.'));
       return;
     }
-    if (row.error !== null) {
-      res.status(502).json(problem(req, 502, 'LINK_FAILED', row.error));
-      return;
-    }
+    // A failed attempt is a normal answer to "how is the link going", with the reason spelled out.
+    const failure = decodeLinkError(row.error);
     res.json({
       data: {
-        state: row.challenge !== null ? 'challenge_ready' : 'pending',
+        state: failure !== null ? 'error' : row.challenge !== null ? 'challenge_ready' : 'pending',
+        error: failure,
         challenge: row.challenge,
         expiresAt: row.expiresAt,
         connectionState: row.connectionState,

@@ -113,6 +113,8 @@ export async function updateThread(
 /** What the link panel needs on each poll: a rendered QR, or a reason there is not one. */
 export interface LinkStatus {
   state: 'pending' | 'challenge_ready' | 'connected' | 'error';
+  /** For `error`: the classified failure (title, one-line summary, what to do next). */
+  error?: { code: string; title: string; summary: string; hint: string; statusCode?: number | null } | null;
   /** The QR as an inline SVG data URL, ready for an `img` src. Null unless a QR is current. */
   qrDataUrl: string | null;
   pairingCode: string | null;
@@ -228,6 +230,9 @@ export async function pollLink(senderId: string): Promise<LinkStatus> {
 
   if (state.connectionState === 'open') {
     return { state: 'connected', ...empty, detail: 'Linked. This number can send now.' };
+  }
+  if (state.state === 'error' && state.error) {
+    return { state: 'error', ...empty, detail: state.error.summary, error: state.error };
   }
   if (state.challenge === null) {
     return {
