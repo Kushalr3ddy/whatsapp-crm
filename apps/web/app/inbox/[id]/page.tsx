@@ -99,8 +99,19 @@ type TimelineEntry =
   | { kind: 'message'; item: Message; at: string }
   | { kind: 'note'; item: Note; at: string };
 
+/**
+ * Who sent an outbound message, in words: the agent's name, "Campaign" for a bulk send, or "API"
+ * for an integration. Null for an inbound message, whose author is the contact in the header.
+ */
+function authorLabel(message: Message): string | null {
+  if (message.direction !== 'outbound') return null;
+  if (message.sentByName !== null) return message.sentByName;
+  return message.sentBy === 'system' ? 'Campaign' : 'API';
+}
+
 /** One message bubble: attachment, body (or a decryption note), and the delivery state line. */
 function MessageBubble({ message }: { message: Message }) {
+  const author = authorLabel(message);
   return (
     <div
       className={[
@@ -108,6 +119,7 @@ function MessageBubble({ message }: { message: Message }) {
         message.direction === 'outbound' ? 'bg-accent text-on-accent' : 'border border-border bg-surface'
       ].join(' ')}
     >
+      {author !== null && <p className="mb-0.5 text-[11px] font-medium text-on-accent/70">{author}</p>}
       <Attachment message={message} />
       {message.undecryptable ? (
         <p className="text-sm">[this message could not be decrypted]</p>

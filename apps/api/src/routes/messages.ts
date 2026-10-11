@@ -33,6 +33,16 @@ const sendMessage = z.object({
 });
 
 /**
+ * The person to credit as the author of an outbound message: the signed-in agent, or null for an
+ * API key or the bootstrap credential, which are integrations rather than people. Stored in
+ * `sent_by_user_id`, so the thread can say who sent each reply.
+ */
+function authorOf(req: Request): string | null {
+  const ctx = req.crm!;
+  return ctx.kind === 'session' ? ctx.userId : null;
+}
+
+/**
  * What to do about a send to someone who may be flagged do-not-contact. Not flagged: proceed. Flagged:
  * refuse, unless the caller is a signed-in admin who asked to override (`overrideDnc` + a reason), in
  * which case proceed and record the override. An agent or an API key can never override.
@@ -490,12 +500,14 @@ export function messagesRouter(
         SELECT m.id, m.direction, m.content_type AS "contentType", m.status,
                m.error_code AS "errorCode", m.hold_reason AS "holdReason",
                m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
+               m.sent_by_user_id AS "sentByUserId", u.display_name AS "sentByName",
                m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt",
                m.media_id AS "mediaId", ma.content_type AS "mediaContentType",
                ma.size_bytes AS "mediaSizeBytes", ma.filename AS "mediaFilename"
         FROM message m
         JOIN conversation v ON v.id = m.conversation_id
         LEFT JOIN media_asset ma ON ma.id = m.media_id
+        LEFT JOIN app_user u ON u.id = m.sent_by_user_id
         WHERE v.id = ${conversationId} AND v.org_id = ${orgId}
         ORDER BY m.created_at ASC
         LIMIT 500`);
@@ -619,10 +631,10 @@ export function messagesRouter(
         const stored = await storeOutboundMedia(tx, storage, { orgId, bytes, filename });
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                               body_enc, body_hmac, media_id, sent_by)
+                               body_enc, body_hmac, media_id, sent_by, sent_by_user_id)
           VALUES (${orgId}, ${conversationId}, 'outbound', 'queued', ${contentType},
                   ${Buffer.from(kms.encrypt(new TextEncoder().encode(caption)))},
-                  ${kms.blindIndex(caption)}, ${stored.mediaId}, 'api')
+                  ${kms.blindIndex(caption)}, ${stored.mediaId}, 'api', ${authorOf(req)})
           RETURNING id, conversation_id AS "conversationId", status, media_id AS "mediaId"`)
         ) as unknown as Array<{ id: string; conversationId: string; status: string; mediaId: string }>;
         return { row: { ...inserted[0]!, contentType, sizeBytes: stored.sizeBytes } };
@@ -686,10 +698,11 @@ export function messagesRouter(
 
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                               body_enc, body_hmac, sent_by, dnc_override, dnc_override_reason)
+                               body_enc, body_hmac, sent_by, sent_by_user_id,
+                               dnc_override, dnc_override_reason)
           SELECT ${orgIdEarly}, v.id, 'outbound', 'queued', 'text',
                  ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
-                 ${kms.blindIndex(body)}, 'api', ${verdict === 'override'},
+                 ${kms.blindIndex(body)}, 'api', ${authorOf(req)}, ${verdict === 'override'},
                  ${verdict === 'override' ? overrideReason ?? null : null}
           FROM conversation v
           WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}
@@ -765,10 +778,11 @@ export function messagesRouter(
         RETURNING id
       )
       INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                           body_enc, body_hmac, sent_by, dnc_override, dnc_override_reason)
+                           body_enc, body_hmac, sent_by, sent_by_user_id,
+                           dnc_override, dnc_override_reason)
       SELECT ${orgId}, conv.id, 'outbound', 'queued', 'text',
              ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
-             ${kms.blindIndex(body)}, 'api', ${verdict === 'override'},
+             ${kms.blindIndex(body)}, 'api', ${authorOf(req)}, ${verdict === 'override'},
              ${verdict === 'override' ? overrideReason ?? null : null}
       FROM conv
       RETURNING id, conversation_id AS "conversationId", status`);

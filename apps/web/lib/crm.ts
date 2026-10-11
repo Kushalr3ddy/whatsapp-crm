@@ -66,6 +66,8 @@ export interface Message {
   /** True when the ciphertext would not decrypt — usually a changed encryption key. */
   undecryptable: boolean;
   sentBy: string;
+  /** The agent who sent it, when a signed-in person did. Null for an inbound, a campaign or an API key. */
+  sentByName: string | null;
   createdAt: string;
   sentAt: string | null;
   readAt: string | null;
