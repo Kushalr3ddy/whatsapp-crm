@@ -860,6 +860,46 @@ export async function restoreSessions(
 }
 
 /**
+ * Pauses a number's running campaigns and says why. A person resumes them after checking the phone;
+ * nothing resumes on its own, so a relink cannot silently carry on a campaign into a banned number.
+ */
+async function pauseCampaignsFor(ctx: WorkContext, senderId: string, reason: 'ban_suspected'): Promise<number> {
+  const rows = await ctx.db.execute(sql`
+    UPDATE campaign SET status = 'paused', pause_reason = ${reason}, updated_at = now()
+    WHERE sender_identity_id = ${senderId} AND status = 'running'
+    RETURNING id`);
+  return (rows as unknown as unknown[]).length;
+}
+
+/**
+ * A close with code 403: WhatsApp refused this number. Records one critical timeline event (not one per
+ * reconnect attempt: nothing within 30 minutes of the last) that tells the operator to look at the
+ * phone first, and pauses the number's running campaigns.
+ */
+async function suspectBan(
+  ctx: WorkContext, senderId: string, kind: 'forbidden', at: Date, evidence: Record<string, unknown>
+): Promise<void> {
+  const org = (await ctx.db.execute(sql`
+    SELECT org_id AS "orgId" FROM sender_identity WHERE id = ${senderId}`
+  ) as unknown as Array<{ orgId: string }>)[0];
+  if (!org) return;
+  const recent = (await ctx.db.execute(sql`
+    SELECT 1 FROM sender_health_event
+    WHERE sender_identity_id = ${senderId} AND kind = ${`${kind}_suspected`}
+      AND at > now() - interval '30 minutes' LIMIT 1`) as unknown as unknown[]).length > 0;
+  if (recent) return;
+  const paused = await pauseCampaignsFor(ctx, senderId, 'ban_suspected');
+  await recordHealthEvent(ctx.db, {
+    orgId: org.orgId, senderIdentityId: senderId, kind: `${kind}_suspected`, severity: 'critical', at,
+    summary: 'WhatsApp refused this number\'s connection (403), which is the code it uses for bans and '
+      + 'blocks. Open WhatsApp on the phone now and look for an "account banned" or "temporarily banned" '
+      + `notice before doing anything else. ${paused > 0 ? `${String(paused)} running campaign(s) were paused.` : 'No campaign was running.'}`,
+    evidence
+  });
+  ctx.logger.error({ senderId, paused }, 'WhatsApp refused the number (403) — possible ban, campaigns paused');
+}
+
+/**
  * Records a connection state change, and promotes or demotes the sender to match.
  *
  * This is the only writer of `channel_session.connection_state`, which is what the UI reads to
@@ -910,6 +950,12 @@ export async function applyConnectionEvent(
           qr_expires_at = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.qr_expires_at END,
           updated_at = now()`);
 
+  // 403 is the code WhatsApp uses when it refuses a number outright (a ban or a block). It arrives as a
+  // plain close, not a logout, so it needs its own branch: say so loudly and stop the campaigns.
+  if (event.code === 403) {
+    await suspectBan(ctx, event.senderId, 'forbidden', event.at, { code: 403, reason: event.reason });
+  }
+
   if (event.state === 'open') {
     // Promote on first successful connection. Until this existed only the wa:link script set
     // 'active', so a number linked through the API stayed 'linking' forever and POST /messages
@@ -958,6 +1004,7 @@ export async function applyConnectionEvent(
           evidence: { code: event.code ?? null, reason: event.reason }
         });
         ctx.logger.error({ senderId: event.senderId }, 'number logged out by WhatsApp — possible ban');
+        await pauseCampaignsFor(ctx, event.senderId, 'ban_suspected');
       }
     }
   }

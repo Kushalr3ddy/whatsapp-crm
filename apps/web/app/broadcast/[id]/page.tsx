@@ -90,6 +90,14 @@ export default async function CampaignPage(
             </p>
           )}
 
+          {campaign.pauseReason === 'ban_suspected' && campaign.status === 'paused' && (
+            <p role="alert" className="mb-4 notice notice-danger">
+              Paused automatically: WhatsApp refused or logged out the sending number, which can mean a ban.
+              Open WhatsApp on that phone and look for a notice before resuming anything. The Numbers page has
+              the details.
+            </p>
+          )}
+
           {campaign.gateOverrides.length > 0 && (
             <p className="mb-4 notice notice-warning">
               An admin lifted: {campaign.gateOverrides.map((g) => GATE_LABEL[g]?.split(' — ')[0] ?? g).join(', ')}

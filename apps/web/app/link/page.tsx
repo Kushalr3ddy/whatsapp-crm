@@ -103,6 +103,7 @@ function SenderCard({ sender, isAdmin, events }: { sender: Sender; isAdmin: bool
           {sender.connectionState === 'open' ? 'Connected' : sender.connectionState === 'connecting' ? 'Connecting' : 'Not connected'}
         </span>
       </div>
+      <BanSuspicionBanner sender={sender} events={events} />
       <LinkFailureBanner sender={sender} />
       <AdvisoryBanner sender={sender} />
       <RestrictionBanner sender={sender} />
@@ -123,6 +124,37 @@ function SenderCard({ sender, isAdmin, events }: { sender: Sender; isAdmin: bool
         />
       )}
     </li>
+  );
+}
+
+/**
+ * The loudest thing a number can show: WhatsApp refused it (403) or ended its session unasked (401).
+ * We cannot tell a ban from an unlink, only the phone can, so the banner's job is to send the operator
+ * there before they relink, and to say the campaigns were stopped. Shown while the event is recent and
+ * the number has not connected since.
+ */
+function BanSuspicionBanner({ sender, events }: { sender: Sender; events: HealthEvent[] }) {
+  const hit = events.find((e) => e.kind === 'forbidden_suspected' || e.kind === 'hard_ban_suspected');
+  if (!hit) return null;
+  const at = new Date(hit.at).getTime();
+  const connectedSince = sender.connectionState === 'open'
+    && sender.lastConnectedAt !== null && new Date(sender.lastConnectedAt).getTime() > at;
+  if (connectedSince || Date.now() - at > 3 * 24 * 60 * 60 * 1000) return null;
+  const refused = hit.kind === 'forbidden_suspected';
+  return (
+    <div role="alert" className="mt-3 notice notice-danger text-[13px]">
+      <p className="font-semibold">
+        {refused ? 'WhatsApp refused this number' : 'WhatsApp logged this number out'}: check the phone first
+      </p>
+      <ol className="mt-1 list-decimal pl-5">
+        <li>Open WhatsApp on the phone that owns this number. A ban shows as an &ldquo;account banned&rdquo; or
+          &ldquo;temporarily banned&rdquo; notice.</li>
+        <li>If you see one, stop. Do not relink; the notice says how long it lasts and how to appeal.</li>
+        <li>If there is no notice, someone unlinked the device. Then link again, once, from this page.</li>
+      </ol>
+      <p className="mt-1 text-muted">{hit.summary}</p>
+      <p className="mt-1 text-[11px] text-muted">{new Date(hit.at).toLocaleString()}</p>
+    </div>
   );
 }
 
