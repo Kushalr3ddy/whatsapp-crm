@@ -316,6 +316,63 @@ describe('link failures and stale sessions', () => {
   });
 });
 
+describe('a 403 or an unasked logout means a possible ban', () => {
+  const ctxFor = () => ({ db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+    limits: { perMinute: 1000, perDay: 10_000 } });
+
+  /** A running campaign on this number, so there is something to pause. */
+  async function runningCampaign(): Promise<string> {
+    const rows = await db.execute(sql`
+      INSERT INTO campaign (org_id, name, body, sender_identity_id, status)
+      SELECT org_id, 'ban test', 'hi', id, 'running' FROM sender_identity WHERE id = ${senderId}
+      RETURNING id`);
+    return (rows as unknown as Array<{ id: string }>)[0]!.id;
+  }
+  const campaignRow = async (id: string) => (await db.execute(sql`
+    SELECT status, pause_reason AS "reason" FROM campaign WHERE id = ${id}`) as unknown as
+    Array<{ status: string; reason: string | null }>)[0]!;
+  const eventKinds = async () => (await db.execute(sql`
+    SELECT kind FROM sender_health_event WHERE sender_identity_id = ${senderId} ORDER BY at`) as unknown as
+    Array<{ kind: string }>).map((r) => r.kind);
+
+  it('records one critical event that says to check the phone, and pauses running campaigns', async () => {
+    const id = await runningCampaign();
+    await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state) VALUES (${senderId}, 'open')`);
+
+    for (let i = 0; i < 3; i++) {
+      await applyConnectionEvent(ctxFor(), {
+        senderId, state: 'closed', reason: 'forbidden', code: 403, at: new Date()
+      });
+    }
+
+    expect(await eventKinds()).toEqual(['forbidden_suspected']);
+    const camp = await campaignRow(id);
+    expect(camp.status).toBe('paused');
+    expect(camp.reason).toBe('ban_suspected');
+    const ev = (await db.execute(sql`
+      SELECT summary, severity FROM sender_health_event WHERE sender_identity_id = ${senderId}`)
+    ) as unknown as Array<{ summary: string; severity: string }>;
+    expect(ev[0]!.severity).toBe('critical');
+    expect(ev[0]!.summary).toMatch(/Open WhatsApp on the phone/);
+  });
+
+  it('pauses campaigns on a logout nobody asked for, but not on a deliberate unlink', async () => {
+    const id = await runningCampaign();
+    await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, connection_state, unlink_requested_at)
+      VALUES (${senderId}, 'open', now())`);
+    await applyConnectionEvent(ctxFor(), { senderId, state: 'logged_out', reason: 'logged_out', code: 401, at: new Date() });
+    expect((await campaignRow(id)).status).toBe('running');
+
+    await db.execute(sql`UPDATE channel_session SET unlink_requested_at = NULL, connection_state = 'open'
+      WHERE sender_identity_id = ${senderId}`);
+    await applyConnectionEvent(ctxFor(), { senderId, state: 'logged_out', reason: 'logged_out', code: 401, at: new Date() });
+    const camp = await campaignRow(id);
+    expect(camp.status).toBe('paused');
+    expect(camp.reason).toBe('ban_suspected');
+  });
+});
+
 describe('classifyLinkFailure', () => {
   it('maps what WhatsApp and the adapter throw onto an actionable message', () => {
     expect(classifyLinkFailure(new Error('WhatsApp did not issue a QR within the timeout')).code).toBe('qr_timeout');

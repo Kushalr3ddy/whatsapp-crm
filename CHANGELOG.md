@@ -22,6 +22,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 - The UI still has no "start a new conversation" button, so the first message goes via `POST /messages`.
 - **D-21 (mapping wizard) raised to priority.**
 
+### 2026-10-11 — Ban-suspected banner and automatic pause
+- A close with code **403** (WhatsApp refusing the number) now records one critical `forbidden_suspected` event
+  (not repeated within 30 minutes) and **pauses the number's running campaigns** (`pause_reason = ban_suspected`).
+  An unrequested 401 logout pauses them too. Nothing resumes on its own.
+- The Numbers page shows a banner with three steps (open WhatsApp on the phone, look for a ban notice, relink only
+  if there is none), shown until the number has connected again or three days pass. The campaign page says why it
+  was paused. 2 new tests.
+
 ### 2026-10-11 — Link flow fixes and readable link errors (branch `fix/link-flow-and-errors`)
 Found by running the live walkthrough against a real number, which stuck on "waiting for QR" for ten minutes.
 - **Stale credentials:** after a logout from the phone the gateway kept the dead credentials and every re-link
