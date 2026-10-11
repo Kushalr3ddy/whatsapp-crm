@@ -103,17 +103,47 @@ function SenderCard({ sender, isAdmin, events }: { sender: Sender; isAdmin: bool
           {sender.connectionState === 'open' ? 'Connected' : sender.connectionState === 'connecting' ? 'Connecting' : 'Not connected'}
         </span>
       </div>
+      <LinkFailureBanner sender={sender} />
       <AdvisoryBanner sender={sender} />
       <RestrictionBanner sender={sender} />
       <HealthPanel sender={sender} />
       <HealthTimeline events={events} />
       {isAdmin && <EnforcementControl sender={sender} />}
-      <LinkPanel
-        senderId={sender.id}
-        alreadyOpen={sender.connectionState === 'open'}
-        linked={sender.linked}
-      />
+      {sender.provider === 'fake' ? (
+        // The in-memory test channel has nothing to scan. A Link button here once started a real QR
+        // for the wrong card, so a test number is shown without one.
+        <p className="mt-3 text-xs text-muted">
+          Test channel: it never connects to WhatsApp, so there is nothing to link.
+        </p>
+      ) : (
+        <LinkPanel
+          senderId={sender.id}
+          alreadyOpen={sender.connectionState === 'open'}
+          linked={sender.linked}
+        />
+      )}
     </li>
+  );
+}
+
+/**
+ * The last link attempt's failure, summarised: what happened, why it matters, and the next step.
+ * Cleared by the gateway the moment the number connects.
+ */
+function LinkFailureBanner({ sender }: { sender: Sender }) {
+  const e = sender.linkError;
+  if (!e || sender.connectionState === 'open') return null;
+  return (
+    <div role="alert" className="mt-3 notice notice-danger text-[13px]">
+      <p className="font-semibold">{e.title}</p>
+      <p className="mt-0.5">{e.summary}</p>
+      <p className="mt-1 text-muted">{e.hint}</p>
+      <p className="mt-1 text-[11px] text-muted">
+        Code: <code>{e.code}</code>
+        {e.statusCode ? <> · WhatsApp status {e.statusCode}</> : null}
+        {e.at ? <> · {new Date(e.at).toLocaleString()}</> : null}
+      </p>
+    </div>
   );
 }
 

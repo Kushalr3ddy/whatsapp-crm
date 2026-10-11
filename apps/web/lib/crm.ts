@@ -120,8 +120,20 @@ export interface SenderHealth {
   computedAt?: string;
 }
 
+/** Why a link attempt failed, in plain words. Mirrors `link_error` as the API decodes it. */
+export interface LinkError {
+  code: string;
+  title: string;
+  summary: string;
+  hint: string;
+  statusCode?: number | null;
+  at?: string;
+}
+
 /** A WhatsApp number, linked or not. Mirrors `GET /api/v1/senders`. */
 export interface Sender {
+  /** The most recent link failure, or null. Cleared when the number connects. */
+  linkError?: LinkError | null;
   id: string;
   label: string | null;
   provider: string;
@@ -793,7 +805,9 @@ export type LinkChallenge =
 /** The state of a linking attempt. Mirrors `GET /api/v1/senders/:id/link`. */
 export interface LinkState {
   /** `pending` means the gateway has not produced a challenge yet — usually it is not running. */
-  state: 'pending' | 'challenge_ready';
+  state: 'pending' | 'challenge_ready' | 'error';
+  /** Set when `state` is `error`: what failed and what to do about it. */
+  error?: LinkError | null;
   challenge: LinkChallenge | null;
   expiresAt: string | null;
   connectionState: 'open' | 'connecting' | 'closed' | null;
