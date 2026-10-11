@@ -7,6 +7,27 @@
 Interactive version: **[`capacity-calculator.html`](capacity-calculator.html)** — open it in a
 browser, no server needed. Its `ASSUMPTIONS` object holds every coefficient used below.
 
+## Measured on 2026-10-11 (replaces three estimates)
+
+One org, about 90 messages and 80 contacts, one real linked number, measured with `ps` on the dev machine.
+The API and gateway ran under the `tsx` loader, which adds some overhead; a compiled build should be a
+little lower, so treat these as an upper bound for a small install.
+
+| Part | Estimated before | Measured | Calculator now |
+|---|---|---|---|
+| API process | 150 MB | **264 MB** | `apiBase` 230 |
+| Gateway (one linked number) | 110 MB + 45 per number | **338 MB** | `gatewayBase` 290, 45 per number |
+| Web (`next start`) | 170 MB, optional | **170 MB**, **not optional** | always on |
+| Postgres (idle, small DB) | 256 MB | 71 MB | unchanged (it grows with the data) |
+| Disk per message | 1.5 kB | **1.6 kB** | unchanged |
+| Disk per contact (with identities and tags) | 0.6 kB | **5.5 kB** | `kbPerContact` 5.5 |
+
+What changed in the picture: the web UI is a server-rendered Next.js app (server actions, session
+forwarding), so the "static export served by Caddy" lean option no longer exists and the lean preset gains
+~170 MB. The smallest install is three processes (API, gateway, web) plus Postgres, about 1.1 GB before
+headroom: still inside 2 GB, but with much less slack than the original 0.6 GB plan. Per-number RAM is
+still an estimate; it needs a second and third linked number to measure.
+
 ## What actually drives load
 
 In order:

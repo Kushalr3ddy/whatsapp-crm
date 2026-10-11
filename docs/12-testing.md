@@ -127,6 +127,26 @@ A deliberately hostile ingestion fixture is maintained as a first-class asset: m
 formats, `19 Year(s) 0 Month(s)`, lakh/crore salaries, duplicate emails, blank emails, phones
 in five formats, non-UTF8 bytes, 50k rows.
 
+## What runs on every pull request (GitHub Actions)
+
+Four checks appear on a PR. They are the same things `npm run verify` runs locally, split so a failure points
+at one cause. Workflows: `.github/workflows/ci.yml` and `.github/workflows/simulation.yml`.
+
+| Check | Time | What it does | What a failure means |
+|---|---|---|---|
+| **ci / check** | ~2 min | Starts a real Postgres, migrates the test database, runs typecheck (API and web), lint (including the "every function has a comment saying why" rule), the whole vitest suite (unit, contract, integration, the RLS isolation tests), and re-applies the migrations to prove they are idempotent. | The code does not compile, breaks a rule, a behaviour regressed, or a migration is not safe to re-run. |
+| **ci / e2e** | ~2 min | Builds the schema, creates the e2e admin and seeds the test org, starts the API, the gateway on the in-memory fake channel, and the web app, then drives a real Chromium through the browser specs: login and logout, inbox, contacts and tags, import, broadcasts, do-not-contact, numbers, saved audiences, and a message sent end to end. | A screen or flow a person uses is broken, even though the unit tests pass. |
+| **ci / secrets-scan** | ~10 s | Runs gitleaks over the diff for API keys, tokens and private keys. The CI-only throwaway keys are marked `gitleaks:allow`. | A secret was about to be committed. Remove it and rotate it; deleting the commit is not enough. |
+| **simulation / simulate** | ~4 min | Runs nine scenarios (a day-one blast, a warmed long campaign, a reconnect backlog, a reply-ratio spiral, silent restrictions and more) through the real anti-ban engine against a virtual WhatsApp that scores every send and bans when it is misbehaved with. | The engine now sends in a pattern the model would ban, or a restriction goes unnoticed. This is the check that protects the number. |
+
+Notes:
+- All four are required to be green before merge; none of them can touch a real WhatsApp number.
+- The simulation is a *model* of WhatsApp, not WhatsApp. Passing it does not prove the thresholds are right on
+  the real service; only the real-number pilot does (D-34).
+- Locally, `npm run verify` runs the same stages plus a scripted no-send flow (see
+  [`24 · Local testing`](24-local-testing.md)). `npm run test:live` is the only thing that uses a real number
+  and it is never part of CI.
+
 ## Gates
 
 | Stage | Must pass |
