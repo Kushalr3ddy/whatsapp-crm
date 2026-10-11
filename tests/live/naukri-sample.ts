@@ -13,16 +13,16 @@ interface Row { name: string; phone: string; email: string; exp: string; ctc: st
  * way those files are: extra columns we ignore, phones in several
  * formats (a bare number, `+91 98…`, `0` prefix, a number stored as a spreadsheet *number*), a
  * blank row, and a duplicate. The `recipients` are the operator's own numbers; the filler rows use
- * a reserved-looking 90000 000xx range and are never messaged.
+ * +1 202 555 0100..0199 numbers, which are reserved for fiction and can never belong to a person.
  */
 export async function writeNaukriSample(recipients: Array<{ name: string; phone: string }>): Promise<string> {
   const filler: Row[] = Array.from({ length: 12 }, (_, i) => ({
     name: `Sample Candidate ${String(i + 1).padStart(2, '0')}`,
     phone: [
-      `90000${String(10000 + i)}`,           // bare 10 digits
-      `+91 90000 ${String(20000 + i)}`,      // spaced, with country code
-      `090000${String(30000 + i)}`,          // trunk-prefixed
-      `+91-90000-${String(40000 + i)}`       // dashed
+      `+1202555${String(176 + i).padStart(4, '0')}`,          // compact
+      `+1 202 555 ${String(176 + i).padStart(4, '0')}`,       // spaced
+      `+1 (202) 555-${String(176 + i).padStart(4, '0')}`,      // brackets
+      `+1-202-555-${String(176 + i).padStart(4, '0')}`         // dashed
     ][i % 4]!,
     email: `sample${String(i + 1)}@example.test`,
     exp: `${String(1 + (i % 9))} Years`, ctc: `${String(3 + (i % 12))} Lacs`,
@@ -41,7 +41,7 @@ export async function writeNaukriSample(recipients: Array<{ name: string; phone:
   // One filler row unique to this run: the importer refuses identical bytes twice, so a re-run
   // of the demo would otherwise be rejected as "already imported".
   const unique = String(Date.now()).slice(-6);
-  ws.addRow([`Run ${unique} Candidate`, `+91 9000 ${unique.slice(0, 3)} ${unique.slice(3)}`, `run${unique}@example.test`, '2 Years', '4 Lacs', 'Pune']);
+  ws.addRow([`Run ${unique} Candidate`, `+1 202 555 ${String(188 + (Number(unique) % 10)).padStart(4, '0')}`, `run${unique}@example.test`, '2 Years', '4 Lacs', 'Pune']);
   ws.addRow([]);
   ws.addRow([own[0]?.name ?? 'Duplicate', own[0]?.phone ?? '', 'dup@example.test', '5 Years', '12 Lacs', 'Bengaluru']);
 

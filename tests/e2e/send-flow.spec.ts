@@ -35,12 +35,15 @@ test.describe('sending, end to end on the fake number', () => {
       'needs the seeded number connected: run the gateway with GATEWAY_CHANNEL=fake after `npm run local:seed`');
 
     // One brand-new contact, so the duplicate-campaign / cooldown gates have no history to block on.
-    const phone = `+91987${String(Date.now()).slice(-7)}`;
+    const phone = `+1202555${String(180 + (Date.now() % 20)).padStart(4, '0')}`;
     const made = await page.request.post(`${API}/contacts`, {
       headers, data: { displayName: 'E2E Send Person', phone }
     });
-    expect(made.status()).toBe(201);
-    const contactId = (await json<{ id: string }>(made)).id;
+    // The fiction range is small, so a re-run can land on a number already used: reuse that contact.
+    expect([201, 409]).toContain(made.status());
+    const contactId = made.status() === 201
+      ? (await json<{ id: string }>(made)).id
+      : ((await made.json()) as { existingContactId: string }).existingContactId;
 
     const campaign = await json<{ id: string }>(await page.request.post(`${API}/campaigns`, {
       headers, data: {

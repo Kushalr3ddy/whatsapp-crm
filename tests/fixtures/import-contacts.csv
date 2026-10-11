@@ -1,30 +1,30 @@
 Full Name,Mobile,Email,City
-Aarav Test01,9876560001,aarav1@example.test,Pune
-Vivaan Test02,+91 98765 60002,vivaan2@example.test,Mumbai
-Aditya Test03,09876560003,aditya3@example.test,Delhi
-Diya Test04,+919876560004,diya4@example.test,Chennai
-Ananya Test05,9876560005,ananya5@example.test,Bengaluru
-Ishaan Test06,9876560006,ishaan6@example.test,Pune
-Kavya Test07,+91 98765 60007,kavya7@example.test,Mumbai
-Rohan Test08,09876560008,rohan8@example.test,Delhi
-Meera Test09,+919876560009,meera9@example.test,Chennai
-Arjun Test10,9876560010,arjun10@example.test,Bengaluru
-Sana Test11,9876560011,sana11@example.test,Pune
-Kabir Test12,+91 98765 60012,kabir12@example.test,Mumbai
-Riya Test13,09876560013,riya13@example.test,Delhi
-Neel Test14,+919876560014,neel14@example.test,Chennai
-Tara Test15,9876560015,tara15@example.test,Bengaluru
-Dev Test16,9876560016,dev16@example.test,Pune
-Isha Test17,+91 98765 60017,isha17@example.test,Mumbai
-Yash Test18,09876560018,yash18@example.test,Delhi
-Nisha Test19,+919876560019,nisha19@example.test,Chennai
-Om Test20,9876560020,om20@example.test,Bengaluru
-Zoya Test21,9876560021,zoya21@example.test,Pune
-Vir Test22,+91 98765 60022,vir22@example.test,Mumbai
-Lata Test23,09876560023,lata23@example.test,Delhi
-Mohan Test24,+919876560024,mohan24@example.test,Chennai
-Pooja Test25,9876560025,pooja25@example.test,Bengaluru
-Aarav Duplicate,9876560001,aarav-dup@example.test,Pune
+Aarav Test01,+1 202 555 0151,aarav1@example.test,Pune
+Vivaan Test02,+1 (202) 555-0152,vivaan2@example.test,Mumbai
+Aditya Test03,+1-202-555-0153,aditya3@example.test,Delhi
+Diya Test04,+12025550154,diya4@example.test,Chennai
+Ananya Test05,+1 202 555 0155,ananya5@example.test,Bengaluru
+Ishaan Test06,+1 (202) 555-0156,ishaan6@example.test,Pune
+Kavya Test07,+1-202-555-0157,kavya7@example.test,Mumbai
+Rohan Test08,+12025550158,rohan8@example.test,Delhi
+Meera Test09,+1 202 555 0159,meera9@example.test,Chennai
+Arjun Test10,+1 (202) 555-0160,arjun10@example.test,Bengaluru
+Sana Test11,+1-202-555-0161,sana11@example.test,Pune
+Kabir Test12,+12025550162,kabir12@example.test,Mumbai
+Riya Test13,+1 202 555 0163,riya13@example.test,Delhi
+Neel Test14,+1 (202) 555-0164,neel14@example.test,Chennai
+Tara Test15,+1-202-555-0165,tara15@example.test,Bengaluru
+Dev Test16,+12025550166,dev16@example.test,Pune
+Isha Test17,+1 202 555 0167,isha17@example.test,Mumbai
+Yash Test18,+1 (202) 555-0168,yash18@example.test,Delhi
+Nisha Test19,+1-202-555-0169,nisha19@example.test,Chennai
+Om Test20,+12025550170,om20@example.test,Bengaluru
+Zoya Test21,+1 202 555 0171,zoya21@example.test,Pune
+Vir Test22,+1 (202) 555-0172,vir22@example.test,Mumbai
+Lata Test23,+1-202-555-0173,lata23@example.test,Delhi
+Mohan Test24,+12025550174,mohan24@example.test,Chennai
+Pooja Test25,+1 202 555 0175,pooja25@example.test,Bengaluru
+Aarav Duplicate,+1 202 555 0151,aarav-dup@example.test,Pune
 No Number,not-a-number,nonumber@example.test,Delhi
 Blank Phone,,blank@example.test,Mumbai
 Landline Lal,02212345678,landline@example.test,Mumbai

@@ -434,6 +434,16 @@ Sign in at `localhost:3001/login` as the test admin, with the seed in place.
 
 ---
 
+## Test phone numbers: never invent real-looking ones
+
+Anything that runs against the dev stack (the browser specs, `local:seed`, `local:flow`, the sample
+Naukri workbook) uses only **+1 202 555 0100 to 0199**. Those numbers are reserved for fiction and can
+never belong to a person, so a stray campaign or a linked real gateway cannot message a stranger. The
+only real numbers anywhere are your own, read from `.env` (`LIVE_SEND_TO`, `LIVE_BROADCAST_TO`). Do not
+use made-up Indian mobile numbers: they are valid-looking and may belong to someone.
+
+---
+
 ## The live walkthrough (visible browser, real messages)
 
 One Chromium window you can watch, driving the whole product against a **real** linked number:

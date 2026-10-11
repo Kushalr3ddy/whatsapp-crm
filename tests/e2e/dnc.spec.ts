@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signIn, CREDS_MISSING } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
-const PHONE = '+919876599902';
+const PHONE = '+12025550102';
 const NAME = 'E2E DNC Person';
 
 /** Flagging a contact do-not-contact from the Contacts page, and clearing it again. */

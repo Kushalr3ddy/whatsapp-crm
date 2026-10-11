@@ -72,12 +72,12 @@ async function main(): Promise<void> {
   });
   const sender = (await db.execute(sql`
     INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-    VALUES (${org.orgId}, 'fake', 'Demo number', '+919000000099', 'active', now() - interval '30 days')
+    VALUES (${org.orgId}, 'fake', 'Demo number', '+12025550198', 'active', now() - interval '30 days')
     RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
   await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state)
     VALUES (${sender}, 'open')`);
   const provider = new FakeChannelProvider();
-  await provider.connect({ id: sender, phoneE164: '+919000000099' });
+  await provider.connect({ id: sender, phoneE164: '+12025550198' });
   say(`✓ org "${SLUG}", admin ${EMAIL}, and a fake connected number`);
 
   // ── the real API, on a free local port ──────────────────────────────────────────────────
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   const ids: string[] = [];
   for (const [i, name] of PEOPLE.entries()) {
     const c = await api<{ id: string }>('POST', '/contacts', {
-      displayName: name, phone: `+9198765000${String(10 + i)}`
+      displayName: name, phone: `+1202555${String(140 + i).padStart(4, '0')}`
     });
     ids.push(c.id);
   }

@@ -4,7 +4,7 @@ import { signIn, nav, CREDS_MISSING } from './helpers';
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
 const TAG = 'e2e-flow';
-const PHONE = '+919876599901';
+const PHONE = '+12025550101';
 
 /**
  * Sign in → create a broadcast in the UI → start it → see it running → cancel it.
@@ -86,7 +86,7 @@ test.describe('the broadcast flow, in the browser', () => {
     }
     const tagId = ((await (await page.request.post(`${API}/tags`, { headers, data: { name: tagName } })).json()) as
       { data: { id: string } }).data.id;
-    for (const phone of ['+919876599911', '+919876599912']) {
+    for (const phone of ['+12025550111', '+12025550112']) {
       const made = await page.request.post(`${API}/contacts`, { headers, data: { displayName: `Aud ${phone}`, phone } });
       const id = made.status() === 201
         ? ((await made.json()) as { data: { id: string } }).data.id
