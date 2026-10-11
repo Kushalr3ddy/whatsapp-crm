@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# One command to prove the project works: static checks, unit + integration tests, the anti-ban
+# simulation, a scripted no-real-send flow, and the browser suite against a throwaway fake-channel stack.
+#
+#   npm run verify              everything (about 10 minutes)
+#   npm run verify -- --fast    typecheck, lint and vitest only (about 90 seconds)
+#   npm run verify -- --no-sim  skip the 4-minute anti-ban simulation
+#   npm run verify -- --no-e2e  skip the browser suite and the scripted flow
+#
+# Safety: the browser stage starts its OWN stack with GATEWAY_CHANNEL=fake, so nothing can reach
+# WhatsApp. It refuses to run if something already listens on :3000 or :3001 (that could be a real
+# gateway), so stop `npm run dev:all` first.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+FAST=0; SIM=1; E2E=1
+for a in "$@"; do
+  case "$a" in
+    --fast) FAST=1; SIM=0; E2E=0 ;;
+    --no-sim) SIM=0 ;;
+    --no-e2e) E2E=0 ;;
+    -h|--help) sed -n 2,16p "$0"; exit 0 ;;
+    *) echo "unknown option: $a"; exit 2 ;;
+  esac
+done
+
+LOG_DIR="${TMPDIR:-/tmp}/crm-verify-$(date +%H%M%S)"; mkdir -p "$LOG_DIR"
+declare -a NAMES STATUS TIMES
+STACK_PID=""
+
+now() { date +%s; }
+
+# Runs one stage, records pass/fail and how long it took; output goes to a per-stage log.
+stage() {
+  local name="$1"; shift
+  local log="$LOG_DIR/$(echo "$name" | tr ' /' '__').log"
+  printf '▶ %-34s' "$name"
+  local t0; t0=$(now)
+  if "$@" >"$log" 2>&1; then
+    local dt=$(( $(now) - t0 )); NAMES+=("$name"); STATUS+=("PASS"); TIMES+=("$dt")
+    printf 'PASS  (%ss)\n' "$dt"
+    return 0
+  fi
+  local dt=$(( $(now) - t0 )); NAMES+=("$name"); STATUS+=("FAIL"); TIMES+=("$dt")
+  printf 'FAIL  (%ss)  → %s\n' "$dt" "$log"
+  tail -n 15 "$log" | sed 's/^/      /'
+  return 1
+}
+
+skip() { NAMES+=("$1"); STATUS+=("skip"); TIMES+=("-"); printf '▷ %-34sskipped\n' "$1"; }
+
+stop_stack() {
+  # dev-up.sh traps the interrupt and shuts the API, gateway and web down in order. Match it by
+  # name rather than by pid: `setsid` may fork, so the pid we hold is not always the script's.
+  [ -n "$STACK_PID" ] || return 0
+  pkill -INT -f "infra/scripts/dev-up.sh" 2>/dev/null || true
+  sleep 8
+  pkill -TERM -f "tsx watch.*apps/(api|gateway)/src" 2>/dev/null || true
+  pkill -TERM -f "next dev apps/web" 2>/dev/null || true
+  STACK_PID=""
+}
+trap stop_stack EXIT
+
+port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+
+wait_up() {
+  local i; for i in $(seq 1 90); do
+    curl -sf localhost:3000/ready >/dev/null 2>&1 && curl -sf localhost:3001/login >/dev/null 2>&1 && return 0
+    sleep 2
+  done; return 1
+}
+
+echo "crm verify — logs in $LOG_DIR"
+echo
+
+# ── 1 · static + unit + integration ────────────────────────────────────────────────────────
+stage "database migrations (twice)" bash -c 'npm run db:migrate:all && npm run db:migrate:all'
+stage "typecheck + lint + vitest" npm run check
+stage "web typecheck" npm run typecheck:web
+
+# ── 2 · anti-ban simulation ───────────────────────────────────────────────────────────────
+if [ "$SIM" = 1 ]; then stage "anti-ban simulation" npm run test:sim; else skip "anti-ban simulation"; fi
+
+# ── 3 · the stack: scripted flow, then the browser suite ──────────────────────────────────
+if [ "$E2E" = 1 ]; then
+  if port_busy 3000 || port_busy 3001; then
+    echo "✗ something is already listening on :3000 or :3001 (possibly a real gateway)."
+    echo "  Stop it (Ctrl-C the dev:all terminal) and run again; not starting a second stack."
+    NAMES+=("browser suite"); STATUS+=("FAIL"); TIMES+=("-")
+  else
+    stage "scripted flow (no real send)" npm run local:flow
+    echo "  starting a throwaway fake-channel stack…"
+    GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 SEND_CIRCADIAN=false SEND_RECIPIENT_TIMEZONE=false \
+      SEND_TYPING_SIMULATION=false SEND_BACKGROUND_ENTROPY=false SIGNUP_ENABLED=true \
+      setsid npm run dev:all >"$LOG_DIR/stack.log" 2>&1 &
+    STACK_PID=$!
+    if wait_up; then
+      stage "seed test org" npm run local:seed
+      stage "browser suite (playwright)" npm run test:e2e
+    else
+      NAMES+=("browser suite"); STATUS+=("FAIL"); TIMES+=("-")
+      echo "✗ the stack did not come up; see $LOG_DIR/stack.log"
+    fi
+    stop_stack
+  fi
+else
+  skip "scripted flow (no real send)"; skip "browser suite (playwright)"
+fi
+
+# ── summary ───────────────────────────────────────────────────────────────────────────────
+echo
+echo "┌──────────────────────────────────────────────────────────────┐"
+FAILED=0
+for i in "${!NAMES[@]}"; do
+  mark="✓"; [ "${STATUS[$i]}" = "FAIL" ] && { mark="✗"; FAILED=1; }; [ "${STATUS[$i]}" = "skip" ] && mark="·"
+  printf '│ %s %-36s %-5s %8s │\n' "$mark" "${NAMES[$i]}" "${STATUS[$i]}" "${TIMES[$i]}s"
+done
+echo "└──────────────────────────────────────────────────────────────┘"
+if [ "$FAILED" = 0 ]; then echo "ALL GOOD"; else echo "FAILED — logs: $LOG_DIR"; fi
+exit "$FAILED"

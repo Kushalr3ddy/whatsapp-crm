@@ -22,6 +22,11 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 - The UI still has no "start a new conversation" button, so the first message goes via `POST /messages`.
 - **D-21 (mapping wizard) raised to priority.**
 
+### 2026-10-11 — `npm run verify`
+- One command (`scripts/verify.sh`) that runs migrations twice, typecheck + lint + vitest, the web typecheck, the
+  anti-ban simulation, the scripted flow and the browser suite against its own fake-channel stack, then prints a
+  table. `--fast`, `--no-sim`, `--no-e2e`. Refuses to start if :3000 or :3001 is in use. Full run: about 12 minutes.
+
 ### 2026-10-10 — UI test suite and the fake gateway (branch `test/ui-suite-and-fake-gateway`)
 - **`npm run local:seed`** (`scripts/local-seed.ts`): into the `e2e-test` org, a fake connected number, 20 contacts,
   3 tags, a custom field, 3 conversations (unread · assigned · closed) and a saved audience. Fixed names,

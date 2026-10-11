@@ -434,6 +434,34 @@ Sign in at `localhost:3001/login` as the test admin, with the seed in place.
 
 ---
 
+## One command: `npm run verify`
+
+Runs everything that does not need a real WhatsApp number, prints a pass/fail table and exits non-zero if
+anything failed.
+
+```bash
+npm run verify              # everything, about 12 minutes
+npm run verify -- --fast    # typecheck, lint and vitest only, about 90 seconds
+npm run verify -- --no-sim  # skip the 7-minute anti-ban simulation, about 4 minutes
+npm run verify -- --no-e2e  # skip the scripted flow and the browser suite
+```
+
+| Stage | What it proves |
+|---|---|
+| database migrations (twice) | migrations apply, and re-applying is a no-op |
+| typecheck + lint + vitest | the code compiles, follows the rules, and the 600+ unit and integration tests pass |
+| web typecheck | the Next.js app compiles |
+| anti-ban simulation | the engine survives nine scenarios against a virtual WhatsApp |
+| scripted flow | login, contacts, broadcast, a fake number "sends" (`local:flow`) |
+| seed test org | `local:seed` is idempotent |
+| browser suite | every Playwright spec, against a throwaway fake-channel stack |
+
+It starts its own stack with `GATEWAY_CHANNEL=fake`, so **nothing can reach WhatsApp**, and it refuses to run
+if something is already listening on :3000 or :3001 (that could be a real gateway). Stop `dev:all` first.
+The live walkthrough with your real number is separate: `npm run test:live` (see below).
+
+---
+
 ## Test phone numbers: never invent real-looking ones
 
 Anything that runs against the dev stack (the browser specs, `local:seed`, `local:flow`, the sample
