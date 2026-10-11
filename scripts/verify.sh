@@ -92,6 +92,7 @@ if [ "$E2E" = 1 ]; then
     echo "  starting a throwaway fake-channel stack…"
     GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 SEND_CIRCADIAN=false SEND_RECIPIENT_TIMEZONE=false \
       SEND_TYPING_SIMULATION=false SEND_BACKGROUND_ENTROPY=false SIGNUP_ENABLED=true \
+      NEW_CONTACTS_PER_HOUR=100 NEW_CONTACTS_PER_DAY=500 NEW_CONTACT_REPLY_FLOOR=false \
       setsid npm run dev:all >"$LOG_DIR/stack.log" 2>&1 &
     STACK_PID=$!
     if wait_up; then

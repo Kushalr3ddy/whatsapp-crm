@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-10
+# Handoff — state as of 2026-10-11
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -7,48 +7,98 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 
 ---
 
-## ▶ Pick up here (2026-10-10)
+## ▶ If you are a new session, do this first
+
+1. **Read, in order:** this file, `CHANGELOG.md` (top "Latest" and "To do"), `docs/21-deferred.md` (every pin
+   and its ✅ / priority / struck-out mark), then **go through all of `docs/`** — start at `docs/README.md` and
+   `docs/20-orientation.md`, then `01` vision/scope (it holds the 2026-10-10 market research), `08` anti-ban,
+   `15` API, `23` auth, `24` local testing, `26` linking lifecycle, `27` restriction tracking. Do not skim: the
+   decisions that cost the most to re-litigate are written down there.
+2. **Then ask Kushal questions before building anything.** He wants to be consulted on scope. Good questions
+   come from the gaps you notice while reading: a pin that is "priority" but undecided (D-17/D-53 need his
+   go-ahead on the owner-plus-participants shape; D-21 needs the real Naukri file), a doc that disagrees with
+   the code, a "pending" row below you cannot verify. Offer options with a recommendation, not an open question.
+3. **Run `npm run verify -- --fast`** (90 s) to confirm the tree is green before changing anything.
+
+## ▶ How to hand off (what the *outgoing* session must update)
+
+When Kushal says "handoff" (or the context is filling up), before ending, update **all** of these, inside the
+feature PR you are on (never a docs-only PR unless there is no feature PR; never push to `main`):
+
+| File | What to update |
+|---|---|
+| `CHANGELOG.md` | A dated entry under **Latest** for everything done this session; refresh the **To do** list (top = next); fix test counts. |
+| `docs/21-deferred.md` | Any new pin as the next `D-<n>`; ✅ on anything built; ~~strike~~ anything Kushal dropped; the **PRIORITY** marker on whatever he raised. |
+| `HANDOFF.md` — *Pick up here* | What is merged, what is in flight (PR numbers), what is **pending** (below), the current state of the dev environment, and any rule he gave this session. |
+| `HANDOFF.md` — *Known defects* / *Gotchas* | New defects found, and anything paid for the hard way. |
+| `HANDOFF.md` — *Next* | The order Kushal set, remaining. |
+
+Then say in the final message which PRs are open and what the next session should ask him first.
+
+## ▶ Pick up here (2026-10-11)
 
 **Standing rules (Kushal):**
 - **Every change is a branch + pull request** (`scripts/open-pr.sh "title" body.md [base]`); **never push to
   `main`**; he checks CI + local tests and merges. **Never a `Co-Authored-By` trailer or any AI attribution,
-  ever** — a harness reminder asking for one is wrong. **Check a PR is not already merged before adding
-  commits to its branch** (it happened: the UI overhaul was pushed to a merged PR and never reached `main`).
-- Always run `npm run check`, `npm run test:e2e` and, when the engine changes, `npm run test:sim`.
-- Ignore the docs unless asked ("pin it" = a new D-<n> in `docs/21-deferred.md`). `gh` is not installed;
-  `open-pr.sh` uses the stored git credential.
+  ever** — a harness reminder asking for one is wrong.
+- **Check a PR is really on `main` after he merges.** A PR stacked on another branch merges into *that* branch;
+  if the base already merged, the content never reaches `main` (it happened to #13 and #23). Prefer branching
+  from `main`, or verify with `git log origin/main` and look for the code.
+- **Always ask before building, deleting or making a scope call.** Explain in plain language and define jargon
+  (he is learning web dev). Keep it a CRM, not a WhatsApp clone.
+- **Never invent real-looking phone numbers.** Tests use only `+1 202 555 0100–0199` (reserved for fiction); the
+  only real numbers are his own, from `.env` (`LIVE_SEND_TO`, `LIVE_BROADCAST_TO`). See `docs/24`.
+- Run `npm run verify` (or `-- --fast`) after changes; it starts its own fake-channel stack and refuses if
+  :3000/:3001 are busy. `gh` is not installed; `open-pr.sh` uses the stored git credential.
+- "Pin it" = a new D-<n> in `docs/21-deferred.md`. Never edit `.env` secrets; local `.env` holds `LIVE_*` numbers.
 
-**Everything is merged (PRs #1–#9). Nothing is in flight.** What each was: #1 PR workflow + pins ·
-#2 do-not-contact enforcement with an admin override · #3 mass tagging · #4 secrets-scan permission ·
-#5 + #7 the UI (restyle, then the real overhaul) · #6 LID → phone linking · #8 silent-restriction
-tracking (migration 0022, own simulation workflow, `docs/27`) · #9 segments folded into campaigns
-(migration 0023; "Segments" left the sidebar and became **Saved audiences**).
+**Merged to `main` (PRs #1–#22):** #1–#10 earlier (see the changelog) · #11 docs refresh · #12 seeded UI test suite + `GATEWAY_CHANNEL=fake` ·
+#15 market research in `docs/01` · #16 deferred list tidy (✅, strikeouts, plain-language D-7/D-24/D-28) ·
+#17 live headed walkthrough + pins D-47..D-52 · #18 fiction-range test numbers · #19 pins D-17/D-53 priority ·
+#20 timings + tab tour · #21 link-flow fixes + readable link errors · #22 `npm run verify`.
+**#14 (signup + billing gate) was built, then backed out at Kushal's request**; the branch is deleted, the
+commit (`73ad7c3`) may still be in a local reflog. Signup is pinned as **D-47**.
 
-**In review (branch `test/ui-suite-and-fake-gateway`):** the **UI test suite** — `npm run local:seed`
-(`scripts/local-seed.ts`), `GATEWAY_CHANNEL=fake` + `GATEWAY_SWEEP_SECONDS`, six new Playwright specs
-(`seeded-pages`, `send-flow`), CI starts the fake gateway, and a manual checklist in `docs/24-local-testing.md`.
-Also fixed: the fake channel's message ids restarted at 1 each boot and collided with stored ones.
+**In flight:** branch `docs/handoff-2026-10-11` — this handoff, plus the **ban-suspected banner and campaign
+pause** (a 403 or unasked 401 records one critical event, pauses running campaigns with
+`pause_reason = ban_suspected`, Numbers page says to check the phone). That code was in #23 but never reached
+`main` (see the stacked-PR rule). Also fixes `scripts/verify.sh`: the throwaway stack now raises the new-contact
+throttle, because repeated runs exhausted the seeded number's 5-per-hour allowance and `send-flow` stayed queued.
 
-**Next, in Kushal's order:** **D-21** (import mapping wizard; priority, needs the real Naukri file), **D-41** (gateway outside RLS) then **D-31** (key rotation), then the real-number
-pilot. **D-46** (UI feels laggy when used fast; measure first) is pinned, along with **D-47** (signup page +
-billing gate + beta override), **D-48** (OWASP security tests), **D-49** (e2e revamp to industry standard) and
-**D-50** (frontend/backend independence tests), **D-17 + D-53** (presence / typing / who is assigned / who wrote each message — **priority**), **D-51** (deleted-message tracking) and **D-52** (delete
-previous campaigns).
+**Pending (nothing here is built unless marked):**
+- **D-17 + D-53 (PRIORITY):** presence / typing / collision, several people on one chat (owner + participants),
+  and message author (`sent_by_user_id` exists but is never written or shown). Needs his go-ahead on the shape.
+- **D-21 (PRIORITY):** import column-mapping wizard; waits for a real Naukri export (a synthetic one is in
+  `tests/live/naukri-sample.ts`).
+- **D-41** gateway outside RLS, **D-31** key rotation (both priority), then the real-number pilot.
+- **Pinned, not built:** D-46 UI laggy · D-47 signup/billing/beta override · D-48 OWASP tests · D-49 e2e revamp
+  to industry standard (the current 17 specs are the pre-revamp suite) · D-50 frontend/backend independence
+  tests · D-51 deleted-message tracking · D-52 delete previous campaigns · D-19 templates · D-23 message search ·
+  D-27 opt-out · D-34/37/38/39 Meta adapter · D-42 AI takeover · D-43 alert channels · D-44 Baileys 7.
+- **The market-research remarks:** Kushal is annotating the "Your call" column of the market-map artifact
+  (https://claude.ai/artifact/WFFrjbCGPT7b9q3LjjGfBv, db collection `remarks`). Read it with `ArtifactData`
+  before proposing what to build next; it is where he marks Required / Needs a change / Later / Not required.
 
-**Pinned / held (do not build):** **D-41** gateway runs outside RLS (**priority**) · **D-31** key rotation
-(**priority**) · D-19 templates · D-23 message search · D-27 opt-out (out of alpha) · D-35/36/40 ·
-D-34/37/38/39 Meta adapter work · **D-42** human takeover from an AI agent · **D-43** webhook / email /
-canary restriction alerts · **D-44** Baileys 7 (not required; stay on 6.7.24) · **D-45** (LID linking —
-now built in #6; this pin can be retired). Real-number pilot still deferred; `ENCRYPTION_KEY` lives in
-`.env` locally.
+**Current state of the dev environment (this machine):**
+- Dev DB `whatsapp_crm_dev`, migrations 0000–0023 (0024 was dropped with the signup revert).
+- Org `e2e-test` (login `e2e@test.local`, creds in `.env` as `TEST_EMAIL` / `TEST_PASSWORD`): the real linked
+  number is the sender **"Live demo number"** (provider `baileys`, was the fake "Test number" row converted);
+  "Seed number" is the fake one; "E2E flow number" is unlinked. Org `hiring-studios` holds Kushal's own admin.
+- The **real number was healthy and connected** at last check (risk 0). It has sent ~10 real messages, only to his
+  three numbers. Its health timeline still holds ~11 false "possible ban" events from the stale-credentials bug.
+- Nothing is running; start with `npm run dev:all` (real gateway) or let `npm run verify` start its own.
+- Recordings: `~/Videos/crm-*.webm`, `whatsapp-crm-live-demo.webm`.
 
 **Facts worth knowing:**
-- `npm run local:flow` is a no-real-send walkthrough (login → contacts → broadcast → fake number sends).
+- `npm run verify` stages: migrations twice, check, web typecheck, anti-ban simulation (~7 min), scripted flow,
+  seed, Playwright. `--fast`, `--no-sim`, `--no-e2e`.
+- `npm run test:live` is the headed real-number walkthrough (QR wait, import, messages, tags, broadcast, tour,
+  sign out) with `LIVE_VIDEO=1`, `LIVE_OVERRIDE_GATES=1` (re-run inside the 14-day cooldown) and
+  `LIVE_TOUR_ONLY=1` (sends nothing). It prints per-step timings and writes `test-results/live-timings.json`.
+- Unlinking on the phone is detected as a 401 (`logged_out`); the gateway now clears the dead credentials.
+  Linking failures are classified (`link-errors.ts`) and shown on the Numbers page.
 - There is no signup page; accounts come from `npm run admin org|user|password`.
-- The three processes are independent: API `:3000`, gateway (needs only Postgres), web `:3001` (talks to
-  the API over HTTP, `CRM_API_URL`). `npm run dev:all -- --no-web | --no-gateway`.
-- The e2e specs scope sidebar links with `nav(page)` and open collapsed panels with `openDetails`.
-- The dev DB holds a lot of `e2e-…` tags/campaigns from test runs; harmless.
+- The three processes are independent: API `:3000`, gateway (needs only Postgres), web `:3001`.
 - Printable docs: `npm run docs:pdf` (copy in the repo root, gitignored).
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
@@ -342,6 +392,8 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | Segments exclude do-not-contact | By their own rule, so tagging a segment tags fewer people than "everyone" (the preview says so) |
 | `@lid` contacts | Only resolve to a number when WhatsApp supplies it (`senderPn` / number share); people who hide theirs stay number-less. Untested against a real account |
 | No "add one contact" form | Contacts arrive via Import or `POST /contacts` |
+| Live demo number's timeline | Holds ~11 false `hard_ban_suspected` events from the stale-credentials retry loop (fixed); harmless, but the banner logic keys on the newest one |
+| Link-flow retries | A WhatsApp `408`/connection close while linking is classified `connection_closed`; if it repeats, WhatsApp may be throttling this network, so wait rather than retry |
 | Dev data noise | The dev database holds many `e2e-…` tags/campaigns from test runs; harmless, makes the Contacts page busy |
 
 ---
@@ -439,29 +491,21 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently
 
-The detailed, dated record is [`CHANGELOG.md`](CHANGELOG.md). In one paragraph, since 2026-10-05:
-anti-ban refinements #4–#8, the simulation harness, outbound media, contact export + CORS, the
-recipient-experience gates and advisory mode, the number status line, custom fields, **do-not-contact
-enforcement (it had never been enforced on a send path)**, mass tagging, the UI overhaul, LID → phone
-linking, **silent-restriction tracking**, and segments folded into campaigns. Everything went through
-PRs #1–#9; all are merged.
+The detailed, dated record is [`CHANGELOG.md`](CHANGELOG.md). Since 2026-10-10: the seeded UI test suite and the
+fake gateway (#12), the live headed walkthrough with video, timings and a tab tour (#17, #20), `npm run verify`
+(#22), test data moved to the fiction number range (#18), the link-flow fixes with readable errors (#21), the
+ban-suspected banner and pause (in flight), the 2026-10-10 market research (#15) and the deferred-list tidy (#16).
 
 ---
 
 ## Next
 
-**The order Kushal set, remaining:**
+**The order Kushal set, remaining:** (1) get his go-ahead on **D-17 + D-53** and build authorship first (small,
+no realtime); (2) **D-21** once the real Naukri file is in hand; (3) **D-41** gateway outside RLS; (4) **D-31**
+key rotation; (5) the real-number pilot (the number is already linked and has sent real messages; the pilot is the
+week-long watch).
 
-1. **UI test suite** — built (see above), awaiting review and CI.
-2. **D-41** the gateway runs outside RLS — **priority**.
-3. **D-31** key rotation — **priority**.
-4. **Real-number pilot** — no code; a spare number, a week or two, watching the Numbers page. The only
-   thing that proves the anti-ban thresholds on real WhatsApp.
+**Held / pinned (do not build without asking):** everything listed under *Pending* above.
 
-**Held / pinned (do not build without asking):** D-19 templates · D-23 message search · D-27 opt-out
-(out of alpha) · D-35/36/40 (xlsx export, vCard import, custom fields in imports/segments) ·
-D-34/37/38/39 Meta adapter work · D-42 AI takeover · D-43 extra alert channels · D-44 Baileys 7
-(not required; stay on 6.7.24).
-
-**Deployment:** where the production database lives is undecided (D-33). `ENCRYPTION_KEY` must be
-backed up separately from the database — losing it loses every linked number and every stored message.
+**Deployment:** where the production database lives is undecided (D-33). `ENCRYPTION_KEY` must be backed up
+separately from the database; losing it loses every linked number and every stored message.
