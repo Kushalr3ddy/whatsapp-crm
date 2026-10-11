@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
-  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addNote,
+  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addParticipant, removeParticipant, addNote,
   uploadImport, runImportMapping, queueAttachment, getSenderStatus, CrmApiError
 } from '@/lib/crm';
 import type { SenderStatus, LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
@@ -101,6 +101,25 @@ export async function updateThread(
 ): Promise<SendResult> {
   try {
     await updateConversation(conversationId, patch);
+  } catch (error) {
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
+
+  revalidatePath('/inbox');
+  return { ok: true };
+}
+
+/**
+ * Adds or removes a participant on a thread, then refreshes the inbox. Admin only on the server;
+ * a refusal comes back as a message rather than a throw, like the other thread actions.
+ */
+export async function setParticipant(
+  conversationId: string, userId: string, present: boolean
+): Promise<SendResult> {
+  try {
+    if (present) await addParticipant(conversationId, userId);
+    else await removeParticipant(conversationId, userId);
   } catch (error) {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     return { ok: false, error: 'Could not reach the API.' };

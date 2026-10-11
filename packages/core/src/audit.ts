@@ -109,6 +109,9 @@ export const AUDIT = {
   // value on either side, which is what makes those questions answerable after the fact.
   conversationAssigned: 'conversation.assigned',
   conversationStatusChanged: 'conversation.status_changed',
+  // Who else is on a thread is as arguable as who owns it, so each change is its own row.
+  conversationParticipantAdded: 'conversation.participant_added',
+  conversationParticipantRemoved: 'conversation.participant_removed',
 
   // Imports. The upload is recorded separately from the commit because they are different
   // acts: one stores somebody's spreadsheet, the other changes the contact database.

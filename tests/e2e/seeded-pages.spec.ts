@@ -41,6 +41,14 @@ test.describe('seeded pages', () => {
     await page.getByRole('button', { name: 'Add note' }).click();
     await expect(page.getByText(note)).toBeVisible();
 
+    // An admin brings a colleague onto the chat and takes them off again.
+    const adder = page.getByLabel('Add participant');
+    await adder.selectOption({ index: 1 });
+    const remove = page.getByRole('button', { name: /^Remove / });
+    await expect(remove).toBeVisible();
+    await remove.click();
+    await expect(remove).toHaveCount(0);
+
     // Resolve, then put it back.
     await page.getByRole('button', { name: 'Resolve', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Reopen', exact: true })).toBeVisible();

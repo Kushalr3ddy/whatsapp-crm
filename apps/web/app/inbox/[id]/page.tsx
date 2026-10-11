@@ -186,12 +186,13 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     getSenderStatus(id).catch((): SenderStatus | null => null)
   ]);
 
-  // The thread lock, mirrored from the server guard in POST /messages: a thread assigned to
-  // another agent is read-only to me unless I am an admin. Kept identical to the API so the
-  // composer never offers a send the server would refuse.
+  // The thread lock, mirrored from the server guard in POST /messages: a thread owned by
+  // another agent is read-only to me unless I am an admin or a participant on it. Kept identical
+  // to the API so the composer never offers a send the server would refuse.
   const lockedByOther = conversation !== null
     && conversation.assigneeUserId !== null
     && conversation.assigneeUserId !== me?.userId
+    && !conversation.participants.some((p) => p.userId === me?.userId)
     && me?.role !== 'admin';
 
   // Messages and notes share one timeline, sorted by when they happened, so a note sits in the
@@ -239,6 +240,8 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
               users={users}
               assigneeUserId={conversation.assigneeUserId}
               status={conversation.status}
+              participants={conversation.participants}
+              isAdmin={me?.role === 'admin'}
             />
           )}
         </header>

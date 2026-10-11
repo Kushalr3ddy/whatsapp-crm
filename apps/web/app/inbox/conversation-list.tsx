@@ -66,7 +66,11 @@ export function ConversationList(
 
   const shown = conversations.filter((c) => {
     if (status !== 'all' && c.status !== status) return false;
-    if (assignee === 'mine') return c.assigneeUserId === currentUserId;
+    // Mine = owned or participating, matching the API's `assignee=me`.
+    if (assignee === 'mine') {
+      return c.assigneeUserId === currentUserId
+        || c.participants.some((p) => p.userId === currentUserId);
+    }
     if (assignee === 'unassigned') return c.assigneeUserId === null;
     return true;
   });
@@ -142,6 +146,7 @@ export function ConversationList(
                       ].join(' ')}
                     >
                       {c.assigneeName ?? 'Unassigned'}
+                      {c.participants.length > 0 && ` +${String(c.participants.length)}`}
                     </span>
                     {c.status === 'closed' && <span className="badge">closed</span>}
                   </span>

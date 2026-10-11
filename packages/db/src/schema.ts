@@ -368,6 +368,24 @@ export const conversation = pgTable('conversation', {
 ]);
 
 /**
+ * An extra person on a conversation, beside its owner (`conversation.assignee_user_id`).
+ *
+ * A participant may reply and is counted in "mine", but is not the one accountable for the
+ * thread. Only an admin adds or removes them. One row per person per thread, enforced by the key.
+ */
+export const conversationParticipant = pgTable('conversation_participant', {
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').notNull()
+    .references(() => conversation.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => appUser.id, { onDelete: 'cascade' }),
+  addedByUserId: uuid('added_by_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  primaryKey({ columns: [t.conversationId, t.userId] }),
+  index('conversation_participant_user_idx').on(t.userId)
+]);
+
+/**
  * One message, in or out. Bodies are encrypted at rest; `bodyHmac` lets duplicates be detected
  * without decrypting a whole table, which the previous system had to do (M25).
  */
