@@ -199,9 +199,9 @@ summary:hover{color:var(--ink)}
         <label class="tog"><input type="checkbox" id="t-minio">
           <span class="swatch" style="background:var(--c4)"></span>
           <span><span class="tl">MinIO</span><span class="tc">Otherwise the filesystem, or any external S3</span></span></label>
-        <label class="tog"><input type="checkbox" id="t-ssr">
+        <label class="tog"><input type="checkbox" id="t-ssr" checked disabled>
           <span class="swatch" style="background:var(--c6)"></span>
-          <span><span class="tl">Next.js SSR server</span><span class="tc">Otherwise a static export served by Caddy</span></span></label>
+          <span><span class="tl">Next.js web server</span><span class="tc">Always on: the UI uses server actions and forwards the session, so it cannot be a static export</span></span></label>
         <label class="tog"><input type="checkbox" id="t-obs">
           <span class="swatch" style="background:var(--c3)"></span>
           <span><span class="tl">Telemetry stack</span><span class="tc">Prometheus, Grafana, Loki, Tempo, Alertmanager</span></span></label>
@@ -306,12 +306,12 @@ summary:hover{color:var(--ink)}
 const ASSUMPTIONS = {
   ram: {                       // megabytes
     caddy:            30,
-    apiBase:         150,      // API process floor
+    apiBase:         230,      // API process floor. Measured 2026-10-11: 264 MB under tsx with 1 org (was 150, an estimate)
     perAgent:          4,      // per concurrent agent (connections, realtime)
     workerBase:      220,      // one worker process
     workerPer10kMsg:  60,      // extra worker RAM per 10k msgs/day
     singleProcSaving:120,      // saved by running api+worker as one process
-    gatewayBase:     110,      // Baileys supervisor floor
+    gatewayBase:     290,      // Baileys supervisor floor. Measured 2026-10-11: 338 MB with 1 connected number (was 110, an estimate)
     gatewayPerNumber: 45,      // per connected WhatsApp number — the key scaling figure
     pgBase:          256,
     pgPer100kContacts:80,
@@ -320,7 +320,7 @@ const ASSUMPTIONS = {
     redis:            70,
     redisPerQueueDepth:0.003,  // per queued job
     minio:           280,
-    ssr:             170,
+    ssr:             170,      // measured 2026-10-11: `next start`, 170 MB. Always running now, see the toggle
     clamav:         1150,
     obs: { prometheus:520, grafana:190, loki:320, tempo:280, alertmanager:40 },
     llm: { none:0, hosted:0, small:2100, mid:6000, large:10500 }
@@ -337,7 +337,7 @@ const ASSUMPTIONS = {
   disk: {                      // megabytes unless noted
     pgBase:          220,
     kbPerMessage:    1.5,      // encrypted body + index overhead
-    kbPerContact:    0.6,
+    kbPerContact:    5.5,      // measured 2026-10-11: contact + identities + tags with indexes (was 0.6, an estimate)
     kbPerMediaAvg:   200,
     obsPerMonth:     900,      // prometheus + loki + tempo retention
     clamavDb:        320,
@@ -477,7 +477,7 @@ let selectedPreset = null;
  */
 function presetName(i){
   if (selectedPreset) return selectedPreset;
-  if (!i.split && !i.redis && !i.minio && !i.ssr && !i.obs && !i.av && i.llm==='none') return 'lean';
+  if (!i.split && !i.redis && !i.minio && !i.obs && !i.av && i.llm==='none') return 'lean';
   if (i.split && i.redis) return i.agents > 25 || i.msgs > 100000 ? 'scale' : 'standard';
   return 'custom';
 }
@@ -662,7 +662,7 @@ function applyPreset(name){
   const set = (id, v) => document.getElementById(id).checked = v;
   if (name === 'lean'){
     set('t-split',false); set('t-redis',false); set('t-minio',false);
-    set('t-ssr',false); set('t-obs',false); set('t-av',false);
+    set('t-ssr',true); set('t-obs',false); set('t-av',false);
     document.getElementById('llm').value = 'none';
   } else if (name === 'standard'){
     set('t-split',true); set('t-redis',true); set('t-minio',true);
