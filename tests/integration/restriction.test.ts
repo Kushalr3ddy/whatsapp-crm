@@ -231,7 +231,9 @@ describe('against the database', () => {
       await applyConnectionEvent(ctx(), { senderId, state: 'logged_out', reason: 'logged_out', code: 401, at: NOW });
       expect(await kinds()).toEqual([]);
 
-      await db.execute(sql`UPDATE channel_session SET unlink_requested_at = NULL WHERE sender_identity_id = ${senderId}`);
+      // A new session connected afterwards, then WhatsApp ended it unasked. (Without the reconnect a
+      // repeated logout is the same incident and is deliberately recorded only once.)
+      await db.execute(sql`UPDATE channel_session SET unlink_requested_at = NULL, connection_state = 'open' WHERE sender_identity_id = ${senderId}`);
       await applyConnectionEvent(ctx(), { senderId, state: 'logged_out', reason: 'logged_out', code: 401, at: NOW });
       expect(await kinds()).toEqual(['hard_ban_suspected']);
     });

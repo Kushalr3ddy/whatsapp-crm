@@ -136,11 +136,24 @@ export class BaileysChannelProvider implements ChannelProvider {
     }
 
     const conn = await this.#openSocket(senderId, { expectQr: true });
-    const qr = await new Promise<string>((resolve, reject) => {
-      conn.pendingQr = { resolve, reject };
-      setTimeout(() => { reject(new Error('WhatsApp did not issue a QR within the timeout')); }, ttl);
-    });
-    return { mode: 'qr', qr, expiresAt };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const qr = await new Promise<string>((resolve, reject) => {
+        conn.pendingQr = { resolve, reject };
+        timer = setTimeout(() => {
+          reject(Object.assign(new Error('WhatsApp did not issue a QR within the timeout'), { code: 'qr_timeout' }));
+        }, ttl);
+      });
+      return { mode: 'qr', qr, expiresAt };
+    } catch (error) {
+      // Do not leave a half-open socket behind: it would keep trying to register in the background.
+      conn.pendingQr = null;
+      this.#connections.delete(senderId);
+      try { conn.socket.end(undefined); } catch { /* already closed */ }
+      throw error;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   /**
@@ -382,6 +395,14 @@ export class BaileysChannelProvider implements ChannelProvider {
     if (update.connection === 'close') {
       const statusCode = extractStatusCode(update.lastDisconnect);
       const reason = mapDisconnectReason(statusCode);
+      // A close while we were still waiting for a QR is the answer: fail the link now, with WhatsApp's
+      // own code, instead of making the operator wait out the timeout.
+      const failedLink = conn.pendingQr !== null;
+      if (conn.pendingQr) {
+        const code = statusCode === 401 ? 'stale_session' : statusCode === 429 ? 'rate_limited' : 'connection_closed';
+        conn.pendingQr.reject(Object.assign(new Error(`connection closed before a QR (${String(statusCode ?? 'no code')})`), { code, statusCode }));
+        conn.pendingQr = null;
+      }
       conn.disconnectReason = reason;
       // Logged out is terminal: the number was unlinked on the phone, so reconnecting cannot
       // work and retrying would only look like abuse. Everything else stays reconnectable.
@@ -391,7 +412,9 @@ export class BaileysChannelProvider implements ChannelProvider {
       this.#connectionEvents.push({
         senderId, state: conn.state, reason, code: statusCode ?? null, at: new Date()
       });
-      this.#scheduleReconnect(senderId, reason);
+      // A link attempt that failed is reported to the operator, who decides whether to try again;
+      // reconnecting on our own would just re-register in the background.
+      if (!failedLink) this.#scheduleReconnect(senderId, reason);
     }
   }
 

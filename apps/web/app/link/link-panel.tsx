@@ -201,7 +201,19 @@ export function LinkPanel(
         </p>
       )}
 
-      {status?.state === 'error' && <p className="mt-2 text-xs text-danger">{status.detail}</p>}
+      {status?.state === 'error' && (
+        <div role="alert" className="mt-2 rounded-md border border-danger/40 bg-danger-soft p-2.5 text-xs">
+          <p className="font-semibold text-danger">{status.error?.title ?? 'Linking failed'}</p>
+          <p className="mt-0.5">{status.error?.summary ?? status.detail}</p>
+          {status.error?.hint && <p className="mt-1 text-muted">{status.error.hint}</p>}
+          {status.error?.code && (
+            <p className="mt-1 text-[11px] text-muted">
+              Code: <code>{status.error.code}</code>
+              {status.error.statusCode ? <> · WhatsApp status {status.error.statusCode}</> : null}
+            </p>
+          )}
+        </div>
+      )}
 
       {active && !expired && status?.state === 'pending' && (
         <p className="mt-2 text-xs text-muted">{status.detail}</p>

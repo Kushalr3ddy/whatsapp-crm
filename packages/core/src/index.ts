@@ -104,6 +104,10 @@ export {
   blockingPolicyGate, type PolicyGate
 } from './policy-gates.js';
 export { markMessageFailedByProviderId } from './messages.js';
+export {
+  classifyLinkFailure, linkErrorFor, encodeLinkError, decodeLinkError,
+  type LinkErrorInfo, type LinkErrorCode
+} from './link-errors.js';
 export { linkLidToPhone, type LinkOutcome } from './identity-linking.js';
 export {
   classifyRestriction, nextRestrictionState, gatherRestrictionStats, checkRestriction, recordHealthEvent,

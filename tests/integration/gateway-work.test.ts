@@ -5,7 +5,7 @@ import { createDatabase, PostgresAuthStateStore, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { createLogger } from '@crm/shared';
-import { storeInboundMessage } from '@crm/core';
+import { storeInboundMessage, classifyLinkFailure, decodeLinkError } from '@crm/core';
 import {
   applyConnectionEvent, handleLinkRequest, handleUnlinkRequest, handleSend,
   markAllSessionsClosed, restoreSessions, sweepPendingWork
@@ -215,6 +215,121 @@ describe('handleLinkRequest', () => {
     const row = (after as unknown as Array<{ e: string | null; c: unknown }>)[0]!;
     expect(row.e).toContain('refused');
     expect(row.c).toBeNull();
+    // The request is closed with the failure, so the sweep does not retry it every minute.
+    const req = (await db.execute(sql`SELECT link_requested_at AS at FROM channel_session WHERE id = ${sessionId}`)
+    ) as unknown as Array<{ at: string | null }>;
+    expect(req[0]!.at).toBeNull();
+  });
+});
+
+describe('link failures and stale sessions', () => {
+  it('stores a classified, human-readable failure, not the raw error', async () => {
+    const provider = new FakeChannelProvider();
+    const failing = Object.assign(Object.create(Object.getPrototypeOf(provider) as object), provider, {
+      link: () => Promise.reject(Object.assign(new Error('WhatsApp did not issue a QR within the timeout'), { code: 'qr_timeout' }))
+    }) as FakeChannelProvider;
+    const rows = await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, link_requested_mode, link_requested_at)
+      VALUES (${senderId}, 'qr', now()) RETURNING id`);
+    const sessionId = (rows as unknown as Array<{ id: string }>)[0]!.id;
+
+    await handleLinkRequest(ctxWith(failing), sessionId);
+
+    const row = (await db.execute(sql`SELECT link_error AS e FROM channel_session WHERE id = ${sessionId}`)
+    ) as unknown as Array<{ e: string }>;
+    const parsed = JSON.parse(row[0]!.e) as { code: string; title: string; summary: string; hint: string };
+    expect(parsed.code).toBe('qr_timeout');
+    expect(parsed.title).toMatch(/did not send a QR/i);
+    expect(parsed.hint.length).toBeGreaterThan(10);
+  });
+
+  it('clears credentials left over from a session that is not connected before linking', async () => {
+    const authStore = new PostgresAuthStateStore(db, kms);
+    await authStore.set(senderId, 'creds', new TextEncoder().encode('dead session'));
+    const provider = new FakeChannelProvider({}, authStore);
+    const rows = await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, connection_state, link_requested_mode, link_requested_at)
+      VALUES (${senderId}, 'logged_out', 'qr', now()) RETURNING id`);
+    const sessionId = (rows as unknown as Array<{ id: string }>)[0]!.id;
+
+    await handleLinkRequest(ctxWith(provider), sessionId);
+
+    expect(await authStore.get(senderId, 'creds')).toBeNull();
+  });
+
+  it('does not touch the credentials of a connected number when linking is requested', async () => {
+    const authStore = new PostgresAuthStateStore(db, kms);
+    await authStore.set(senderId, 'creds', new TextEncoder().encode('live session'));
+    const provider = new FakeChannelProvider({}, authStore);
+    const rows = await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, connection_state, link_requested_mode, link_requested_at)
+      VALUES (${senderId}, 'open', 'qr', now()) RETURNING id`);
+    const sessionId = (rows as unknown as Array<{ id: string }>)[0]!.id;
+
+    await handleLinkRequest(ctxWith(provider), sessionId);
+
+    expect(await authStore.get(senderId, 'creds')).not.toBeNull();
+  });
+
+  it('clears the link request and any link error when the number connects', async () => {
+    await db.execute(sql`
+      INSERT INTO channel_session (sender_identity_id, connection_state, link_requested_mode, link_requested_at, link_error)
+      VALUES (${senderId}, 'connecting', 'qr', now(), 'old failure')`);
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
+
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
+
+    const row = (await db.execute(sql`
+      SELECT link_requested_at AS r, link_error AS e FROM channel_session WHERE sender_identity_id = ${senderId}`)
+    ) as unknown as Array<{ r: string | null; e: string | null }>;
+    expect(row[0]!.r).toBeNull();
+    expect(row[0]!.e).toBeNull();
+  });
+
+  it('records one ban-suspected event per logout, not one per failed re-login', async () => {
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
+    await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state) VALUES (${senderId}, 'open')`);
+
+    for (let i = 0; i < 4; i++) {
+      await applyConnectionEvent(ctx, { senderId, state: 'logged_out', reason: 'logged_out', code: 401, at: new Date() });
+    }
+
+    const n = (await db.execute(sql`
+      SELECT count(*)::int AS n FROM sender_health_event
+      WHERE sender_identity_id = ${senderId} AND kind = 'hard_ban_suspected'`)
+    ) as unknown as Array<{ n: number }>;
+    expect(n[0]!.n).toBe(1);
+  });
+
+  it('clears the dead credentials when WhatsApp logs the number out', async () => {
+    const authStore = new PostgresAuthStateStore(db, kms);
+    await authStore.set(senderId, 'creds', new TextEncoder().encode('revoked'));
+    const provider = new FakeChannelProvider({}, authStore);
+    await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state) VALUES (${senderId}, 'open')`);
+    const ctx = { db, provider, logger, decrypt: () => '', limits: { perMinute: 1000, perDay: 10_000 } };
+
+    await applyConnectionEvent(ctx, { senderId, state: 'logged_out', reason: 'logged_out', code: 401, at: new Date() });
+
+    expect(await authStore.get(senderId, 'creds')).toBeNull();
+  });
+});
+
+describe('classifyLinkFailure', () => {
+  it('maps what WhatsApp and the adapter throw onto an actionable message', () => {
+    expect(classifyLinkFailure(new Error('WhatsApp did not issue a QR within the timeout')).code).toBe('qr_timeout');
+    expect(classifyLinkFailure({ statusCode: 401, message: 'x' }).code).toBe('stale_session');
+    expect(classifyLinkFailure({ code: 'rate_limited' }).code).toBe('rate_limited');
+    expect(classifyLinkFailure(new Error('pairing_code mode needs the phone number being linked')).code).toBe('needs_phone');
+    const unknown = classifyLinkFailure(new Error('something odd'));
+    expect(unknown.code).toBe('unknown');
+    expect(unknown.summary).toContain('something odd');
+  });
+
+  it('decodes a legacy plain string instead of throwing', () => {
+    expect(decodeLinkError('WhatsApp did not issue a QR within the timeout')?.code).toBe('qr_timeout');
+    expect(decodeLinkError(null)).toBeNull();
   });
 });
 
