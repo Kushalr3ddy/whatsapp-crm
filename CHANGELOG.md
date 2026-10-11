@@ -22,6 +22,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 - The UI still has no "start a new conversation" button, so the first message goes via `POST /messages`.
 - **D-21 (mapping wizard) raised to priority.**
 
+### 2026-10-11 — Handoff, and a throttle fix for `verify`
+- `HANDOFF.md` rewritten for pickup: read-everything-then-ask protocol for a new session, a handoff protocol for
+  the outgoing one (which files to update), pending list, dev-environment state.
+- `scripts/verify.sh`: the throwaway stack sets `NEW_CONTACTS_PER_HOUR=100` / `NEW_CONTACTS_PER_DAY=500` / `NEW_CONTACT_REPLY_FLOOR=false` (the reply floor otherwise holds a number that nobody has replied to at 5 new people a day). Repeated
+  runs exhausted the seeded number's stranger allowance (5 an hour) and `send-flow` stayed `queued` with hold
+  reason `paced:new_contact_throttle`, which is the engine working as designed, not a defect.
+- Ban-suspected banner and pause re-landed (it was merged into a stacked branch and missed `main`).
+- `send-flow` no longer asserts a contact name (the fiction range is small, so a number can be a reused contact).
+- Full `verify` on `main` after #20–#22: migrations, check, web typecheck, simulation (444 s), scripted flow, seed
+  all passed; the browser suite failed only on that throttle.
+
 ### 2026-10-11 — Ban-suspected banner and automatic pause
 - A close with code **403** (WhatsApp refusing the number) now records one critical `forbidden_suspected` event
   (not repeated within 30 minutes) and **pauses the number's running campaigns** (`pause_reason = ban_suspected`).
@@ -878,6 +889,9 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set (2026-10-10). Items marked *pinned* are deliberately held:
 
+0. **D-17 + D-53 — presence, typing, several people per chat, message authorship** (priority, raised
+   2026-10-11): needs Kushal's go-ahead on owner + participants; authorship (write and show `sent_by_user_id`) is
+   the small first slice.
 1. **D-21 — the import column-mapping wizard** (priority, raised 2026-10-10): production imports are a Naukri
    Excel export; needs the real file (or a sample) so the wizard fits its columns.
 2. **D-41 — gateway outside RLS** (priority): enter each org's tenant transaction per job, plus a cross-org test.
@@ -885,7 +899,7 @@ In the order Kushal set (2026-10-10). Items marked *pinned* are deliberately hel
 4. **Real-number pilot** — no code; a spare number for a week or two, watching the Numbers page.
 5. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
 6. *Pinned:* **D-47** signup + billing gate + beta override · **D-48** OWASP security tests · **D-49** e2e revamp ·
-   **D-50** frontend/backend modularity tests · **D-17 + D-53** presence, typing, multi-assignee and message authorship (priority) · **D-51** deleted-message tracking · **D-52** delete previous campaigns · **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
+   **D-50** frontend/backend modularity tests · **D-51** deleted-message tracking · **D-52** delete previous campaigns · **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
    opt-out · **D-35/36/40** · **D-34/37/38/39** Meta adapter · **D-42** AI takeover · **D-43** alert channels ·
    **D-44** Baileys 7 · **D-33** deployment / P1 close-out (`infra/compose/` is empty).
 
