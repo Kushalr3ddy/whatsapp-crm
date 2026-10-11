@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
 import { writeAudit, AUDIT, storeOutboundMedia } from '@crm/core';
 import type { StorageDriver } from '@crm/storage';
-import { auditActor, requireScope } from '../auth.js';
+import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
 import { normalisePhone, detectMediaType } from '@crm/shared';
@@ -31,6 +31,22 @@ const sendMessage = z.object({
 }).refine((v) => v.overrideDnc !== true || v.overrideReason !== undefined, {
   message: 'a reason of at least 10 characters is required to override do-not-contact', path: ['overrideReason']
 });
+
+/**
+ * True when `userId` is one of the extra people on the thread. The thread lock lets the owner,
+ * participants and admins reply; this is the participant half. Takes the request's tenant
+ * transaction so row-level security scopes the lookup like every other query.
+ */
+async function isParticipant(
+  tx: { execute: (q: ReturnType<typeof sql>) => PromiseLike<unknown> },
+  conversationId: string, userId: string | null
+): Promise<boolean> {
+  if (userId === null) return false;
+  const rows = (await tx.execute(sql`
+    SELECT 1 FROM conversation_participant
+    WHERE conversation_id = ${conversationId} AND user_id = ${userId}`)) as unknown[];
+  return rows.length > 0;
+}
 
 /**
  * The person to credit as the author of an outbound message: the signed-in agent, or null for an
@@ -161,7 +177,13 @@ export function messagesRouter(
 
     const conditions = [sql`v.org_id = ${orgId}`];
     if (status !== undefined) conditions.push(sql`v.status = ${status}`);
-    if (assignee === 'me') conditions.push(sql`v.assignee_user_id = ${req.crm!.userId}`);
+    // "Mine" is a chat I own or am a participant on — otherwise one I was pulled into would
+    // never reach my queue.
+    if (assignee === 'me') {
+      conditions.push(sql`(v.assignee_user_id = ${req.crm!.userId} OR EXISTS (
+        SELECT 1 FROM conversation_participant p
+        WHERE p.conversation_id = v.id AND p.user_id = ${req.crm!.userId}))`);
+    }
     else if (assignee === 'unassigned') conditions.push(sql`v.assignee_user_id IS NULL`);
     else if (assignee !== undefined) conditions.push(sql`v.assignee_user_id = ${assignee}`);
     const where = sql.join(conditions, sql` AND `);
@@ -170,6 +192,11 @@ export function messagesRouter(
       SELECT v.id, v.status, v.unread_count AS "unreadCount",
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
              v.assignee_user_id AS "assigneeUserId", au.display_name AS "assigneeName",
+             COALESCE((SELECT json_agg(json_build_object('userId', pu.id, 'name', pu.display_name)
+                                       ORDER BY pu.display_name)
+                       FROM conversation_participant p
+                       JOIN app_user pu ON pu.id = p.user_id
+                       WHERE p.conversation_id = v.id), '[]'::json) AS "participants",
              c.id AS "contactId", c.display_name AS "contactName",
              c.do_not_contact AS "doNotContact",
              -- A subquery rather than a join: a contact may hold more than one phone
@@ -231,6 +258,11 @@ export function messagesRouter(
       SELECT v.id, v.status, v.unread_count AS "unreadCount",
              v.last_inbound_at AS "lastInboundAt", v.last_outbound_at AS "lastOutboundAt",
              v.assignee_user_id AS "assigneeUserId", au.display_name AS "assigneeName",
+             COALESCE((SELECT json_agg(json_build_object('userId', pu.id, 'name', pu.display_name)
+                                       ORDER BY pu.display_name)
+                       FROM conversation_participant p
+                       JOIN app_user pu ON pu.id = p.user_id
+                       WHERE p.conversation_id = v.id), '[]'::json) AS "participants",
              c.id AS "contactId", c.display_name AS "contactName",
              c.do_not_contact AS "doNotContact",
              (SELECT ci.value_normalized FROM contact_identity ci
@@ -325,6 +357,13 @@ export function messagesRouter(
         RETURNING id, status, assignee_user_id AS "assigneeUserId"`)
       ) as unknown as Array<{ id: string; status: string; assigneeUserId: string | null }>;
 
+      // An owner who was also a participant is no longer listed twice.
+      if (assigneeUserId !== undefined && assigneeUserId !== null) {
+        await tx.execute(sql`
+          DELETE FROM conversation_participant
+          WHERE conversation_id = ${conversationId} AND user_id = ${assigneeUserId}`);
+      }
+
       const prev = before[0]!;
       // One row per field that actually moved. A PATCH that sets the value already held is not
       // a change and is not audited — otherwise the log fills with re-assignments to the same
@@ -359,6 +398,100 @@ export function messagesRouter(
       return;
     }
     res.json({ data: result.row });
+  });
+
+  /**
+   * Adds a participant to a thread. Admin only: the owner stays accountable, and who else is
+   * on a customer's chat is a call for the people who run the workspace. Idempotent — adding
+   * someone already there changes nothing and writes no audit row. The owner cannot be added
+   * as their own participant.
+   */
+  router.post('/conversations/:id/participants', requireUuidParam('id'), requireRole('admin'),
+    async (req: Request, res: Response) => {
+    const parsed = z.object({ userId: z.string().uuid() }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
+        (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const { userId } = parsed.data;
+
+    const result = await req.tenant!(async (tx) => {
+      const conv = (await tx.execute(sql`
+        SELECT assignee_user_id AS "assigneeUserId" FROM conversation
+        WHERE id = ${conversationId} AND org_id = ${orgId}`)
+      ) as unknown as Array<{ assigneeUserId: string | null }>;
+      if (conv.length === 0) return { notFound: true as const };
+      const member = (await tx.execute(sql`
+        SELECT 1 FROM org_membership WHERE org_id = ${orgId} AND user_id = ${userId}`)
+      ) as unknown as unknown[];
+      if (member.length === 0) return { notMember: true as const };
+      if (conv[0]!.assigneeUserId === userId) return { isOwner: true as const };
+
+      const inserted = (await tx.execute(sql`
+        INSERT INTO conversation_participant (org_id, conversation_id, user_id, added_by_user_id)
+        VALUES (${orgId}, ${conversationId}, ${userId}, ${req.crm!.userId})
+        ON CONFLICT (conversation_id, user_id) DO NOTHING
+        RETURNING user_id AS "userId"`)) as unknown as unknown[];
+      if (inserted.length > 0) {
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.conversationParticipantAdded,
+          targetType: 'conversation', targetId: conversationId,
+          after: { userId }, ip: req.ip ?? null, requestId: String(req.id)
+        });
+      }
+      return { row: { conversationId, userId } };
+    });
+
+    if ('notFound' in result) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    if ('notMember' in result) {
+      res.status(422).json(problem(req, 422, 'NOT_A_MEMBER',
+        'That user is not a member of this organisation.'));
+      return;
+    }
+    if ('isOwner' in result) {
+      res.status(422).json(problem(req, 422, 'ALREADY_OWNER',
+        'That user already owns this thread; participants are the other people on it.'));
+      return;
+    }
+    res.status(201).json({ data: result.row });
+  });
+
+  /** Removes a participant from a thread. Admin only; removing someone not there is a no-op. */
+  router.delete('/conversations/:id/participants/:userId', requireUuidParam('id', 'userId'),
+    requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const userId = String(req.params.userId);
+
+    const found = await req.tenant!(async (tx) => {
+      const conv = (await tx.execute(sql`
+        SELECT 1 FROM conversation WHERE id = ${conversationId} AND org_id = ${orgId}`)
+      ) as unknown as unknown[];
+      if (conv.length === 0) return false;
+      const removed = (await tx.execute(sql`
+        DELETE FROM conversation_participant
+        WHERE conversation_id = ${conversationId} AND user_id = ${userId} AND org_id = ${orgId}
+        RETURNING user_id`)) as unknown as unknown[];
+      if (removed.length > 0) {
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.conversationParticipantRemoved,
+          targetType: 'conversation', targetId: conversationId,
+          before: { userId }, ip: req.ip ?? null, requestId: String(req.id)
+        });
+      }
+      return true;
+    });
+    if (!found) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    res.status(204).end();
   });
 
   /** Lists a thread's internal notes, oldest first, with the author's name resolved. */
@@ -618,7 +751,8 @@ export function messagesRouter(
         if (conv.length === 0) return { notFound: true as const };
         const ctx = req.crm!;
         if (ctx.kind === 'session' && ctx.role !== 'admin'
-          && conv[0]!.assigneeUserId !== null && conv[0]!.assigneeUserId !== ctx.userId) {
+          && conv[0]!.assigneeUserId !== null && conv[0]!.assigneeUserId !== ctx.userId
+          && !(await isParticipant(tx, conversationId, ctx.userId))) {
           return { locked: true as const };
         }
 
@@ -684,7 +818,8 @@ export function messagesRouter(
 
         const ctx = req.crm!;
         const lockedToSomeoneElse = conv[0]!.assigneeUserId !== null
-          && conv[0]!.assigneeUserId !== ctx.userId;
+          && conv[0]!.assigneeUserId !== ctx.userId
+          && !(await isParticipant(tx, conversationId, ctx.userId));
         if (ctx.kind === 'session' && ctx.role !== 'admin' && lockedToSomeoneElse) {
           return { locked: true as const };
         }

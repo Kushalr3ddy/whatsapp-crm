@@ -33,6 +33,8 @@ export interface Conversation {
   assigneeUserId: string | null;
   /** The assignee's display name, resolved by the API so the list needn't join. */
   assigneeName: string | null;
+  /** The other people on the thread beside its owner, by name. Empty when it is just the owner. */
+  participants: Array<{ userId: string; name: string }>;
 }
 
 /** One member of the org, as the assignee picker needs them. Mirrors `GET /api/v1/users`. */
@@ -588,6 +590,22 @@ export async function updateConversation(
   return request<{ id: string; status: string; assigneeUserId: string | null }>(
     `/conversations/${encodeURIComponent(id)}`,
     { method: 'PATCH', body: JSON.stringify(patch) }
+  );
+}
+
+/** Adds a participant to a thread (admin only). */
+export async function addParticipant(conversationId: string, userId: string): Promise<void> {
+  await request<{ conversationId: string; userId: string }>(
+    `/conversations/${encodeURIComponent(conversationId)}/participants`,
+    { method: 'POST', body: JSON.stringify({ userId }) }
+  );
+}
+
+/** Removes a participant from a thread (admin only). */
+export async function removeParticipant(conversationId: string, userId: string): Promise<void> {
+  await requestVoid(
+    `/conversations/${encodeURIComponent(conversationId)}/participants/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' }
   );
 }
 
