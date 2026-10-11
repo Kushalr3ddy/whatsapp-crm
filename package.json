@@ -31,6 +31,7 @@
     "test:watch": "vitest",
     "test:sim": "vitest run --config vitest.sim.config.ts",
     "test:e2e": "playwright test",
+    "verify": "bash scripts/verify.sh",
     "test:live": "playwright test --config playwright.live.config.ts",
     "//2": "─── database: db:setup does everything a new clone needs ────────────",
     "db:setup": "npm run db:dev:up && npm run db:migrate:all",
