@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Database map</title>
+<style>
+  :root {
+    --bg:#f7f7f5; --panel:#fff; --ink:#1c1c1a; --muted:#6b6b66; --line:#d9d9d3; --accent:#0b6e4f;
+    --hi:#e8f4ee; --warn:#a15c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#141413; --panel:#1d1d1b; --ink:#ecece8; --muted:#9a9a93; --line:#34342f;
+      --accent:#4cc79a; --hi:#16251f; --warn:#e0a24a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#141413; --panel:#1d1d1b; --ink:#ecece8; --muted:#9a9a93; --line:#34342f;
+    --accent:#4cc79a; --hi:#16251f; --warn:#e0a24a;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; }
+  header { padding:20px 24px 12px; display:flex; flex-wrap:wrap; gap:12px 24px; align-items:baseline; }
+  h1 { margin:0; font-size:22px; }
+  .stats { color:var(--muted); font-size:13px; }
+  .stats b { color:var(--ink); }
+  main { padding:0 24px 48px; max-width:1500px; margin:0 auto; }
+  .bar { display:flex; gap:12px; align-items:center; padding:8px 0 16px; flex-wrap:wrap; }
+  input[type=search] { flex:1 1 260px; max-width:420px; padding:8px 12px; border:1px solid var(--line);
+    border-radius:8px; background:var(--panel); color:var(--ink); font:inherit; }
+  .hint { color:var(--muted); font-size:13px; }
+  #diagram { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:auto; }
+  svg { display:block; }
+  .grp-box { fill:none; stroke:var(--line); stroke-dasharray:4 4; }
+  .grp-label { fill:var(--muted); font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+  .node rect { fill:var(--panel); stroke:var(--line); stroke-width:1.2; rx:8; }
+  .node text { fill:var(--ink); font-size:12.5px; }
+  .node .sub { fill:var(--muted); font-size:10.5px; }
+  .node { cursor:pointer; }
+  .node.on rect { stroke:var(--accent); stroke-width:2.2; fill:var(--hi); }
+  .node.dim { opacity:.28; }
+  .edge { fill:none; stroke:var(--line); stroke-width:1.2; }
+  .edge.on { stroke:var(--accent); stroke-width:2; }
+  .edge.dim { opacity:.15; }
+  .edge.org { display:none; }
+  .show-org .edge.org { display:block; }
+  .edge.org.on { display:block; }
+  h2 { font-size:17px; margin:28px 0 8px; }
+  .grp-title { color:var(--muted); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin:26px 0 8px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin:10px 0; }
+  .card.on { outline:2px solid var(--accent); }
+  .card h3 { margin:0 0 2px; font-size:16px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .card .purpose { margin:0 0 10px; }
+  .tag { font-size:11px; font-weight:600; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+  .tag.ok { color:var(--accent); border-color:var(--accent); }
+  .tag.warn { color:var(--warn); border-color:var(--warn); }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:4px 10px 4px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; word-break:break-word; }
+  details { margin-top:8px; }
+  summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  pre { background:var(--bg); border:1px solid var(--line); padding:10px; border-radius:8px; overflow:auto; font-size:12px; }
+  .pk { color:var(--accent); font-weight:700; }
+  a { color:var(--accent); }
+  @media (max-width:640px) { header, main { padding-left:16px; padding-right:16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Database map</h1>
+  <div class="stats" id="stats"></div>
+</header>
+<main>
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search tables and columns…" aria-label="Search tables and columns">
+    <label class="hint"><input type="checkbox" id="orglinks"> show links to <code>org</code> and <code>app_user</code> (nearly every table has them)</label>
+    <span class="hint">Click a table to see what it points at and what points at it.</span>
+  </div>
+  <div id="diagram"></div>
+  <h2 id="fn-title">Triggers and functions</h2>
+  <div id="fns"></div>
+  <div id="cards"></div>
+</main>
+<script type="application/json" id="model">__DATA__</script>
+<script>
+const M = JSON.parse(document.getElementById('model').textContent);
+const T = Object.fromEntries(M.tables.map(t => [t.name, t]));
+const el = (tag, attrs = {}, ...kids) => {
+  const e = tag === 'svg' || tag === 'g' || tag === 'rect' || tag === 'text' || tag === 'path'
+    ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.setAttribute('class', v); else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return e;
+};
+
+document.getElementById('stats').innerHTML =
+  `<b>${M.counts.tables}</b> tables · <b>${M.counts.foreignKeys}</b> foreign keys · <b>${M.counts.policies}</b> row-level-security policies · `
+  + `<b>${M.counts.triggers}</b> triggers · <b>${M.counts.functions}</b> function${M.counts.functions === 1 ? '' : 's'} · generated ${new Date(M.generatedAt).toLocaleString()}`;
+
+// ---- layout: one column per group, tables stacked inside it
+const groups = [...new Set(M.tables.map(t => t.group))];
+const COLW = 188, NODEH = 44, GAP = 14, PADX = 20, TOP = 40, COLGAP = 56;
+const pos = {};
+let maxH = 0;
+groups.forEach((g, gi) => {
+  const members = M.tables.filter(t => t.group === g);
+  members.forEach((t, i) => { pos[t.name] = { x: PADX + gi * (COLW + COLGAP), y: TOP + i * (NODEH + GAP), w: COLW, h: NODEH }; });
+  maxH = Math.max(maxH, TOP + members.length * (NODEH + GAP));
+});
+const W = PADX * 2 + groups.length * COLW + (groups.length - 1) * COLGAP, H = maxH + 16;
+
+const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img',
+  'aria-label': 'Diagram of database tables and the foreign keys between them' });
+groups.forEach((g, gi) => {
+  const x = PADX + gi * (COLW + COLGAP);
+  svg.append(el('text', { class: 'grp-label', x, y: 22 }, g));
+});
+const edgeEls = [];
+for (const t of M.tables) for (const fk of t.fks) {
+  if (!pos[fk.to] || fk.from === fk.to) continue;
+  const a = pos[fk.from], b = pos[fk.to];
+  const sameCol = a.x === b.x;
+  const x1 = sameCol ? a.x : (b.x > a.x ? a.x + a.w : a.x), x2 = sameCol ? b.x : (b.x > a.x ? b.x : b.x + b.w);
+  const y1 = a.y + a.h / 2, y2 = b.y + b.h / 2;
+  const bend = sameCol ? -40 - Math.min(60, Math.abs(y2 - y1) / 4) : (x2 - x1) / 2;
+  const d = sameCol
+    ? `M${x1},${y1} C${x1 + bend},${y1} ${x2 + bend},${y2} ${x2},${y2}`
+    : `M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`;
+  const p = el('path', { class: 'edge' + (fk.to === 'org' || fk.to === 'app_user' ? ' org' : ''), d });
+  p.append(el('title', {}, `${fk.from}.${fk.cols.join(',')} → ${fk.to}.${fk.toCols.join(',')} (on delete: ${fk.onDelete})`));
+  svg.append(p); edgeEls.push({ p, from: fk.from, to: fk.to });
+}
+const nodeEls = {};
+for (const t of M.tables) {
+  const p = pos[t.name];
+  const g = el('g', { class: 'node', tabindex: 0, role: 'button', 'aria-label': `${t.name}: ${t.purpose}`,
+    onclick: () => select(t.name), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(t.name); } } },
+    el('rect', { x: p.x, y: p.y, width: p.w, height: p.h }),
+    el('text', { x: p.x + 10, y: p.y + 19 }, t.name),
+    el('text', { class: 'sub', x: p.x + 10, y: p.y + 35 }, `${t.cols.length} cols · ${t.rows} rows`));
+  svg.append(g); nodeEls[t.name] = g;
+}
+document.getElementById('diagram').append(svg);
+
+// ---- triggers and functions
+const fnBox = document.getElementById('fns');
+if (!M.functions.length && !M.tables.some(t => t.triggers.length)) fnBox.append(el('p', { class: 'hint' }, 'None in the public schema.'));
+for (const t of M.tables) for (const g of t.triggers) {
+  fnBox.append(el('div', { class: 'card' },
+    el('h3', {}, g.name, el('span', { class: 'tag' }, 'trigger on ' + t.name)),
+    el('details', {}, el('summary', {}, 'definition'), el('pre', {}, g.def))));
+}
+for (const f of M.functions) {
+  fnBox.append(el('div', { class: 'card' },
+    el('h3', {}, f.name + '()', el('span', { class: 'tag' }, 'function')),
+    el('p', { class: 'purpose' }, f.name === 'notify_gateway'
+      ? 'Sends a Postgres NOTIFY on the "gateway" channel with the row id and what happened (send, link or unlink). The gateway process listens, so work reaches it instantly instead of waiting for its next sweep.'
+      : ''),
+    el('details', {}, el('summary', {}, 'definition'), el('pre', {}, f.def))));
+}
+
+// ---- table cards, grouped
+const cards = document.getElementById('cards');
+const cardEls = {};
+for (const g of groups) {
+  cards.append(el('div', { class: 'grp-title' }, g));
+  for (const t of M.tables.filter(x => x.group === g)) {
+    const refBy = M.tables.flatMap(o => o.fks.filter(f => f.to === t.name).map(f => ({ by: o.name, via: f.cols.join(', ') })));
+    const card = el('div', { class: 'card', id: 't-' + t.name },
+      el('h3', {}, t.name,
+        el('span', { class: 'tag' }, t.rows + ' rows'),
+        t.rls ? el('span', { class: 'tag ok' }, t.forced ? 'row-level security (forced)' : 'row-level security')
+              : el('span', { class: 'tag warn' }, 'no row-level security'),
+        t.triggers.length ? el('span', { class: 'tag' }, t.triggers.length + ' trigger' + (t.triggers.length > 1 ? 's' : '')) : null),
+      el('p', { class: 'purpose' }, t.purpose),
+      el('table', {},
+        el('thead', {}, el('tr', {}, ...['column', 'type', 'null', 'default', 'points at'].map(h => el('th', {}, h)))),
+        el('tbody', {}, t.cols.map(c => {
+          const fk = t.fks.find(f => f.cols.includes(c.name));
+          return el('tr', {},
+            el('td', {}, el('code', { class: c.pk ? 'pk' : '' }, c.name + (c.pk ? ' 🔑' : ''))),
+            el('td', {}, el('code', {}, c.type)),
+            el('td', {}, c.nullable ? 'yes' : 'no'),
+            el('td', {}, c.default ? el('code', {}, c.default) : ''),
+            el('td', {}, fk ? el('a', { href: '#t-' + fk.to, onclick: () => select(fk.to) }, `${fk.to}.${fk.toCols.join(',')}`) : '',
+              fk ? el('span', { class: 'hint' }, ` (delete: ${fk.onDelete})`) : ''));
+        }))),
+      refBy.length ? el('p', { class: 'hint' }, 'Pointed at by: ',
+        ...refBy.flatMap((r, i) => [i ? ', ' : '', el('a', { href: '#t-' + r.by, onclick: () => select(r.by) }, r.by), ` (${r.via})`])) : null,
+      t.policies.length ? el('details', {}, el('summary', {}, `${t.policies.length} security polic${t.policies.length > 1 ? 'ies' : 'y'}`),
+        ...t.policies.map(p => el('pre', {}, `${p.name}  [${p.cmd} for ${p.roles}]\nUSING: ${p.qual ?? '—'}\nWITH CHECK: ${p.chk ?? '—'}`))) : null,
+      t.indexes.length ? el('details', {}, el('summary', {}, `${t.indexes.length} index${t.indexes.length > 1 ? 'es' : ''}`),
+        el('pre', {}, t.indexes.map(i => i.def).join('\n'))) : null);
+    cards.append(card); cardEls[t.name] = card;
+  }
+}
+
+// ---- selection and search
+function select(name) {
+  const rel = new Set([name]);
+  for (const e of edgeEls) { if (e.from === name) rel.add(e.to); if (e.to === name) rel.add(e.from); }
+  for (const [n, g] of Object.entries(nodeEls)) { g.classList.toggle('on', n === name); g.classList.toggle('dim', !rel.has(n)); }
+  for (const e of edgeEls) { const on = e.from === name || e.to === name; e.p.classList.toggle('on', on); e.p.classList.toggle('dim', !on); }
+  for (const [n, c] of Object.entries(cardEls)) c.classList.toggle('on', n === name);
+  cardEls[name]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+document.getElementById('orglinks').addEventListener('change', (ev) => {
+  svg.classList.toggle('show-org', ev.target.checked);
+});
+document.getElementById('q').addEventListener('input', (ev) => {
+  const q = ev.target.value.trim().toLowerCase();
+  for (const t of M.tables) {
+    const hit = q === '' || t.name.includes(q) || t.purpose.toLowerCase().includes(q) || t.cols.some(c => c.name.includes(q));
+    cardEls[t.name].style.display = hit ? '' : 'none';
+    nodeEls[t.name].classList.toggle('dim', !hit);
+  }
+});
+</script>
+</body>
+</html>
