@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   const useFake = config.GATEWAY_CHANNEL === 'fake';
   if (useFake) logger.warn('GATEWAY_CHANNEL=fake: nothing will be sent to WhatsApp');
   const provider: ChannelProvider = useFake
-    ? new FakeChannelProvider()
+    ? new FakeChannelProvider({ autoDeliverAfterMs: 1_000 })
     : new BaileysChannelProvider({
       authStore, logger,
       onDecryptFailure: (senderId, at) => {
