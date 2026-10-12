@@ -115,7 +115,12 @@ async function main(): Promise<void> {
   await db.execute(sql`
     UPDATE sender_identity
     SET recovery_incident = NULL, recovery_started_at = NULL, recovery_until = NULL,
-        status = 'active', updated_at = now()
+        status = 'active',
+        -- A number that has never received a reply is held to 20 sends a day (the outbound-only
+        -- clamp), which a day of verify runs uses up and leaves everything queued. A real number
+        -- earns its first reply; the fake one is given one, once.
+        last_inbound_at = COALESCE(last_inbound_at, now()),
+        updated_at = now()
     WHERE id = ${senderId} AND provider = 'fake'`);
 
   // ── the real API in-process, signed in as the test admin ──────────────────────────────
