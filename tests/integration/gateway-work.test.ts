@@ -126,6 +126,42 @@ describe('handleSend', () => {
   });
 });
 
+describe('held messages are retried on time, not at the next sweep', () => {
+  it('sends a message held by the per-minute cap as soon as the window frees', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    // One send already went out 58 s ago, so with a ceiling of 1 a minute the next must wait ~2 s.
+    await db.execute(sql`
+      INSERT INTO message (org_id, conversation_id, direction, status, content_type, sent_by, sent_at)
+      VALUES (${orgId}, ${conversationId}, 'outbound', 'sent', 'text', 'api', now() - interval '58 seconds')`);
+    const id = await queueOutbound('waits for the window');
+    const ctx = { ...ctxWith(provider), limits: { perMinute: 1, perDay: 10_000 } };
+
+    await handleSend(ctx, id);
+    // Held, with its reason recorded, and nothing sent yet.
+    expect(provider.sent).toHaveLength(0);
+    expect((await statusOf(id)).status).toBe('queued');
+
+    // No sweep is run. The retry timer alone must deliver it.
+    const stop = Date.now() + 8_000;
+    while (provider.sent.length === 0 && Date.now() < stop) await new Promise((r) => setTimeout(r, 200));
+    expect(provider.sent).toHaveLength(1);
+    expect((await statusOf(id)).status).toBe('sent');
+  }, 15_000);
+
+  it('never sends one message twice when it is handled concurrently', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const id = await queueOutbound('only once');
+    // A real pre-send pause, so the second caller arrives while the first is still sleeping.
+    const ctx = { ...ctxWith(provider), sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, Math.min(ms, 150))) };
+
+    await Promise.all([handleSend(ctx, id), handleSend(ctx, id), handleSend(ctx, id)]);
+
+    expect(provider.sent).toHaveLength(1);
+  });
+});
+
 describe('typing simulation in the send path (D-24)', () => {
   it('shows "typing…" before the send and clears it after, when enabled', async () => {
     const provider = new FakeChannelProvider();

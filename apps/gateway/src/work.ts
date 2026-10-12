@@ -366,6 +366,45 @@ export async function handleUnlinkRequest(ctx: WorkContext, sessionId: string): 
 }
 
 /**
+ * Messages this process is handling right now. A message can reach `handleSend` from the NOTIFY,
+ * from the sweep, and (below) from its own retry timer, and each call sleeps a jittered pause
+ * before sending: without this a second caller arriving during the pause would send it twice.
+ * In-process only; a second gateway process would need a database claim, which there is none of.
+ */
+const inFlight = new Set<string>();
+
+/** Pending "try this held message again at the moment its gate clears" timers, by message id. */
+const retryTimers = new Map<string, NodeJS.Timeout>();
+
+/** Never retry sooner than this, or later than this: past it, the safety-net sweep is as good. */
+const RETRY_MIN_MS = 1_000;
+const RETRY_MAX_MS = 15 * 60_000;
+
+/**
+ * Re-runs a held message when its gate says it will clear, instead of leaving it for the next
+ * sweep (default 60 s). Purely a latency win: the gate is re-checked in full when the timer fires
+ * and holds again if it still must, so this can never send something the gates would refuse.
+ * A little random spread keeps a queue of messages that all clear together from stampeding.
+ * Timers are unref'd, so they never keep a stopping process alive; the sweep stays the net.
+ */
+export function scheduleRetry(ctx: WorkContext, messageId: string, afterMs: number): void {
+  const delay = Math.min(RETRY_MAX_MS, Math.max(RETRY_MIN_MS, afterMs)) + Math.floor(Math.random() * 750);
+  const existing = retryTimers.get(messageId);
+  if (existing !== undefined) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    retryTimers.delete(messageId);
+    handleSend(ctx, messageId).catch((error: unknown) => {
+      ctx.logger.error(
+        { messageId, err: error instanceof Error ? error.message : String(error) },
+        'scheduled retry of a held message failed'
+      );
+    });
+  }, delay);
+  timer.unref();
+  retryTimers.set(messageId, timer);
+}
+
+/**
  * Sends one queued message.
  *
  * Every failure is recorded against that message and nothing else. In the previous system one
@@ -378,6 +417,17 @@ export async function handleUnlinkRequest(ctx: WorkContext, sessionId: string): 
  * loop that has no idea how fast it is going.
  */
 export async function handleSend(ctx: WorkContext, messageId: string): Promise<void> {
+  if (inFlight.has(messageId)) return;
+  inFlight.add(messageId);
+  try {
+    await handleSendOnce(ctx, messageId);
+  } finally {
+    inFlight.delete(messageId);
+  }
+}
+
+/** The body of `handleSend`, run at most once at a time per message. */
+async function handleSendOnce(ctx: WorkContext, messageId: string): Promise<void> {
   const rows = await ctx.db.execute(sql`
     SELECT m.id AS "messageId", m.org_id AS "orgId", m.body_enc AS "bodyEnc",
            ma.storage_key AS "mediaStorageKey", ma.content_type AS "mediaContentType",
@@ -494,6 +544,9 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
           'sender in recovery pause — leaving message queued'
         );
         await hold(`recovery_pause:${recovery.incident ?? 'incident'}`);
+        if (recovery.resumesAt !== null && recovery.resumesAt !== undefined) {
+          scheduleRetry(ctx, messageId, recovery.resumesAt.getTime() - Date.now());
+        }
         return;
       }
       await bypass(`recovery_pause:${recovery.incident}`);
@@ -529,6 +582,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
         `send paced: ${pacing.detail}`
       );
       await hold(`paced:${pacing.reason}`);
+      scheduleRetry(ctx, messageId, pacing.retryAfterMs);
       return;
     }
 
@@ -553,6 +607,7 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
           `send paced: ${graph.detail}`
         );
         await hold(`paced:${graph.reason}`);
+        scheduleRetry(ctx, messageId, graph.retryAfterMs);
         return;
       }
       // Stretch the pause by the relationship multiplier, capped so a stranger at a slow hour is
