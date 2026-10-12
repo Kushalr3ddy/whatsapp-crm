@@ -36,7 +36,14 @@ export interface Conversation {
   /** The other people on the thread beside its owner, by name. Empty when it is just the owner. */
   participants: Array<{ userId: string; name: string }>;
   /** Other people with this thread open right now (seen in the last 30 s), never the caller. */
-  viewers: Array<{ userId: string; name: string }>;
+  viewers: Viewer[];
+}
+
+/** Someone with a thread open; `typing` is true while they are drafting a reply (D-54). */
+export interface Viewer {
+  userId: string;
+  name: string;
+  typing: boolean;
 }
 
 /** One member of the org, as the assignee picker needs them. Mirrors `GET /api/v1/users`. */
@@ -779,15 +786,26 @@ export async function queueMessage(to: string, body: string): Promise<{ id: stri
  * The conversation already knows how to reach them.
  */
 export async function queueReply(
-  conversationId: string, body: string, override?: { reason: string }
+  conversationId: string, body: string, override?: { reason: string }, acknowledgeCollision?: boolean
 ): Promise<{ id: string; conversationId: string }> {
   return request<{ id: string; conversationId: string }>('/messages', {
     method: 'POST',
     body: JSON.stringify({
       conversationId, body,
-      ...(override ? { overrideDnc: true, overrideReason: override.reason } : {})
+      ...(override ? { overrideDnc: true, overrideReason: override.reason } : {}),
+      ...(acknowledgeCollision === true ? { acknowledgeCollision: true } : {})
     })
   });
+}
+
+/** Tells the server I am typing a reply in this thread right now. */
+export async function sendTyping(conversationId: string): Promise<void> {
+  await requestVoid(`/conversations/${encodeURIComponent(conversationId)}/typing`, { method: 'POST' });
+}
+
+/** Who else has this thread open, and who is typing. Polled by the thread header. */
+export async function getViewers(conversationId: string): Promise<Viewer[]> {
+  return request<Viewer[]>(`/conversations/${encodeURIComponent(conversationId)}/presence`);
 }
 
 /** Flags or clears do-not-contact on a contact. */

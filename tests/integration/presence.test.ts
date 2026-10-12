@@ -155,6 +155,6 @@ describe('presence', () => {
   it('shows viewers in the inbox list too', async () => {
     await beat(asSession(agent2Token));
     const list = await request(app).get('/api/v1/conversations').set(asSession(agent1Token));
-    expect(list.body.data[0].viewers).toEqual([{ userId: agent2, name: 'Agent Two' }]);
+    expect(list.body.data[0].viewers).toEqual([{ userId: agent2, name: 'Agent Two', typing: false }]);
   });
 });

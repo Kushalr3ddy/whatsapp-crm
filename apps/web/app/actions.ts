@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
-  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addParticipant, removeParticipant, sendPresence, addNote,
+  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addParticipant, removeParticipant, addNote,
   uploadImport, runImportMapping, queueAttachment, getSenderStatus, CrmApiError
 } from '@/lib/crm';
 import type { SenderStatus, LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
@@ -12,6 +12,8 @@ import type { SenderStatus, LinkMode, ImportUpload, ImportSummary } from '@/lib/
 export interface SendResult {
   ok: boolean;
   error?: string;
+  /** True when the send was held because someone else just replied or is typing (D-54). */
+  collision?: boolean;
 }
 
 /**
@@ -22,15 +24,19 @@ export interface SendResult {
  * display — an unreachable number, or no linked sender — not a crashed page.
  */
 export async function sendReply(
-  conversationId: string, body: string, override?: { reason: string }
+  conversationId: string, body: string, override?: { reason: string }, acknowledgeCollision?: boolean
 ): Promise<SendResult> {
   const text = body.trim();
   if (text === '') return { ok: false, error: 'Nothing to send.' };
 
   try {
-    await queueReply(conversationId, text, override);
+    await queueReply(conversationId, text, override, acknowledgeCollision);
   } catch (error) {
-    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    // A collision is not a failure: someone else just replied or is typing, and the composer asks
+    // "send anyway?". It is flagged so the box can offer that instead of just showing an error.
+    if (error instanceof CrmApiError) {
+      return { ok: false, error: error.message, ...(error.code === 'COLLISION' ? { collision: true } : {}) };
+    }
     return { ok: false, error: 'Could not reach the API.' };
   }
 
@@ -108,15 +114,6 @@ export async function updateThread(
 
   revalidatePath('/inbox');
   return { ok: true };
-}
-
-/**
- * Heartbeat for "who is viewing" (D-17). Deliberately swallows every error and does not
- * revalidate: a missed beat only means a viewer name lapses sooner, and refreshing the page on
- * every beat would be exactly the churn presence is meant to avoid.
- */
-export async function heartbeat(conversationId: string, present: boolean): Promise<void> {
-  try { await sendPresence(conversationId, present); } catch { /* best effort */ }
 }
 
 /**

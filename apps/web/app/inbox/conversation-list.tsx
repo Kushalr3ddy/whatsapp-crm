@@ -150,7 +150,7 @@ export function ConversationList(
                     </span>
                     {c.viewers.length > 0 && (
                       <span className="truncate text-[11px] text-accent" title="Viewing now">
-                        ● {c.viewers.map((v) => v.name).join(', ')}
+                        ● {c.viewers.map((v) => (v.typing ? `${v.name} typing…` : v.name)).join(', ')}
                       </span>
                     )}
                     {c.status === 'closed' && <span className="badge">closed</span>}

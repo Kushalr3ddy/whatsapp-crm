@@ -1,0 +1,1 @@
+ALTER TABLE "conversation_presence" ADD COLUMN "typing_at" timestamp with time zone;

@@ -25,12 +25,50 @@ const sendMessage = z.object({
   senderId: z.string().uuid().optional(),
   /** An admin knowingly messaging a do-not-contact person: explicit, with a reason, audited. */
   overrideDnc: z.boolean().optional(),
-  overrideReason: z.string().trim().min(10).max(500).optional()
+  overrideReason: z.string().trim().min(10).max(500).optional(),
+  /** The caller saw the "someone else just replied or is typing" warning and sends anyway (D-54). */
+  acknowledgeCollision: z.boolean().optional()
 }).refine((v) => (v.to === undefined) !== (v.conversationId === undefined), {
   message: 'send exactly one of `to` or `conversationId`'
 }).refine((v) => v.overrideDnc !== true || v.overrideReason !== undefined, {
   message: 'a reason of at least 10 characters is required to override do-not-contact', path: ['overrideReason']
 });
+
+/** How long after another agent's reply a second reply still draws the "send anyway?" warning. */
+const COLLISION_REPLY_WINDOW_S = 15;
+/** How long a keystroke counts as "typing". Longer than the 3 s ping so one missed ping is fine. */
+const TYPING_WINDOW_S = 8;
+
+/** A person who just acted on a thread, for the collision warning. */
+interface Collision { name: string; kind: 'replied' | 'typing' }
+
+/**
+ * Someone other than `userId` who replied to this thread in the last few seconds, or is typing a
+ * reply right now. Null when the coast is clear. Recent replies are reported ahead of typing, as
+ * the stronger signal. This is a soft rule: the caller may send anyway, knowingly.
+ */
+async function recentCollision(
+  tx: { execute: (q: ReturnType<typeof sql>) => PromiseLike<unknown> },
+  conversationId: string, userId: string
+): Promise<Collision | null> {
+  const replied = (await tx.execute(sql`
+    SELECT u.display_name AS name
+    FROM message m JOIN app_user u ON u.id = m.sent_by_user_id
+    WHERE m.conversation_id = ${conversationId} AND m.direction = 'outbound'
+      AND m.sent_by_user_id IS DISTINCT FROM ${userId}
+      AND m.sent_by_user_id IS NOT NULL
+      AND m.created_at > now() - ${String(COLLISION_REPLY_WINDOW_S)} * interval '1 second'
+    ORDER BY m.created_at DESC LIMIT 1`)) as unknown as Array<{ name: string }>;
+  if (replied[0] !== undefined) return { name: replied[0].name, kind: 'replied' };
+
+  const typing = (await tx.execute(sql`
+    SELECT u.display_name AS name
+    FROM conversation_presence p JOIN app_user u ON u.id = p.user_id
+    WHERE p.conversation_id = ${conversationId} AND p.user_id <> ${userId}
+      AND p.typing_at > now() - ${String(TYPING_WINDOW_S)} * interval '1 second'
+    ORDER BY p.typing_at DESC LIMIT 1`)) as unknown as Array<{ name: string }>;
+  return typing[0] !== undefined ? { name: typing[0].name, kind: 'typing' } : null;
+}
 
 /**
  * True when `userId` is one of the extra people on the thread. The thread lock lets the owner,
@@ -199,7 +237,8 @@ export function messagesRouter(
                        WHERE p.conversation_id = v.id), '[]'::json) AS "participants",
              -- Others with the thread open in the last 30 s (D-17). The caller is left out: you
              -- do not need telling that you are looking at it.
-             COALESCE((SELECT json_agg(json_build_object('userId', vu.id, 'name', vu.display_name)
+             COALESCE((SELECT json_agg(json_build_object('userId', vu.id, 'name', vu.display_name,
+                                         'typing', COALESCE(cp.typing_at > now() - interval '8 seconds', false))
                                        ORDER BY vu.display_name)
                        FROM conversation_presence cp
                        JOIN app_user vu ON vu.id = cp.user_id
@@ -274,7 +313,8 @@ export function messagesRouter(
                        WHERE p.conversation_id = v.id), '[]'::json) AS "participants",
              -- Others with the thread open in the last 30 s (D-17). The caller is left out: you
              -- do not need telling that you are looking at it.
-             COALESCE((SELECT json_agg(json_build_object('userId', vu.id, 'name', vu.display_name)
+             COALESCE((SELECT json_agg(json_build_object('userId', vu.id, 'name', vu.display_name,
+                                         'typing', COALESCE(cp.typing_at > now() - interval '8 seconds', false))
                                        ORDER BY vu.display_name)
                        FROM conversation_presence cp
                        JOIN app_user vu ON vu.id = cp.user_id
@@ -546,6 +586,58 @@ export function messagesRouter(
       return;
     }
     res.status(204).end();
+  });
+
+  /**
+   * "I am typing a reply here." Pinged about every 3 s while the reply box has text. It also
+   * counts as being present, so one call keeps both facts fresh. A person only (D-54).
+   */
+  router.post('/conversations/:id/typing', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+    const userId = req.crm!.userId;
+    if (userId === null) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED',
+        'Typing needs a signed-in user; an API key is not looking at a screen.'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const found = await req.tenant!(async (tx) => {
+      const conv = (await tx.execute(sql`
+        SELECT 1 FROM conversation WHERE id = ${conversationId} AND org_id = ${orgId}`)
+      ) as unknown as unknown[];
+      if (conv.length === 0) return false;
+      await tx.execute(sql`
+        INSERT INTO conversation_presence (org_id, conversation_id, user_id, seen_at, typing_at)
+        VALUES (${orgId}, ${conversationId}, ${userId}, now(), now())
+        ON CONFLICT (conversation_id, user_id) DO UPDATE SET seen_at = now(), typing_at = now()`);
+      return true;
+    });
+    if (!found) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    res.status(204).end();
+  });
+
+  /**
+   * Who else has this thread open, and who of them is typing. Small and cheap on purpose: the
+   * thread header polls it every couple of seconds, which the full conversation fetch is too
+   * heavy for.
+   */
+  router.get('/conversations/:id/presence', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+    const rows = await req.tenant!((tx) => tx.execute(sql`
+      SELECT vu.id AS "userId", vu.display_name AS name,
+             COALESCE(p.typing_at > now() - ${String(TYPING_WINDOW_S)} * interval '1 second', false) AS typing
+      FROM conversation_presence p
+      JOIN conversation v ON v.id = p.conversation_id
+      JOIN app_user vu ON vu.id = p.user_id
+      WHERE p.conversation_id = ${String(req.params.id)} AND v.org_id = ${req.crm!.orgId}
+        AND p.seen_at > now() - interval '30 seconds'
+        AND p.user_id IS DISTINCT FROM ${req.crm!.userId}
+      ORDER BY vu.display_name`));
+    res.json({ data: rows });
   });
 
   /** "I closed this thread." Best effort; the 30 s expiry covers a tab that never says goodbye. */
@@ -865,7 +957,7 @@ export function messagesRouter(
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
-    const { to, conversationId, body, senderId, overrideDnc, overrideReason } = parsed.data;
+    const { to, conversationId, body, senderId, overrideDnc, overrideReason, acknowledgeCollision } = parsed.data;
     const orgIdEarly = req.crm!.orgId;
 
     // Replying into an existing thread. No phone is involved, so no normalisation applies —
@@ -898,6 +990,13 @@ export function messagesRouter(
         const verdict = dncVerdict(req, flagged[0]?.flagged === true, overrideDnc);
         if (verdict === 'blocked' || verdict === 'forbidden') return { dncRefused: verdict };
 
+        // Two people about to answer the same customer: warn the second, who may send anyway.
+        // Only for a signed-in person; an integration is not looking at a screen (D-54).
+        if (ctx.kind === 'session' && ctx.userId !== null && acknowledgeCollision !== true) {
+          const clash = await recentCollision(tx, conversationId, ctx.userId);
+          if (clash !== null) return { collision: clash };
+        }
+
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
                                body_enc, body_hmac, sent_by, sent_by_user_id,
@@ -925,6 +1024,12 @@ export function messagesRouter(
         return;
       }
       if ('dncRefused' in result) { sendDncRefusal(req, res, result.dncRefused); return; }
+      if ('collision' in result) {
+        res.status(409).json(problem(req, 409, 'COLLISION', result.collision.kind === 'replied'
+          ? `${result.collision.name} just replied to this chat. Send anyway?`
+          : `${result.collision.name} is typing a reply to this chat. Send anyway?`));
+        return;
+      }
       res.status(202).json({ data: result.row });
       return;
     }

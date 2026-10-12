@@ -7,6 +7,7 @@ import { Composer } from './composer';
 import { initialsOf } from '../../ui';
 import { ThreadControls } from './thread-controls';
 import { PresenceBeat } from './presence-beat';
+import { ViewersLine } from './viewers-line';
 
 /** Plain words for why a queued message has not gone out yet. */
 function holdLabel(reason: string | null): string {
@@ -232,13 +233,10 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
                   </span>
                 )}
               </p>
-              {conversation !== null && conversation.viewers.length > 0 && (
-                // Others with this thread open now. Informational: the reply lock, not this, is
-                // what decides who may send.
-                <p className="truncate text-[11px] font-medium text-accent" aria-live="polite">
-                  ● {conversation.viewers.map((v) => v.name).join(', ')}
-                  {conversation.viewers.length === 1 ? ' is' : ' are'} viewing
-                </p>
+              {/* Others with this thread open now, and who is typing. Informational: the reply
+                  lock, not this, decides who may send. */}
+              {conversation !== null && (
+                <ViewersLine conversationId={id} initial={conversation.viewers} />
               )}
             </div>
           </div>

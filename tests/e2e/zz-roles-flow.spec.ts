@@ -78,14 +78,14 @@ async function newPerson(browser: Browser): Promise<{ context: BrowserContext; p
  * handful of messages that the pacing engine drains over a few minutes. Run last, they cannot
  * delay the other send tests' single message past its wait.
  *
- * Typing and the send-anyway warning (D-54) are not built; they are listed as `fixme` at the
- * bottom so they light up as work to do the day they ship.
+ * Typing and the "send anyway?" warning (D-54) are exercised too: each person sees the other
+ * typing, and a second reply seconds after the first is held until acknowledged.
  */
 test.describe('two roles on one chat: admin and agent', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
   test.skip(LIVE && LIVE_TO === '', 'ROLES_LIVE=1 needs LIVE_SEND_TO in .env (your own phone)');
 
-  test('assign, lock, participants, authorship, presence and refusals', async ({ page, browser }) => {
+  test('assign, lock, participants, authorship, presence, typing, collision and refusals', async ({ page, browser }) => {
     test.setTimeout(LIVE ? 8 * 60_000 : 3 * 60_000);
 
     // ── cast ───────────────────────────────────────────────────────────────────────────
@@ -116,7 +116,9 @@ test.describe('two roles on one chat: admin and agent', () => {
     test.skip(sender === undefined, LIVE
       ? 'needs a linked, connected WhatsApp number (run the real gateway: npm run dev:all)'
       : 'needs the seeded fake number connected (npm run local:seed, gateway with GATEWAY_CHANNEL=fake)');
-    const to = LIVE ? LIVE_TO : `+1202555${String(150 + (Date.now() % 40)).padStart(4, '0')}`;
+    // One fixed number in a corner of the fiction range no other spec or seed uses (0103 to 0109),
+    // so it can never be a contact another test flagged do-not-contact or already messaged.
+    const to = LIVE ? LIVE_TO : '+12025550105';
 
     const first = await admin.call('POST', '/messages', {
       to, body: `roles test ${String(Date.now())}: admin opens the chat`, senderId: sender!.id
@@ -132,8 +134,12 @@ test.describe('two roles on one chat: admin and agent', () => {
     for (const p of before.participants) await admin.call('DELETE', `/conversations/${conv}/participants/${p.userId}`);
     await admin.call('PUT', `/contacts/${before.contactId}/do-not-contact`, { value: false });
 
+    // Replies from the two people land seconds apart in this story, which the collision warning
+    // (D-54) is built to hold; those steps acknowledge it, and the collision step tests it.
     const reply = (who: Actor, text: string) =>
-      who.call('POST', '/messages', { conversationId: conv, body: `${text} ${String(Date.now())}` });
+      who.call('POST', '/messages', {
+        conversationId: conv, body: `${text} ${String(Date.now())}`, acknowledgeCollision: true
+      });
 
     // ── 1 · the first message was accepted (live: it really reaches your phone) ────────
     // On the fake number the pacing engine may hold a message for a minute or two (a fresh
@@ -206,7 +212,8 @@ test.describe('two roles on one chat: admin and agent', () => {
       // The admin may, with a reason, and it is audited server-side.
       const allowed = await admin.call('POST', '/messages', {
         conversationId: conv, body: `admin override ${String(Date.now())}`,
-        overrideDnc: true, overrideReason: 'roles test: admin override is allowed'
+        overrideDnc: true, overrideReason: 'roles test: admin override is allowed',
+        acknowledgeCollision: true
       });
       expect(allowed.status).toBe(202);
       await admin.call('PUT', `/contacts/${before.contactId}/do-not-contact`, { value: false });
@@ -228,6 +235,40 @@ test.describe('two roles on one chat: admin and agent', () => {
       expect(rows.filter((m) => m.direction === 'outbound').some((m) => m.sentByName === AGENT_NAME)).toBe(true);
     });
 
+    await test.step('typing: each person sees the other typing', async () => {
+      // The agent drafts a reply: the admin's open thread says so within a poll or two.
+      expect((await agent.call('POST', `/conversations/${conv}/typing`)).status).toBe(204);
+      await expect(page.getByText(new RegExp(`${AGENT_NAME} is typing`))).toBeVisible({ timeout: 20_000 });
+      // And the other way round, on the agent's page.
+      expect((await admin.call('POST', `/conversations/${conv}/typing`)).status).toBe(204);
+      await expect(second.page.getByText(new RegExp(`${adminName} is typing`))).toBeVisible({ timeout: 20_000 });
+    });
+
+    await test.step('collision: a second reply seconds after the first asks "send anyway?"', async () => {
+      // Get the admin's box ready first, so the page work cannot eat into the 15 s window.
+      // A fresh stack briefly reads the number as down, which drops the box to Note mode and does
+      // not switch back by itself, so choose Reply explicitly once it can send.
+      const replyTab = page.getByRole('button', { name: 'Reply', exact: true });
+      await expect(replyTab).toBeEnabled({ timeout: 30_000 });
+      await replyTab.click();
+      const text = `admin answers via the box ${String(Date.now())}`;
+      const box = page.locator('form textarea').first();
+      await box.fill(text);
+
+      // Now the agent replies; moments later the admin tries to as well.
+      expect((await reply(agent, 'agent answers first')).status).toBe(202);
+      const held = await admin.call('POST', '/messages', { conversationId: conv, body: 'admin answers too' });
+      expect(held.status).toBe(409);
+      expect(held.json.code).toBe('COLLISION');
+      expect(String(held.json.detail)).toContain(AGENT_NAME);
+
+      // In the box: Enter shows the warning, and "Send anyway" sends.
+      await box.press('Enter');
+      await expect(page.getByText(/just replied to this chat/)).toBeVisible();
+      await page.getByRole('button', { name: 'Send anyway' }).click();
+      await expect(page.getByText(text)).toBeVisible({ timeout: 20_000 });
+    });
+
     await test.step('the admin removes the agent; they are locked out again', async () => {
       const removed = await admin.call('DELETE', `/conversations/${conv}/participants/${agent.userId}`);
       expect(removed.status).toBe(204);
@@ -246,10 +287,4 @@ test.describe('two roles on one chat: admin and agent', () => {
 
     await second.context.close();
   });
-
-  // Not built yet (D-54). Written as placeholders so the intent is not lost; remove `fixme`
-  // when typing and the send-anyway warning ship.
-  test.fixme('the admin sees "Role Agent is typing…" while the agent drafts a reply', async () => {});
-  test.fixme('the agent sees "<admin> is typing…" while the admin drafts a reply', async () => {});
-  test.fixme('sending right after someone else replied asks "send anyway?" first', async () => {});
 });
