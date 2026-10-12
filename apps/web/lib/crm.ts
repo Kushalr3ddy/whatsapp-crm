@@ -35,6 +35,8 @@ export interface Conversation {
   assigneeName: string | null;
   /** The other people on the thread beside its owner, by name. Empty when it is just the owner. */
   participants: Array<{ userId: string; name: string }>;
+  /** Other people with this thread open right now (seen in the last 30 s), never the caller. */
+  viewers: Array<{ userId: string; name: string }>;
 }
 
 /** One member of the org, as the assignee picker needs them. Mirrors `GET /api/v1/users`. */
@@ -591,6 +593,12 @@ export async function updateConversation(
     `/conversations/${encodeURIComponent(id)}`,
     { method: 'PATCH', body: JSON.stringify(patch) }
   );
+}
+
+/** Tells the server this thread is open in my browser (`present`) or has been closed. */
+export async function sendPresence(conversationId: string, present: boolean): Promise<void> {
+  await requestVoid(`/conversations/${encodeURIComponent(conversationId)}/presence`,
+    { method: present ? 'POST' : 'DELETE' });
 }
 
 /** Adds a participant to a thread (admin only). */

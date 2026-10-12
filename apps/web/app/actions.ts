@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
-  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addParticipant, removeParticipant, addNote,
+  queueReply, startLink, getLinkState, unlinkSender, updateConversation, addParticipant, removeParticipant, sendPresence, addNote,
   uploadImport, runImportMapping, queueAttachment, getSenderStatus, CrmApiError
 } from '@/lib/crm';
 import type { SenderStatus, LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
@@ -108,6 +108,15 @@ export async function updateThread(
 
   revalidatePath('/inbox');
   return { ok: true };
+}
+
+/**
+ * Heartbeat for "who is viewing" (D-17). Deliberately swallows every error and does not
+ * revalidate: a missed beat only means a viewer name lapses sooner, and refreshing the page on
+ * every beat would be exactly the churn presence is meant to avoid.
+ */
+export async function heartbeat(conversationId: string, present: boolean): Promise<void> {
+  try { await sendPresence(conversationId, present); } catch { /* best effort */ }
 }
 
 /**

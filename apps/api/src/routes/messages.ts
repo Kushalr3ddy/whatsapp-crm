@@ -197,6 +197,15 @@ export function messagesRouter(
                        FROM conversation_participant p
                        JOIN app_user pu ON pu.id = p.user_id
                        WHERE p.conversation_id = v.id), '[]'::json) AS "participants",
+             -- Others with the thread open in the last 30 s (D-17). The caller is left out: you
+             -- do not need telling that you are looking at it.
+             COALESCE((SELECT json_agg(json_build_object('userId', vu.id, 'name', vu.display_name)
+                                       ORDER BY vu.display_name)
+                       FROM conversation_presence cp
+                       JOIN app_user vu ON vu.id = cp.user_id
+                       WHERE cp.conversation_id = v.id
+                         AND cp.seen_at > now() - interval '30 seconds'
+                         AND cp.user_id IS DISTINCT FROM ${req.crm!.userId}), '[]'::json) AS "viewers",
              c.id AS "contactId", c.display_name AS "contactName",
              c.do_not_contact AS "doNotContact",
              -- A subquery rather than a join: a contact may hold more than one phone
@@ -263,6 +272,15 @@ export function messagesRouter(
                        FROM conversation_participant p
                        JOIN app_user pu ON pu.id = p.user_id
                        WHERE p.conversation_id = v.id), '[]'::json) AS "participants",
+             -- Others with the thread open in the last 30 s (D-17). The caller is left out: you
+             -- do not need telling that you are looking at it.
+             COALESCE((SELECT json_agg(json_build_object('userId', vu.id, 'name', vu.display_name)
+                                       ORDER BY vu.display_name)
+                       FROM conversation_presence cp
+                       JOIN app_user vu ON vu.id = cp.user_id
+                       WHERE cp.conversation_id = v.id
+                         AND cp.seen_at > now() - interval '30 seconds'
+                         AND cp.user_id IS DISTINCT FROM ${req.crm!.userId}), '[]'::json) AS "viewers",
              c.id AS "contactId", c.display_name AS "contactName",
              c.do_not_contact AS "doNotContact",
              (SELECT ci.value_normalized FROM contact_identity ci
@@ -490,6 +508,55 @@ export function messagesRouter(
     if (!found) {
       res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
       return;
+    }
+    res.status(204).end();
+  });
+
+  /**
+   * "I have this thread open." Called every ~15 s by a thread open in a browser; anyone seen in
+   * the last 30 s counts as viewing (D-17). Needs a person — an API key has no screen to look at.
+   * Also sweeps rows nobody has refreshed for 5 minutes, so the table cannot grow without bound.
+   */
+  router.post('/conversations/:id/presence', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+    const userId = req.crm!.userId;
+    if (userId === null) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED',
+        'Presence needs a signed-in user; an API key is not looking at a screen.'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const found = await req.tenant!(async (tx) => {
+      const conv = (await tx.execute(sql`
+        SELECT 1 FROM conversation WHERE id = ${conversationId} AND org_id = ${orgId}`)
+      ) as unknown as unknown[];
+      if (conv.length === 0) return false;
+      await tx.execute(sql`
+        INSERT INTO conversation_presence (org_id, conversation_id, user_id, seen_at)
+        VALUES (${orgId}, ${conversationId}, ${userId}, now())
+        ON CONFLICT (conversation_id, user_id) DO UPDATE SET seen_at = now()`);
+      await tx.execute(sql`
+        DELETE FROM conversation_presence
+        WHERE org_id = ${orgId} AND seen_at < now() - interval '5 minutes'`);
+      return true;
+    });
+    if (!found) {
+      res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
+      return;
+    }
+    res.status(204).end();
+  });
+
+  /** "I closed this thread." Best effort; the 30 s expiry covers a tab that never says goodbye. */
+  router.delete('/conversations/:id/presence', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+    const userId = req.crm!.userId;
+    if (userId !== null) {
+      await req.tenant!((tx) => tx.execute(sql`
+        DELETE FROM conversation_presence
+        WHERE conversation_id = ${String(req.params.id)} AND user_id = ${userId}
+          AND org_id = ${req.crm!.orgId}`));
     }
     res.status(204).end();
   });
