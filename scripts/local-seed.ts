@@ -100,6 +100,24 @@ async function main(): Promise<void> {
   }
   say(`✓ number "${SENDER_LABEL}" (${SENDER_PHONE}, fake provider)`);
 
+  // The fixture must start every run healthy. The fake number never receives a real delivery
+  // receipt for sends made before the fake gateway reported them, and the health scorer reads a
+  // day of undelivered sends as a delivery collapse: it stamps a 48-hour soft-ban pause on the
+  // number, and every later send test then sits queued. So each run (1) counts the fake's past
+  // sends as delivered, which is what a fake number would have reported, and (2) clears any
+  // recovery pause it was given. Scoped to this one fake sender by id; nothing real is touched.
+  await db.execute(sql`
+    UPDATE message m
+    SET status = 'delivered', delivered_at = COALESCE(m.delivered_at, m.sent_at)
+    FROM conversation v
+    WHERE v.id = m.conversation_id AND v.sender_identity_id = ${senderId}
+      AND m.direction = 'outbound' AND m.status = 'sent'`);
+  await db.execute(sql`
+    UPDATE sender_identity
+    SET recovery_incident = NULL, recovery_started_at = NULL, recovery_until = NULL,
+        status = 'active', updated_at = now()
+    WHERE id = ${senderId} AND provider = 'fake'`);
+
   // ── the real API in-process, signed in as the test admin ──────────────────────────────
   const kms = new LocalKms({ keyHex: config.ENCRYPTION_KEY, indexKeyHex: config.ENCRYPTION_INDEX_KEY });
   const security = await inspectDatabaseSecurity(db);

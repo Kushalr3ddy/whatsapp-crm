@@ -23,6 +23,13 @@ export interface FakeOptions {
   readonly failFor?: readonly string[];
   /** Make every send throw, for testing outage handling. */
   readonly failAll?: boolean;
+  /**
+   * When set, every accepted send is reported `delivered` this many milliseconds later, as a
+   * healthy real number would. Off by default so unit tests control receipts themselves; the
+   * fake gateway turns it on, because without receipts the health scorer reads a day of
+   * undelivered sends as a delivery collapse and pauses the number for 48 hours.
+   */
+  readonly autoDeliverAfterMs?: number;
 }
 
 /** Baileys-like defaults: free, unofficial, no window, no template requirement. */
@@ -143,6 +150,16 @@ export class FakeChannelProvider implements ChannelProvider {
     this.emitStatus({
       providerMessageId, senderId: sender.id, status: 'sent', errorCode: null, at: new Date()
     });
+    const after = this.options.autoDeliverAfterMs;
+    if (after !== undefined) {
+      // unref'd so a pending receipt never keeps a finished process alive.
+      setTimeout(() => {
+        if (this.closed) return;
+        this.emitStatus({
+          providerMessageId, senderId: sender.id, status: 'delivered', errorCode: null, at: new Date()
+        });
+      }, after).unref();
+    }
     return { providerMessageId, acceptedAt: new Date() };
   }
 

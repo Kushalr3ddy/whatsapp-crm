@@ -51,7 +51,16 @@ test.describe('sending, end to end on the fake number', () => {
         senderIdentityId: seeded!.id, explicitContactIds: [contactId]
       }
     }));
-    const started = await page.request.post(`${API}/campaigns/${campaign.id}/start`, { headers, data: {} });
+    // The fiction range is small and a number cannot be messaged again for 14 days, so a repeat
+    // run would otherwise be skipped by the cooldown gate. This test is about the send pipeline,
+    // not the gates (they have their own tests), so the admin override (audited, with a reason)
+    // lets it be re-run any number of times.
+    const started = await page.request.post(`${API}/campaigns/${campaign.id}/start`, {
+      headers, data: {
+        overrideGates: ['engagement', 'cooldown', 'duplicate_campaign'],
+        reason: 'e2e re-run reuses a small pool of fiction numbers'
+      }
+    });
     expect(started.status()).toBeLessThan(300);
 
     // Dispatch, send and reconcile happen on the gateway's sweeps; wait for the recipient to settle.
