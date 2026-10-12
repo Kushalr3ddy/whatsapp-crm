@@ -34,6 +34,8 @@
     "test:e2e": "playwright test",
     "verify": "bash scripts/verify.sh",
     "test:live": "playwright test --config playwright.live.config.ts",
+    "test:roles": "playwright test tests/e2e/zz-roles-flow.spec.ts",
+    "test:roles:live": "ROLES_LIVE=1 playwright test tests/e2e/zz-roles-flow.spec.ts --headed",
     "//2": "─── database: db:setup does everything a new clone needs ────────────",
     "db:setup": "npm run db:dev:up && npm run db:migrate:all",
     "db:dev:up": "bash infra/scripts/dev-db.sh up",

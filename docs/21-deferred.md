@@ -1409,3 +1409,26 @@ shape before any migration.
 **What brings it back:** Kushal's go-ahead. Authorship (writing `sent_by_user_id` and showing it) is a
 small first slice that needs no realtime and can ship alone.
 
+
+---
+
+## D-54 · Typing indicator and the "just replied, send anyway?" warning — **PRIORITY (Kushal, 2026-10-12)**
+
+The second slice of [D-17](#d-17). The first slice (who has a chat open, by heartbeat) shipped in PR #28; this is
+the rest of what D-17 describes, split out so it is tracked on its own.
+
+**What it is:**
+- **Typing indicator:** "Priya is typing…" in the thread header and on the inbox row while someone has a
+  non-empty draft in the composer. The composer would send a throttled signal (about once every 3 s while keys
+  are being pressed) and the indicator expires about 6 s after the last one.
+- **Collision warning:** when you press send and someone else typed or replied in the last few seconds, ask
+  "Priya just replied. Send anyway?" instead of sending straight away.
+
+**Why it was not in the first slice:** Kushal chose viewing-only first (2026-10-11) to see whether presence is
+useful before adding keystroke traffic. Typing is chattier than a 12 s heartbeat, so it wants a look at load.
+
+**Shape to decide when it is built:** the same polling channel as presence (probably a `typing_at` column on
+`conversation_presence`, no new table) versus live push (SSE), which only pays off if 5 to 15 s of lag feels
+wrong. The reply lock stays the hard rule; this stays a soft warning.
+
+**What brings it back:** Kushal's go-ahead. Raised to priority with D-17 and D-53.
