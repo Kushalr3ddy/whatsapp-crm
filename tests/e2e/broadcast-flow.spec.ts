@@ -4,7 +4,10 @@ import { signIn, nav, CREDS_MISSING } from './helpers';
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
 const TAG = 'e2e-flow';
-const PHONE = '+12025550101';
+// A rotating corner of the fiction range (0200 to 0299) that no other spec or seed uses. One fixed
+// contact eventually has history, and the 14-day cooldown gate then skips it on start: the campaign
+// completes by itself and there is nothing left to cancel. A recipient with no history never is.
+const PHONE = `+1202555${String(200 + (Date.now() % 100)).padStart(4, '0')}`;
 
 /**
  * Sign in → create a broadcast in the UI → start it → see it running → cancel it.

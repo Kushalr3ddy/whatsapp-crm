@@ -26,6 +26,11 @@ let conversationId: string;
 function ctxWith(provider: FakeChannelProvider) {
   return {
     db, provider, logger,
+    // Run the gateway the way production does: every piece of per-org work drops to the
+    // restricted role with the org set (D-41). Under a superuser connection this is the only
+    // thing that makes row-level security apply, and it proves `crm_app` holds every grant
+    // the gateway's queries need.
+    tenantRole: 'crm_app',
     decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
     // High enough that the pacing gate never fires by accident; the tests that care about
     // pacing set their own. Sleep is omitted so jitter costs these tests no real seconds.

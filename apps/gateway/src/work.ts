@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { setTenant, type Database, type Transaction } from '@crm/db';
+import { tenantDatabase } from './tenant.js';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   classifyLinkFailure, encodeLinkError,
@@ -106,6 +107,12 @@ export interface WorkContext {
    * exercise it never see a read receipt.
    */
   readonly readReceipts?: boolean;
+  /**
+   * The restricted role tenant-scoped work drops to (`crm_app`), as resolved at startup by
+   * `resolveTenantRole`. Null or absent when the connecting role is already subject to row-level
+   * security, or in tests that run as a superuser and only need the org set (D-41).
+   */
+  readonly tenantRole?: string | null;
   /** How many of the oldest queued messages one sweep attempts. Default 200; the simulation lowers it. */
   readonly sweepBatchSize?: number;
   /** Minimum gap between restriction sweeps. Default 60 000 ms; tests pass 0. */
@@ -132,6 +139,47 @@ export interface WorkContext {
    * passes a real sleep, and skipping it entirely would defeat the point of the jitter.
    */
   readonly sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * The same context with its database pinned to one org (D-41). Everything the gateway does for a
+ * tenant goes through one of these, so Postgres, not each query's `WHERE org_id`, is what keeps
+ * one org's rows away from another's.
+ */
+function scopedTo(ctx: WorkContext, orgId: string): WorkContext {
+  return { ...ctx, db: tenantDatabase(ctx.db, orgId, ctx.tenantRole ?? null) };
+}
+
+/**
+ * Every org id, for a sweep that has to look at all tenants. This and the small "which org owns
+ * this id" lookups below are the gateway's only unscoped reads, and they return ids alone: the
+ * work itself always runs through `scopedTo`.
+ */
+async function allOrgIds(ctx: WorkContext): Promise<string[]> {
+  const rows = await ctx.db.execute(sql`SELECT id FROM org`);
+  return (rows as unknown as Array<{ id: string }>).map((r) => r.id);
+}
+
+/** Runs `work` once per org, each time with a context pinned to that org, and collects the results. */
+async function inEachOrg<T>(ctx: WorkContext, work: (scoped: WorkContext) => Promise<T>): Promise<T[]> {
+  const out: T[] = [];
+  for (const orgId of await allOrgIds(ctx)) out.push(await work(scopedTo(ctx, orgId)));
+  return out;
+}
+
+/** The org that owns a sender, or null when there is no such sender. */
+async function orgOfSender(ctx: WorkContext, senderId: string): Promise<string | null> {
+  const rows = await ctx.db.execute(sql`SELECT org_id AS "orgId" FROM sender_identity WHERE id = ${senderId}`);
+  return (rows as unknown as Array<{ orgId: string }>)[0]?.orgId ?? null;
+}
+
+/** The org that owns a link/unlink session (through its sender), or null when it is gone. */
+async function orgOfSession(ctx: WorkContext, sessionId: string): Promise<string | null> {
+  const rows = await ctx.db.execute(sql`
+    SELECT si.org_id AS "orgId" FROM channel_session cs
+    JOIN sender_identity si ON si.id = cs.sender_identity_id
+    WHERE cs.id = ${sessionId}`);
+  return (rows as unknown as Array<{ orgId: string }>)[0]?.orgId ?? null;
 }
 
 /**
@@ -182,6 +230,13 @@ export async function runEntropyEvent(
  */
 export async function sweepEntropy(ctx: WorkContext, now: Date = new Date()): Promise<number> {
   if (!ctx.entropy) return 0;
+  const counts = await inEachOrg(ctx, (c) => sweepEntropyInOrg(c, now));
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+/** One org's share of `sweepEntropy`, run with a context already pinned to that org. */
+async function sweepEntropyInOrg(ctx: WorkContext, now: Date): Promise<number> {
+  if (!ctx.entropy) return 0;
   const tz = ctx.limits?.circadianTimezone ?? null;
   if (tz && circadianActivity(localHour(now, tz)) < 0.5) return 0;
   const rows = await ctx.db.execute(sql`
@@ -206,6 +261,13 @@ export async function sweepEntropy(ctx: WorkContext, now: Date = new Date()): Pr
  * set only after the provider confirms, so a closed socket leaves the message to be tried again.
  */
 export async function sweepReadReceipts(ctx: WorkContext, now: Date = new Date()): Promise<number> {
+  if (!ctx.readReceipts || !ctx.provider.markRead) return 0;
+  const counts = await inEachOrg(ctx, (c) => sweepReadReceiptsInOrg(c, now));
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+/** One org's share of `sweepReadReceipts`, run with a context already pinned to that org. */
+async function sweepReadReceiptsInOrg(ctx: WorkContext, now: Date): Promise<number> {
   if (!ctx.readReceipts || !ctx.provider.markRead) return 0;
   const tz = ctx.limits?.circadianTimezone ?? null;
   const activity = tz ? circadianActivity(localHour(now, tz)) : null;
@@ -265,6 +327,13 @@ export async function sweepReadReceipts(ctx: WorkContext, now: Date = new Date()
  * is left on `channel_session` and the QR or pairing code is returned through the same row.
  */
 export async function handleLinkRequest(ctx: WorkContext, sessionId: string): Promise<void> {
+  const orgId = await orgOfSession(ctx, sessionId);
+  if (orgId === null) return;
+  await handleLinkRequestInOrg(scopedTo(ctx, orgId), sessionId);
+}
+
+/** `handleLinkRequest` once the session's org is known and the context is pinned to it. */
+async function handleLinkRequestInOrg(ctx: WorkContext, sessionId: string): Promise<void> {
   const rows = await ctx.db.execute(sql`
     SELECT cs.id            AS "sessionId",
            cs.sender_identity_id AS "senderIdentityId",
@@ -330,6 +399,13 @@ export async function handleLinkRequest(ctx: WorkContext, sessionId: string): Pr
  * gets a clean QR.
  */
 export async function handleUnlinkRequest(ctx: WorkContext, sessionId: string): Promise<void> {
+  const orgId = await orgOfSession(ctx, sessionId);
+  if (orgId === null) return;
+  await handleUnlinkRequestInOrg(scopedTo(ctx, orgId), sessionId);
+}
+
+/** `handleUnlinkRequest` once the session's org is known and the context is pinned to it. */
+async function handleUnlinkRequestInOrg(ctx: WorkContext, sessionId: string): Promise<void> {
   const rows = await ctx.db.execute(sql`
     SELECT sender_identity_id AS "senderIdentityId"
     FROM channel_session
@@ -426,11 +502,13 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
     // beside a sweep) overshoots the ceiling. Serialising per number makes check-then-send
     // atomic, which is also the human cadence the pacing is trying to produce.
     const owner = (await ctx.db.execute(sql`
-      SELECT v.sender_identity_id AS "senderId"
+      SELECT v.sender_identity_id AS "senderId", m.org_id AS "orgId"
       FROM message m JOIN conversation v ON v.id = m.conversation_id
-      WHERE m.id = ${messageId}`) as unknown as Array<{ senderId: string }>)[0];
+      WHERE m.id = ${messageId}`) as unknown as Array<{ senderId: string; orgId: string }>)[0];
     if (owner === undefined) return;
-    await withSenderLock(owner.senderId, () => handleSendOnce(ctx, messageId));
+    // Everything from here on runs pinned to the message's own org (D-41).
+    const scoped = scopedTo(ctx, owner.orgId);
+    await withSenderLock(owner.senderId, () => handleSendOnce(scoped, messageId));
   } finally {
     inFlight.delete(messageId);
   }
@@ -745,6 +823,12 @@ async function handleSendOnce(ctx: WorkContext, messageId: string): Promise<void
  * messages is ever sitting in the send queue at once.
  */
 export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
+  const counts = await inEachOrg(ctx, (c) => dispatchCampaignsInOrg(c));
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+/** One org's share of `dispatchCampaigns`, run with a context already pinned to that org. */
+async function dispatchCampaignsInOrg(ctx: WorkContext): Promise<number> {
   if (!ctx.kms) return 0;
 
   const rows = await ctx.db.execute(sql`
@@ -822,6 +906,12 @@ let lastRestrictionSweep = 0;
  * classifies as `ok`, so this is cheap on an idle install.
  */
 export async function sweepRestriction(ctx: WorkContext): Promise<number> {
+  const counts = await inEachOrg(ctx, (c) => sweepRestrictionInOrg(c));
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+/** One org's share of `sweepRestriction`, run with a context already pinned to that org. */
+async function sweepRestrictionInOrg(ctx: WorkContext): Promise<number> {
   const every = ctx.restrictionSweepEveryMs ?? 60_000;
   const now = Date.now();
   // `now >= last` guard: if the clock has moved backwards (a simulation restarting its timeline, or a
@@ -891,7 +981,7 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   // Re-score sender health on the same cadence as the queue, so a number that has started to
   // struggle is degraded or quarantined — and a recovered one restored to active — before the
   // next batch of campaign sends is queued against it.
-  await scoreConnectedSenders(ctx.db);
+  await inEachOrg(ctx, (c) => scoreConnectedSenders(c.db));
 
   // Silent-restriction detection: delivery evidence per number, on its own (slower) cadence.
   await sweepRestriction(ctx);
@@ -923,11 +1013,12 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
 export async function restoreSessions(
   ctx: WorkContext, providers: readonly string[] = ['baileys']
 ): Promise<number> {
-  const rows = await ctx.db.execute(sql`
+  // One query per org, each pinned to it, so a number is only ever listed from inside its own org.
+  const perOrg = await inEachOrg(ctx, async (c) => (await c.db.execute(sql`
     SELECT si.id, si.phone_e164 AS phone FROM sender_identity si
     WHERE si.provider IN (${sql.join(providers.map((p) => sql`${p}`), sql`, `)})
-      AND si.status IN ('active','degraded','quarantined')`);
-  const senders = rows as unknown as Array<{ id: string; phone: string | null }>;
+      AND si.status IN ('active','degraded','quarantined')`)) as unknown as Array<{ id: string; phone: string | null }>);
+  const senders = perOrg.flat();
 
   let restored = 0;
   for (const s of senders) {
@@ -994,6 +1085,15 @@ async function suspectBan(
  * a business state that says nothing about whether a socket is open.
  */
 export async function applyConnectionEvent(
+  ctx: WorkContext, event: NormalisedConnectionEvent
+): Promise<void> {
+  const orgId = await orgOfSender(ctx, event.senderId);
+  if (orgId === null) return;
+  await applyConnectionEventInOrg(scopedTo(ctx, orgId), event);
+}
+
+/** `applyConnectionEvent` once the sender's org is known and the context is pinned to it. */
+async function applyConnectionEventInOrg(
   ctx: WorkContext, event: NormalisedConnectionEvent
 ): Promise<void> {
   const openedAt = event.state === 'open' ? event.at.toISOString() : null;
@@ -1132,10 +1232,13 @@ function recoveryIncidentFor(reason: NormalisedConnectionEvent['reason']): Recov
  * `restoreSessions()` reconnects it.
  */
 export async function markAllSessionsClosed(ctx: WorkContext): Promise<number> {
-  const rows = await ctx.db.execute(sql`
-    UPDATE channel_session
-    SET connection_state = 'closed', updated_at = now()
-    WHERE connection_state <> 'closed'
-    RETURNING sender_identity_id`);
-  return (rows as unknown as unknown[]).length;
+  const counts = await inEachOrg(ctx, async (c) => {
+    const rows = await c.db.execute(sql`
+      UPDATE channel_session
+      SET connection_state = 'closed', updated_at = now()
+      WHERE connection_state <> 'closed'
+      RETURNING sender_identity_id`);
+    return (rows as unknown as unknown[]).length;
+  });
+  return counts.reduce((a, b) => a + b, 0);
 }
