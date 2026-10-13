@@ -1,200 +1,268 @@
-# 29 · Free hosting plan (AWS, GCP, Azure)
+# 29 · Free hosting plan
 
-A plan for running this system for **about 10 people and up to 10 WhatsApp numbers**, using the
-free offers of the big three clouds. Oracle is excluded on purpose.
+How to run this system for **about 10 people and up to 10 WhatsApp numbers** without paying, using
+the free offers of cloud providers and free services, alone or combined.
 
-Facts about the clouds were read from their own pages on **2026-10-13** and free offers change, so
-treat the numbers as a snapshot and re-check before signing up. Where a claim comes from a blog or
-forum rather than a vendor page, it says so.
+Offers were read from the vendors' own pages on **2026-10-13**. Free tiers change often and without
+notice (Oracle halved its free Arm machine in June 2026 without announcing it), so re-check before
+you rely on one. Where a claim comes from a blog or forum rather than a vendor page, it says so.
+
+**Constraints that shaped this version (from the owner):** the AWS, Azure and GCP free accounts were
+already used in college, so they are probably not available again; a payment card may not work; and
+Oracle has already been tried and burnt, so it is last.
 
 ---
 
 ## 1 · The honest summary
 
-- **Nothing here is free forever except a machine that is too small to run this.** The realistic
-  options are **free for 12 months** (Azure) or **free for 6 months** (AWS).
-- **Azure is the best fit**: its free account includes a 4 GB Arm virtual machine for 12 months, which
-  is the only free offer that comfortably holds the whole system.
-- **The biggest risk is not money, it is WhatsApp.** Reports say WhatsApp silently restricts unofficial
-  (Baileys) traffic from datacenter IP addresses. This is unproven for our case, so the plan tests it
-  with one spare number before anything else, and has a fallback (section 5).
-- **Nothing is built to deploy yet.** `infra/docker` and `infra/compose` are empty, and there is no
-  production build step. Section 6 is the work that has to happen on our side, about one to two days.
+1. **No card-free cloud service can host the gateway.** The gateway is a long-running process that
+   holds one WebSocket per WhatsApp number, needs about 1.5 GB at 10 numbers, and must not sleep. The
+   free always-on containers that used to cover this have gone, need a card, or put the process to
+   sleep (section 4).
+2. **The realistic free home for this system is your own machine**, with free services around it:
+   Cloudflare Tunnel for HTTPS, Tailscale for admin access, free off-site backups, and free
+   telemetry. It also has the best answer to the biggest risk, WhatsApp's treatment of datacenter IPs,
+   because a home connection is a residential IP.
+3. **Combining "free" cloud pieces mostly does not work, for specific technical reasons**
+   (section 5): the database features this system leans on (row-level security, `LISTEN/NOTIFY`, a
+   privileged role switch) rule out SQLite-style stores such as D1 and document stores such as Convex,
+   and the process that matters cannot run on Lambda or Workers.
+4. **If a cloud VM is a must**, the order is: a friend's or family member's genuine first-time Azure
+   account, then a few dollars a month for a small VPS, then (last) Oracle.
 
 ---
 
 ## 2 · What the system needs
 
-From the measurements in [19 · Capacity](19-capacity.md), one number:
+Measured in [19 · Capacity](19-capacity.md), one number:
 
 | Part | Memory |
 |---|---|
 | API | ~265 MB |
 | Gateway, one number | ~340 MB, then **~45 MB for each extra number** |
 | Web (Next.js server, not optional) | ~170 MB |
-| Postgres | ~70 MB idle, give it 200 to 300 MB with real history |
+| Postgres | ~70 MB idle, 200 to 300 MB with real history |
 
-With **10 numbers** that is roughly **1.4 to 1.6 GB** of working memory. So:
+With **10 numbers**: roughly **1.4 to 1.6 GB**. Plan for **2 GB minimum, 4 GB comfortable**. A 512 MB
+or 1 GB box fits a pilot of one to three numbers at most.
 
-- **Minimum useful: 2 GB.** Tight, needs swap.
-- **Comfortable: 4 GB.**
-- **A 1 GB machine does not fit**, even with swap, once you pass two or three numbers.
-
-Disk is a non-issue: a message is about 1.6 kB, so a million messages is under 2 GB. Network is small
-too (the UI, plus WhatsApp traffic and media).
-
-One more requirement: the gateway holds **long-lived outbound WebSocket connections** to WhatsApp, one
-per number. That rules out serverless and scale-to-zero products (Cloud Run, Lambda, Azure Functions,
-App Service free tier). It needs an always-on virtual machine.
+| Requirement | Why it matters when picking a host |
+|---|---|
+| **An always-on process** | The gateway holds a WebSocket per number. Sleeping, scale-to-zero and per-request billing all break it. |
+| **Postgres with real features** | Row-level security (D-41 drops to a restricted role per statement), `LISTEN/NOTIFY` (wakes the gateway), triggers, a role that can `SET ROLE`, `bytea`, arrays, `jsonb`. |
+| **The database next to the gateway** | Since D-41 every gateway statement runs as `BEGIN`, `SET ROLE`, `set_config`, the query, `COMMIT`: five round trips. At a 100 ms round trip to a far database, one send's queries take seconds. Keep them on the same machine or same network. |
+| **Stable outbound IP** | WhatsApp ties a linked device to where it connects from. A changing address looks like account sharing. |
+| **Node 22 and a native module** | `@node-rs/argon2` has Arm builds, but run the whole test suite once on whatever machine you pick. |
 
 ---
 
-## 3 · The options
+## 3 · Where each option stands
 
-| | What is free | For how long | Fits? |
+### Cloud accounts
+
+| | What is free | Fits? | For you |
 |---|---|---|---|
-| **Azure** (free account) | **750 h/month** of a burstable VM: **B2pts v2 (Arm, 2 vCPU, 4 GB)**, or B1s / B2ats v2 (smaller). 2 × 64 GB managed disks. ~15 GB outbound data. $200 credit for the first 30 days. | **12 months** from signup | **Yes, best.** 750 h is one VM running 24/7. |
-| **AWS** (new account "Free plan") | Up to **$200 of credits** over 6 months. | **6 months, or until credits run out.** The account then **closes** unless you move to a paid plan. | Works for a trial, **not** a plan. A 2 GB instance is roughly $15/month of credit. |
-| **GCP** (always free) | **1 × e2-micro** (1 GB RAM) per month, 30 GB disk, 1 GB outbound/month, only in **us-west1, us-central1, us-east1**. $300 credit for 90 days. | **Forever** (the e2-micro) | **Too small** for the whole system (1 GB, US only). Useful only as a lean leftover. |
-| Oracle | (excluded) | | |
+| **Azure** free account | 750 h/month of a burstable VM, including **B2pts v2 (Arm, 2 vCPU, 4 GB)**, 2 × 64 GB disks, ~15 GB outbound, **12 months**, $200 credit for the first 30 days. | Yes, the best of the three | **Probably unavailable**: new customers only, and a card is required. Only if someone who has never held an Azure account opens it in their own name. |
+| **AWS** new-account Free plan | Up to **$200 of credits over 6 months**; the account then **closes** unless upgraded. | A 6-month trial, not a plan | Same eligibility and card problem. |
+| **GCP** always free | **1 × e2-micro (1 GB)**, 30 GB disk, 1 GB outbound/month, **US regions only**. $300 for 90 days. | **Too small** (1 GB; US-only) | Same. |
+| **Oracle** Always Free | See section 7. | In theory | **Last. Likely unavailable.** |
 
-Reading the table:
+### Services that are genuinely free and need no card (as of the date above)
 
-- **Azure, 12 months.** After that you pay (a small bill, look it up in the pricing calculator) or move.
-  The free account has a **$0 spending limit** until you upgrade it, so it cannot silently run up a bill.
-- **GCP** needs a billing account with a card and has **no hard cap**, only budget alerts.
-- **AWS** is the most honest about it: the Free plan closes the account instead of charging you.
-- **All three require a card** at signup for identity. See section 7.
-
-### Why not the "two small VMs" idea
-
-Splitting Postgres onto GCP's free e2-micro and the apps onto a second cloud sounds clever but puts
-the database across the public internet from the app, and the e2-micro is in the US. It adds latency
-and failure modes to save very little. One 4 GB Azure VM is simpler.
-
----
-
-## 4 · The plan
-
-### Layout on one VM
-
-```
-Internet ──443──► Caddy  (TLS certificate, automatic)
-                    ├──► web  :3001   (Next.js)
-                    └──► api  :3000   (API)
-gateway ──outbound WebSockets──► WhatsApp
-postgres  (localhost only, never exposed)
-```
-
-- Only ports 80 and 443 are open to the internet, plus SSH restricted to your IP.
-- The web app forwards the person's session to the API over localhost (`CRM_API_URL=http://localhost:3000`).
-- The gateway has no inbound port at all.
-- A domain is needed for HTTPS. A free one (DuckDNS, or a Cloudflare-managed domain you own) is fine.
-
-### Phases
-
-**Phase 0, before committing to anything (a weekend)**
-1. Create the Azure free account. Create **one** Linux **B2pts v2** VM from the **Free services** page in
-   the portal (the portal warns that resources made elsewhere may not default to a free size).
-2. Pick a region near the phone: **Central India** if B2pts v2 is offered there, otherwise the nearest
-   (Southeast Asia, Japan). The WhatsApp login location should match the phone's.
-3. Run the stack by hand, link **one spare number**, send a few messages to your own phones.
-4. Soak for **72 hours** watching the silent-restriction tracker
-   ([27](27-restriction-tracking.md)) and delivery receipts.
-
-**Phase 1, if Phase 0 is healthy**
-5. Package it properly (section 6) so a restart or reboot brings everything back.
-6. Add numbers one at a time. The warm-up ramp already limits how fast each one can send.
-7. Backups, uptime check, budget alert (section 7).
-
-**Phase 2, month 10 or 11**
-8. Decide: pay the small Azure bill, or move to a cheap VPS of 4 GB. Moving is a database dump plus
-   `.env`, which is why backups and the key backup matter from day one.
-
----
-
-## 5 · The datacenter-IP risk and what to do about it
-
-Several write-ups (blogs and forum posts, not WhatsApp itself) describe the same symptom: a Baileys
-companion running from a cloud or VPS IP connects fine and "sends" successfully, but messages quietly
-do not arrive. The number is not banned; the unofficial device's traffic is dropped. The reports
-suggest **residential IP addresses do not have this problem**.
-
-That is the exact failure the silent-restriction tracker was built to notice from delivery evidence
-(`restriction_state`, "no delivery for 3h", the number's health timeline). So Phase 0 is the test.
-
-If Phase 0 shows it, in order of effort:
-
-| Fallback | How | Cost |
+| Service | Free allowance | Useful for this system? |
 |---|---|---|
-| **Split: gateway at home, rest in the cloud** | Run only the gateway on your own always-on machine (residential IP), joined to the cloud VM by **Tailscale** (free personal plan). It reaches Postgres over the private network. | Free. Your machine must be on. |
-| **Everything at home** | Run the whole stack on your own machine; expose it with a **Cloudflare Tunnel** (free) for the web UI. | Free. Power and internet at home. |
-| **Route the socket through a residential exit** | Egress the WhatsApp connection through a home Tailscale exit node (SOCKS proxy). | Needs a code change: the Baileys adapter has **no proxy support today**. |
-
-Whichever you use, keep **one stable IP** per number. Changing it often looks like account sharing.
+| **Cloudflare Tunnel** | Free HTTPS exposure of a machine at home, no open ports | **Yes.** The way to publish a home-hosted UI. |
+| **Tailscale** (personal) | Free private network between your own machines (verify the current device cap) | **Yes.** Admin access, or a home gateway to a cloud database. |
+| **Supabase** Free | **500 MB** Postgres, 5 GB egress, 2 projects, paused after **1 week of inactivity** (ours is never idle) | **As an off-site backup target, yes. As the live database, no** (latency, see section 2). |
+| **Neon** Free | 1 GB/project, **100 CU-hours/month**, **autosuspend after 5 min that cannot be turned off** | **No.** An always-running gateway keeps it awake all month and burns the hours early. |
+| **Grafana Cloud** Free | 10k metric series, **50 GB logs**, 50 GB traces, 14-day retention, 3 users, no card | **Yes**, for telemetry. |
+| **PostHog** Free | 1M events, 5k replays, **100k error-tracking exceptions**, logs, 1-year retention | Partly (errors yes; session replay **no**, see section 6). |
+| **Cloudflare Workers** Free | 100k requests/day, **10 ms CPU per request**, 128 MB, 50 subrequests | The web UI, with caveats (section 5). Not the gateway. |
+| **Vercel** Hobby | Free hosting of a Next.js app; terms limit it to **non-commercial** use | The web UI only. |
 
 ---
 
-## 6 · What has to be built on our side
+## 4 · Free always-on hosting for the gateway: what is left
 
-None of this exists yet (the two deployment folders are empty). Rough list:
+| Platform | Reality in 2026 | Verdict |
+|---|---|---|
+| **Hugging Face Spaces** | The free CPU hardware is 16 GB, but **Docker Spaces now require a paid plan**; free ones also sleep when unused. | Out. |
+| **Render** free web service | 512 MB, **sleeps after 15 minutes idle**, card required (per a comparison article). | Out: sleeping drops every WhatsApp socket. |
+| **Railway** | $5 trial credit for 30 days, then $1/month. Its fair-use terms (per a forum thread) **disallow WhatsApp bots**. | Out. |
+| **Koyeb** | Older guides list a free always-on 512 MB service; its current pricing page shows pay-per-use and a free Postgres of 5 hours a month, **no longer a clearly stated free web service**. | Unverified. At 512 MB it would only hold one to three numbers anyway. |
+| **Back4app Containers** | 256 MB, sleeps when idle (per a comparison article). | Out: too small. |
+| **Fly.io** | No free allowance for new accounts that I could confirm, and it asks for a card. | Out. |
+| **Cloud Run, Lambda, Azure Functions, App Service free** | Scale to zero or per-request. | Out: cannot hold the sockets. |
+
+Conclusion: with no working card, **there is no free managed place to run the gateway**.
+
+---
+
+## 5 · Mix-and-match: what was asked about, and why it does or does not work
+
+| Idea | Verdict | Why |
+|---|---|---|
+| **Frontend on Cloudflare (Pages or Workers)** | Possible, not worthwhile | The web app is a server-rendered Next.js app that forwards the session to the API (server actions), so a static export is no longer possible. The OpenNext adapter supports server actions, but the **free plan's 10 ms CPU limit** is tight for rendering server components, and the UI would call the API across the public internet instead of localhost. Saves ~170 MB of memory at the cost of a second deployment. |
+| **Frontend on Vercel Hobby** | Works technically | Free, but its terms restrict Hobby to non-commercial use. |
+| **Cloudflare D1 for the database** | **No** | D1 is SQLite. The system relies on row-level security, `LISTEN/NOTIFY`, plpgsql triggers, `bytea` and Postgres arrays. SQLite support is a separate, unbuilt item (D-20). |
+| **Convex** | **No** | A document database with its own function runtime. Using it means rewriting the data layer, the gateway's command channel, and every query. |
+| **RDS (or Aurora)** | Not available to you | Only free through an AWS free plan, which needs an account you probably cannot open. Also far from the gateway (section 2). |
+| **Lambda / Workers / Functions for the API** | Not worthwhile | The API is Express with `pino-http`, a native password-hashing module and a transaction-per-request pattern. Porting it saves nothing: the gateway still needs a real process. |
+| **Lambda for the gateway** | **No** | Sockets that stay open for weeks. |
+| **Supabase as the live database** | Works on paper, wrong place | Needs a direct, non-pooled connection for `LISTEN`, and the latency (section 2) makes it slow with the gateway elsewhere. Good as a backup target. |
+| **Neon as the live database** | **No** | Autosuspend cannot be disabled, and the free hours run out in under three weeks of always-on use. |
+| **"A tiny VM for the backend"** | The right instinct | It is the gateway and API on a machine you control. See combination A. |
+
+### Combinations that hold together
+
+**A · Everything at home** (recommended; $0, no card)
+
+```
+phone/browser ──HTTPS──► Cloudflare Tunnel ──► home machine
+                                                ├─ Caddy (optional) → web :3001 / api :3000
+                                                ├─ gateway ──► WhatsApp  (residential IP)
+                                                └─ Postgres (localhost)
+home machine ──nightly encrypted dump──► free off-site storage (Supabase / Backblaze / Drive)
+admin: Tailscale SSH
+```
+
+- Hardware: your current machine, a spare laptop, or a mini PC or Arm single-board computer with 4 GB.
+  A mini PC left on 24/7 draws about as much as a light bulb.
+- It answers the datacenter-IP risk by design.
+- Risks you own: power cuts, router resets, your ISP changing your IP (consider a UPS and
+  auto-restart on boot), and the machine being a single point of failure. Backups matter more here.
+- Needs a domain for a friendly address (a free subdomain works), because Cloudflare Tunnel publishes
+  names, not bare IPs.
+
+**B · Home gateway, cloud for the rest** (only if a cloud VM becomes available)
+
+The gateway (needs the residential IP) stays at home. API, web and Postgres run on the cloud VM; the
+gateway reaches the database over **Tailscale**. This is the same plan as the earlier Azure version,
+with the one risky component moved. The five-round-trip cost in section 2 applies here, so the
+database should live **with the gateway at home**, and only the web and API sit in the cloud.
+
+**C · Cloud-only, minimal** (needs an eligible account or a few dollars)
+
+One 4 GB VM (a friend's genuine Azure free account, or a small paid VPS): everything on one box with
+Caddy. Test the datacenter-IP risk first (section 8).
+
+**D · Pilot-sized, fully cloud, no card**
+
+Not currently possible: nothing in section 4 holds even one number reliably.
+
+---
+
+## 6 · Telemetry on a free budget
+
+Pairs with any combination. Telemetry is not built yet beyond logs (D-56); see
+[28 · Logging and telemetry](28-logging-and-telemetry.md).
+
+| Need | Free option | How it fits |
+|---|---|---|
+| **Logs**, searchable and kept 14 days | **Grafana Cloud (Loki)**, 50 GB/month | The app already writes JSON lines. A `pino-loki` transport ships them from inside the process, **no extra process and almost no memory**. Alternatives: Axiom, Better Stack. |
+| **Metrics** (queue depth, sends and holds, number health) | **Grafana Cloud (Prometheus)**, 10k series | Needs the `/metrics` endpoint from D-56 first, plus a small agent (Grafana Alloy, about 100 to 150 MB) to push it. |
+| **Errors** | **PostHog** error tracking (100k/month) or **Sentry** free | One small SDK in the API and gateway. |
+| **Uptime** | UptimeRobot free, or a scheduled `curl` | Hits `GET /health`. |
+| **Product usage** | PostHog events | Optional. |
+
+Two cautions:
+
+- **Never turn on session replay** for this app. It would record customer chats on screen and send
+  them to a third party. Events and error tracking only.
+- **Logs would leave your machine.** Message bodies are never logged and sensitive fields are
+  redacted by allowlist, but phone numbers in ids and error text could still appear. Review a day of
+  real log output before pointing it at a third party.
+
+---
+
+## 7 · Oracle (last, and probably not for you)
+
+Listed because it was asked for, at the end because it is the least likely to work:
+
+- **Always Free Ampere A1 is now 2 OCPUs and 12 GB** (it was 4 and 24 until **15 June 2026**), plus up
+  to two 1 GB AMD micro VMs and 200 GB of disk. Existing instances over the new limit were shut down;
+  a terminated one may not be re-creatable at the old size. Source: Oracle's own docs and InfoQ.
+- **Idle reclamation:** an instance is reclaimed if, over 7 days, **CPU (p95) is under 20%, network is
+  under 20%, and memory is under 20%** (memory for A1 shapes). This workload is the typical idle one:
+  about 1.5 GB of 12 GB is roughly 12% memory. Expect it to be flagged.
+- **Signup needs a working card and passes an anti-abuse check.** With several accounts already used,
+  a new one is unlikely to clear it, and opening more accounts to get around that would break their terms.
+
+Verdict: do not plan on it.
+
+---
+
+## 8 · The datacenter-IP risk and how to test it
+
+Several write-ups (blogs and forums, not WhatsApp) describe the same symptom: a Baileys companion
+running from a cloud IP connects and "sends" successfully but messages quietly do not arrive. The
+number is not banned. A residential IP is reported not to have the problem. Unproven for us.
+
+That is the failure the silent-restriction tracker detects from delivery evidence ([27](27-restriction-tracking.md)).
+So before moving anything to a cloud VM: link **one spare number**, send a few messages to your own
+phones, and watch it for **72 hours**. If anything looks restricted, use combination A or B.
+
+There is no proxy support in the Baileys adapter today, so "route the socket through a home exit node"
+needs a code change if you ever want it.
+
+---
+
+## 9 · What has to be built on our side (any combination)
 
 | Item | Notes |
 |---|---|
-| Production build for the API and gateway | `npm start` points at `apps/api/dist/server.js` but there is no build script that makes it. Either compile with `tsc` or run with `tsx` in production. |
-| `next build` and `next start` for the web app | Already works; needs wiring and an environment file. |
-| A **Dockerfile** and a **compose file**, or **systemd units** | Compose is simpler to rebuild; systemd is lighter on a 4 GB machine. Pick one. |
-| **Caddyfile** | TLS plus two reverse proxies. |
-| Migrations at start | Run `db:migrate` before the API and gateway start. |
-| **Arm check** | The B2pts v2 is Arm. Node, Postgres and Next run fine on Arm; the one native module is `@node-rs/argon2`, which ships Arm builds, but the full test suite must be run once on the real VM. |
-| Log rotation | Docker's `max-size` and `max-file`, or logrotate. See [28 · Logging and telemetry](28-logging-and-telemetry.md). |
-| A **backup job** | Nightly `pg_dump`, copied off the machine, encrypted. |
-| An **update procedure** | `git pull`, install, build, migrate, restart. Written down, then rehearsed. |
+| Production build for the API and gateway | `npm start` points at `apps/api/dist/server.js`, but no script builds it. Compile with `tsc`, or run with `tsx`. |
+| `next build` and `next start` | Works; needs wiring. |
+| A Dockerfile and compose file, or systemd units | Compose is easier to rebuild; systemd uses less memory. |
+| Caddy, or a Cloudflare Tunnel config | TLS plus the two proxies. |
+| Migrations at start | `db:migrate` before the API and gateway. |
+| Restart on boot, and after a power cut | Needed for a home machine. |
+| A backup job | Nightly `pg_dump`, encrypted, copied off the machine. |
+| Update procedure | `git pull`, install, build, migrate, restart. |
+| Log shipping, if wanted | `pino-loki`, once you decide. |
+
+Both deployment folders (`infra/docker`, `infra/compose`) are empty today. Roughly one to two days.
 
 ---
 
-## 7 · Operations and guard rails
+## 10 · Operations and guard rails
 
-**Secrets.** `ENCRYPTION_KEY`, `ENCRYPTION_INDEX_KEY` and `ENCRYPTION_KEYS_PREVIOUS` live only in the
-VM's environment file (permissions `600`) **and in a backup somewhere else**. Losing them loses every
-linked number's session and every message. Back up the database and the keys to **different places**.
-
-**Backups.** Nightly dump, kept for 14 days, copied to free object storage (Azure Blob 5 GB for 12
-months, or your own machine). Do one **restore drill** before relying on it.
-
-**Cost guard rails.**
-- A budget alert at a very small amount, on day one.
-- Create resources from the **Free services** page, not by hand, so the free size is the default.
-- Keep exactly one VM running; a second one uses up the 750 hours and bills the rest.
-- Do not add a paid managed database or a second public IP "to try".
-
-**Security.** SSH keys only, no password login; firewall as above; automatic security updates; Postgres
-bound to localhost; the API's bootstrap `API_KEY` is only for provisioning.
-
-**Monitoring.** `GET /health` and `GET /ready` plus a free uptime monitor (UptimeRobot's free plan, or
-a scheduled curl). Logs via the runtime. A real metrics endpoint is pinned as D-56.
-
-**The card.** All three clouds need a payment card to verify identity, and each lets only a first-time
-customer have the free account. If a card is refused, or you have had an account with that provider
-before, the plan changes. That is a question only you can answer (section 8).
+- **Keys.** `ENCRYPTION_KEY`, `ENCRYPTION_INDEX_KEY` and `ENCRYPTION_KEYS_PREVIOUS` live in the
+  machine's environment file (mode `600`) **and in a backup somewhere else**. Losing them loses every
+  session and message. Back up the database and the keys to **different** places.
+- **Backups.** Nightly, kept 14 days, one restore drill before relying on it.
+- **Security.** SSH keys only; no inbound ports at home when using a tunnel; Postgres on localhost;
+  automatic security updates.
+- **Watching it.** `GET /health` and `GET /ready`, a free uptime check, and logs.
+- **Cost surprises.** There are none if no paid account is attached: a service that wants a card to
+  start is a service to skip.
 
 ---
 
-## 8 · Decisions needed from you
+## 11 · Decisions needed
 
-1. **Have you had an Azure, AWS or GCP account before?** Azure's 12 months is for new customers only.
-2. **Will a card work?** Azure and Google generally need a debit or credit card that allows online
-   recurring charges. If yours was refused elsewhere, try a different one first.
-3. **Is "free for 12 months, then a small bill or a cheap 4 GB VPS" acceptable?** Or must it be free
-   forever (in which case the honest answer is your own machine plus a Cloudflare Tunnel)?
-4. **Is a machine at home available 24/7** as the fallback gateway host?
+1. **Is a machine at home available 24/7** (power and internet you control)? That decides combination A.
+2. **Is a few dollars a month acceptable as a fallback**, if home hosting is not an option? A small
+   4 GB VPS that accepts UPI or PayPal is the sane paid floor.
+3. **Do you know someone** who has never had an Azure account and would open one in their own name?
+   (It must be genuinely theirs; sharing a free account breaks the terms.)
+4. **Which telemetry**: logs only to Grafana Cloud, plus PostHog errors, or neither for now?
 
 ---
 
-## 9 · Sources
+## 12 · Sources
 
 - Google Cloud free tier: <https://docs.cloud.google.com/free/docs/free-cloud-features>
 - AWS free tier: <https://aws.amazon.com/free/>
 - Azure free account: <https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/create-free-services>
-- Azure free services list: <https://azure.microsoft.com/en-us/pricing/free-services>
+- Oracle Always Free resources: <https://docs.oracle.com/en-us/iaas/Content/FreeTier/resourceref.htm>
+- Oracle free-tier cut (InfoQ): <https://infoq.com/news/2026/07/oracle-cloud-free-tier-limits/>
+- Neon pricing: <https://neon.com/pricing>
+- Supabase pricing: <https://supabase.com/pricing>
+- Grafana Cloud pricing: <https://grafana.com/pricing/>
+- Cloudflare Workers limits: <https://developers.cloudflare.com/workers/platform/limits/>
+- Hugging Face Spaces overview: <https://huggingface.co/docs/hub/spaces-overview>
+- Koyeb pricing: <https://www.koyeb.com/pricing>
+- Free Docker hosting comparison (article, secondary): <https://flywp.com/blog/9769/best-free-docker-hosting-platforms/>
+- PostHog free plan (secondary): <https://usercall.co/post/posthog-pricing>
 - Datacenter-IP reports for Baileys (anecdotal): <https://www.valebyte.com/en/blog/whatsapp-bot-on-vps-via-baileys-free-instead-of-whatsapp-business-api/>

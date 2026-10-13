@@ -65,7 +65,7 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 | [26 Linking lifecycle](26-linking-lifecycle.md) | How the gateway, database and phone stay in sync on link status; the command channel; why "connected" ≠ "receiving" (D-14) |
 | [27 Silent-restriction tracking](27-restriction-tracking.md) | How a number WhatsApp has quietly limited is detected from delivery evidence, what the system does about it, and the operator runbook |
 | [28 Logging and telemetry](28-logging-and-telemetry.md) | What the system logs and where it goes, how to read it, the request id, health endpoints, the database state that doubles as a record, troubleshooting recipes, and what is not built (D-56) |
-| [29 Free hosting plan](29-free-hosting-plan.md) | Running this for about 10 users and 10 numbers on the free offers of Azure, AWS and GCP: what each really gives, what the system needs, the WhatsApp datacenter-IP risk and its fallbacks, what must be built, and the decisions needed |
+| [29 Free hosting plan](29-free-hosting-plan.md) | Running this for about 10 users and 10 numbers for free: what each cloud and free service really gives, why most mix-and-match combinations fail for this system, the home-hosted plan, telemetry on a free budget, Oracle (last), and the decisions needed |
 | [Getting started](../GETTING_STARTED.md) | (Repo root) fresh clone → running, signed-in instance, in nine steps |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 
