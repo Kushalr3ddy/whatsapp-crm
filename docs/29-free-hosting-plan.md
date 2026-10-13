@@ -19,16 +19,17 @@ Oracle has already been tried and burnt, so it is last.
    holds one WebSocket per WhatsApp number, needs about 1.5 GB at 10 numbers, and must not sleep. The
    free always-on containers that used to cover this have gone, need a card, or put the process to
    sleep (section 4).
-2. **The realistic free home for this system is your own machine**, with free services around it:
-   Cloudflare Tunnel for HTTPS, Tailscale for admin access, free off-site backups, and free
-   telemetry. It also has the best answer to the biggest risk, WhatsApp's treatment of datacenter IPs,
-   because a home connection is a residential IP.
+2. **Cloud only, with your constraints, means paying a little** (section 1a): about ₹600 to ₹1,000 a
+   month for a 4 GB VPS you can pay for with UPI. The free routes (an existing GCP account's
+   e2-micro, startup credits, someone else's first-time Azure account) each depend on an account or a
+   card you may not have.
 3. **Combining "free" cloud pieces mostly does not work, for specific technical reasons**
    (section 5): the database features this system leans on (row-level security, `LISTEN/NOTIFY`, a
    privileged role switch) rule out SQLite-style stores such as D1 and document stores such as Convex,
    and the process that matters cannot run on Lambda or Workers.
-4. **If a cloud VM is a must**, the order is: a friend's or family member's genuine first-time Azure
-   account, then a few dollars a month for a small VPS, then (last) Oracle.
+4. **Home hosting** (your own machine, or the shelved homelab) would be the best free answer and the
+   best answer to the datacenter-IP risk, but it is out of reach for now. It stays in the document as a
+   reference.
 
 ---
 
