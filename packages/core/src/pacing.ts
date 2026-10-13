@@ -254,6 +254,22 @@ interface SendCounts {
   readonly lastHour: number;
   readonly today: number;
   readonly lastSentAt: Date | null;
+  /** The oldest send still inside the minute / hour window: when it ages out, a slot frees. */
+  readonly oldestInMinute: Date | null;
+  readonly oldestInHour: Date | null;
+}
+
+/** Fewest milliseconds a retry is ever scheduled for, so a boundary case cannot spin. */
+const MIN_RETRY_MS = 1_000;
+
+/**
+ * Milliseconds until a rolling window frees a slot: the oldest send in it plus the window length,
+ * minus now. Falls back to `fallbackMs` when there is no send to age out (the window is empty
+ * or the count came from somewhere else). Never below `MIN_RETRY_MS`.
+ */
+function untilSlotFrees(oldest: Date | null, windowMs: number, now: Date, fallbackMs: number): number {
+  if (oldest === null) return fallbackMs;
+  return Math.max(MIN_RETRY_MS, oldest.getTime() + windowMs - now.getTime());
 }
 
 /**
@@ -290,7 +306,9 @@ export async function checkSendAllowance(
     return {
       allowed: false, reason: 'per_hour',
       detail: `hourly cap reached: ${String(counts.lastHour)} of ${String(PER_HOUR)}`,
-      retryAfterMs: 5 * 60 * 1000
+      // When the oldest send of the hour ages out, not a fixed guess: the caller schedules a
+      // retry for exactly then, instead of waiting for its next sweep.
+      retryAfterMs: untilSlotFrees(counts.oldestInHour, 60 * 60 * 1000, now, 5 * 60 * 1000)
     };
   }
   if (counts.lastMinute >= perMinute) {
@@ -298,7 +316,7 @@ export async function checkSendAllowance(
       allowed: false, reason: 'per_minute',
       detail: `per-minute cap reached: ${String(counts.lastMinute)} of ${String(perMinute)}`
         + (easing ? ' (easing back after a reconnect)' : ''),
-      retryAfterMs: 60 * 1000
+      retryAfterMs: untilSlotFrees(counts.oldestInMinute, 60 * 1000, now, 60 * 1000)
     };
   }
 
@@ -339,7 +357,9 @@ async function recentSends(
       count(*) FILTER (WHERE m.sent_at > ${at}::timestamptz - interval '1 minute')::int AS "lastMinute",
       count(*) FILTER (WHERE m.sent_at > ${at}::timestamptz - interval '1 hour')::int   AS "lastHour",
       count(*) FILTER (WHERE m.sent_at > ${at}::timestamptz - interval '1 day')::int    AS "today",
-      max(m.sent_at) AS "lastSentAt"
+      max(m.sent_at) AS "lastSentAt",
+      min(m.sent_at) FILTER (WHERE m.sent_at > ${at}::timestamptz - interval '1 minute') AS "oldestInMinute",
+      min(m.sent_at) FILTER (WHERE m.sent_at > ${at}::timestamptz - interval '1 hour')   AS "oldestInHour"
     FROM message m
     JOIN conversation v ON v.id = m.conversation_id
     WHERE v.sender_identity_id = ${senderIdentityId}
@@ -348,12 +368,17 @@ async function recentSends(
 
   const row = (rows as unknown as Array<{
     lastMinute: number; lastHour: number; today: number; lastSentAt: string | null;
+    oldestInMinute: string | null; oldestInHour: string | null;
   }>)[0];
   return {
     lastMinute: row?.lastMinute ?? 0,
     lastHour: row?.lastHour ?? 0,
     today: row?.today ?? 0,
     lastSentAt: row?.lastSentAt === null || row?.lastSentAt === undefined
-      ? null : new Date(row.lastSentAt)
+      ? null : new Date(row.lastSentAt),
+    oldestInMinute: row?.oldestInMinute === null || row?.oldestInMinute === undefined
+      ? null : new Date(row.oldestInMinute),
+    oldestInHour: row?.oldestInHour === null || row?.oldestInHour === undefined
+      ? null : new Date(row.oldestInHour)
   };
 }
