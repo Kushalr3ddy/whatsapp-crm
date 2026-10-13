@@ -8,6 +8,9 @@ import type { CannedReply, SenderStatus } from '@/lib/crm';
 /** How often the box re-checks that the number can send. */
 const STATUS_POLL_MS = 8000;
 
+/** At most one "I am typing" ping per this long while keys are being pressed (D-54). */
+const TYPING_PING_MS = 3000;
+
 /** Fills `{{name}}` / `{{contact.name}}` placeholders from what the thread knows about the contact. */
 function substitute(body: string, contactName: string | null): string {
   return body.replace(/\{\{\s*(?:contact\.)?name\s*\}\}/gi, contactName ?? '');
@@ -67,6 +70,24 @@ export function Composer(
   useEffect(() => { if (numberDown) setMode('note'); }, [numberDown]);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Set when the API held a send because someone else just replied or is typing: the warning to
+  // show, and the box offers "Send anyway" instead of a bare error.
+  const [collision, setCollision] = useState<string | null>(null);
+  const lastTypingPing = useRef(0);
+
+  /** Pings "typing" while a reply (not a note) is being drafted, at most once per interval. */
+  function noteTyping(next: string) {
+    if (mode !== 'reply' || next.trim() === '') return;
+    const now = Date.now();
+    if (now - lastTypingPing.current < TYPING_PING_MS) return;
+    lastTypingPing.current = now;
+    // A plain fetch, not a server action: actions run one at a time, and this must never queue
+    // in front of the Send the person is about to press.
+    void fetch(`/inbox/${encodeURIComponent(conversationId)}/live`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'typing' })
+    }).catch(() => { /* best effort */ });
+  }
   const [pending, startTransition] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -88,17 +109,23 @@ export function Composer(
     });
   }
 
-  /** Sends the current text down whichever path the mode selects, keeping it on a refusal. */
-  function submit() {
+  /**
+   * Sends the current text down whichever path the mode selects, keeping it on a refusal.
+   * `anyway` is the second press after a collision warning: the person has seen that someone else
+   * just replied or is typing, and sends regardless.
+   */
+  function submit(anyway = false) {
     if (text.trim() === '' || pending) return;
     if (mode === 'reply' && (replyLocked || numberDown || dncBlocked || dncNeedsOverride)) return;
     const body = text;
     setError(null);
+    setCollision(null);
     startTransition(async () => {
       const result = mode === 'note'
         ? await saveNote(conversationId, body)
-        : await sendReply(conversationId, body, doNotContact ? { reason: overrideReason.trim() } : undefined);
+        : await sendReply(conversationId, body, doNotContact ? { reason: overrideReason.trim() } : undefined, anyway);
       if (result.ok) setText('');
+      else if (result.collision === true) setCollision(result.error ?? 'Someone else is on this chat. Send anyway?');
       else setError(result.error ?? 'Failed.');
     });
   }
@@ -130,6 +157,20 @@ export function Composer(
   return (
     <form onSubmit={onSubmit} className="border-t border-border bg-surface px-5 py-3">
       {error !== null && <p className="mb-2 text-xs text-danger">{error}</p>}
+
+      {collision !== null && (
+        <div role="alert" className="mb-2 notice flex flex-wrap items-center justify-between gap-2">
+          <span>{collision}</span>
+          <span className="flex gap-2">
+            <button type="button" className="btn btn-sm" disabled={pending} onClick={() => { submit(true); }}>
+              Send anyway
+            </button>
+            <button type="button" className="btn btn-sm" onClick={() => { setCollision(null); }}>
+              Wait
+            </button>
+          </span>
+        </div>
+      )}
 
       {doNotContact && (
         <div role="alert" className="mb-2 notice notice-danger">
@@ -230,7 +271,7 @@ export function Composer(
         )}
         <textarea
           value={text}
-          onChange={(e) => { setText(e.target.value); }}
+          onChange={(e) => { setText(e.target.value); noteTyping(e.target.value); setCollision(null); }}
           onKeyDown={onKeyDown}
           rows={1}
           placeholder={isNote ? 'Add an internal note' : to === null ? 'Reply' : `Message ${to}`}

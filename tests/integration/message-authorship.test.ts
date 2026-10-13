@@ -94,9 +94,9 @@ beforeEach(async () => {
 });
 
 /** Sends a reply as the principal the headers describe and returns the thread's messages. */
-async function replyAndList(headers: Record<string, string>) {
+async function replyAndList(headers: Record<string, string>, extra: Record<string, unknown> = {}) {
   const sent = await request(app).post('/api/v1/messages').set(headers)
-    .send({ conversationId: conv, body: 'hello' });
+    .send({ conversationId: conv, body: 'hello', ...extra });
   expect(sent.status).toBe(202);
   const thread = await request(app).get(`/api/v1/conversations/${conv}/messages`).set(asSession(adminToken));
   expect(thread.status).toBe(200);
@@ -113,7 +113,9 @@ describe('who sent a message', () => {
   it('keeps two agents’ replies apart', async () => {
     await request(app).post('/api/v1/messages').set(asSession(agent1Token))
       .send({ conversationId: conv, body: 'first' });
-    const messages = await replyAndList(asSession(agent2Token));
+    // Two agents answering within seconds is exactly what the collision warning (D-54) holds;
+    // this test is about who is named, so the second acknowledges it.
+    const messages = await replyAndList(asSession(agent2Token), { acknowledgeCollision: true });
     expect(messages.map((m) => m.sentByName)).toEqual(['Agent One', 'Agent Two']);
   });
 

@@ -395,7 +395,10 @@ export const conversationPresence = pgTable('conversation_presence', {
   conversationId: uuid('conversation_id').notNull()
     .references(() => conversation.id, { onDelete: 'cascade' }),
   userId: uuid('user_id').notNull().references(() => appUser.id, { onDelete: 'cascade' }),
-  seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow()
+  seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow(),
+  // The last moment this person was typing a reply here (D-54). Counts as "typing" for a few
+  // seconds only, so a draft left in the box stops looking like activity.
+  typingAt: timestamp('typing_at', { withTimezone: true })
 }, (t) => [
   primaryKey({ columns: [t.conversationId, t.userId] }),
   index('conversation_presence_seen_idx').on(t.seenAt)
