@@ -17,7 +17,7 @@ import qrcode from 'qrcode-terminal';
 import { sql } from 'drizzle-orm';
 import { loadConfig, createLogger } from '@crm/shared';
 import { createDatabase, PostgresAuthStateStore } from '@crm/db';
-import { LocalKms } from '@crm/kms-local';
+import { localKmsFromConfig, type KmsDriver } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 
 /** Label used for the single sender this dev tool manages. */
@@ -72,10 +72,7 @@ async function bootstrap() {
   // Baileys is extremely chatty at info level; keep its noise out of the instructions.
   const logger = createLogger({ ...config, LOG_LEVEL: 'warn' });
   const db = createDatabase(config.DATABASE_URL, { max: 4 });
-  const kms = new LocalKms({
-    keyHex: config.ENCRYPTION_KEY,
-    indexKeyHex: config.ENCRYPTION_INDEX_KEY
-  });
+  const kms = localKmsFromConfig(config);
   const authStore = new PostgresAuthStateStore(db, kms);
   const provider = new BaileysChannelProvider({ authStore, logger });
   const { orgId, senderId } = await ensureSender(db);
@@ -84,7 +81,7 @@ async function bootstrap() {
 
 /** Stores an inbound message, creating the contact and conversation if they are new. */
 async function persistInbound(
-  db: ReturnType<typeof createDatabase>, kms: LocalKms,
+  db: ReturnType<typeof createDatabase>, kms: KmsDriver,
   orgId: string, senderId: string,
   from: string, address: string, body: string, providerMessageId: string
 ): Promise<void> {
@@ -133,9 +130,7 @@ async function persistInbound(
 /** Links a number and then stays running, printing and storing whatever arrives. */
 async function link(mode: 'qr' | 'pairing_code', phone?: string): Promise<void> {
   const ctx = await bootstrap();
-  const localKms = new LocalKms({
-    keyHex: ctx.config.ENCRYPTION_KEY, indexKeyHex: ctx.config.ENCRYPTION_INDEX_KEY
-  });
+  const localKms = localKmsFromConfig(ctx.config);
 
   say();
   say('  Linking a WhatsApp number');

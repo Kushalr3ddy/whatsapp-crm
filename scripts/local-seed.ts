@@ -18,7 +18,7 @@ import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { createDatabase, inspectDatabaseSecurity, resolveTenantRole } from '@crm/db';
 import { loadConfig, createLogger } from '@crm/shared';
-import { LocalKms } from '@crm/kms-local';
+import { localKmsFromConfig } from '@crm/kms-local';
 import { createStorage } from '@crm/storage';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { storeInboundMessage } from '@crm/core';
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     WHERE id = ${senderId} AND provider = 'fake'`);
 
   // ── the real API in-process, signed in as the test admin ──────────────────────────────
-  const kms = new LocalKms({ keyHex: config.ENCRYPTION_KEY, indexKeyHex: config.ENCRYPTION_INDEX_KEY });
+  const kms = localKmsFromConfig(config);
   const security = await inspectDatabaseSecurity(db);
   const tenantRole = await resolveTenantRole(db, security);
   const app = buildApp({

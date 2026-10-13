@@ -7,7 +7,8 @@ import {
   scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
   recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
   type ReplyFloorConfig, readIsDue, circadianActivity, localHour, entropyPlan, type EntropyScheduler,
-  timezoneForPhone, circadianDelayMs, CIRCADIAN_QUIET_THRESHOLD, checkRestriction, recordHealthEvent
+  timezoneForPhone, circadianDelayMs, CIRCADIAN_QUIET_THRESHOLD, checkRestriction, recordHealthEvent,
+  reencryptBatch
 } from '@crm/core';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
@@ -811,6 +812,35 @@ export async function dispatchCampaigns(ctx: WorkContext): Promise<number> {
     await tenant((tx) => reconcileCampaign(tx, campaign.orgId, campaign.id));
   }
   return queued;
+}
+
+/**
+ * The background half of a key rotation (D-31): moves a small batch of values per org from retired
+ * keys onto the current one, every sweep, until nothing is left on an old key.
+ *
+ * Does nothing at all unless a retired key is configured, so an install that never rotates pays
+ * no cost. Honours the operator's pause. Small batches per org keep it from competing with sends.
+ * Returns how many values were moved.
+ */
+export async function sweepKeyRotation(ctx: WorkContext, batch = 100): Promise<number> {
+  const kms = ctx.kms;
+  if (!kms || kms.knownKeyVersions().length <= 1) return 0;
+  const state = (await ctx.db.execute(sql`
+    SELECT paused FROM key_rotation_state WHERE id = 1`) as unknown as Array<{ paused: boolean }>)[0];
+  if (state?.paused === true) return 0;
+
+  const results = await inEachOrg(ctx, (c) => reencryptBatch(c.db, kms, batch));
+  const moved = results.reduce((n, r) => n + r.reencrypted, 0);
+  const unreadable = results.reduce((n, r) => n + r.unreadable, 0);
+  if (moved > 0 || unreadable > 0) {
+    await ctx.db.execute(sql`
+      UPDATE key_rotation_state
+      SET last_run_at = now(), reencrypted_total = reencrypted_total + ${moved},
+          last_unreadable = ${unreadable}, updated_at = now()
+      WHERE id = 1`);
+    ctx.logger.info({ moved, unreadable }, 'key rotation: re-encrypted a batch onto the current key');
+  }
+  return moved;
 }
 
 /** When the restriction sweep last ran in this process; it is a minutes-scale signal, not a seconds one. */

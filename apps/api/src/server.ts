@@ -1,6 +1,7 @@
 import { createLogger, loadConfig, ConfigError } from '@crm/shared';
 import { createDatabase, inspectDatabaseSecurity, resolveTenantRole, verifySchema } from '@crm/db';
-import { LocalKms } from '@crm/kms-local';
+import { localKmsFromConfig } from '@crm/kms-local';
+import { assertKeyRingCoversData } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { buildApp } from './app.js';
@@ -60,10 +61,10 @@ async function main(): Promise<void> {
       'on the org filter in each query. See docs/09-security.md');
   }
 
-  const kms = new LocalKms({
-    keyHex: config.ENCRYPTION_KEY,
-    indexKeyHex: config.ENCRYPTION_INDEX_KEY
-  });
+  const kms = localKmsFromConfig(config);
+  // Refuse to run if the database holds data under a key this process cannot read (a retired key
+  // dropped too early, D-31). Better a loud boot failure than messages that silently won't open.
+  await assertKeyRingCoversData(db, kms);
 
   // Read-only from here: attachments are written by the gateway, which is the process
   // holding the connection they arrive on.
