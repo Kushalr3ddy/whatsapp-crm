@@ -420,9 +420,41 @@ export async function handleSend(ctx: WorkContext, messageId: string): Promise<v
   if (inFlight.has(messageId)) return;
   inFlight.add(messageId);
   try {
-    await handleSendOnce(ctx, messageId);
+    // One send decision at a time per number. The allowance check counts what has already *left*,
+    // and a send does not count until after its pause, so two messages checked at once both see
+    // the same headroom and both go: a queue whose holds clear together (or a NOTIFY landing
+    // beside a sweep) overshoots the ceiling. Serialising per number makes check-then-send
+    // atomic, which is also the human cadence the pacing is trying to produce.
+    const owner = (await ctx.db.execute(sql`
+      SELECT v.sender_identity_id AS "senderId"
+      FROM message m JOIN conversation v ON v.id = m.conversation_id
+      WHERE m.id = ${messageId}`) as unknown as Array<{ senderId: string }>)[0];
+    if (owner === undefined) return;
+    await withSenderLock(owner.senderId, () => handleSendOnce(ctx, messageId));
   } finally {
     inFlight.delete(messageId);
+  }
+}
+
+/** The tail of each number's send queue, so the next send for that number waits its turn. */
+const senderLocks = new Map<string, Promise<void>>();
+
+/**
+ * Runs `work` after every earlier piece of work for the same sender has finished, whether it
+ * succeeded or threw. The map entry is dropped once the chain goes idle, so it cannot grow.
+ */
+async function withSenderLock(senderId: string, work: () => Promise<void>): Promise<void> {
+  const previous = senderLocks.get(senderId) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.then(() => mine);
+  senderLocks.set(senderId, tail);
+  await previous.catch(() => undefined);
+  try {
+    await work();
+  } finally {
+    release();
+    if (senderLocks.get(senderId) === tail) senderLocks.delete(senderId);
   }
 }
 

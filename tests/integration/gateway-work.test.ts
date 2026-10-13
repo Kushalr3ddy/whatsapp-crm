@@ -160,6 +160,23 @@ describe('held messages are retried on time, not at the next sweep', () => {
 
     expect(provider.sent).toHaveLength(1);
   });
+
+  it('never lets messages checked together overshoot the per-minute ceiling', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push(await queueOutbound(`burst ${String(i)}`));
+    // A real pause before each send, so without per-number serialising every call would pass the
+    // check before any had counted, and all six would go against a ceiling of two a minute.
+    const ctx = {
+      ...ctxWith(provider), limits: { perMinute: 2, perDay: 10_000 },
+      sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, Math.min(ms, 120)))
+    };
+
+    await Promise.all(ids.map((id) => handleSend(ctx, id)));
+
+    expect(provider.sent).toHaveLength(2);
+  });
 });
 
 describe('typing simulation in the send path (D-24)', () => {
