@@ -1461,3 +1461,30 @@ API and the gateway.
 hosted-versus-self-hosted call before any design is honest.
 
 **What brings it back:** Kushal's go-ahead with D-47, and the hosted/self-hosted answer.
+
+---
+
+## D-56 · Telemetry: metrics, tracing and error tracking beyond logs — pinned (Kushal, 2026-10-13)
+
+**Decision:** logging is enough for now; telemetry is pinned, not scheduled. Kushal's rule (2026-10-13): "if
+logging is there that's enough, else add logging."
+
+**What exists today (so nobody re-checks):**
+- Structured JSON logs (pino) to stdout, UTC, sensitive fields redacted by allowlist; pretty in development.
+  In dev, `npm run dev:all` also writes `.dev-logs/{api,gateway,web}.log` (not rotated); `npm run verify` writes
+  `/tmp/crm-verify-<time>/`. In production they go wherever the container runtime captures stdout.
+- A request id on every API request, present in the logs and in error bodies.
+- `GET /health` and `GET /ready` (database check).
+- Product state in Postgres that doubles as telemetry: `audit_log`, `sender_health_event`, per-number health and
+  risk score, per-message `hold_reason`, campaign progress.
+- A `TELEMETRY_DRIVER=none|prometheus|otlp` setting that reserves the names; nothing reads it.
+
+**What is missing:** metrics, traces, error tracking, alerting (see D-43), dashboards, log shipping and rotation.
+
+**Shape to build when it comes back:** a `/metrics` endpoint with the few numbers that matter (queue depth, sends
+and holds by reason, per-number risk score and delivery ratio, re-encryption progress), log rotation plus a
+deployment note on where logs go, and error tracking only once a vendor is chosen. Most useful as the
+observability for the real-number pilot, which is a week-long watch.
+
+**What brings it back:** the real-number pilot, a hosted deployment (D-33), or the first incident that logs alone
+cannot explain.
