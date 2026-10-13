@@ -746,6 +746,48 @@ M9) is a safe default; this replaces "safe default" with "user's explicit choice
 > ship without waiting on it.
 
 
+> **Decision (Kushal, 2026-10-13): date-range-scoped search, decrypt-and-scan, no plaintext copy.**
+> Search runs **only inside a date range the person chooses**: a preset (last week, last month, this
+> month, last 3 months, this year) or a custom day, month or year range. The server decrypts that
+> window's messages in the API process and matches there. Nothing is stored in plaintext and no new
+> index is built. Contact search stays as it is (those fields are not encrypted). Not chosen, and why:
+> a plaintext search column or a "recent chats unencrypted" table would put the most sensitive, most
+> recent conversations in a stolen backup, which undoes the encryption at rest.
+>
+> **Measured** (2026-10-13, this machine, Node, AES-256-GCM): decrypt and scan **100,000 messages in
+> about 0.8 s** (about 8 microseconds each), CPU only; a million would be about 8 s before database
+> transfer. A month or a quarter of one org's messages is comfortably inside a second.
+>
+> **Research** (best practice for searching encrypted data): the standard Postgres full-text index
+> cannot be built over encrypted columns; the two real families are blind token indexes (HMAC'd words
+> or trigrams, as in SysReptor and CipherStash; they leak which rows share a token and lag behind
+> writes) and client-side search (WhatsApp, iMessage, Tutanota; a poor fit for a shared server-rendered
+> inbox). A blind token index is the upgrade path if volume ever outgrows decrypt-and-scan.
+>
+> **Open decisions (ask before building):**
+> 1. **Which presets and ranges**, and the default when none is chosen (suggest: last 30 days, shown
+>    clearly, with "search a wider range" one click away).
+> 2. **A ceiling:** the widest range allowed, and a cap on messages scanned per search (so one
+>    "everything since 2020" cannot hold the API). What the person sees when the cap is hit.
+> 3. **Caching** (recommendation below). Whether to cache a search's results at all; whether to cache
+>    an **empty** result; and what an overlapping range means (the same words searched over a wider or
+>    shifted range).
+> 4. **Substring or whole word**: does "pun" need to find "Pune"? Decrypt-and-scan does either.
+> 5. **Notes and file names**: notes are plaintext already; whether they are searched with bodies.
+> 6. **Audit:** whether searches are written to the audit log (a search over customer chats is a read
+>    worth accounting for, like D-13).
+>
+> **Recommendation on caching.** Do not cache search *results* at first. At the measured speed a
+> bounded range is cheap, and a result cache has real correctness traps: it goes stale the moment a
+> message arrives, an empty result is the most likely to be wrong a minute later, and an overlapping
+> range cannot be built from a cached neighbour without re-checking the edges and anything new. If it
+> proves slow, cache one layer lower: a **memory-only, bounded, per-org cache of decrypted bodies**
+> (never written to disk, gone on restart). Then every range overlaps for free, nothing about
+> "which range was searched" has to be reasoned about, and a new message is simply absent from the cache
+> until read. If a result cache is wanted anyway: key it on org, normalised query and exact range, give
+> it a short life (tens of seconds), cache empty results only for that same short life, and never answer
+> a different range from it.
+
 **What:** search across message bodies and contact fields — the last substantial P4 inbox piece.
 
 **Why parked:** not blocking, and it carries a real **design decision** that should be made

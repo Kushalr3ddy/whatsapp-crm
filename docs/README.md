@@ -28,6 +28,7 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 
 **To deploy or operate it** — [13 Deployment](13-deployment.md) →
 [19 Capacity](19-capacity.md) → [14 Runbooks](14-runbooks.md) →
+[28 Logging and telemetry](28-logging-and-telemetry.md) →
 [09 Security](09-security.md) → [22 Encryption](22-encryption.md) →
 [23 Authentication](23-auth.md)
 
@@ -63,6 +64,7 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 | [25 Ingestion guide](25-ingestion-guide.md) | Every source, how deduping works at both layers, and a hands-on walkthrough |
 | [26 Linking lifecycle](26-linking-lifecycle.md) | How the gateway, database and phone stay in sync on link status; the command channel; why "connected" ≠ "receiving" (D-14) |
 | [27 Silent-restriction tracking](27-restriction-tracking.md) | How a number WhatsApp has quietly limited is detected from delivery evidence, what the system does about it, and the operator runbook |
+| [28 Logging and telemetry](28-logging-and-telemetry.md) | What the system logs and where it goes, how to read it, the request id, health endpoints, the database state that doubles as a record, troubleshooting recipes, and what is not built (D-56) |
 | [Getting started](../GETTING_STARTED.md) | (Repo root) fresh clone → running, signed-in instance, in nine steps |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 
