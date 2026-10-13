@@ -117,6 +117,10 @@ export const TABLE_NOTES: Record<string, TableNote> = {
     group: 'WhatsApp numbers',
     purpose: 'The encrypted login credentials Baileys needs to keep a number linked across restarts. Losing the encryption key loses these.'
   },
+  key_rotation_state: {
+    group: 'Audit and health',
+    purpose: 'One row for the whole install: whether the background re-encryption of a key rotation is paused, and how much it has moved. Not per org, because the encryption key is not.'
+  },
   sender_health_event: {
     group: 'Audit and health',
     purpose: 'A timeline of what happened to a number’s health: restriction suspected or cleared, possible ban, recovery started.'

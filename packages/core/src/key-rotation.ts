@@ -34,17 +34,19 @@ export interface ReencryptResult {
   readonly unreadable: number;
 }
 
-/** Reads `get_byte(col, 1)` counts for one column into a version → count map. */
+/** Reads the key-version counts for one encrypted column into a version → count map. */
 async function countsFor(db: SqlExecutor, table: 'message' | 'channel_auth_state'): Promise<Record<number, number>> {
   const rows = (await (table === 'message'
     ? db.execute(sql`
-        SELECT get_byte(body_enc, 1) AS v, count(*)::int AS n
+        SELECT envelope_key_version(body_enc) AS v, count(*)::int AS n
         FROM message WHERE body_enc IS NOT NULL GROUP BY 1`)
     : db.execute(sql`
-        SELECT get_byte(value_enc, 1) AS v, count(*)::int AS n
-        FROM channel_auth_state GROUP BY 1`))) as unknown as Array<{ v: number; n: number }>;
+        SELECT envelope_key_version(value_enc) AS v, count(*)::int AS n
+        FROM channel_auth_state GROUP BY 1`))) as unknown as Array<{ v: number | null; n: number }>;
   const out: Record<number, number> = {};
-  for (const r of rows) out[r.v] = r.n;
+  // A value too short to be an envelope has no key version (null): it is not data any key could
+  // ever open, so it is not counted as sitting on some version, and cannot trip the startup guard.
+  for (const r of rows) if (r.v !== null) out[r.v] = r.n;
   return out;
 }
 
@@ -94,7 +96,7 @@ export async function reencryptBatch(
   while (reencrypted < limit) {
     const page = (await db.execute(sql`
       SELECT id, body_enc AS enc FROM message
-      WHERE body_enc IS NOT NULL AND get_byte(body_enc, 1) IN (${inList(old)}) AND id > ${cursor}::uuid
+      WHERE body_enc IS NOT NULL AND envelope_key_version(body_enc) IN (${inList(old)}) AND id > ${cursor}::uuid
       ORDER BY id LIMIT ${limit}`)) as unknown as Array<{ id: string; enc: Uint8Array }>;
     if (page.length === 0) break;
     for (const row of page) {
@@ -119,7 +121,7 @@ export async function reencryptBatch(
   while (authDone < limit) {
     const page = (await db.execute(sql`
       SELECT sender_identity_id AS "senderId", key, value_enc AS enc FROM channel_auth_state
-      WHERE get_byte(value_enc, 1) IN (${inList(old)})
+      WHERE envelope_key_version(value_enc) IN (${inList(old)})
         AND (sender_identity_id, key) > (${cursorSender}::uuid, ${cursorKey})
       ORDER BY sender_identity_id, key LIMIT ${limit}`)) as unknown as
       Array<{ senderId: string; key: string; enc: Uint8Array }>;

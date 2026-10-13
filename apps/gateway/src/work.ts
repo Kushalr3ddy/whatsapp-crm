@@ -1013,6 +1013,9 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   // next batch of campaign sends is queued against it.
   await inEachOrg(ctx, (c) => scoreConnectedSenders(c.db));
 
+  // A key rotation in progress (D-31): a small batch per sweep, never in the way of a send.
+  await sweepKeyRotation(ctx);
+
   // Silent-restriction detection: delivery evidence per number, on its own (slower) cadence.
   await sweepRestriction(ctx);
 

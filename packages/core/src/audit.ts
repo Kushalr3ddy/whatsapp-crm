@@ -113,6 +113,12 @@ export const AUDIT = {
   conversationParticipantAdded: 'conversation.participant_added',
   conversationParticipantRemoved: 'conversation.participant_removed',
 
+  // Key rotation (D-31). Pausing or resuming the re-encryption, and verifying that the new key
+  // really opens what was written, are the acts someone may later need to account for.
+  encryptionRotationPaused: 'encryption.rotation_paused',
+  encryptionRotationResumed: 'encryption.rotation_resumed',
+  encryptionVerified: 'encryption.verified',
+
   // Imports. The upload is recorded separately from the commit because they are different
   // acts: one stores somebody's spreadsheet, the other changes the contact database.
   importUploaded: 'import.uploaded',

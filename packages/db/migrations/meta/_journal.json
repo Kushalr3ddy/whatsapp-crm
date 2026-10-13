@@ -197,6 +197,13 @@
       "when": 1791899931491,
       "tag": "0027_key_rotation",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791901206455,
+      "tag": "0028_envelope_key_version",
+      "breakpoints": true
     }
   ]
 }

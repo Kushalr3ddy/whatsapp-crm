@@ -1033,7 +1033,15 @@ and add a retry that re-downloads through the live socket while WhatsApp still h
 
 ---
 
-## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation — **PRIORITY (Kushal, 2026-10-06), still pinned**
+## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation — **ROTATION BUILT 2026-10-13**; per-org keys still pinned (was **PRIORITY, Kushal, 2026-10-06**)
+
+> **Built (rotation only, as chosen 2026-10-13):** a key ring (`ENCRYPTION_KEY_VERSION`, `ENCRYPTION_KEY`,
+> `ENCRYPTION_KEYS_PREVIOUS`); the gateway re-encrypts `message.body_enc` and `channel_auth_state.value_enc`
+> onto the current key in the background, per org, a batch per sweep, pausable, resumable; the API and gateway
+> refuse to start if data sits on a key version the ring cannot read; `npm run keys -- status | generate`; and
+> the **Security** page in the web app walks an admin through it. Tests: `tests/integration/key-rotation.test.ts`.
+> **Still pinned:** per-org data keys wrapped by a master key (the DEK/KEK design), and crypto-shredding a
+> tenant by destroying its key. The blind-index key (`ENCRYPTION_INDEX_KEY`) deliberately cannot rotate.
 
 **What:** `docs/22-encryption.md` describes a two-layer design — a master key (KEK) wrapping a per-org
 data key (DEK) — plus rotation. Today `LocalKms` encrypts directly with one global key, holds exactly one
