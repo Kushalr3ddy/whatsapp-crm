@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { createLogger, loadConfig, ConfigError } from '@crm/shared';
-import { createDatabase, PostgresAuthStateStore, verifySchema } from '@crm/db';
+import {
+  createDatabase, PostgresAuthStateStore, verifySchema, inspectDatabaseSecurity, resolveTenantRole
+} from '@crm/db';
+import { tenantDatabase } from './tenant.js';
 import { localKmsFromConfig } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
@@ -43,6 +46,13 @@ async function main(): Promise<void> {
   const schema = await verifySchema(db);
   if (!schema.ok) throw new Error(schema.problem ?? 'database schema does not match this code');
 
+  // The restricted role tenant-scoped work drops to, resolved by measuring (same as the API), so
+  // every piece of per-org work runs under row-level security rather than as the connecting
+  // role (D-41). Null when the connecting role is already subject to policies.
+  const tenantRole = await resolveTenantRole(db, await inspectDatabaseSecurity(db));
+  /** A database handle pinned to one org, for the event streams below. */
+  const inOrg = (orgId: string): ReturnType<typeof createDatabase> => tenantDatabase(db, orgId, tenantRole);
+
   const kms = localKmsFromConfig(config);
   // Refuse to run if the database holds data under a key this process cannot read (a retired key
   // dropped too early, D-31). Better a loud boot failure than messages that silently won't open.
@@ -63,9 +73,11 @@ async function main(): Promise<void> {
       onDecryptFailure: (senderId, at) => {
         if (!decryptTracker.record(senderId, at)) return;
         logger.warn({ senderId }, 'decrypt-failure burst: companion session looks diverged');
-        markDecryptBurst(db, senderId, at).catch((err: unknown) => {
-          logger.error({ err, senderId }, 'could not record decrypt-failure burst');
-        });
+        orgForSender(db, senderId)
+          .then((org) => (org === null ? undefined : markDecryptBurst(inOrg(org), senderId, at)))
+          .catch((err: unknown) => {
+            logger.error({ err, senderId }, 'could not record decrypt-failure burst');
+          });
       }
     });
   // Attachments land here rather than in the API, because this is the process holding the
@@ -74,7 +86,7 @@ async function main(): Promise<void> {
   const storage = createStorage(config);
 
   const ctx: WorkContext = {
-    db, provider, logger, storage,
+    db, provider, logger, storage, tenantRole,
     decrypt: (cipher) => new TextDecoder().decode(kms.decrypt(cipher)),
     // The anti-ban ceilings. Configurable per deployment, but a ceiling either way — nothing
     // in the send path can raise them (docs/08-antiban.md).
@@ -111,7 +123,7 @@ async function main(): Promise<void> {
         try {
           const org = await orgForSender(db, link.senderId);
           if (org === null) continue;
-          const outcome = await linkLidToPhone(db, org, {
+          const outcome = await linkLidToPhone(inOrg(org), org, {
             lid: link.providerAddress, phoneE164: link.phoneE164
           });
           if (outcome !== 'nothing_to_link') {
@@ -137,7 +149,7 @@ async function main(): Promise<void> {
         // first, so this message lands on the right person instead of a number-less duplicate.
         let fromPhone = event.fromPhoneE164;
         if (fromPhone === null && event.linkedPhoneE164 !== undefined && event.linkedPhoneE164 !== null) {
-          const outcome = await linkLidToPhone(db, org, {
+          const outcome = await linkLidToPhone(inOrg(org), org, {
             lid: event.fromProviderAddress, phoneE164: event.linkedPhoneE164
           });
           if (outcome !== 'nothing_to_link') {
@@ -145,7 +157,7 @@ async function main(): Promise<void> {
           }
           fromPhone = event.linkedPhoneE164;
         }
-        const stored = await storeInboundMessage(db, kms, {
+        const stored = await storeInboundMessage(inOrg(org), kms, {
           orgId: org,
           senderIdentityId: event.senderId,
           providerMessageId: event.providerMessageId,
@@ -162,7 +174,7 @@ async function main(): Promise<void> {
             { senderId: event.senderId, conversationId: stored.conversationId },
             'inbound message stored'
           );
-          await db.execute(sql`
+          await inOrg(org).execute(sql`
             UPDATE sender_identity SET last_inbound_at = now() WHERE id = ${event.senderId}`);
 
           // Only for a message that was actually inserted. A redelivery already has its file,
@@ -198,7 +210,7 @@ async function main(): Promise<void> {
       const media = await provider.downloadMedia(event);
       if (media === null) return;
 
-      const stored = await storeMedia(db, storage, {
+      const stored = await storeMedia(inOrg(orgId), storage, {
         orgId, messageId, bytes: media.bytes, filename: media.filename
       });
       logger.info(
@@ -228,10 +240,10 @@ async function main(): Promise<void> {
         // A delivery ERROR ack from the server: the message did not go. Recorded as a failed send so
         // the health score and the restriction detector see it, instead of leaving it at "sent".
         if (event.status === 'failed') {
-          await markMessageFailedByProviderId(db, org, event.providerMessageId, 'delivery_error');
+          await markMessageFailedByProviderId(inOrg(org), org, event.providerMessageId, 'delivery_error');
           continue;
         }
-        await applyDeliveryStatus(db, org, event.providerMessageId, event.status);
+        await applyDeliveryStatus(inOrg(org), org, event.providerMessageId, event.status);
       } catch (error) {
         logger.error(
           { err: error instanceof Error ? error.message : String(error) },
