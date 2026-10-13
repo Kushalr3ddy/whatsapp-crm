@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { LocalKms, blindIndexMatches } from './index.js';
+import { LocalKms, blindIndexMatches, parsePreviousKeys, localKmsFromConfig } from './index.js';
 
 const keyA = randomBytes(32).toString('hex');
 const keyB = randomBytes(32).toString('hex');
@@ -69,5 +69,48 @@ describe('LocalKms', () => {
     expect(text(k.decrypt(k.encrypt(bytes(''))))).toBe('');
     const big = 'x'.repeat(200_000);
     expect(text(k.decrypt(k.encrypt(bytes(big))))).toBe(big);
+  });
+});
+
+describe('key rotation (D-31)', () => {
+  const oldKey = randomBytes(32).toString('hex');
+  const newKey = randomBytes(32).toString('hex');
+  const v1 = () => new LocalKms({ keyHex: oldKey, indexKeyHex: keyB, keyVersion: 1 });
+  const v2 = () => new LocalKms({
+    keyHex: newKey, indexKeyHex: keyB, keyVersion: 2, previousKeys: [{ version: 1, keyHex: oldKey }]
+  });
+
+  it('reads data written under a retired key and writes under the new one', () => {
+    const old = v1().encrypt(bytes('written before the rotation'));
+    const k = v2();
+    expect(text(k.decrypt(old))).toBe('written before the rotation');
+    expect(Buffer.from(k.encrypt(bytes('x')))[1]).toBe(2);
+    expect(k.keyVersion).toBe(2);
+    expect(k.knownKeyVersions()).toEqual([2, 1]);
+  });
+
+  it('says exactly which key is missing when a retired key was dropped too early', () => {
+    const old = v1().encrypt(bytes('still on version 1'));
+    const without = new LocalKms({ keyHex: newKey, indexKeyHex: keyB, keyVersion: 2 });
+    expect(() => without.decrypt(old)).toThrow(/key version 1, which is not in this key ring/);
+  });
+
+  it('refuses a malformed key ring', () => {
+    const base = { keyHex: newKey, indexKeyHex: keyB, keyVersion: 2 };
+    expect(() => new LocalKms({ ...base, previousKeys: [{ version: 2, keyHex: oldKey }] })).toThrow(/current key version/);
+    expect(() => new LocalKms({ ...base, previousKeys: [{ version: 1, keyHex: oldKey }, { version: 1, keyHex: oldKey }] })).toThrow(/twice/);
+    expect(() => new LocalKms({ ...base, previousKeys: [{ version: 1, keyHex: newKey }] })).toThrow(/genuinely new key/);
+    expect(() => new LocalKms({ ...base, keyVersion: 0 })).toThrow(/1 to 255/);
+  });
+
+  it('parses ENCRYPTION_KEYS_PREVIOUS and rejects a typo at boot', () => {
+    expect(parsePreviousKeys(undefined)).toEqual([]);
+    expect(parsePreviousKeys('')).toEqual([]);
+    expect(parsePreviousKeys(`1:${oldKey}, 3:${newKey}`).map((k) => k.version)).toEqual([1, 3]);
+    expect(() => parsePreviousKeys('1:nothex')).toThrow(/version>:<64 hex/);
+    expect(localKmsFromConfig({
+      ENCRYPTION_KEY: newKey, ENCRYPTION_INDEX_KEY: keyB,
+      ENCRYPTION_KEY_VERSION: 2, ENCRYPTION_KEYS_PREVIOUS: `1:${oldKey}`
+    }).knownKeyVersions()).toEqual([2, 1]);
   });
 });

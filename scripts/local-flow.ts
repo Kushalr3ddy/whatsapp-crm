@@ -20,7 +20,7 @@ import {
   createDatabase, inspectDatabaseSecurity, resolveTenantRole
 } from '@crm/db';
 import { loadConfig, createLogger } from '@crm/shared';
-import { LocalKms } from '@crm/kms-local';
+import { localKmsFromConfig } from '@crm/kms-local';
 import { createStorage } from '@crm/storage';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { FakeChannelProvider } from '@crm/channel-fake';
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   if (resetOnly) { say('✓ demo org removed'); await db.$client.end(); return; }
 
   // ── set up: an org, an admin, and a fake number that is "connected" ─────────────────────
-  const kms = new LocalKms({ keyHex: config.ENCRYPTION_KEY, indexKeyHex: config.ENCRYPTION_INDEX_KEY });
+  const kms = localKmsFromConfig(config);
   const hasher = new BuiltinPasswordHasher();
   const password = randomBytes(12).toString('base64url');
   const org = await createOrgWithAdmin(db, hasher, {

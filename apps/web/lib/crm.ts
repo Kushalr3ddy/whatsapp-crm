@@ -808,6 +808,47 @@ export async function getViewers(conversationId: string): Promise<Viewer[]> {
   return request<Viewer[]>(`/conversations/${encodeURIComponent(conversationId)}/presence`);
 }
 
+/** Where a key rotation stands. Mirrors `GET /api/v1/encryption`. */
+export interface EncryptionStatus {
+  /** `idle` | `key_missing` | `reencrypting` | `paused` | `ready_to_retire`. */
+  stage: 'idle' | 'key_missing' | 'reencrypting' | 'paused' | 'ready_to_retire';
+  currentVersion: number;
+  /** Older key versions this install still holds, to read data not yet moved. */
+  retiredVersions: number[];
+  /** Versions present in the data that the key ring cannot read: a dropped key. */
+  missingVersions: number[];
+  counts: { message: Record<string, number>; authState: Record<string, number> };
+  total: number;
+  onCurrent: number;
+  onOld: number;
+  paused: boolean;
+  lastRunAt: string | null;
+  reencryptedTotal: number;
+  lastUnreadable: number;
+}
+
+/** The result of decrypting a random sample. Mirrors `POST /api/v1/encryption/verify`. */
+export interface EncryptionVerify {
+  checked: number;
+  failed: number;
+  onOldKey: number;
+}
+
+/** The key rotation wizard's status. Admin only. */
+export async function getEncryptionStatus(): Promise<EncryptionStatus> {
+  return request<EncryptionStatus>('/encryption');
+}
+
+/** Pauses or resumes the background re-encryption. Admin only. */
+export async function setRotationPaused(paused: boolean): Promise<void> {
+  await requestVoid(`/encryption/${paused ? 'pause' : 'resume'}`, { method: 'POST' });
+}
+
+/** Decrypts a random sample and reports what it found. Admin only. */
+export async function verifyEncryption(): Promise<EncryptionVerify> {
+  return request<EncryptionVerify>('/encryption/verify', { method: 'POST' });
+}
+
 /** Flags or clears do-not-contact on a contact. */
 export async function setDoNotContact(contactId: string, value: boolean, reason?: string): Promise<void> {
   return requestVoid(`/contacts/${encodeURIComponent(contactId)}/do-not-contact`, {
