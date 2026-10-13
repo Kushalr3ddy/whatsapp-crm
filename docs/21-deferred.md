@@ -1167,7 +1167,9 @@ JSON cell). Also: renaming a field's label or editing a select's options after c
 
 ---
 
-## D-41 · The gateway runs outside row-level security — **PRIORITY (Kushal, 2026-10-06)**
+## D-41 · The gateway runs outside row-level security — ✅ **BUILT 2026-10-13** (was **PRIORITY, Kushal, 2026-10-06**)
+
+> **Built:** every piece of gateway work now runs through a handle pinned to the owning org (`apps/gateway/src/tenant.ts`): each statement drops to `crm_app` and sets `app.org_id`, so Postgres refuses another org's rows. The sweeps list org ids with one privileged query and fan out per org; id-driven work (a send, a link, a connection event, a receipt) looks up its org first. Tests: `tests/integration/gateway-tenancy.test.ts`, and the whole gateway suite now runs as `crm_app`. **Still open:** the Baileys credential store (`channel_auth_state`) is read and written by the provider with only a sender id, outside this handle; it is encrypted and keyed by sender, but not yet tenant-scoped.
 
 **What:** the API sets the org on every request (`setTenant`), so the database itself refuses cross-org
 rows. The gateway process mostly does not: `handleSend` and the sweeps (`sweepPendingWork`,
@@ -1432,3 +1434,30 @@ useful before adding keystroke traffic. Typing is chattier than a 12 s heartbeat
 wrong. The reply lock stays the hard rule; this stays a soft warning.
 
 **What brings it back:** Kushal's go-ahead. Raised to priority with D-17 and D-53.
+
+---
+
+## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — **PRIORITY (Kushal, 2026-10-13)**
+
+**What:** if an org (or a self-hosted install) has not paid, the product should stop being usable, not just show a
+billing page. Companion to [D-47](#d-47) (signup, billing gate, beta override): D-47 decides who gets in and
+how they pay; this is the enforcement that makes "unpaid" actually mean "blocked", everywhere, including the
+API and the gateway.
+
+**Open decisions (ask before building):**
+- **Hosted or self-hosted?** For a hosted install the entitlement is a per-org state we control, and it is fully
+  enforceable. For a self-hosted install the buyer holds the code and the database, so nothing is unbreakable; the
+  honest options are a signed licence key checked at startup and on a timer (offline, expiring), or a periodic
+  phone-home. Which of those matches the licence in [D-3](#d-3)?
+- **What "blocked" means:** read-only (inbox and exports still open so a customer can leave with their data),
+  sends and campaigns stopped, or fully locked? A grace period after a lapsed payment?
+- **Where it is enforced:** it must sit on the paths that cost money or risk a number, not just the UI: the API
+  write routes, the API-key path (an integration must not bypass it), and the gateway's send chokepoint so an
+  already-queued campaign stops too. One check, not one per route.
+- **The override:** the beta-tester override from D-47 (an audited per-org flag with a reason) is the one way
+  through; nothing else should skip it.
+
+**Why parked:** it touches money, tenancy and the licence, and needs the payment provider (D-47) and the
+hosted-versus-self-hosted call before any design is honest.
+
+**What brings it back:** Kushal's go-ahead with D-47, and the hosted/self-hosted answer.

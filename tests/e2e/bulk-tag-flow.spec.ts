@@ -76,7 +76,11 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     const firstRow = rowWithTagPicker();
     await firstRow.getByLabel('Add a tag').selectOption({ label: handTag });
     await firstRow.getByRole('button', { name: 'Add', exact: true }).click();
-    await expect(rowWithTagPicker().getByRole('button', { name: new RegExp(handTag) })).toBeVisible();
+    // Whichever row now carries the chip. The list is not in a stable order (tagging touches the
+    // person, and many rows share a timestamp), so "the first row again" is not the same person.
+    await expect(
+      page.locator('li').filter({ has: page.getByRole('button', { name: new RegExp(handTag) }) }).first()
+    ).toBeVisible();
 
     // 5. A broadcast from the mass tag: the dry run shows the audience, start, then cancel.
     await page.goto('/broadcast/new');

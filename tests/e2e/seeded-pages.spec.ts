@@ -42,12 +42,17 @@ test.describe('seeded pages', () => {
     await expect(page.getByText(note)).toBeVisible();
 
     // An admin brings a colleague onto the chat and takes them off again.
+    // Relative, not absolute, so a participant left behind by an earlier interrupted run cannot
+    // make this fail forever: pick one person, see exactly one more, then remove that same person.
     const adder = page.getByLabel('Add participant');
-    await adder.selectOption({ index: 1 });
-    const remove = page.getByRole('button', { name: /^Remove / });
-    await expect(remove).toBeVisible();
-    await remove.click();
-    await expect(remove).toHaveCount(0);
+    const person = (await adder.locator('option').nth(1).textContent())?.trim() ?? '';
+    expect(person).not.toBe('');
+    const removeButtons = page.getByRole('button', { name: /^Remove / });
+    const before = await removeButtons.count();
+    await adder.selectOption({ label: person });
+    await expect(removeButtons).toHaveCount(before + 1);
+    await page.getByRole('button', { name: `Remove ${person}`, exact: true }).click();
+    await expect(removeButtons).toHaveCount(before);
 
     // Resolve, then put it back.
     await page.getByRole('button', { name: 'Resolve', exact: true }).click();
