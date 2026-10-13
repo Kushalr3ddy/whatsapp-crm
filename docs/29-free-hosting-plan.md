@@ -8,8 +8,9 @@ notice (Oracle halved its free Arm machine in June 2026 without announcing it), 
 you rely on one. Where a claim comes from a blog or forum rather than a vendor page, it says so.
 
 **Constraints that shaped this version (from the owner):** the AWS, Azure and GCP free accounts were
-already used in college, so they are probably not available again; a payment card may not work; and
-Oracle has already been tried and burnt, so it is last.
+already used in college, so they are probably not available again; a payment card may not work;
+Oracle has already been tried and burnt, so it is last; there is **no machine at home**, but a
+**homelab cluster is shelved at a cousin's house on a 50 Mbps up/down connection** (section 5A).
 
 ---
 
@@ -19,10 +20,11 @@ Oracle has already been tried and burnt, so it is last.
    holds one WebSocket per WhatsApp number, needs about 1.5 GB at 10 numbers, and must not sleep. The
    free always-on containers that used to cover this have gone, need a card, or put the process to
    sleep (section 4).
-2. **The realistic free home for this system is your own machine**, with free services around it:
-   Cloudflare Tunnel for HTTPS, Tailscale for admin access, free off-site backups, and free
-   telemetry. It also has the best answer to the biggest risk, WhatsApp's treatment of datacenter IPs,
-   because a home connection is a residential IP.
+2. **The realistic free home for this system is hardware you control**, which in your case is the
+   homelab at your cousin's house, with free services around it: Cloudflare Tunnel for HTTPS,
+   Tailscale for admin access, free off-site backups, and free telemetry. It also has the best answer
+   to the biggest risk, WhatsApp's treatment of datacenter IPs, because a home connection is a
+   residential IP.
 3. **Combining "free" cloud pieces mostly does not work, for specific technical reasons**
    (section 5): the database features this system leans on (row-level security, `LISTEN/NOTIFY`, a
    privileged role switch) rule out SQLite-style stores such as D1 and document stores such as Convex,
@@ -115,24 +117,42 @@ Conclusion: with no working card, **there is no free managed place to run the ga
 
 ### Combinations that hold together
 
-**A · Everything at home** (recommended; $0, no card)
+**A · Everything on the homelab at your cousin's house** (recommended; $0, no card)
 
 ```
-phone/browser ──HTTPS──► Cloudflare Tunnel ──► home machine
+phone/browser ──HTTPS──► Cloudflare Tunnel ──► one node of the homelab
                                                 ├─ Caddy (optional) → web :3001 / api :3000
                                                 ├─ gateway ──► WhatsApp  (residential IP)
-                                                └─ Postgres (localhost)
-home machine ──nightly encrypted dump──► free off-site storage (Supabase / Backblaze / Drive)
+                                                └─ Postgres (local disk)
+node ──nightly encrypted dump──► free off-site storage (Supabase / Backblaze / Drive)
 admin: Tailscale SSH
 ```
 
-- Hardware: your current machine, a spare laptop, or a mini PC or Arm single-board computer with 4 GB.
-  A mini PC left on 24/7 draws about as much as a light bulb.
-- It answers the datacenter-IP risk by design.
-- Risks you own: power cuts, router resets, your ISP changing your IP (consider a UPS and
-  auto-restart on boot), and the machine being a single point of failure. Backups matter more here.
-- Needs a domain for a friendly address (a free subdomain works), because Cloudflare Tunnel publishes
-  names, not bare IPs.
+**Why it fits.**
+- **50 Mbps up and down is far more than needed.** The UI is a few kilobytes per click; WhatsApp
+  traffic for ten numbers is a trickle; media is occasional. Bandwidth is not the constraint.
+- **A tunnel needs no router access.** Cloudflare Tunnel makes an outbound connection, so nothing
+  has to be forwarded on your cousin's router, and an ISP that shares addresses (CGNAT) does not matter.
+- **It is a residential IP**, which is the best answer to the datacenter-IP risk (section 8).
+- **A cluster is more than needed.** Run everything on **one** node with Docker Compose. Do not run
+  k3s or Kubernetes for 10 users: it costs memory and operating effort for nothing here. Keep a second
+  node as a cold spare, or later as a Postgres replica.
+
+**What the node needs.** 4 GB of RAM (2 GB is the floor at 10 numbers), 20 GB of disk, Linux, and an
+SSD or USB-SSD for Postgres: an SD card will wear out under a database. Arm is fine (Raspberry Pi 4
+or 5, or similar); the suite must be run once on it.
+
+**What you now depend on, because it is someone else's house.**
+
+| Risk | What to do |
+|---|---|
+| Power cuts, or the node being unplugged | Boot on power-return in BIOS or firmware; a small UPS if you can; a smart plug so someone can power-cycle it remotely. |
+| The router or Wi-Fi being restarted or changed | Wired Ethernet to the router; the tunnel reconnects by itself; a watchdog or systemd restart on the services. |
+| Your cousin moves, changes ISP or turns it off | Agree it explicitly, and keep nightly backups so a move is a restore, not a loss. |
+| The house's IP location | Keep the phones' country and city plausible for that address, and **do not move the node between houses** once numbers are linked. |
+| Their electricity bill | A mini PC or Pi is a few watts to a few tens of watts; offer to cover it. |
+| Reaching it when something breaks | Tailscale SSH and the tunnel for the UI. A smart plug as the last resort. |
+| Privacy | The machine holds customer chats and WhatsApp sessions in another person's house. Full-disk encryption helps; `ENCRYPTION_KEY` stays in an environment file and in your backup, not on a USB stick left in the house. |
 
 **B · Home gateway, cloud for the rest** (only if a cloud VM becomes available)
 
@@ -241,12 +261,14 @@ Both deployment folders (`infra/docker`, `infra/compose`) are empty today. Rough
 
 ## 11 · Decisions needed
 
-1. **Is a machine at home available 24/7** (power and internet you control)? That decides combination A.
-2. **Is a few dollars a month acceptable as a fallback**, if home hosting is not an option? A small
-   4 GB VPS that accepts UPI or PayPal is the sane paid floor.
-3. **Do you know someone** who has never had an Azure account and would open one in their own name?
-   (It must be genuinely theirs; sharing a free account breaks the terms.)
-4. **Which telemetry**: logs only to Grafana Cloud, plus PostHog errors, or neither for now?
+1. **What is the hardware?** Number of nodes, CPU model and architecture (x86 or Arm), RAM per node,
+   storage type (SSD, HDD or SD), and whether any node has 4 GB or more.
+2. **Is it powered and online now, and can it be reached remotely?** Or does someone have to switch it
+   on and plug it in? Is it a wired connection?
+3. **Is your cousin happy with it running 24/7**, and could they power-cycle it if asked?
+4. **How often does power go out there?** That decides whether a UPS is worth buying.
+5. **Is a few dollars a month acceptable as the fallback** if the house does not work out?
+6. **Which telemetry**: logs only to Grafana Cloud, plus error tracking, or neither for now?
 
 ---
 
