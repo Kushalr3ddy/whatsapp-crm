@@ -32,57 +32,67 @@ Oracle has already been tried and burnt, so it is last.
 
 ---
 
-## 1a · Update: no machine at home, and the homelab is shelved at a cousin's house
+## 1a · Decision: cloud only (2026-10-13)
 
-What was said: nothing is running at home, the homelab cluster is switched off and boxed up at a
-cousin's house, and that connection is capped at 50 Mbps up and down.
+Home hosting is out: there is no machine at home, and the homelab at a cousin's house is out of
+reach. (The 50 Mbps line was never the problem; this system needs well under 1 Mbps.)
 
-**The 50 Mbps cap is not a problem.** This system moves very little data: a text message is a few
-hundred bytes, a CV or image a few hundred kilobytes, and ten people using the UI is well under
-1 Mbps in total. Even a 5 Mbps line would be fine. Do not weigh bandwidth in this decision.
+What is left has to run in the cloud. The constraints: the AWS, Azure and GCP free accounts were used
+in college, a payment card may not work, and Oracle is burnt.
 
-**The shelved homelab is still the best free option, if it can be woken once.** A cousin's home
-connection is a residential IP, which is the strongest answer to WhatsApp's datacenter-IP behaviour
-(section 8). What it needs from a person on site, once: plug in power and an ethernet cable. Everything
-else (a Cloudflare Tunnel for the web UI, Tailscale for admin) is outbound-only, so there is nothing
-to configure on the cousin's router and no problem with a carrier-grade NAT.
+**The finding.** After checking the vendors' pages, there is **no free, always-on cloud host with 2 GB
+or more that needs neither a card nor a first-time account** (section 4). So "cloud only" means one
+of these, best first:
 
-What has to be true of the hardware:
+| Tier | What | Cost | Needs | Fits 10 numbers? |
+|---|---|---|---|---|
+| **B** | **A small paid VPS you can pay for with UPI**, 4 GB | About ₹600 for the first term, about ₹1,000 a month on renewal (Hostinger, per a secondary source; MilesWeb quotes a smaller plan near ₹430) | UPI | **Yes, comfortably. Recommended.** |
+| **A** | **GCP Always Free e2-micro**, with Supabase Free as the database | ₹0 | An **existing GCP billing account in good standing with a valid payment method** | **Pilot only** (1 GB, US regions only) |
+| **C** | **Startup credits** through Hiring Studios (AWS Activate $1,000, up to about 2 years; Google Start up to $2,000; Microsoft Founders Hub $1,000) | ₹0 for a long time | A real company with its own domain and website, and a cloud account that may need a card | Yes |
+| **D** | Someone else's genuine first-time **Azure** free account (4 GB Arm VM, 12 months) | ₹0 for 12 months | That person's identity and card, in their name | Yes |
+| **E** | Oracle | | Not available to you | Last |
 
-| Needed | Why |
-|---|---|
-| **One node with 4 GB of RAM** (2 GB is the floor) | Gateway + API + web + Postgres is ~1.4 to 1.6 GB at 10 numbers. A cluster does not help: the gateway is one process. |
-| **An SSD or a good USB drive, not a bare SD card** | Postgres on an SD card corrupts under power cuts. |
-| **An OS already installed, or an image you can flash remotely** | Nobody is on site to install it. |
-| **Auto-power-on after a power cut** | BIOS "restore on AC power loss" (x86), or it comes up by itself (most Arm boards). |
-| **A person who will check it if it stops** | A cousin who can reboot it. Power cuts and a cousin unplugging it are the real risks. |
+**Why B is the recommendation.** It is the only option that is certain to work with what you have
+(UPI is accepted by Indian VPS providers; the big clouds need a card). It is also the only one whose
+size is right for 10 numbers, with the least engineering, in a region (India) near the phones. About
+₹600 to ₹1,000 a month is the cost of not depending on a free tier that can change tomorrow.
 
-The honest weaknesses: no UPS, someone else's electricity and Wi-Fi, and you cannot fix it hands-on.
-Backups matter more here than anywhere else.
+**What A really is, so nobody is surprised.** The Always Free tier has no end date and is open to
+existing customers, not only new ones (the $300 trial is the first-time part). But it needs a Cloud
+Billing account that is active and in good standing **with a valid payment method**, which is the part
+that may not hold for you. It is also 1 GB of RAM and only in Oregon, Iowa or South Carolina.
 
-### The full set of options for your situation, best first
+### Tier B in practice
 
-| # | Option | Cost | Needs | Datacenter-IP risk | Notes |
-|---|---|---|---|---|---|
-| 1 | **Wake the homelab at the cousin's** | ₹0 + electricity | A 4 GB node; one favour | **None** (residential) | Best fit. Pre-stage it: build the image and tunnel here, then it only has to be plugged in. |
-| 2 | **Your own laptop, as an interim** | ₹0 | It stays on and awake | None | Fine for the 72-hour test and for a trial with a few users. Not for real use: it sleeps, moves, and loses power. |
-| 3 | **Startup cloud credits through Hiring Studios** | ₹0 for a long time | A real company, a website on its own domain, a working card for the cloud account | Yes (cloud IP) | AWS Activate Founders: **$1,000 credits, up to ~2 years**, self-funded, company founded in the last 10 years. Google for Startups Start: up to **$2,000**, under 24 months old, no institutional funding. Microsoft Founders Hub: **$1,000** at the first tier, though people report being blocked if the Microsoft account has had an Azure free account. All three need a cloud account that may need the card you doubt. Only if the company is real and is yours. |
-| 4 | **A small paid VPS you can pay for without a card** | A few dollars a month | A payment method that works (UPI or PayPal on some providers; a friend's card) | Yes (cloud IP) | The sane paid floor: 4 GB RAM. Check each provider's payment methods before choosing. |
-| 5 | **One-off hardware purchase** | One-off | Somewhere with stable power and internet to keep it | None if it is at a home | A used mini PC or a 4 to 8 GB Arm board with an SSD. Check local prices. Only sensible if the homelab (option 1) is not usable. |
-| 6 | **Another person's genuine first-time Azure account** | ₹0 for 12 months | That person's identity and card, in their name | Yes (cloud IP) | Azure's free account gives a 4 GB Arm VM for 12 months. It must be genuinely theirs. |
-| 7 | **Oracle** | ₹0 | Not available to you | Yes | Last, per your instruction. See section 7. |
+```
+browser ──HTTPS──► Caddy (automatic TLS)
+                     ├─► web  :3001
+                     └─► api  :3000
+gateway ──outbound WebSockets──► WhatsApp
+postgres (localhost only)
+nightly encrypted dump ──► free off-site storage
+```
 
-### What I would do
+- **4 GB RAM, 2 vCPU, 40 GB or more of disk**; an **India data centre** if offered (same country as
+  the phones).
+- One box, one compose file, as in section 9. Postgres on the same machine, never exposed.
+- **First 72 hours is a test, not a launch:** link one spare number and watch for the silent
+  restriction (section 8). If it shows, the choice is a different provider's IP range or a different
+  region, not a code change.
+- Pay a month or a quarter at a time at first, not a year.
 
-1. **This week, at no cost:** run it on your laptop with a Cloudflare Tunnel and link **one spare number**.
-   That tests the whole system in a real setting and starts the 72-hour restriction watch, with a
-   residential IP (yours).
-2. **Meanwhile**, ask the cousin whether the homelab can be plugged in, and find out which machine in it
-   has 4 GB or more and what it boots from.
-3. **Pre-stage the image** so that on-site work is "plug it in".
-4. **If the homelab is not usable**, the choice is option 3 (if Hiring Studios is a real company) or
-   option 4 (a few dollars a month). Test the datacenter-IP behaviour with one number before moving
-   more.
+### Tier A in practice (only if the GCP account is alive)
+
+| Part | Where | Notes |
+|---|---|---|
+| Gateway and API, one process (`PROCESS_ROLE=all`) | GCP e2-micro, **us-east1** | Add 2 GB of swap. Holds a few numbers, not ten. |
+| Postgres | **Supabase Free**, nearest US region | 500 MB. Use the **session pooler** (port 5432, IPv4): it supports `LISTEN/NOTIFY`. The direct connection is IPv6 only on the free plan, and the transaction pooler (6543) has no `LISTEN`. |
+| Web UI | A second free host (Cloudflare Workers or Vercel Hobby), or the same VM if memory allows | Vercel Hobby is non-commercial. Cloudflare's free CPU limit is tight (section 5). |
+
+Costs of this layout, in plain terms: the WhatsApp login comes from a **US** address while the phone is
+in India; the database is a network hop away (five round trips per statement, section 2) so keep both
+in the same US region; and the free allowances (1 GB outbound a month, 500 MB of database) are small.
+Treat it as an experiment, not the plan.
 
 ---
 
@@ -295,12 +305,11 @@ Both deployment folders (`infra/docker`, `infra/compose`) are empty today. Rough
 
 ## 11 · Decisions needed
 
-1. **What hardware is in the shelved homelab?** Model, RAM per node, what each boots from (SD card,
-   SSD, internal disk), and whether an OS is installed.
-2. **Will the cousin plug it in** (and reboot it now and then)? One person on site is all it needs.
-3. **Is Hiring Studios a real company** with its own domain and website? That unlocks option 3.
-4. **Is a few dollars a month acceptable** if neither the homelab nor the credits work out, and which
-   payment method works for you?
+1. **Does UPI work for you** on a VPS provider (it should; check it at checkout before relying on it)?
+2. **Is about ₹600 to ₹1,000 a month acceptable** for tier B, or must it be ₹0?
+3. **Is the old GCP account still active** with a valid payment method? That decides whether tier A is
+   even possible.
+4. **Is Hiring Studios a real company** with its own domain and website? That unlocks tier C.
 5. **Telemetry:** logs only to Grafana Cloud, plus PostHog or Sentry for errors, or neither for now?
 
 ---
