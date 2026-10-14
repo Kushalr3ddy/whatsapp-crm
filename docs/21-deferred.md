@@ -541,7 +541,13 @@ ban-risk disclosure — is already surfaced everywhere it needs to be.
 
 ---
 
-## D-17 · Presence, typing indicators and collision detection (F3 realtime) — **PRIORITY (Kushal, 2026-10-10)**
+## D-17 · Presence, typing indicators and collision detection (F3 realtime) — ✅ **BUILT** (viewing: PR #28, 2026-10-12; typing and the send-anyway warning: D-54, PR #32, 2026-10-13)
+
+> **Built:** who has a chat open, by a 12 s heartbeat polled with the inbox (no websockets), shown in the thread
+> header and on the inbox row; a typing indicator; a soft "send anyway?" warning beside the owner/participant lock.
+> Presence, typing and viewers polling are plain `fetch` calls to a route handler (`/inbox/[id]/live`), **not**
+> server actions, because Next runs server actions one at a time and the polling queued in front of the person's
+> own Send. Live push (SSE) was not needed. The original description below is kept for the reasoning.
 
 > **Priority.** Raised 2026-10-10 together with D-53 (assignment model and message authorship): knowing who
 > is looking at a chat, who is typing, and who wrote each message is one feature set. Build them in the same
@@ -745,6 +751,48 @@ M9) is a safe default; this replaces "safe default" with "user's explicit choice
 > blind-index vs. trigram decision on encrypted message bodies (below) — contact-field search can
 > ship without waiting on it.
 
+
+> **Decision (Kushal, 2026-10-13): date-range-scoped search, decrypt-and-scan, no plaintext copy.**
+> Search runs **only inside a date range the person chooses**: a preset (last week, last month, this
+> month, last 3 months, this year) or a custom day, month or year range. The server decrypts that
+> window's messages in the API process and matches there. Nothing is stored in plaintext and no new
+> index is built. Contact search stays as it is (those fields are not encrypted). Not chosen, and why:
+> a plaintext search column or a "recent chats unencrypted" table would put the most sensitive, most
+> recent conversations in a stolen backup, which undoes the encryption at rest.
+>
+> **Measured** (2026-10-13, this machine, Node, AES-256-GCM): decrypt and scan **100,000 messages in
+> about 0.8 s** (about 8 microseconds each), CPU only; a million would be about 8 s before database
+> transfer. A month or a quarter of one org's messages is comfortably inside a second.
+>
+> **Research** (best practice for searching encrypted data): the standard Postgres full-text index
+> cannot be built over encrypted columns; the two real families are blind token indexes (HMAC'd words
+> or trigrams, as in SysReptor and CipherStash; they leak which rows share a token and lag behind
+> writes) and client-side search (WhatsApp, iMessage, Tutanota; a poor fit for a shared server-rendered
+> inbox). A blind token index is the upgrade path if volume ever outgrows decrypt-and-scan.
+>
+> **Open decisions (ask before building):**
+> 1. **Which presets and ranges**, and the default when none is chosen (suggest: last 30 days, shown
+>    clearly, with "search a wider range" one click away).
+> 2. **A ceiling:** the widest range allowed, and a cap on messages scanned per search (so one
+>    "everything since 2020" cannot hold the API). What the person sees when the cap is hit.
+> 3. **Caching** (recommendation below). Whether to cache a search's results at all; whether to cache
+>    an **empty** result; and what an overlapping range means (the same words searched over a wider or
+>    shifted range).
+> 4. **Substring or whole word**: does "pun" need to find "Pune"? Decrypt-and-scan does either.
+> 5. **Notes and file names**: notes are plaintext already; whether they are searched with bodies.
+> 6. **Audit:** whether searches are written to the audit log (a search over customer chats is a read
+>    worth accounting for, like D-13).
+>
+> **Recommendation on caching.** Do not cache search *results* at first. At the measured speed a
+> bounded range is cheap, and a result cache has real correctness traps: it goes stale the moment a
+> message arrives, an empty result is the most likely to be wrong a minute later, and an overlapping
+> range cannot be built from a cached neighbour without re-checking the edges and anything new. If it
+> proves slow, cache one layer lower: a **memory-only, bounded, per-org cache of decrypted bodies**
+> (never written to disk, gone on restart). Then every range overlaps for free, nothing about
+> "which range was searched" has to be reasoned about, and a new message is simply absent from the cache
+> until read. If a result cache is wanted anyway: key it on org, normalised query and exact range, give
+> it a short life (tens of seconds), cache empty results only for that same short life, and never answer
+> a different range from it.
 
 **What:** search across message bodies and contact fields — the last substantial P4 inbox piece.
 
@@ -1086,6 +1134,17 @@ database is chosen.
 
 **Decision (Kushal, 2026-10-06):** for now the `ENCRYPTION_KEY` lives locally in the `.env` file; back that file up separately from the database.
 
+**Update (Kushal, 2026-10-13/14): hosting is cloud-only, and the plan is written.** [`docs/29-free-hosting-plan.md`](29-free-hosting-plan.md)
+is the whole analysis. Constraints: no machine at home (the shelved homelab is out of reach); the AWS, Azure and
+GCP free accounts were used in college and a card may not work; Oracle is burnt. **Finding:** no free, always-on
+cloud host with 2 GB or more needs neither a card nor a first-time account. **Recommendation:** a 4 GB VPS paid by
+UPI (about ₹600 first term, ~₹1,000/month renewal, in an India region), after a 72-hour test with one spare
+number to see whether WhatsApp restricts the datacenter IP. **Open:** whether UPI works for him, whether
+₹600–1,000/month is acceptable, whether the old GCP account is still active (the e2-micro Always Free tier is open
+to existing customers), and whether Hiring Studios is a real company (startup credits). **What must be built on
+our side either way:** production builds, a compose file, Caddy, migrations at start, a backup job, and an Arm/x86
+test run (`infra/docker` and `infra/compose` are empty). Nothing is deployed.
+
 ---
 
 ## D-34 · The Meta Cloud API adapter (P8) and the real-number pilot
@@ -1393,7 +1452,13 @@ would also clean up test runs.
 
 ---
 
-## D-53 · Assignment model and message authorship — **PRIORITY (Kushal, 2026-10-10)**
+## D-53 · Assignment model and message authorship — ✅ **BUILT** (authorship PR #26; owner + participants PR #27; 2026-10-11)
+
+> **Built:** every outbound message records the signed-in agent (`sent_by_user_id`) and the thread names them
+> ("Campaign" for bulk sends, "API" for an integration). The owner is the existing `assignee_user_id`; participants
+> are a `conversation_participant` table, **admin-only to add or remove**, may reply, and count under "Mine";
+> reassigning drops the old owner. **Not built from the table below:** per-person workload counts and capacity,
+> bulk reassign, "reassigned" events shown inline in the thread, `collaborator`/`watcher` roles.
 
 **The questions, answered so they are not re-asked:**
 
@@ -1422,7 +1487,12 @@ small first slice that needs no realtime and can ship alone.
 
 ---
 
-## D-54 · Typing indicator and the "just replied, send anyway?" warning — **PRIORITY (Kushal, 2026-10-12)**
+## D-54 · Typing indicator and the "just replied, send anyway?" warning — ✅ **BUILT 2026-10-13** (PR #32)
+
+> **Built:** typing pings from a reply box with text (every 3 s, 8 s lifetime); "Priya is typing…" in the header
+> and on the inbox row; `POST /messages` returns `409 COLLISION` naming the person when another agent replied in
+> the last 15 s or is typing, and the composer offers Send anyway (`acknowledgeCollision`). API keys are exempt.
+> Text replies only; sending a file does not check. Migration 0026 adds `conversation_presence.typing_at`.
 
 The second slice of [D-17](#d-17). The first slice (who has a chat open, by heartbeat) shipped in PR #28; this is
 the rest of what D-17 describes, split out so it is tracked on its own.
@@ -1445,7 +1515,7 @@ wrong. The reply lock stays the hard rule; this stays a soft warning.
 
 ---
 
-## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — **PRIORITY (Kushal, 2026-10-13)**
+## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end")
 
 **What:** if an org (or a self-hosted install) has not paid, the product should stop being usable, not just show a
 billing page. Companion to [D-47](#d-47) (signup, billing gate, beta override): D-47 decides who gets in and
@@ -1469,3 +1539,30 @@ API and the gateway.
 hosted-versus-self-hosted call before any design is honest.
 
 **What brings it back:** Kushal's go-ahead with D-47, and the hosted/self-hosted answer.
+
+---
+
+## D-56 · Telemetry: metrics, tracing and error tracking beyond logs — pinned (Kushal, 2026-10-13)
+
+**Decision:** logging is enough for now; telemetry is pinned, not scheduled. Kushal's rule (2026-10-13): "if
+logging is there that's enough, else add logging."
+
+**What exists today (so nobody re-checks):**
+- Structured JSON logs (pino) to stdout, UTC, sensitive fields redacted by allowlist; pretty in development.
+  In dev, `npm run dev:all` also writes `.dev-logs/{api,gateway,web}.log` (not rotated); `npm run verify` writes
+  `/tmp/crm-verify-<time>/`. In production they go wherever the container runtime captures stdout.
+- A request id on every API request, present in the logs and in error bodies.
+- `GET /health` and `GET /ready` (database check).
+- Product state in Postgres that doubles as telemetry: `audit_log`, `sender_health_event`, per-number health and
+  risk score, per-message `hold_reason`, campaign progress.
+- A `TELEMETRY_DRIVER=none|prometheus|otlp` setting that reserves the names; nothing reads it.
+
+**What is missing:** metrics, traces, error tracking, alerting (see D-43), dashboards, log shipping and rotation.
+
+**Shape to build when it comes back:** a `/metrics` endpoint with the few numbers that matter (queue depth, sends
+and holds by reason, per-number risk score and delivery ratio, re-encryption progress), log rotation plus a
+deployment note on where logs go, and error tracking only once a vendor is chosen. Most useful as the
+observability for the real-number pilot, which is a week-long watch.
+
+**What brings it back:** the real-number pilot, a hosted deployment (D-33), or the first incident that logs alone
+cannot explain.
