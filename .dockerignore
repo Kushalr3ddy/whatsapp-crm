@@ -1,0 +1,19 @@
+# Keep the build context small and keep secrets out of the image.
+node_modules
+**/node_modules
+.git
+.next
+**/.next
+dist
+.env
+.env.*
+*.env
+!.env.example
+.dev-logs
+storage
+test-results
+playwright-report
+coverage
+docs/generated
+whatsapp-crm-docs.pdf
+tools
