@@ -18,6 +18,13 @@ const configSchema = z.object({
   // deployment with a malformed key fails at boot rather than at the first message.
   ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes of hex (64 chars) — generate with `openssl rand -hex 32`'),
   ENCRYPTION_INDEX_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes of hex (64 chars) — generate with `openssl rand -hex 32`'),
+  // Key rotation (D-31). The version is stamped into every encrypted value; a rotation raises it by
+  // one and moves the old key to the previous list until everything has been re-encrypted.
+  ENCRYPTION_KEY_VERSION: z.coerce.number().int().min(1).max(255).default(1),
+  ENCRYPTION_KEYS_PREVIOUS: z.string().regex(
+    /^\s*\d{1,3}\s*:\s*[0-9a-fA-F]{64}\s*(,\s*\d{1,3}\s*:\s*[0-9a-fA-F]{64}\s*)*$/,
+    'must be comma-separated <version>:<64 hex chars> pairs, e.g. 1:ab12…'
+  ).optional().or(z.literal('').transform(() => undefined)),
 
   // Required, not optional. Scoped keys in a database table are P2; until then this single
   // key guards the whole API. Making it optional with a warning is how software reaches

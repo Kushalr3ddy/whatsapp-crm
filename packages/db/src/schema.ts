@@ -405,6 +405,22 @@ export const conversationPresence = pgTable('conversation_presence', {
 ]);
 
 /**
+ * Whether the background re-encryption of a key rotation (D-31) is running, and what it has done.
+ * One row for the whole instance (the key is the instance's, not an org's), so it carries no
+ * `org_id` and no row-level security. `paused` is the operator's brake; the gateway checks it
+ * before every pass. Counters are for the wizard's progress display only.
+ */
+export const keyRotationState = pgTable('key_rotation_state', {
+  id: integer('id').primaryKey().default(1),
+  paused: boolean('paused').notNull().default(false),
+  pausedByUserId: uuid('paused_by_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  reencryptedTotal: integer('reencrypted_total').notNull().default(0),
+  lastUnreadable: integer('last_unreadable').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+/**
  * One message, in or out. Bodies are encrypted at rest; `bodyHmac` lets duplicates be detected
  * without decrypting a whole table, which the previous system had to do (M25).
  */

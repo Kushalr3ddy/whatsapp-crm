@@ -4,12 +4,12 @@ import {
   createDatabase, PostgresAuthStateStore, verifySchema, inspectDatabaseSecurity, resolveTenantRole
 } from '@crm/db';
 import { tenantDatabase } from './tenant.js';
-import { LocalKms } from '@crm/kms-local';
+import { localKmsFromConfig } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
   DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
-  markMessageFailedByProviderId } from '@crm/core';
+  markMessageFailedByProviderId, assertKeyRingCoversData } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import type { ChannelProvider, NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -53,10 +53,10 @@ async function main(): Promise<void> {
   /** A database handle pinned to one org, for the event streams below. */
   const inOrg = (orgId: string): ReturnType<typeof createDatabase> => tenantDatabase(db, orgId, tenantRole);
 
-  const kms = new LocalKms({
-    keyHex: config.ENCRYPTION_KEY,
-    indexKeyHex: config.ENCRYPTION_INDEX_KEY
-  });
+  const kms = localKmsFromConfig(config);
+  // Refuse to run if the database holds data under a key this process cannot read (a retired key
+  // dropped too early, D-31). Better a loud boot failure than messages that silently won't open.
+  await assertKeyRingCoversData(db, kms);
   const authStore = new PostgresAuthStateStore(db, kms);
   // Layer 5: Baileys drops undecryptable frames before the app sees them, so its logger is the only
   // place a diverged session shows. Three "Bad MAC" in a minute is recorded on the session row and

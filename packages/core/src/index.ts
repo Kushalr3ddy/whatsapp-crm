@@ -114,3 +114,8 @@ export {
   STUCK_AFTER_MS, HOLD_MS, MIN_SENDS,
   type RestrictionState, type RestrictionStats, type RestrictionVerdict, type RestrictionSignal, type RestrictionOutcome
 } from './restriction.js';
+
+export {
+  keyVersionCounts, versionsMissingFromKeyRing, reencryptBatch, verifySample, assertKeyRingCoversData,
+  type KeyVersionCounts, type ReencryptResult, type VerifyResult, type SqlExecutor
+} from './key-rotation.js';
