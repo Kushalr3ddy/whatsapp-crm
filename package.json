@@ -62,9 +62,9 @@
     "//6": "─── UI-test seed: a fake connected number, people, tags, conversations (scripts/local-seed.ts) ───",
     "local:seed": "tsx --env-file-if-exists=.env scripts/local-seed.ts",
     "//7": "─── alpha container: API + gateway + web + Postgres (infra/compose/README.md) ───",
-    "alpha:up": "docker compose -f infra/compose/compose.yaml up -d --build",
-    "alpha:down": "docker compose -f infra/compose/compose.yaml down",
-    "alpha:logs": "docker compose -f infra/compose/compose.yaml logs -f app"
+    "alpha:up": "bash infra/scripts/compose.sh up -d --build",
+    "alpha:down": "bash infra/scripts/compose.sh down",
+    "alpha:logs": "bash infra/scripts/compose.sh logs -f app"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",

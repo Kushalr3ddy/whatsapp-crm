@@ -1,6 +1,6 @@
 # The alpha stack: one app container (API + gateway + web) and Postgres.
 #
-#   docker compose -f infra/compose/compose.yaml up -d --build
+#   npm run alpha:up        (or: docker compose -p whatsapp-crm -f infra/compose/compose.yaml up -d --build)
 #
 # That is the whole setup. On first start the app generates its secrets, migrates the database
 # and creates a first admin; the sign-in details are in `docker compose logs app`. Anything in
@@ -8,8 +8,6 @@
 #
 # Ports on the host (change the left-hand side in .env if one is taken):
 #   3000  API          3001  web UI          5434  Postgres (the dev database also uses 5434)
-name: whatsapp-crm
-
 services:
   db:
     image: postgres:16-alpine
