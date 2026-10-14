@@ -13,6 +13,72 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-14 — Handoff; logging and telemetry documented; free hosting plan (docs only)
+- **`docs/28-logging-and-telemetry.md`**: what is logged and where it goes, redaction, the request id, how to read
+  it, health endpoints, the database state that doubles as a record, troubleshooting recipes, what is missing.
+  Telemetry beyond logs is pinned as **D-56**; logging is enough for now.
+- **`docs/29-free-hosting-plan.md`**: free and cheap hosting for about 10 users and 10 numbers. Decision
+  (2026-10-14): **cloud only**. No free always-on host of 2 GB or more needs neither a card nor a first-time
+  account; recommended is a 4 GB VPS paid by UPI after a 72-hour datacenter-IP test. Recorded on **D-33**.
+- **D-23 (inbox search)** now records Kushal's decision: **date-range-scoped, decrypt-and-scan, no plaintext
+  copy**, with the measurement (100,000 messages in ~0.8 s), the research, and the open decisions (presets, a
+  ceiling, caching including empty results and overlapping ranges, substring, notes, audit). **Not built.**
+- **D-55 (licence enforcement)** kept pinned, to be revisited last.
+
+### 2026-10-13 — Key rotation, D-31 (#35)
+- **Key ring** in `LocalKms`: `ENCRYPTION_KEY_VERSION`, `ENCRYPTION_KEY`, `ENCRYPTION_KEYS_PREVIOUS`
+  (`<version>:<hex>,…`). Decrypt picks the key named in each value's envelope; encrypt always uses the current
+  one. Malformed rings fail at boot; a missing key says which version and how to add it.
+- **Background re-encryption** (`packages/core/src/key-rotation.ts`, `sweepKeyRotation` in the gateway sweep):
+  `message.body_enc` and `channel_auth_state.value_enc`, a batch per org per sweep, compare-and-swap, an unreadable
+  row is counted and skipped; pausable (`key_rotation_state`, migration 0027), restart-safe.
+- **Startup guard:** the API and the gateway refuse to start if the data holds a key version the ring cannot read.
+- **`npm run keys -- status | generate`** prints rather than edits; the **Security page** (`/security`, admin only)
+  is the five-step wizard with progress, pause/resume and a verify sample. Migration 0028 adds the safe
+  `envelope_key_version()` function and its indexes. Audit rows for pause, resume and verify.
+- Found by running it for real on a throwaway database: the sweep had not been wired into the gateway loop, and a
+  bare `get_byte()` index threw on a value shorter than 2 bytes. Both fixed and tested.
+- **Not built:** per-org data keys and crypto-shredding (still D-31); `ENCRYPTION_INDEX_KEY` deliberately does not
+  rotate. The pause switch is instance-wide (any org admin).
+
+### 2026-10-13 — The gateway runs inside each org's tenant, D-41 (#34)
+- `apps/gateway/src/tenant.ts`: a handle where every statement drops to `crm_app` and sets `app.org_id`. Sweeps list
+  org ids with one privileged query and fan out per org; work that starts from an id looks up its org first;
+  startup resolves the tenant role like the API. The whole gateway suite now runs as `crm_app`.
+- `tests/integration/gateway-tenancy.test.ts`: a message in org A whose conversation points at org B's number is not
+  sent (with the role removed it goes out through B's number).
+- **Still open:** the Baileys credential store (`channel_auth_state`) is accessed by the provider with only a
+  sender id, outside this handle (encrypted, keyed by sender, not tenant-scoped).
+- Three e2e specs made re-runnable (seeded inbox participants, broadcast cancel, bulk tag). **D-55 pinned.**
+
+### 2026-10-13 — Held messages released on time, and a double-send race fixed (#33)
+- A message held by a pacing, contact-graph or recovery gate is retried when the gate says it clears, not at the next
+  60 s sweep; per-minute and per-hour retry times come from the oldest send in the window.
+- **Found while doing it:** `handleSend` could run twice for one message (NOTIFY, sweep, retry), each sleeping a
+  jittered pause then sending: the same message went out 3 times in a test. Now guarded per message.
+- **Caught by the CI simulation:** parallel retries each passed the allowance check before any had sent and overshot
+  the daily ceiling (601 against 600). Send decisions are now **serialised per number**.
+
+### 2026-10-12/13 — Typing indicator and the send-anyway warning, D-54 (#32)
+- See D-54 on the deferred list. Presence/typing/viewers polling moved from server actions to a route handler
+  (`/inbox/[id]/live`) because Next serialises server actions and the polling starved the person's own Send.
+  Migration 0026. Tests: typing-collision (11), and the roles pipeline now exercises both through the real composer.
+
+### 2026-10-12 — Two-role pipeline (#31), schema visualizer (#30), fake gateway fixes (#29)
+- **`npm run test:roles`** (and `test:roles:live`, headed, real number to `LIVE_SEND_TO`): an admin and an agent on
+  one chat checked from both sides: authorship, presence both ways, the lock, five admin-only refusals,
+  do-not-contact, participants, hand-over. File is `zz-roles-flow.spec.ts` so it runs last.
+- **`npm run db:docs`** writes `docs/generated/schema.html`: a table diagram, per-table columns, keys, indexes,
+  policies, triggers and a plain-English purpose from `packages/db/src/table-notes.ts` (a test fails if a table has
+  none). 27 tables, 57 foreign keys, 24 policies, 3 triggers, 1 function at the time.
+- **Fixture fixes:** the fake channel never reported "delivered", so after 10 sends in a day the scorer put the
+  healthy seed number in a 48-hour soft-ban pause; a number that never received a reply is clamped to 20 sends a day;
+  `send-flow` could only pass ~20 times per database (14-day cooldown on a 20-number pool). All fixed.
+
+### 2026-10-11/12 — Authorship (#26), owner + participants (#27), presence (#28), D-53/D-17 first slices
+- Every outbound message records its author; `conversation_participant` (admin-only add/remove, may reply, counts
+  under Mine); `conversation_presence` heartbeat with a "viewing" line. Migrations 0024, 0025.
+
 ### 2026-10-10 — Live headed walkthrough (branch `test/live-headed-suite`)
 - **`npm run test:live`** (`playwright.live.config.ts`, `tests/live/`): a visible, slowed-down Chromium run of the whole
   product against a running stack and a *real* linked number — sign in → link a number on screen if none is
@@ -847,7 +913,10 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 - ✅ Conversation list, thread view, composer; message bodies encrypted at rest.
 - ✅ Assignment, status, list filters; internal notes; canned replies; thread lock; mark-read /
   open-any-thread; **attachments render in the thread** (web `/media/:id` proxy).
-- ❌ Search (pinned **D-23**), realtime/presence (**D-17**), snooze/Meta-window/keyboard (**D-18**).
+- ✅ **Authorship** (who sent each message), **owner + participants** (admin-managed, may reply), **presence**
+  ("viewing"), **typing indicator** and the **send-anyway collision warning** (D-17, D-53, D-54).
+- ❌ Search (pinned **D-23**; design decided 2026-10-13: date-range-scoped decrypt-and-scan), snooze/Meta-window/
+  keyboard (**D-18**).
 
 ### P5 · Ingestion — ✅ first slice
 - CSV **and Excel (.xlsx)** import: upload → dry run → commit. Content-hash dedup; partial unique
@@ -877,6 +946,9 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 ### Cross-cutting — ✅
 - RLS on the request path: tenant transaction + `SET LOCAL ROLE crm_app`, proven by no-filter tests.
+- **RLS in the gateway** (D-41): every gateway statement runs pinned to the owning org.
+- **Key rotation** (D-31): key ring, background re-encryption, startup guard, CLI and an admin wizard.
+- **Send path:** held messages released on time; send decisions serialised per number.
 - Storage: `StorageDriver` port + filesystem driver + 25-test contract suite.
 - Media: download, magic-byte typing, per-org sha256 dedup, unguessable keys, `GET /media/:id`
   (attachment-only headers), `mediaUnavailable` marking; read auditing (D-13).
@@ -887,21 +959,26 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 ## To do (top = next)
 
-In the order Kushal set (2026-10-10). Items marked *pinned* are deliberately held:
+In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
 
-0. **D-17 + D-53 — presence, typing, several people per chat, message authorship** (priority, raised
-   2026-10-11): needs Kushal's go-ahead on owner + participants; authorship (write and show `sent_by_user_id`) is
-   the small first slice.
-1. **D-21 — the import column-mapping wizard** (priority, raised 2026-10-10): production imports are a Naukri
-   Excel export; needs the real file (or a sample) so the wizard fits its columns.
-2. **D-41 — gateway outside RLS** (priority): enter each org's tenant transaction per job, plus a cross-org test.
-3. **D-31 — key rotation** (priority): a safe path to rotate `ENCRYPTION_KEY`.
-4. **Real-number pilot** — no code; a spare number for a week or two, watching the Numbers page.
-5. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
-6. *Pinned:* **D-47** signup + billing gate + beta override · **D-48** OWASP security tests · **D-49** e2e revamp ·
-   **D-50** frontend/backend modularity tests · **D-51** deleted-message tracking · **D-52** delete previous campaigns · **D-46** UI responsiveness (measure first) · **D-19** templates · **D-23** message search · **D-27**
-   opt-out · **D-35/36/40** · **D-34/37/38/39** Meta adapter · **D-42** AI takeover · **D-43** alert channels ·
-   **D-44** Baileys 7 · **D-33** deployment / P1 close-out (`infra/compose/` is empty).
+1. **Hosting and deployment (D-33, `docs/29`)**: Kushal decides the payment route (UPI for a 4 GB VPS, startup
+   credits, or a first-time account), then the packaging is built: production builds, compose, Caddy, migrations at
+   start, backups. Then the **72-hour datacenter-IP test with one spare number**.
+2. **Real-number pilot**: a spare number for a week, watching the Numbers page (and `/metrics` once D-56 exists).
+3. **D-21 import mapping wizard** (priority): waits for a real Naukri export.
+4. **D-23 inbox search** (priority): design decided (date-range-scoped decrypt-and-scan); still to settle: presets,
+   a ceiling, caching, substring, notes, audit. Not built.
+5. **D-19 message templates** (priority): not started; open design questions.
+6. **Send path speed-ups, proposed and not chosen:** the serial sweep still lets one number's backlog delay every
+   other number; and a fast path (skip the pre-send pause) for the first replies to engaged contacts, which
+   changes the ban profile and needs its own simulation scenario.
+7. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
+8. *Pinned:* **D-56** telemetry (metrics, `/metrics`, log shipping) · **D-55** licence enforcement (last) ·
+   **D-47** signup + billing gate + beta override · **D-48** OWASP security tests · **D-49** e2e revamp · **D-50**
+   frontend/backend modularity tests · **D-51** deleted-message tracking · **D-52** delete previous campaigns ·
+   **D-46** UI responsiveness (measure first) · **D-27** opt-out · **D-35/36/40** · **D-34/37/38/39** Meta adapter ·
+   **D-42** AI takeover · **D-43** alert channels · **D-44** Baileys 7 · **D-31** per-org keys (rotation is built) ·
+   remaining D-53 items (workload counts, bulk reassign, inline reassign events).
 
 ## Blockers (detail in `HANDOFF.md`)
 
@@ -909,3 +986,6 @@ In the order Kushal set (2026-10-10). Items marked *pinned* are deliberately hel
   verified, media proven end to end against a real WhatsApp file. See *Latest*.
 - **Test data in the dev DB** (`[TEST DATA - DO NOT TOUCH] …`) — D-14 is now closed, so these are
   safe to delete; still present pending the call.
+- **Nowhere to deploy** (`docs/29`, D-33): no free always-on host of 2 GB or more needs neither a card nor a
+  first-time account. Waiting on Kushal: UPI for a 4 GB VPS, whether ~₹600–1,000/month is acceptable, whether the old
+  GCP account is alive, whether Hiring Studios is a real company. Nothing is deployed; the deployment folders are empty.

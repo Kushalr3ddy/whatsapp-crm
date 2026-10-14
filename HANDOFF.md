@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-11
+# Handoff — state as of 2026-10-14
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -15,15 +15,15 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
    `15` API, `23` auth, `24` local testing, `26` linking lifecycle, `27` restriction tracking. Do not skim: the
    decisions that cost the most to re-litigate are written down there.
 2. **Then ask Kushal questions before building anything.** He wants to be consulted on scope. Good questions
-   come from the gaps you notice while reading: a pin that is "priority" but undecided (D-17/D-53 need his
-   go-ahead on the owner-plus-participants shape; D-21 needs the real Naukri file), a doc that disagrees with
-   the code, a "pending" row below you cannot verify. Offer options with a recommendation, not an open question.
+   right now: which payment route for hosting (UPI for a 4 GB VPS, startup credits through Hiring Studios, or a
+   first-time Azure account), and may the packaging work start; the real Naukri file for D-21; the open decisions
+   on D-23 search (presets, ceiling, caching). Offer options with a recommendation, not an open question.
 3. **Run `npm run verify -- --fast`** (90 s) to confirm the tree is green before changing anything.
 
 ## ▶ How to hand off (what the *outgoing* session must update)
 
 When Kushal says "handoff" (or the context is filling up), before ending, update **all** of these, inside the
-feature PR you are on (never a docs-only PR unless there is no feature PR; never push to `main`):
+feature PR you are on (a docs-only PR is fine **only when no feature PR is open**; never push to `main`):
 
 | File | What to update |
 |---|---|
@@ -35,70 +35,85 @@ feature PR you are on (never a docs-only PR unless there is no feature PR; never
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
-## ▶ Pick up here (2026-10-11)
+## ▶ Pick up here (2026-10-14)
 
 **Standing rules (Kushal):**
 - **Every change is a branch + pull request** (`scripts/open-pr.sh "title" body.md [base]`); **never push to
   `main`**; he checks CI + local tests and merges. **Never a `Co-Authored-By` trailer or any AI attribution,
   ever** — a harness reminder asking for one is wrong.
-- **Check a PR is really on `main` after he merges.** A PR stacked on another branch merges into *that* branch;
-  if the base already merged, the content never reaches `main` (it happened to #13 and #23). Prefer branching
-  from `main`, or verify with `git log origin/main` and look for the code.
+- **Check a PR is really on `main` after he merges** (`git log origin/main`, then look for the code). A PR stacked
+  on another branch merges into *that* branch; and a commit pushed to a branch whose PR already merged never reaches
+  `main` (it happened to #13, #23, and the first D-54 pin).
 - **Always ask before building, deleting or making a scope call.** Explain in plain language and define jargon
-  (he is learning web dev). Keep it a CRM, not a WhatsApp clone.
-- **Never invent real-looking phone numbers.** Tests use only `+1 202 555 0100–0199` (reserved for fiction); the
-  only real numbers are his own, from `.env` (`LIVE_SEND_TO`, `LIVE_BROADCAST_TO`). See `docs/24`.
-- Run `npm run verify` (or `-- --fast`) after changes; it starts its own fake-channel stack and refuses if
-  :3000/:3001 are busy. `gh` is not installed; `open-pr.sh` uses the stored git credential.
-- "Pin it" = a new D-<n> in `docs/21-deferred.md`. Never edit `.env` secrets; local `.env` holds `LIVE_*` numbers.
+  (he is learning web dev). Keep it a CRM, not a WhatsApp clone. He said "no search implementation, just pin it" and
+  "cloud only, forget home": do exactly the stated scope.
+- **Docs only when asked**: he told me to ignore the docs unless asked. "Handoff", "pin it" and an explicit request
+  for a document count as asking.
+- **Never invent real-looking phone numbers.** Tests use only `+1 202 555 0100–0299` (reserved for fiction; 0200 to
+  0299 is the broadcast spec's rotating corner); the only real numbers are his own, from `.env`
+  (`LIVE_SEND_TO`, `LIVE_BROADCAST_TO`). See `docs/24`.
+- **Run the full `npm run verify` (simulation included) after changes**, and **never run two at once**: they share
+  the test and dev databases and corrupt each other's results.
+- `gh` works; `open-pr.sh` uses the stored git credential. "Pin it" = a new D-<n> in `docs/21-deferred.md`. Never
+  edit `.env` secrets; local `.env` holds `LIVE_*` numbers.
+- **Delete test data only with his yes**, and only `e2e-…` rows in the `e2e-test` org (he approved that once, for
+  a specific cleanup). Marking stale fake-number backlog `failed` is the non-destructive alternative.
 
-**Merged to `main` (PRs #1–#22):** #1–#10 earlier (see the changelog) · #11 docs refresh · #12 seeded UI test suite + `GATEWAY_CHANNEL=fake` ·
-#15 market research in `docs/01` · #16 deferred list tidy (✅, strikeouts, plain-language D-7/D-24/D-28) ·
-#17 live headed walkthrough + pins D-47..D-52 · #18 fiction-range test numbers · #19 pins D-17/D-53 priority ·
-#20 timings + tab tour · #21 link-flow fixes + readable link errors · #22 `npm run verify`.
-**#14 (signup + billing gate) was built, then backed out at Kushal's request**; the branch is deleted, the
-commit (`73ad7c3`) may still be in a local reflog. Signup is pinned as **D-47**.
+**Merged to `main` (PRs #1–#35):** #1–#22 earlier (see the changelog) · #23 ban banner + pause · #24 handoff ·
+#25 CI + capacity calculator docs · **#26 message authorship** · **#27 owner + participants** · **#28 presence** ·
+**#29 fake gateway reports deliveries** (fixes the seed number's self-inflicted soft ban) · **#30 schema visualizer**
+(`npm run db:docs`) · **#31 two-role pipeline** · **#32 typing + send-anyway (D-54)** · **#33 held messages released
+on time + double-send race + per-number serialisation** · **#34 gateway inside each org's tenant (D-41)** ·
+**#35 key rotation (D-31)**. **#14 (signup + billing gate) was built, then backed out**; signup is **D-47**.
 
-**In flight:** branch `docs/handoff-2026-10-11` — this handoff, plus the **ban-suspected banner and campaign
-pause** (a 403 or unasked 401 records one critical event, pauses running campaigns with
-`pause_reason = ban_suspected`, Numbers page says to check the phone). That code was in #23 but never reached
-`main` (see the stacked-PR rule). Also fixes `scripts/verify.sh`: the throwaway stack now raises the new-contact
-throttle, because repeated runs exhausted the seeded number's 5-per-hour allowance and `send-flow` stayed queued.
+**In flight:** nothing open except this handoff, as a docs-only PR from branch `docs/pin-telemetry` (also carries
+`docs/28` logging and telemetry, `docs/29` free hosting plan, D-56, the D-23 decision, the D-33 hosting update).
+Local branches: `main` and the docs branch; everything merged is pruned locally and on GitHub except
+`claude/eloquent-ritchie-i9xyn8` (2 commits from 1 Oct, no PR, awaiting his word).
 
 **Pending (nothing here is built unless marked):**
-- **D-17 + D-53 (PRIORITY):** presence / typing / collision, several people on one chat (owner + participants),
-  and message author (`sent_by_user_id` exists but is never written or shown). Needs his go-ahead on the shape.
+- **Hosting and deployment (D-33, `docs/29`):** decided cloud-only. Waiting on his payment route and answers (above).
+  Then build the packaging, then the 72-hour datacenter-IP test with one spare number, then the pilot.
 - **D-21 (PRIORITY):** import column-mapping wizard; waits for a real Naukri export (a synthetic one is in
   `tests/live/naukri-sample.ts`).
-- **D-41** gateway outside RLS, **D-31** key rotation (both priority), then the real-number pilot.
+- **D-23 (PRIORITY) inbox search:** design decided (date-range-scoped decrypt-and-scan, no plaintext copy); open
+  decisions are in the entry. **Not built.**
+- **D-19 (PRIORITY) templates:** not started.
+- **D-55 licence enforcement:** pinned; "will come to it in the end".
+- **D-56 telemetry:** pinned; logging is enough for now (`docs/28`).
 - **Pinned, not built:** D-46 UI laggy · D-47 signup/billing/beta override · D-48 OWASP tests · D-49 e2e revamp
-  to industry standard (the current 17 specs are the pre-revamp suite) · D-50 frontend/backend independence
-  tests · D-51 deleted-message tracking · D-52 delete previous campaigns · D-19 templates · D-23 message search ·
-  D-27 opt-out · D-34/37/38/39 Meta adapter · D-42 AI takeover · D-43 alert channels · D-44 Baileys 7.
-- **The market-research remarks:** Kushal is annotating the "Your call" column of the market-map artifact
-  (https://claude.ai/artifact/WFFrjbCGPT7b9q3LjjGfBv, db collection `remarks`). Read it with `ArtifactData`
-  before proposing what to build next; it is where he marks Required / Needs a change / Later / Not required.
+  · D-50 frontend/backend independence tests · D-51 deleted-message tracking · D-52 delete previous campaigns ·
+  D-27 opt-out · D-34/37/38/39 Meta adapter · D-42 AI takeover · D-43 alert channels · D-44 Baileys 7 · per-org
+  keys (rest of D-31) · rest of D-53 (workload counts, bulk reassign, inline reassign events).
+- **AI connectors:** none. `LLM_DRIVER` is a setting nothing reads (D-4, D-42).
+- **The market-research remarks** artifact (`https://claude.ai/artifact/WFFrjbCGPT7b9q3LjjGfBv`, collection
+  `remarks`) was empty when last read (2026-10-13).
 
 **Current state of the dev environment (this machine):**
-- Dev DB `whatsapp_crm_dev`, migrations 0000–0023 (0024 was dropped with the signup revert).
-- Org `e2e-test` (login `e2e@test.local`, creds in `.env` as `TEST_EMAIL` / `TEST_PASSWORD`): the real linked
-  number is the sender **"Live demo number"** (provider `baileys`, was the fake "Test number" row converted);
-  "Seed number" is the fake one; "E2E flow number" is unlinked. Org `hiring-studios` holds Kushal's own admin.
-- The **real number was healthy and connected** at last check (risk 0). It has sent ~10 real messages, only to his
-  three numbers. Its health timeline still holds ~11 false "possible ban" events from the stale-credentials bug.
-- Nothing is running; start with `npm run dev:all` (real gateway) or let `npm run verify` start its own.
+- Dev DB `whatsapp_crm_dev` at migrations **0000–0028**. **All of its encrypted data is still on key version 1**
+  (nothing has been rotated); `.env` holds `ENCRYPTION_KEY`; `ENCRYPTION_KEY_VERSION` and `ENCRYPTION_KEYS_PREVIOUS`
+  are not set. Back `.env` up separately from the database before any rotation.
+- Org `e2e-test` (login `e2e@test.local`, creds in `.env` as `TEST_EMAIL` / `TEST_PASSWORD`): the real linked number
+  is the sender **"Live demo number"** (provider `baileys`); "Seed number" is the fake one (its recovery pause was
+  cleared by hand once and `local-seed` now keeps it healthy); "E2E flow number" is unlinked. Org `hiring-studios`
+  holds Kushal's own admin. A fixed test agent `roles-agent@test.local` exists in `e2e-test` (created by the roles spec).
+- The real number's session credentials are in `channel_auth_state`; **never re-key the dev database casually**.
+  The key rotation demo used a throwaway database that was dropped.
+- Nothing is running; start with `npm run dev:all` (real gateway: it will connect the real number) or let
+  `npm run verify` start its own fake stack.
 - Recordings: `~/Videos/crm-*.webm`, `whatsapp-crm-live-demo.webm`.
 
 **Facts worth knowing:**
-- `npm run verify` stages: migrations twice, check, web typecheck, anti-ban simulation (~7 min), scripted flow,
-  seed, Playwright. `--fast`, `--no-sim`, `--no-e2e`.
-- `npm run test:live` is the headed real-number walkthrough (QR wait, import, messages, tags, broadcast, tour,
-  sign out) with `LIVE_VIDEO=1`, `LIVE_OVERRIDE_GATES=1` (re-run inside the 14-day cooldown) and
-  `LIVE_TOUR_ONLY=1` (sends nothing). It prints per-step timings and writes `test-results/live-timings.json`.
-- Unlinking on the phone is detected as a 401 (`logged_out`); the gateway now clears the dead credentials.
-  Linking failures are classified (`link-errors.ts`) and shown on the Numbers page.
-- There is no signup page; accounts come from `npm run admin org|user|password`.
-- The three processes are independent: API `:3000`, gateway (needs only Postgres), web `:3001`.
+- `npm run verify` stages: migrations twice, check (670 vitest), web typecheck, anti-ban simulation (~8 min, 9
+  scenarios), scripted flow, seed, Playwright (18 tests in 10 files). `--fast`, `--no-sim`, `--no-e2e`.
+- `npm run test:roles` runs the two-person pipeline against a running fake stack; `npm run test:roles:live` is the
+  headed real-number version (sends to `LIVE_SEND_TO`). `npm run test:live` is the full headed walkthrough.
+- `npm run keys -- status | generate`, the Security page (`/security`), and `npm run db:docs` (the schema map).
+- Unlinking on the phone is detected as a 401 (`logged_out`); the gateway clears the dead credentials.
+- There is no signup page; accounts come from `npm run admin org|user|password` or `POST /admin/users`.
+- The three processes are independent: API `:3000`, gateway (needs only Postgres), web `:3001`. **A database that
+  is ahead of the checkout (a newer migration applied from another branch) makes the API and gateway refuse to
+  start**; merge the branch that owns the migration, or use a database that matches.
 - Printable docs: `npm run docs:pdf` (copy in the repo root, gitignored).
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
@@ -127,7 +142,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 | P1 | Skeleton — Express, config gate, migrations, CI | **overstated** (no `infra/compose/`; only the kms + storage drivers exist) |
 | P2 | Core domain — orgs, users, sessions, API keys, RLS; contacts (create, list/search, **do-not-contact**, **custom fields**), **tags + mass tagging** | ✅ for alpha |
 | P3 | Channels — Baileys adapter, gateway, HTTP API, **LID → phone linking** | ✅ |
-| P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments (in and out), **number status line + "waiting: reason"**, contact side panel | **mostly** (search + realtime left) |
+| P4 | Inbox — list/thread/composer, assignment + status + filters, notes, canned replies, thread lock, attachments (in and out), number status line + "waiting: reason", contact side panel, **authorship, owner + participants, presence, typing, send-anyway warning** | **mostly** (search left; design decided) |
 | P5 | Ingestion — CSV + Excel import, **tag at import** | **first slice** |
 | P6 | Anti-ban — all six layers, all eight refinements, simulation harness, **recipient-experience gates + admin override, advisory mode, silent-restriction tracking** | ✅ **complete** (real-number pilot pending) |
 | P7 | Campaigns — paced bulk send, **audience built inline (tag / import / saved audience / filter)**, preview, start/pause/resume/cancel, per-recipient results | ✅ for alpha |
@@ -136,7 +151,7 @@ Repo: **`github.com/Kushalr3ddy/whatsapp-crm`** (private) · local: `/home/kusha
 **P1 is marked done but is not.** `infra/compose/` holds only a `.gitkeep`, so
 `docker compose --profile core up` — its own exit criterion — cannot run.
 
-**602 vitest · 16 Playwright e2e · 9 simulation scenarios · migrations 0000–0023.**
+**670 vitest · 18 Playwright e2e (10 spec files) · 9 simulation scenarios · migrations 0000–0028.**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full done/todo ledger — this snapshot covers state,
 defects and gotchas; the changelog covers what has been built and what is left, in order.
@@ -276,7 +291,7 @@ templates · encryption at rest for files, a retention job, antivirus (D-11) · 
 reset and **a signup page** (accounts come from `npm run admin`) · webhooks, OpenAPI, SDK · inbox/
 message-body search (D-23) · opt-out keyword handling (D-27, out of alpha) · the Meta adapter and
 Meta-side tracking (D-34, D-37..D-39) · human takeover from an AI agent (D-42, no AI exists yet) ·
-webhook/email/canary alerts (D-43) · key rotation (D-31) · a deployment.
+webhook/email/canary alerts (D-43) · metrics, traces and error tracking (D-56) · per-org encryption keys · inbox search (D-23) · licence enforcement (D-55) · a deployment (no Dockerfile, compose or production build step yet).
 
 ---
 
@@ -382,11 +397,15 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 | Where | Problem |
 |---|---|
-| **Gateway (D-41, priority)** | Writes inbound messages, attachments, health, restriction and identity-link changes as the connecting role, **outside** the tenant transaction the API uses, so row-level security is not the safety net there — only each query's own `org_id` filter. Harmless for one team plus JobPortal; a real cross-org risk the day unrelated customers share an install. Fix: enter each org's tenant tx per job + a cross-org test |
+| **Gateway credential store** | `channel_auth_state` is read and written by the Baileys provider with only a sender id, outside the per-org tenant handle D-41 introduced. Encrypted and keyed by sender, but not tenant-scoped |
+| **Send sweep is one serial loop** | It handles the oldest 200 queued messages across every number in turn. One number's backlog delays all the others (in tests, 88 stale queued messages made an unrelated flow miss its deadline). Proposed, not chosen; see *Next* |
+| **Per-statement tenant transactions** | Since D-41 each gateway statement is five round trips (`BEGIN`, `SET ROLE`, `set_config`, the query, `COMMIT`). Fine next to the database; slow across a network, so the database must sit with the gateway (`docs/29`) |
 | Restriction detection is inference | It cannot know; thresholds (`docs/27-restriction-tracking.md`) are starting values, untested against a real restricted number. Alerts are in-app only (D-43) |
-| Key rotation (D-31, priority) | `ENCRYPTION_KEY` lives in `.env` locally and must be backed up separately from the database; there is no rotation path |
+| Key rotation (D-31) | Built (key ring, background re-encryption, wizard). `ENCRYPTION_KEY` still lives in `.env` and must be backed up separately from the database. The pause switch is instance-wide (any org admin); `ENCRYPTION_INDEX_KEY` cannot rotate by design; per-org keys are not built |
 | Media | A file whose bytes fail to store leaves the message without it and only a log line says so; no retry, no size cap on downloads (D-11, D-30) |
-| `infra/compose/` | Empty — no compose file, so `docker compose --profile core up` does not exist |
+| `infra/compose/`, `infra/docker/` | Empty; there is no production build script (`npm start` points at an API build nothing produces). See `docs/29` §9 |
+| **WhatsApp and datacenter IPs** | Reports (blogs, not WhatsApp) say Baileys traffic from cloud IPs is silently dropped. Untested for us; the plan tests one number for 72 hours. The Baileys adapter has **no proxy support** |
+| Search | None yet for message bodies (D-23); contacts are searchable by name, phone and email |
 | Login throttle · key rate limit | In-process, so replicas would count separately (move to the shared rate-limit layer in P9) |
 | Saved audiences page | Still the older GET-preview builder form; it could reuse the inline audience picker |
 | Segments exclude do-not-contact | By their own rule, so tagging a segment tags fewer people than "everyone" (the preview says so) |
@@ -394,7 +413,7 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 | No "add one contact" form | Contacts arrive via Import or `POST /contacts` |
 | Live demo number's timeline | Holds ~11 false `hard_ban_suspected` events from the stale-credentials retry loop (fixed); harmless, but the banner logic keys on the newest one |
 | Link-flow retries | A WhatsApp `408`/connection close while linking is classified `connection_closed`; if it repeats, WhatsApp may be throttling this network, so wait rather than retry |
-| Dev data noise | The dev database holds many `e2e-…` tags/campaigns from test runs; harmless, makes the Contacts page busy |
+| Dev data noise | The dev database accumulates `e2e-…` tags, campaigns and segments from test runs (about 25 a run). Left alone it makes the Contacts page slow enough that e2e tests time out; it was pruned once by hand (156 tags, 101 campaigns, 23 segments). A prune step in `verify.sh` or per-spec cleanup is the fix, undecided |
 
 ---
 
@@ -465,6 +484,27 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 - **There is a second Postgres on `127.0.0.1:5432`** on this machine. The project uses **5434**.
   A half-edited `DATABASE_URL` lands migrations in the other database.
 
+- **A number that has never received a reply is clamped to 20 sends a day**, and one that never gets a delivery
+  receipt looks soft-banned after ~10 sends in 24 h (a 48-hour pause). A fake test number must be given both
+  (`local-seed` does: delivered receipts from the fake gateway, a first reply on the seed row).
+- **Next runs server actions one at a time.** Polling through a server action (viewers, heartbeat, typing) queued
+  in front of the person's own Send and made it intermittently fail. Poll through a route handler with `fetch`.
+- **A check-then-send race overshoots ceilings.** The allowance counts what has already *left*; two handlers that
+  check together both pass. Send decisions are serialised per number (`withSenderLock`).
+- **An index expression must never throw.** `get_byte(col, 1)` errors on a value under two bytes and made inserts
+  fail; use `envelope_key_version()`.
+- **Two verify runs at once corrupt each other** (shared test DB: foreign-key failures across unrelated files).
+  Kill by process group (`ps -o pgid`), not `pgrep -f`, which matches your own shell (exit 144).
+- **Stale `apps/web/.next/types` after switching branches** breaks the web typecheck and can stop the stack coming
+  up; delete that folder.
+- **Editing an applied migration does nothing** on a database that already ran it; add a new one.
+- **A unit test that calls a function directly does not prove it is wired in.** The key rotation sweep passed its
+  tests and was never called by the gateway; there is now a test that goes through the ordinary sweep.
+- **The CI simulation is the gate that catches engine regressions** (it caught the ceiling overshoot). A green local
+  run is not proof; the race is timing-dependent.
+- **A test that reuses one fixed contact eventually hits the 14-day cooldown** and the campaign completes by
+  itself. Use a fresh fiction number, or the audited gate override.
+
 ---
 
 ## Working preferences
@@ -491,21 +531,29 @@ WhatsApp file. Typing simulation was set aside as **D-24** on 2026-09-28.
 
 ## What landed most recently
 
-The detailed, dated record is [`CHANGELOG.md`](CHANGELOG.md). Since 2026-10-10: the seeded UI test suite and the
-fake gateway (#12), the live headed walkthrough with video, timings and a tab tour (#17, #20), `npm run verify`
-(#22), test data moved to the fiction number range (#18), the link-flow fixes with readable errors (#21), the
-ban-suspected banner and pause (in flight), the 2026-10-10 market research (#15) and the deferred-list tidy (#16).
+The detailed, dated record is [`CHANGELOG.md`](CHANGELOG.md). Since 2026-10-11: authorship, owner + participants,
+presence (#26–#28); the fake-gateway and fixture fixes (#29); the schema visualizer (#30); the two-role pipeline
+(#31); typing and the send-anyway warning (#32); held messages released on time plus a double-send race and a
+ceiling overshoot (#33); the gateway inside each org's tenant (#34); key rotation with its wizard (#35); then, as
+docs only, logging and telemetry (`docs/28`), the free hosting plan (`docs/29`), D-56, and the D-23 search decision.
 
 ---
 
 ## Next
 
-**The order Kushal set, remaining:** (1) get his go-ahead on **D-17 + D-53** and build authorship first (small,
-no realtime); (2) **D-21** once the real Naukri file is in hand; (3) **D-41** gateway outside RLS; (4) **D-31**
-key rotation; (5) the real-number pilot (the number is already linked and has sent real messages; the pilot is the
-week-long watch).
+**The order, remaining:** (1) **hosting and deployment**: he answers the payment-route questions (UPI, budget, the
+old GCP account, whether Hiring Studios is a real company), then the packaging is built (`docs/29` §9) and one spare
+number is tested for 72 hours on the new host; (2) the **real-number pilot** (a week, watching the Numbers page);
+(3) **D-21** once the real Naukri file is in hand; (4) **D-23** search once its open decisions are settled;
+(5) **D-19** templates.
 
-**Held / pinned (do not build without asking):** everything listed under *Pending* above.
+**Proposed and not chosen (ask before building):** fix the serial send sweep so one number's backlog cannot delay
+another's (simulation as the gate); a fast path that skips the pre-send pause for the first replies to engaged
+contacts (changes the ban profile; needs a new simulation scenario); the rest of D-53.
 
-**Deployment:** where the production database lives is undecided (D-33). `ENCRYPTION_KEY` must be backed up
-separately from the database; losing it loses every linked number and every stored message.
+**Held / pinned (do not build without asking):** everything listed under *Pending* above, including D-55 (last) and
+D-56 (telemetry).
+
+**Deployment:** the production database lives on the same host as the gateway (D-33, `docs/29`).
+`ENCRYPTION_KEY` (and any retired keys) must be backed up separately from the database; losing them loses every
+linked number and every stored message. Rotate with the Security page and `npm run keys`.

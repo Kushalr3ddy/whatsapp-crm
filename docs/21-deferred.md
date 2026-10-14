@@ -541,7 +541,13 @@ ban-risk disclosure — is already surfaced everywhere it needs to be.
 
 ---
 
-## D-17 · Presence, typing indicators and collision detection (F3 realtime) — **PRIORITY (Kushal, 2026-10-10)**
+## D-17 · Presence, typing indicators and collision detection (F3 realtime) — ✅ **BUILT** (viewing: PR #28, 2026-10-12; typing and the send-anyway warning: D-54, PR #32, 2026-10-13)
+
+> **Built:** who has a chat open, by a 12 s heartbeat polled with the inbox (no websockets), shown in the thread
+> header and on the inbox row; a typing indicator; a soft "send anyway?" warning beside the owner/participant lock.
+> Presence, typing and viewers polling are plain `fetch` calls to a route handler (`/inbox/[id]/live`), **not**
+> server actions, because Next runs server actions one at a time and the polling queued in front of the person's
+> own Send. Live push (SSE) was not needed. The original description below is kept for the reasoning.
 
 > **Priority.** Raised 2026-10-10 together with D-53 (assignment model and message authorship): knowing who
 > is looking at a chat, who is typing, and who wrote each message is one feature set. Build them in the same
@@ -1128,6 +1134,17 @@ database is chosen.
 
 **Decision (Kushal, 2026-10-06):** for now the `ENCRYPTION_KEY` lives locally in the `.env` file; back that file up separately from the database.
 
+**Update (Kushal, 2026-10-13/14): hosting is cloud-only, and the plan is written.** [`docs/29-free-hosting-plan.md`](29-free-hosting-plan.md)
+is the whole analysis. Constraints: no machine at home (the shelved homelab is out of reach); the AWS, Azure and
+GCP free accounts were used in college and a card may not work; Oracle is burnt. **Finding:** no free, always-on
+cloud host with 2 GB or more needs neither a card nor a first-time account. **Recommendation:** a 4 GB VPS paid by
+UPI (about ₹600 first term, ~₹1,000/month renewal, in an India region), after a 72-hour test with one spare
+number to see whether WhatsApp restricts the datacenter IP. **Open:** whether UPI works for him, whether
+₹600–1,000/month is acceptable, whether the old GCP account is still active (the e2-micro Always Free tier is open
+to existing customers), and whether Hiring Studios is a real company (startup credits). **What must be built on
+our side either way:** production builds, a compose file, Caddy, migrations at start, a backup job, and an Arm/x86
+test run (`infra/docker` and `infra/compose` are empty). Nothing is deployed.
+
 ---
 
 ## D-34 · The Meta Cloud API adapter (P8) and the real-number pilot
@@ -1435,7 +1452,13 @@ would also clean up test runs.
 
 ---
 
-## D-53 · Assignment model and message authorship — **PRIORITY (Kushal, 2026-10-10)**
+## D-53 · Assignment model and message authorship — ✅ **BUILT** (authorship PR #26; owner + participants PR #27; 2026-10-11)
+
+> **Built:** every outbound message records the signed-in agent (`sent_by_user_id`) and the thread names them
+> ("Campaign" for bulk sends, "API" for an integration). The owner is the existing `assignee_user_id`; participants
+> are a `conversation_participant` table, **admin-only to add or remove**, may reply, and count under "Mine";
+> reassigning drops the old owner. **Not built from the table below:** per-person workload counts and capacity,
+> bulk reassign, "reassigned" events shown inline in the thread, `collaborator`/`watcher` roles.
 
 **The questions, answered so they are not re-asked:**
 
@@ -1464,7 +1487,12 @@ small first slice that needs no realtime and can ship alone.
 
 ---
 
-## D-54 · Typing indicator and the "just replied, send anyway?" warning — **PRIORITY (Kushal, 2026-10-12)**
+## D-54 · Typing indicator and the "just replied, send anyway?" warning — ✅ **BUILT 2026-10-13** (PR #32)
+
+> **Built:** typing pings from a reply box with text (every 3 s, 8 s lifetime); "Priya is typing…" in the header
+> and on the inbox row; `POST /messages` returns `409 COLLISION` naming the person when another agent replied in
+> the last 15 s or is typing, and the composer offers Send anyway (`acknowledgeCollision`). API keys are exempt.
+> Text replies only; sending a file does not check. Migration 0026 adds `conversation_presence.typing_at`.
 
 The second slice of [D-17](#d-17). The first slice (who has a chat open, by heartbeat) shipped in PR #28; this is
 the rest of what D-17 describes, split out so it is tracked on its own.
@@ -1487,7 +1515,7 @@ wrong. The reply lock stays the hard rule; this stays a soft warning.
 
 ---
 
-## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — **PRIORITY (Kushal, 2026-10-13)**
+## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end")
 
 **What:** if an org (or a self-hosted install) has not paid, the product should stop being usable, not just show a
 billing page. Companion to [D-47](#d-47) (signup, billing gate, beta override): D-47 decides who gets in and
