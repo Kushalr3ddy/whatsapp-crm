@@ -1,7 +1,10 @@
 # The alpha stack: one app container (API + gateway + web) and Postgres.
 #
-#   cp infra/compose/alpha.env.example infra/compose/.env     # then fill the secrets
 #   docker compose -f infra/compose/compose.yaml up -d --build
+#
+# That is the whole setup. On first start the app generates its secrets, migrates the database
+# and creates a first admin; the sign-in details are in `docker compose logs app`. Anything in
+# infra/compose/.env (see alpha.env.example) overrides the defaults.
 #
 # Ports on the host (change the left-hand side in .env if one is taken):
 #   3000  API          3001  web UI          5434  Postgres (the dev database also uses 5434)
@@ -13,12 +16,13 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-crm}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/compose/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crm}
       POSTGRES_DB: ${POSTGRES_DB:-whatsapp_crm}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_HOST_PORT:-5434}:5432"
+      # Loopback only: the default password is not a secret, so it is not offered to the network.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5434}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm} -d ${POSTGRES_DB:-whatsapp_crm}"]
       interval: 5s
@@ -36,16 +40,27 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file: .env
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: "3000"
       CRM_API_URL: http://127.0.0.1:3000
       STORAGE_PATH: /app/storage
-      DATABASE_URL: postgresql://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-whatsapp_crm}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:-crm}@db:5432/${POSTGRES_DB:-whatsapp_crm}
+      # Blank means "generate once and keep"; set a value in infra/compose/.env to supply your own.
+      APP_SECRET: ${APP_SECRET:-}
+      API_KEY: ${API_KEY:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      ENCRYPTION_INDEX_KEY: ${ENCRYPTION_INDEX_KEY:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ORG_NAME: ${ORG_NAME:-My Organisation}
+      ORG_SLUG: ${ORG_SLUG:-my-org}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3001}
+      SEND_TIMEZONE: ${SEND_TIMEZONE:-Asia/Kolkata}
+      DEFAULT_COUNTRY: ${DEFAULT_COUNTRY:-IN}
     volumes:
       - storage:/app/storage
+      - state:/app/state
     ports:
       - "${API_HOST_PORT:-3000}:3000"
       - "${WEB_HOST_PORT:-3001}:3001"
@@ -53,3 +68,4 @@ services:
 volumes:
   pgdata:
   storage:
+  state:

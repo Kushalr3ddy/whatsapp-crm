@@ -29,11 +29,11 @@ COPY infra/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 # The UI is built into the image; it reads CRM_API_URL at request time, so nothing is baked in.
 RUN npm --workspace @crm/web run build \
  && chmod +x /usr/local/bin/entrypoint.sh \
- && mkdir -p /app/storage && chown -R node:node /app
+ && mkdir -p /app/storage /app/state && chown -R node:node /app
 
 USER node
 EXPOSE 3000 3001
-VOLUME ["/app/storage"]
+VOLUME ["/app/storage", "/app/state"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
