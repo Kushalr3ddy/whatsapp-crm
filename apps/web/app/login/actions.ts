@@ -1,6 +1,7 @@
 'use server';
 
 import { cookies } from 'next/headers';
+import { clientIpHeaders } from '@/lib/client-ip';
 import { redirect } from 'next/navigation';
 
 /** What the form gets back. Success redirects, so only a failure ever returns. */
@@ -45,7 +46,7 @@ export async function signIn(_prev: SignInResult, form: FormData): Promise<SignI
     response = await fetch(`${base}/api/v1/auth/login`, {
       method: 'POST',
       cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await clientIpHeaders()) },
       body: JSON.stringify({ email, password })
     });
   } catch {

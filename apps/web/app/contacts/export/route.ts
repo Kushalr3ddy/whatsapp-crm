@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { clientIpHeaders } from '@/lib/client-ip';
 
 /** Where the API lives, server-side. Same source the data client uses. */
 function baseUrl(): string {
@@ -20,7 +21,7 @@ export async function GET(req: Request): Promise<Response> {
 
   const format = new URL(req.url).searchParams.get('format') === 'vcf' ? 'vcf' : 'csv';
   const upstream = await fetch(`${baseUrl()}/api/v1/contacts/export?format=${format}`, {
-    headers: { Cookie: `crm_session=${session}` }, cache: 'no-store'
+    headers: { Cookie: `crm_session=${session}`, ...(await clientIpHeaders()) }, cache: 'no-store'
   });
   if (!upstream.ok) {
     const problem = await upstream.json().catch(() => null) as { detail?: string } | null;

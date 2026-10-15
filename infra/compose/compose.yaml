@@ -63,6 +63,23 @@ services:
       - "${API_HOST_PORT:-3000}:3000"
       - "${WEB_HOST_PORT:-3001}:3001"
 
+  # Optional: publishes the web UI through a Cloudflare Tunnel (docs/30-cloudflare-tunnel.md).
+  # Off by default; `npm run alpha:tunnel` turns it on. Create the tunnel in the Cloudflare
+  # dashboard, add a public hostname pointing at http://app:3001, and put its token in
+  # infra/compose/.env as TUNNEL_TOKEN. Only the web port is routed: the API stays private.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+      # auto tries QUIC (UDP 7844) then falls back; set http2 if UDP is dropped on this network.
+      TUNNEL_TRANSPORT_PROTOCOL: ${TUNNEL_PROTOCOL:-auto}
+    depends_on:
+      app:
+        condition: service_healthy
+
 volumes:
   pgdata:
   storage:
