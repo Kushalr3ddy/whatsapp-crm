@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  createTag, attachTag, detachTag, createCampaign, createCustomField, deleteCustomField,
+  createTag, attachTag, detachTag, listTags, createCampaign, createCustomField, deleteCustomField,
   setContactFields, setDoNotContact, bulkTagContacts, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
 
@@ -30,12 +30,23 @@ export async function createTagAction(formData: FormData): Promise<void> {
   await run(() => createTag(name));
 }
 
-/** Attaches the chosen tag to a contact. */
+/**
+ * Attaches a tag to a contact. The row's input carries the tag's name (it is picked from one
+ * shared list on the page); tag names are unique per org, so the name resolves to one id. A name
+ * that matches nothing does nothing, like every other benign failure here.
+ */
 export async function attachTagAction(formData: FormData): Promise<void> {
   const contactId = String(formData.get('contactId') ?? '');
-  const tagId = String(formData.get('tagId') ?? '');
-  if (contactId === '' || tagId === '') return;
-  await run(() => attachTag(contactId, tagId));
+  let tagId = String(formData.get('tagId') ?? '');
+  const tagName = String(formData.get('tagName') ?? '').trim();
+  if (contactId === '' || (tagId === '' && tagName === '')) return;
+  await run(async () => {
+    if (tagId === '') {
+      const wanted = tagName.toLowerCase();
+      tagId = (await listTags()).find((t) => t.name.toLowerCase() === wanted)?.id ?? '';
+    }
+    if (tagId !== '') await attachTag(contactId, tagId);
+  });
 }
 
 /** Removes a tag from a contact. */

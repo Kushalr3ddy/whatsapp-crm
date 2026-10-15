@@ -74,7 +74,7 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     await page.goto('/contacts');
     const rowWithTagPicker = () => page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first();
     const firstRow = rowWithTagPicker();
-    await firstRow.getByLabel('Add a tag').selectOption({ label: handTag });
+    await firstRow.getByLabel('Add a tag').fill(handTag);
     await firstRow.getByRole('button', { name: 'Add', exact: true }).click();
     // Whichever row now carries the chip. The list is not in a stable order (tagging touches the
     // person, and many rows share a timestamp), so "the first row again" is not the same person.

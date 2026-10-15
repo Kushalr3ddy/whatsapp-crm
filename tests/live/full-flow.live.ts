@@ -180,7 +180,7 @@ test.describe('live walkthrough', () => {
       // One person by hand: pick the tag on that person's row, then the tag's chip count proves it applied.
       await page.goto(`/contacts?q=${encodeURIComponent(BROADCAST_TO[0]!.replace(/\D/g, ''))}`);
       const row = page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first();
-      await row.getByLabel('Add a tag').selectOption({ label: handTag });
+      await row.getByLabel('Add a tag').fill(handTag);
       await row.getByRole('button', { name: 'Add', exact: true }).click();
       await expect(page.getByRole('link', { name: new RegExp(`${handTag} 1`) })).toBeVisible();
     });
