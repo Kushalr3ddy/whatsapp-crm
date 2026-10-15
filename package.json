@@ -63,7 +63,8 @@
     "local:seed": "tsx --env-file-if-exists=.env scripts/local-seed.ts",
     "//7": "─── alpha container: API + gateway + web + Postgres (infra/compose/README.md) ───",
     "alpha:up": "bash infra/scripts/compose.sh up -d --build",
-    "alpha:down": "bash infra/scripts/compose.sh down",
+    "alpha:tunnel": "bash infra/scripts/compose.sh --profile tunnel up -d --build",
+    "alpha:down": "bash infra/scripts/compose.sh --profile tunnel down",
     "alpha:logs": "bash infra/scripts/compose.sh logs -f app"
   },
   "dependencies": {

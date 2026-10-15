@@ -13,6 +13,19 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-15 — Alpha container, and hardening for a Cloudflare tunnel
+- **Alpha container (#37, #38):** one image runs the API, gateway and web UI; compose adds Postgres. On first
+  start it generates its secrets once, migrates, and creates a first admin; no `.env` needed. Works with
+  `docker compose` v1 and v2 (`infra/scripts/compose.sh`). Full `verify` passed on it.
+- **Cloudflare tunnel:** researched and written up in `docs/30-cloudflare-tunnel.md`. An optional
+  `cloudflared` compose service (`npm run alpha:tunnel`, `TUNNEL_TOKEN`) routes only the web port.
+- **Fixed:** imports and attachments over 1 MB failed in the web UI (Next.js server actions cap bodies at 1 MB);
+  now `bodySizeLimit: 25mb`. The client's address is now passed to the API (`CF-Connecting-IP`), so audit rows
+  stop recording 127.0.0.1.
+- **Pinned D-57:** run the import commit as a background job (the 524 ceiling is about 40,000 rows).
+- Found while testing: a PR merged before its last commits were pushed, and a stale local `main`. See the
+  handoff gotchas; check `git log origin/main` for the code after every merge.
+
 ### 2026-10-14 — Handoff; logging and telemetry documented; free hosting plan (docs only)
 - **`docs/28-logging-and-telemetry.md`**: what is logged and where it goes, redaction, the request id, how to read
   it, health endpoints, the database state that doubles as a record, troubleshooting recipes, what is missing.

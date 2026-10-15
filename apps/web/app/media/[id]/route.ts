@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { clientIpHeaders } from '@/lib/client-ip';
 
 /** Where the API lives, server-side. Same source the data client uses. */
 function baseUrl(): string {
@@ -28,7 +29,7 @@ export async function GET(
   if (session === '') return new Response('Not authenticated.', { status: 401 });
 
   const upstream = await fetch(`${baseUrl()}/api/v1/media/${encodeURIComponent(id)}`, {
-    headers: { Cookie: `crm_session=${session}` },
+    headers: { Cookie: `crm_session=${session}`, ...(await clientIpHeaders()) },
     cache: 'no-store'
   });
 

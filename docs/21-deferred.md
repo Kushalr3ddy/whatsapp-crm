@@ -1566,3 +1566,21 @@ observability for the real-number pilot, which is a week-long watch.
 
 **What brings it back:** the real-number pilot, a hosted deployment (D-33), or the first incident that logs alone
 cannot explain.
+
+---
+
+## D-57 · Run the import commit as a background job — pinned (2026-10-15)
+
+**What:** `POST /imports/:id/run` does the whole import inside the HTTP request. Behind a Cloudflare tunnel
+the request is cut at 100 seconds (a 524, see [30 · Cloudflare Tunnel](30-cloudflare-tunnel.md)), which at the
+measured 2.4 ms per row is about 40,000 rows. The import would likely still finish on the server, but the
+person sees an error, retries, and meets "already committed".
+
+**Shape when it arrives:** the run endpoint returns at once with the run id; the gateway (or a sweep) works
+through the rows in batches; the UI polls `GET /imports/:id` for progress. Most of the plumbing exists:
+`import_run.status` and `counts`, the per-row `import_row` ledger, and its `UNIQUE (import_run_id, row_number)`
+that makes a killed run resumable from the last committed batch.
+
+**Why parked:** real files so far are well under the ceiling, and the alpha can state it.
+
+**What brings it back:** the real-number pilot with a large export, or the first 524.

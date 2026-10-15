@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { clientIpHeaders } from './client-ip';
 
 /**
  * The server-side client for the CRM HTTP API.
@@ -373,7 +374,8 @@ async function forwardedAuth(): Promise<Record<string, string>> {
 
   return {
     Cookie: `crm_session=${session}; crm_csrf=${csrf}`,
-    'x-csrf-token': csrf
+    'x-csrf-token': csrf,
+    ...(await clientIpHeaders())
   };
 }
 
