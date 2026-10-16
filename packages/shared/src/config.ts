@@ -61,6 +61,18 @@ const configSchema = z.object({
   STORAGE_DRIVER: z.enum(['filesystem', 'minio', 's3']).default('filesystem'),
   /** Where the filesystem driver keeps objects. Ignored by every other storage driver. */
   STORAGE_PATH: z.string().default('./storage'),
+  // S3-compatible storage (STORAGE_DRIVER=s3 or minio): AWS S3, Cloudflare R2, Backblaze B2 or MinIO.
+  // Only read when one of those drivers is chosen; choosing one without a bucket and credentials is a
+  // boot-time error (below), never a silent fall back to local disk.
+  // An empty value counts as unset (a compose file passes blanks through), hence the preprocess.
+  S3_BUCKET: z.preprocess((v) => v === '' ? undefined : v, z.string().optional()),
+  S3_ENDPOINT: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+  S3_REGION: z.preprocess((v) => v === '' ? undefined : v, z.string().default('auto')),
+  S3_ACCESS_KEY_ID: z.preprocess((v) => v === '' ? undefined : v, z.string().optional()),
+  S3_SECRET_ACCESS_KEY: z.preprocess((v) => v === '' ? undefined : v, z.string().optional()),
+  /** Unset = the driver's default (true for minio, false for s3). MinIO and most self-hosted servers need true. */
+  S3_FORCE_PATH_STYLE: z.preprocess((v) => v === '' ? undefined : v, z.enum(['true', 'false']).optional())
+    .transform((v) => v === undefined ? undefined : v === 'true'),
   QUEUE_DRIVER: z.enum(['pgboss', 'bullmq']).default('pgboss'),
   TELEMETRY_DRIVER: z.enum(['none', 'prometheus', 'otlp']).default('none'),
   LLM_DRIVER: z.enum(['none', 'ollama', 'openai', 'anthropic', 'gemini']).default('none'),
@@ -108,6 +120,21 @@ const configSchema = z.object({
 }).refine((c) => !(c.GATEWAY_CHANNEL === 'fake' && c.NODE_ENV === 'production'), {
   path: ['GATEWAY_CHANNEL'],
   message: 'the fake channel sends nothing real and must never run with NODE_ENV=production'
+}).superRefine((c, ctx) => {
+  // A deployment that asked for S3 storage and quietly got a local directory would look fine until a
+  // second process could not see the first one's files, so the missing pieces are named at boot.
+  if (c.STORAGE_DRIVER === 'filesystem') return;
+  for (const name of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
+    if (c[name] === undefined || c[name] === '') {
+      ctx.addIssue({
+        code: 'custom', path: [name],
+        message: `required when STORAGE_DRIVER=${c.STORAGE_DRIVER} (S3-compatible storage)`
+      });
+    }
+  }
+  if (c.STORAGE_DRIVER === 'minio' && c.S3_ENDPOINT === undefined) {
+    ctx.addIssue({ code: 'custom', path: ['S3_ENDPOINT'], message: 'required when STORAGE_DRIVER=minio' });
+  }
 });
 
 /** True when the string names a timezone this runtime's Intl database recognises. */

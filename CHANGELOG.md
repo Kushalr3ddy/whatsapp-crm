@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-16 — S3-compatible file storage alongside local (D-63); file layout decided (D-59)
+- **Built D-63:** `STORAGE_DRIVER=s3` (or `minio`) now builds an S3-compatible `StorageDriver`
+  (`packages/providers/storage/s3`) for AWS S3, Cloudflare R2, Backblaze B2 or MinIO. **Default stays
+  `filesystem`.** Missing bucket or credentials stop the app at boot, never a silent fall back to disk. The shared
+  contract suite (25 tests) passes against it using an S3 emulator (moto), which CI now runs as a service
+  container; MinIO's images could no longer be pulled. Not tested on a real R2, B2 or AWS bucket. **Switching an
+  existing install does not move its files** (no copy job yet).
+- **Decided D-59:** chat files get a virtual per-chat folder (a Files tab built from the database), not a physical
+  directory per chat, because it keeps per-org dedup and survives contact merges. D-11 now says to decide
+  encryption at rest before pointing a real deployment at a bucket.
+
 ### 2026-10-16 — Priorities reshuffled; sample headers for the import wizard (docs and a fixture)
 - **D-19 templates withdrawn from the priority list** (Kushal); the entry now says how much templates matter for
   anti-ban: not a protection on the Baileys path (spintax and the identical-body cap already cover that signal),
