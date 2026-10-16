@@ -19,9 +19,10 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   required on the Meta path.
 - **D-59 file support in chat** added as a priority, with what exists, what is rough and what is missing. It
   records that web uploads over 1 MB failed until #39.
-- **D-21:** ten header sets from public sources (`tests/fixtures/import-header-samples.json`) and what the
-  current auto-detect does with them. Real Naukri headers are not public. Gaps found: a split first/last name
-  keeps only the first name, and only one phone column is imported.
+- **D-21:** a real Naukri recruiter export arrived (82 columns, 160 rows); its header row and an aggregate analysis
+  are in the fixture and D-21, with no row values stored. **36% of its phone cells hold two numbers**
+  (`9XXXXXXXXX, +...`), which the current normaliser rejects; `NA` stands for blank. Nine other public header sets
+  are in the same fixture. Also found: a split first/last name keeps only the first name.
 
 ### 2026-10-15 — Alpha container, and hardening for a Cloudflare tunnel
 - **Alpha container (#37, #38):** one image runs the API, gateway and web UI; compose adds Postgres. On first

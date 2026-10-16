@@ -739,24 +739,72 @@ shape.
 backend change. The simple tab posts a subset of that same mapping.
 
 
+### A real Naukri recruiter export (2026-10-16)
+
+Kushal supplied a real download from a recruiter (160 applicants to one job). **No row values are stored in
+this repository**: the header row is in [`tests/fixtures/import-header-samples.json`](../tests/fixtures/import-header-samples.json)
+and what follows is aggregate only. The file was a personal-data file (names, emails, phones, dates of birth,
+home addresses), so keep it out of the repo and out of chat transcripts.
+
+**Shape.** One sheet named `MySheet`, **82 columns**, one row per applicant, file named
+`<Job Title>_<yyyymmddhhmmss>_<n>.xlsx`. Real Naukri headers, in order: `Job Title`, `Date of application`,
+`Name`, `Email ID`, `Phone Number`, `Current Location`, `Preferred Locations`, `Total Experience`,
+`Curr. Company name`, `Curr. Company Designation`, `Department`, `Role`, `Industry`, `Key Skills`,
+`Annual Salary`, `Notice period/ Availability to join`, `Resume Headline`, `Summary`, then education
+(`Under Graduation degree`, `UG Specialization`, `UG University/institute Name`, `UG Graduation year`, the
+same four for post graduation and doctorate), `Gender`, `Marital Status`, `Home Town/City`, `Pin Code`,
+`Work permit for USA`, `Date of Birth`, `Permanent Address`, then 33 recruiter-workflow columns (last activity,
+pipeline stage, downloaded/viewed/emailed with who and when, calling status, five comment triples), `Source`,
+ten `Ans(<screening question>)` columns specific to the job, and `Candidate profile` (a link).
+
+**What is in it, as a mapping problem.**
+
+| Finding | Detail | Consequence |
+|---|---|---|
+| **A third of phone cells hold two numbers** | 57 of 160 `Phone Number` cells (36%) are `9XXXXXXXXX, +<digits>`: a bare 10-digit number, a comma, then a second number with a `+`. The second part ranges from a lone country code (`+91`) to long strings. 103 cells are one bare 10-digit number and 1 is 12 digits | The importer's normaliser strips everything but digits and `+`, which glues the two together; **tested with fiction-range numbers, every two-number cell fails to normalise** (`2025550123, +12025550123` fails; `2025550123` alone passes). On this file that is about **36% of the people rejected as unusable phones** |
+| Phones are stored as **text**, with no spaces or country code on the single ones | 10 digits, Indian default country needed | `defaultCountry: IN` is essential; already the default |
+| `Name` is one column | 38 of 160 are ALL CAPS, 25 are a single word | Display-name tidying (title case) is a nice-to-have; no first/last split to handle here |
+| `Email ID` | 46 of 160 contain capitals or spaces | Already lowercased and trimmed by the mapping |
+| **`NA` means empty** | Used in almost every optional column (0% real data in the 33 workflow columns, 2% in doctorate, 19% in work permit) | An `NA` must be treated as blank, never imported as a value |
+| Values are display text, not typed | Dates `19-Jun-2026`; experience `19 Year(s) 0 Month(s)`; salary `Rs 11.37 Lakhs` (also `Rs 9 Lakhs`); notice `1 Months`, `15 Days or less`, `Serving notice period` | Any numeric use (filtering by experience or CTC) needs parsing; the screening-answer columns hold clean numbers (`1137000`, `19`, `Yes`) and are easier to use than the display columns |
+| Personal data beyond what messaging needs | Date of birth, permanent address, pin code, gender, marital status | The wizard should let a person **drop** these columns (`unmapped: drop`) rather than keep them in `import_row.raw`; with `keep` they are stored per row |
+| The columns worth keeping as custom fields | `Current Location`, `Total Experience`, `Annual Salary`, `Notice period`, `Key Skills`, `Job Title` (the job applied for) | Needs D-40 (map a column to a custom field) |
+
+**Defects this shows in the current importer** (nothing changed yet): the two-number phone cells above; the
+auto-detect's first match for "phone" is the right column (`Phone Number`), for name `Name`, for email `Email ID`,
+so a plain upload of this file works for the 103 single-number rows and fails for the rest.
+
+**Fix to build (needs Kushal's go-ahead):** treat a phone cell as a *list*: split on comma, semicolon, slash and
+newline, normalise each part, import every valid one as a phone identity on the same contact (first valid one
+primary), report any part that fails. A lone country code such as `+91` should be ignored, not reported as an
+error. Add `NA`, `N/A`, `-` and `null` as blank values. That also covers `Phone 1`/`Phone 2`/`Alt Mobile` sheets.
+
 ### Column vocabulary from public sources (2026-10-16)
 
-Kushal has no Naukri recruiter account, and Naukri does not publish the header row of its candidate
-download (its help pages describe an Excel of candidate summaries, up to 500 per folder download, with no
-column list), so the real Naukri layout is still unknown. Production data will also come from other places,
-so ten header sets were collected from public pages instead. They are header rows only, no data, in
-[`tests/fixtures/import-header-samples.json`](../tests/fixtures/import-header-samples.json), each marked
-published, reported or assumed. Many vendors show their import template only as a download behind a login
-(Keka, Homerun, Lever, Zoho Recruit and Kredily list fields in prose but not the exact headers), so most sets
-are "reported", not copied from a file.
+Because production data will not all come from Naukri, nine other header sets were collected from public
+pages: header rows only, each marked published, reported or assumed in the same fixture. Many vendors show
+their import template only as a download behind a login (Keka, Homerun, Lever, Zoho Recruit and Kredily list
+fields in prose but not the exact headers), so most are "reported", not copied from a file.
 
-**What the importer's current auto-detect does with them** (`apps/web/app/import/import-panel.tsx`: the first
+What the importer's current auto-detect does with them (`apps/web/app/import/import-panel.tsx`: the first
 header containing phone, mobile, number, contact or whatsapp is the phone; the first containing "name" is the
-name; the first containing "mail" is the email). It finds a phone column in all ten sets. The gaps the wizard
+name; the first containing "mail" is the email). It finds a phone column in all of them. The gaps the wizard
 has to close:
 
 | Gap seen | Example | Effect today |
 |---|---|---|
+| **Several numbers in one cell** | Naukri `9XXXXXXXXX, +<digits>` (the real file above) | The whole cell fails to normalise |
+| **Name split across two columns** | `First Name` + `Last Name` (datablist, LinkedIn, ATS templates) | Only the first name is kept |
+| **Several phone columns** | `Phone 1`, `Phone 2`; `Contact No.` + `WhatsApp No` + `Alt Mobile` | Only one number is imported |
+| **A phone-like word in a non-phone header** | `Contact Person`, `Total Number of Reviews` | Could be picked as the phone; the person can correct it |
+| **No email column at all** | WhatsApp bulk-sender sheets, JustDial lists | Fine; email is optional |
+| **Extra columns worth keeping** | `Current CTC`, `Notice Period`, `Total Experience`, `City` | Land in `import_row.raw` only; custom fields are D-40 |
+
+That is the evidence for the wizard's first features: **split a multi-number cell, map more than one phone
+column, concatenate columns into a name, treat `NA` as blank, drop columns, and map a column onto a custom
+field.**
+
+---|---|---|
 | **Name split across two columns** | `First Name` + `Last Name` (datablist, LinkedIn, ATS templates) | Only the first name is kept |
 | **Several phone columns** | `Phone 1`, `Phone 2`; `Contact No.` + `WhatsApp No` + `Alt Mobile` | Only one number is imported; the others are dropped |
 | **A phone-like word in a non-phone header** | `Contact Person`, `Total Number of Reviews` | Could be picked as the phone; the person can correct it |
