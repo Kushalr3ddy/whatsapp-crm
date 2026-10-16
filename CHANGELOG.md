@@ -1038,6 +1038,8 @@ In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
   verified, media proven end to end against a real WhatsApp file. See *Latest*.
 - **Test data in the dev DB** (`[TEST DATA - DO NOT TOUCH] …`) — D-14 is now closed, so these are
   safe to delete; still present pending the call.
-- **Nowhere to deploy** (`docs/29`, D-33): no free always-on host of 2 GB or more needs neither a card nor a
-  first-time account. Waiting on Kushal: UPI for a 4 GB VPS, whether ~₹600–1,000/month is acceptable, whether the old
-  GCP account is alive, whether Hiring Studios is a real company. Nothing is deployed; the deployment folders are empty.
+- **Nowhere to deploy** (`docs/29`, D-33): no VPS is chosen; Kushal is deciding with the other developer. No free
+  always-on host of 2 GB or more needs neither a card nor a first-time account (cheapest paid 4 GB options per
+  provider are in `docs/29` §1b). Open: UPI for a 4 GB VPS, whether about ₹600–1,000 a month is acceptable, whether
+  the old GCP account is alive, whether Hiring Studios is a real company. The alpha runs in a container
+  (`npm run alpha:up`), but nothing is deployed anywhere.
