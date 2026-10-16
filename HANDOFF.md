@@ -57,6 +57,11 @@ Then say in the final message which PRs are open and what the next session shoul
   the repo and out of PR text (the first look in the 2026-10-16 session printed one row by mistake).
 - **Run the full `npm run verify` after changes** and **never two at once** (shared databases). Do not sit idle
   waiting for it: use a second git worktree or work that does not touch the tree.
+- **Log the resource footprint of every verify or test run** (2026-10-16). `npm run verify` now samples memory used,
+  load and inotify instances every 5 s and appends one line per run, with each stage's peak, to `verify-footprint.log`
+  (git-ignored). For a vitest or Playwright run outside verify, note memory/load by hand in the same file. First
+  reading: inotify peaked at 139 of 128 allowed, so the `EMFILE` problem below is real, and memory sat at 10-11 GB of
+  15.7 GB used with the dev stack running.
 - **Delete test data only with his yes**, `e2e-…` rows in `e2e-test` only (approved once, 2026-10-15). Never touch the
   real number's data or `Live broadcast …` campaigns.
 - His **local-only notes** (not in the repo, never to be committed): `~/everything/whatsapp-crm-db-notes.md`, about the
