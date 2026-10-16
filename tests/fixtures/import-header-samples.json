@@ -1,0 +1,227 @@
+{
+  "_note": "Header rows only, no data. Collected 2026-10-16 from public sources to shape the D-21 mapping wizard. 'source' says how far to trust each set: published = a vendor/dataset page lists these exact headers; reported = a help page describes the columns without an exact list; synthetic/assumed = ours.",
+  "sets": [
+    {
+      "name": "naukri recruiter export (real)",
+      "source": "published by use: header row of a real Naukri recruiter download supplied by Kushal, 2026-10-16. 82 columns, one sheet named MySheet, one row per applicant to a job, file named <Job Title>_<yyyymmddhhmmss>_<n>.xlsx. Job-specific 'Ans(...)' screening-question headers are shown with <placeholders>; the real file repeats a few of them (several 'how many years of experience in <skill>' questions). No row values are stored here.",
+      "headers": [
+        "Job Title",
+        "Date of application",
+        "Name",
+        "Email ID",
+        "Phone Number",
+        "Current Location",
+        "Preferred Locations",
+        "Total Experience",
+        "Curr. Company name",
+        "Curr. Company Designation",
+        "Department",
+        "Role",
+        "Industry",
+        "Key Skills",
+        "Annual Salary",
+        "Notice period/ Availability to join",
+        "Resume Headline",
+        "Summary",
+        "Under Graduation degree",
+        "UG Specialization",
+        "UG University/institute Name",
+        "UG Graduation year",
+        "Post graduation degree",
+        "PG specialization",
+        "PG university/institute name",
+        "PG graduation year",
+        "Doctorate degree",
+        "Doctorate specialization",
+        "Doctorate university/institute name",
+        "Doctorate graduation year",
+        "Gender",
+        "Marital Status",
+        "Home Town/City",
+        "Pin Code",
+        "Work permit for USA",
+        "Date of Birth",
+        "Permanent Address",
+        "Last Workflow activity",
+        "Last Workflow activity by",
+        "Time of Last Workflow activity Update",
+        "Latest Pipeline Stage",
+        "Pipeline Status Updated By",
+        "Time when Stage updated",
+        "Download",
+        "Downloaded By",
+        "Time Of Download",
+        "Viewed",
+        "Viewed By",
+        "Time Of View",
+        "Emailed",
+        "Emailed By",
+        "Time Of Email",
+        "Calling Status",
+        "Calling Status updated by",
+        "Time of Calling activity update",
+        "Comment 1",
+        "Comment 1 BY",
+        "Time Comment 1 posted",
+        "Comment 2",
+        "Comment 2 BY",
+        "Time Comment 2 posted",
+        "Comment 3",
+        "Comment 3 BY",
+        "Time Comment 3 posted",
+        "Comment 4",
+        "Comment 4 BY",
+        "Time Comment 4 posted",
+        "Comment 5",
+        "Comment 5 BY",
+        "Time Comment 5 posted",
+        "Source",
+        "Ans(How many years of experience do you have in <skill>?)",
+        "Ans(What is your current CTC in Lacs per annum?)",
+        "Ans(Do you have experience in <skill>?)",
+        "Ans(Are you currently residing in <city> or willing to relocate to <city>?)",
+        "Ans(What is your expected CTC in Lacs per annum?)",
+        "Ans(What is your notice period?)",
+        "Candidate profile"
+      ]
+    },
+    {
+      "name": "datablist customers",
+      "source": "published (datablist.com sample CSVs)",
+      "headers": [
+        "Index",
+        "Customer Id",
+        "First Name",
+        "Last Name",
+        "Company",
+        "City",
+        "Country",
+        "Phone 1",
+        "Phone 2",
+        "Email",
+        "Subscription Date",
+        "Website"
+      ]
+    },
+    {
+      "name": "datablist people",
+      "source": "published (datablist.com sample CSVs)",
+      "headers": [
+        "Index",
+        "User Id",
+        "First Name",
+        "Last Name",
+        "Sex",
+        "Email",
+        "Phone",
+        "Date of birth",
+        "Job Title"
+      ]
+    },
+    {
+      "name": "linkedin recruiter export",
+      "source": "reported (column list from a help article, not an exact header row)",
+      "headers": [
+        "First Name",
+        "Last Name",
+        "Headline",
+        "Location",
+        "Current job title",
+        "Current Company",
+        "Email Address",
+        "Phone number",
+        "Profile URL"
+      ]
+    },
+    {
+      "name": "indian ats bulk template",
+      "source": "reported (Kredily help page lists the fields, not the exact headers)",
+      "headers": [
+        "First Name",
+        "Last Name",
+        "Email",
+        "Phone",
+        "Source",
+        "Current CTC",
+        "Expected CTC",
+        "Notice Period",
+        "Total Experience",
+        "Relevant Experience",
+        "Skills"
+      ]
+    },
+    {
+      "name": "whatsapp bulk sender, style 1",
+      "source": "reported (Pushwoosh / Chakra help pages)",
+      "headers": [
+        "phone_number",
+        "customer_name",
+        "order_amount"
+      ]
+    },
+    {
+      "name": "whatsapp bulk sender, style 2",
+      "source": "reported (Chakra help page)",
+      "headers": [
+        "Name",
+        "Phone Number",
+        "Custom Message"
+      ]
+    },
+    {
+      "name": "justdial-style business list",
+      "source": "reported (scraper output fields)",
+      "headers": [
+        "Name",
+        "Area",
+        "Address",
+        "Phone",
+        "Rating",
+        "Review",
+        "Total Reviews",
+        "Type",
+        "Pincode",
+        "Doc ID",
+        "Web URL",
+        "Verified"
+      ]
+    },
+    {
+      "name": "google forms response sheet",
+      "source": "reported (form fields plus a timestamp)",
+      "headers": [
+        "Timestamp",
+        "Full Name",
+        "Email Address",
+        "Mobile Number",
+        "City"
+      ]
+    },
+    {
+      "name": "indian hand-made sheet",
+      "source": "assumed: common spellings, not taken from a real file",
+      "headers": [
+        "S.No",
+        "Name of Candidate",
+        "Contact No.",
+        "WhatsApp No",
+        "Alt Mobile",
+        "E-mail",
+        "Qualification",
+        "Pref. Location"
+      ]
+    },
+    {
+      "name": "naukri-like export (our synthetic)",
+      "source": "synthetic (tests/live/naukri-sample.ts); superseded by the real header row above",
+      "headers": [
+        "Candidate Name",
+        "Mobile Number",
+        "Email ID",
+        "Total Experience",
+        "Current CTC",
+        "Current Location"
+      ]
+    }
+  ]
+}

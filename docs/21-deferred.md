@@ -626,11 +626,31 @@ rest of the inbox); keyboard shortcuts are **small** and pure front-end; the Met
 
 ---
 
-## D-19 · Rich message templates — user-managed, Meta-aligned, with media and import — **PRIORITY**
+## D-19 · Rich message templates — user-managed, Meta-aligned, with media and import — deferred (priority withdrawn 2026-10-16)
 
-> **Priority (2026-09-29):** in the near-term build queue, not "someday". Body variation (D-26)
-> lands with this.
-
+> **Priority withdrawn (Kushal, 2026-10-16):** it was marked priority on 2026-09-29; it is back on the
+> deferred list, not in the near-term queue. Body variation (D-26) was built without it.
+>
+> **How much it matters for anti-ban (assessed from this repo's own signal table in
+> [08 · Anti-ban](08-antiban.md); not measured on a real number):**
+>
+> - **On the Baileys path, templates do not protect a number; the risk is the opposite.** The strongest
+>   ban signals are reply ratio, contact-graph distance and block/report rate, and none of them is touched
+>   by having a template library. The one signal templates do touch is *identical message bodies*
+>   (rated High), and a library makes it easier to reuse one fixed body for everyone.
+> - **That signal is already covered without templates:** spintax and `{{name}}` render a different body per
+>   recipient (D-26), and a number may queue at most 50 identical bodies per rolling 24 h
+>   (`IDENTICAL_BODY_DAILY_CAP`). So the floor is in place today.
+> - **What a template system could add for anti-ban:** (1) several wording variants per template with weights
+>   (the `template_variant` table), which varies messages more than spintax inside one text; (2) one place
+>   to review the wording that goes to strangers, since content pattern matching is one of the detection
+>   layers; (3) version history, so a drop in delivery or a restriction can be traced to a specific text.
+> - **On the official Meta path it is not optional.** Outside the 24-hour window only an approved template
+>   may be sent, its category sets the price and affects the quality rating, and marketing sends hard-stop at
+>   a Low rating (`RB-03`). That is where templates matter for keeping a *number* healthy, and it arrives with
+>   the Meta adapter (P8, D-34, D-38).
+>
+> **Net:** low to moderate value for the Baileys-only alpha, required once the Meta adapter exists.
 
 **What:** the grown-up version of canned replies. Today `canned_reply` is a plain
 shortcut + text body with `{{name}}` substitution (built, P4 chunk 2). The richer version is a
@@ -717,6 +737,83 @@ shape.
 **Cost of deferring:** low — the API already accepts a full versioned mapping
 (`mappingSchema` in `apps/api/src/routes/imports.ts`), so this is a UI-side expansion, not a
 backend change. The simple tab posts a subset of that same mapping.
+
+
+### A real Naukri recruiter export (2026-10-16)
+
+Kushal supplied a real download from a recruiter (160 applicants to one job). **No row values are stored in
+this repository**: the header row is in [`tests/fixtures/import-header-samples.json`](../tests/fixtures/import-header-samples.json)
+and what follows is aggregate only. The file was a personal-data file (names, emails, phones, dates of birth,
+home addresses), so keep it out of the repo and out of chat transcripts.
+
+**Shape.** One sheet named `MySheet`, **82 columns**, one row per applicant, file named
+`<Job Title>_<yyyymmddhhmmss>_<n>.xlsx`. Real Naukri headers, in order: `Job Title`, `Date of application`,
+`Name`, `Email ID`, `Phone Number`, `Current Location`, `Preferred Locations`, `Total Experience`,
+`Curr. Company name`, `Curr. Company Designation`, `Department`, `Role`, `Industry`, `Key Skills`,
+`Annual Salary`, `Notice period/ Availability to join`, `Resume Headline`, `Summary`, then education
+(`Under Graduation degree`, `UG Specialization`, `UG University/institute Name`, `UG Graduation year`, the
+same four for post graduation and doctorate), `Gender`, `Marital Status`, `Home Town/City`, `Pin Code`,
+`Work permit for USA`, `Date of Birth`, `Permanent Address`, then 33 recruiter-workflow columns (last activity,
+pipeline stage, downloaded/viewed/emailed with who and when, calling status, five comment triples), `Source`,
+ten `Ans(<screening question>)` columns specific to the job, and `Candidate profile` (a link).
+
+**What is in it, as a mapping problem.**
+
+| Finding | Detail | Consequence |
+|---|---|---|
+| **A third of phone cells hold two numbers** | 57 of 160 `Phone Number` cells (36%) are `9XXXXXXXXX, +<digits>`: a bare 10-digit number, a comma, then a second number with a `+`. The second part ranges from a lone country code (`+91`) to long strings. 103 cells are one bare 10-digit number and 1 is 12 digits | The importer's normaliser strips everything but digits and `+`, which glues the two together; **tested with fiction-range numbers, every two-number cell fails to normalise** (`2025550123, +12025550123` fails; `2025550123` alone passes). On this file that is about **36% of the people rejected as unusable phones** |
+| Phones are stored as **text**, with no spaces or country code on the single ones | 10 digits, Indian default country needed | `defaultCountry: IN` is essential; already the default |
+| `Name` is one column | 38 of 160 are ALL CAPS, 25 are a single word | Display-name tidying (title case) is a nice-to-have; no first/last split to handle here |
+| `Email ID` | 46 of 160 contain capitals or spaces | Already lowercased and trimmed by the mapping |
+| **`NA` means empty** | Used in almost every optional column (0% real data in the 33 workflow columns, 2% in doctorate, 19% in work permit) | An `NA` must be treated as blank, never imported as a value |
+| Values are display text, not typed | Dates `19-Jun-2026`; experience `19 Year(s) 0 Month(s)`; salary `Rs 11.37 Lakhs` (also `Rs 9 Lakhs`); notice `1 Months`, `15 Days or less`, `Serving notice period` | Any numeric use (filtering by experience or CTC) needs parsing; the screening-answer columns hold clean numbers (`1137000`, `19`, `Yes`) and are easier to use than the display columns |
+| Personal data beyond what messaging needs | Date of birth, permanent address, pin code, gender, marital status | The wizard should let a person **drop** these columns (`unmapped: drop`) rather than keep them in `import_row.raw`; with `keep` they are stored per row |
+| The columns worth keeping as custom fields | `Current Location`, `Total Experience`, `Annual Salary`, `Notice period`, `Key Skills`, `Job Title` (the job applied for) | Needs D-40 (map a column to a custom field) |
+
+**Defects this shows in the current importer** (nothing changed yet): the two-number phone cells above; the
+auto-detect's first match for "phone" is the right column (`Phone Number`), for name `Name`, for email `Email ID`,
+so a plain upload of this file works for the 103 single-number rows and fails for the rest.
+
+**Fix to build (needs Kushal's go-ahead):** treat a phone cell as a *list*: split on comma, semicolon, slash and
+newline, normalise each part, import every valid one as a phone identity on the same contact (first valid one
+primary), report any part that fails. A lone country code such as `+91` should be ignored, not reported as an
+error. Add `NA`, `N/A`, `-` and `null` as blank values. That also covers `Phone 1`/`Phone 2`/`Alt Mobile` sheets.
+
+### Column vocabulary from public sources (2026-10-16)
+
+Because production data will not all come from Naukri, nine other header sets were collected from public
+pages: header rows only, each marked published, reported or assumed in the same fixture. Many vendors show
+their import template only as a download behind a login (Keka, Homerun, Lever, Zoho Recruit and Kredily list
+fields in prose but not the exact headers), so most are "reported", not copied from a file.
+
+What the importer's current auto-detect does with them (`apps/web/app/import/import-panel.tsx`: the first
+header containing phone, mobile, number, contact or whatsapp is the phone; the first containing "name" is the
+name; the first containing "mail" is the email). It finds a phone column in all of them. The gaps the wizard
+has to close:
+
+| Gap seen | Example | Effect today |
+|---|---|---|
+| **Several numbers in one cell** | Naukri `9XXXXXXXXX, +<digits>` (the real file above) | The whole cell fails to normalise |
+| **Name split across two columns** | `First Name` + `Last Name` (datablist, LinkedIn, ATS templates) | Only the first name is kept |
+| **Several phone columns** | `Phone 1`, `Phone 2`; `Contact No.` + `WhatsApp No` + `Alt Mobile` | Only one number is imported |
+| **A phone-like word in a non-phone header** | `Contact Person`, `Total Number of Reviews` | Could be picked as the phone; the person can correct it |
+| **No email column at all** | WhatsApp bulk-sender sheets, JustDial lists | Fine; email is optional |
+| **Extra columns worth keeping** | `Current CTC`, `Notice Period`, `Total Experience`, `City` | Land in `import_row.raw` only; custom fields are D-40 |
+
+That is the evidence for the wizard's first features: **split a multi-number cell, map more than one phone
+column, concatenate columns into a name, treat `NA` as blank, drop columns, and map a column onto a custom
+field.**
+
+---|---|---|
+| **Name split across two columns** | `First Name` + `Last Name` (datablist, LinkedIn, ATS templates) | Only the first name is kept |
+| **Several phone columns** | `Phone 1`, `Phone 2`; `Contact No.` + `WhatsApp No` + `Alt Mobile` | Only one number is imported; the others are dropped |
+| **A phone-like word in a non-phone header** | `Contact Person`, `Total Number of Reviews` | Could be picked as the phone; the person can correct it |
+| **No email column at all** | WhatsApp bulk-sender sheets, JustDial lists | Fine; email is optional |
+| **Number written as text, spaced or with `+`** | `+91 98…`, `098…` | Handled by phone normalisation |
+| **Extra columns worth keeping** | `Current CTC`, `Notice Period`, `Total Experience`, `City` | Land in `import_row.raw` only; becoming custom fields is D-40 |
+
+That table is the evidence for the wizard's first three features: **concatenate columns into a name,
+map more than one phone column, and map a column onto a custom field.**
 
 ---
 
@@ -1615,3 +1712,43 @@ with D-16, which was struck out as not this repository's to ship; they come back
 **Why parked:** pinned, not scheduled. Nothing here blocks the alpha.
 
 **What brings it back:** a public landing or signup page (D-47), or the hosted offering (D-33).
+
+## D-59 · File support in chat — **PRIORITY** (Kushal, 2026-10-16)
+
+**What:** sending and receiving files in a conversation, taken as one feature: what works today, what is
+rough, and what is missing. Raised as a priority on 2026-10-16.
+
+**What exists:**
+
+- **Receiving:** the gateway downloads inbound files through the socket, types them from magic bytes, stores
+  them under an unguessable key, dedupes per org by sha256, and the thread shows a download link
+  (filename, type, size). Served only through the authenticated route, always as a download, never inline.
+  Access is audited (`media.downloaded`). Proven end to end against a real WhatsApp file (D-11, D-14).
+- **Sending (D-25):** the composer's attach button posts one file (raw body, 16 MB cap); images, video, audio,
+  PDF and ZIP/Office files are accepted, HTML and SVG are refused; it passes the same anti-ban pacing as text.
+- **Found 2026-10-15:** through the web UI, any file over **1 MB** failed (`Body exceeded 1 MB limit`),
+  because uploads go through a Next.js server action. Fixed in #39 (`bodySizeLimit: 25mb`), so before that
+  the 16 MB cap only held for API callers.
+
+**What is missing or rough:**
+
+| Item | Today |
+|---|---|
+| Composer | One file at a time. No multiple files, no drag-and-drop, no paste of an image (the input has no `multiple`, and nothing handles drop or paste) |
+| Large documents | Capped at 16 MB; WhatsApp allows about 100 MB |
+| Voice notes | Not sendable (`ptt`) |
+| Inline preview | Deliberately none: images are download-only, which is a security choice (D-11), so a preview means a separate, safe thumbnail path |
+| A file that fails to store | Invisible to the operator and not retried (**D-30**) |
+| Files in campaigns | Not supported; text only |
+| Files in templates | Waits on D-19 |
+| At rest | Not encrypted, no retention job, no virus scan (**D-11**) |
+
+**Open decisions (ask before building):** which of the rows above are the actual pain (multi-file and
+drag-and-drop? bigger documents? seeing images in the thread?); whether inline preview is wanted at the cost
+of a thumbnail pipeline; whether files should be encrypted at rest before more are stored (it is expensive
+to retrofit, D-11).
+
+**Why a priority:** a CRM whose contacts send CVs needs the file path to be dependable; the 1 MB defect shows
+it had not been exercised through the UI.
+
+**What brings it back:** now, as a priority; the choices above come first.
