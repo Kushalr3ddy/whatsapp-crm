@@ -339,6 +339,11 @@ Two consequences, both now implemented:
 erasure request, or the first deployment onto a host where an unencrypted uploads directory is
 not acceptable. Media now lands, so the clock on all three has started.
 
+**Update 2026-10-16:** an S3-compatible driver now exists (D-63), so **moving files to a bucket is the next
+trigger**. Decide encryption at rest *before* pointing a real deployment at one: encrypting in the application
+before upload (with the same key ring as message bodies) means a stolen bucket yields nothing, but it costs
+range requests and means rewriting every stored file if done afterwards.
+
 **Cost of deferring:** encryption is the expensive one to retrofit — it means rewriting every
 stored file, and the storage key layout should therefore allow a per-file marker from day one
 so a mixed estate is readable during a migration.
@@ -1784,4 +1789,76 @@ to retrofit, D-11).
 **Why a priority:** a CRM whose contacts send CVs needs the file path to be dependable; the 1 MB defect shows
 it had not been exercised through the UI.
 
+**Decided 2026-10-16 (Kushal): chat files get a *virtual* folder, not a physical one.**
+
+Where a file sits is not what ties it to a chat. A file belongs to a chat only through the database:
+`message.media_id` to `media_asset`, then `message` to `conversation` to `contact` (that chain is also what
+authorisation walks on every download). A physical `chats/<conversationId>/` directory was rejected because:
+
+1. **It breaks dedup.** Files are deduplicated per org by sha256, so a CV forwarded into five chats is stored
+   once today; a folder per chat would store it five times.
+2. **A chat is not stable.** Contact merges and `@lid` linking (`packages/core/src/identity-linking.ts`) move
+   messages between conversations, which would mean moving files and rewriting every `storage_key`.
+3. **Nothing needs it.** The key never has to say which chat a file is in.
+
+So the keys stay opaque (`org/<orgId>/media/<uuid>.<ext>`, built only by `mediaKey()`), and the per-chat "folder"
+is a **Files tab on each chat**, plus one **Files list** for the org with filters (type, date, contact, direction),
+both queried from `media_asset` joined through `message`. Downloads keep going through `GET /api/v1/media/:id`
+(authenticated, attachment-only, audited). Not built yet. Content-addressed keys (`org/<orgId>/blobs/<sha256>`)
+are a possible later layout once files live in a bucket.
+
+**Cleanup design (not built; today nothing deletes a file and nothing calls `storage.list`):**
+- *Orphans:* a `media_asset` that no message points at, after a grace period, is deleted with its object. With
+  dedup, a file shared by two chats survives until the last reference goes.
+- *Delete one chat:* remove that chat's messages' references, then collect orphans.
+- *Erase one org:* `storage.list("org/<orgId>/")` and delete (the only intended caller of `list`).
+
+**Still open:** encrypt files at rest before or after the bucket move (D-11, D-63); retention window (docs/09 says
+a year); an inbound size cap and a per-org quota (inbound is uncapped, D-30); virus scanning (ClamAV, about 1 GB
+RAM); which of the gaps in the table above to build first.
+
 **What brings it back:** now, as a priority; the choices above come first.
+
+---
+
+## D-63 · Centralised file store: S3-compatible storage alongside local — **PRIORITY** · ✅ driver built 2026-10-16, default stays local (Kushal, 2026-10-16)
+
+**What:** one shared place for files that the API, the gateway and any future second host can all reach, and that
+survives the machine being replaced. Local disk is fine while everything runs in one container; it stops working
+the moment two processes run on different hosts.
+
+**Built:** an S3-compatible `StorageDriver` (`packages/providers/storage/s3`, package `@crm/storage-s3`, using
+`@aws-sdk/client-s3`) behind the existing port, so nothing above it changed.
+
+- **Choose it with `STORAGE_DRIVER=s3` (or `minio`).** `filesystem` is still the default and what the alpha uses.
+- **Settings:** `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (all required once chosen), `S3_ENDPOINT`
+  (unset for AWS; set for Cloudflare R2, Backblaze B2 or MinIO; required for `minio`), `S3_REGION` (default
+  `auto`), `S3_FORCE_PATH_STYLE` (default on for `minio`, off for `s3`). A missing one stops the app **at boot**
+  with the name of what is missing; it never falls back to local disk. Blank values (as the compose file passes
+  them) count as unset.
+- **Behaves like the filesystem driver:** the content type is stored as object metadata (no sidecar); `delete`
+  answers truthfully (it checks existence first, since S3 deletes silently); `list` treats a prefix as a
+  directory (`org/a` never matches `org/ab/...`); every method validates the key through the same
+  `assertValidKey`. **Difference:** `list` reports `application/octet-stream` for every object, because a bucket
+  listing carries no content type; `stat` gives the true one.
+- **Still no signed URLs, on purpose** (D-11): every download is resolved through the database and streamed by the
+  API, so the bucket can stay private.
+
+**Tested:** the shared contract suite (`tests/contract/storage-driver.ts`, 25 tests) passes against the S3 driver
+using **moto, an S3 emulator**, in CI as a service container and locally through `S3_TEST_ENDPOINT`. MinIO's own
+images could no longer be pulled from Docker Hub or Quay when this was written (both refused), so it was not used.
+**Not tested:** against a real Cloudflare R2, Backblaze B2 or AWS bucket, and not with the API and gateway running
+on `STORAGE_DRIVER=s3` end to end (they see only the port, which the contract covers).
+
+**Not built (follow-ups, in this order):**
+1. **Decide encryption at rest** (D-11) before any real deployment points at a bucket.
+2. **A copy job** from the local directory to the bucket. **Switching an existing install to S3 does not move its
+   files:** they stay on disk and stop being found, because rows keep `storage_driver` and `storage_key` as they
+   were. Do not switch a database that has files without copying first.
+3. The **Files tab and Files list** (D-59), then the **cleanup job** (D-59), then **retention** (D-11).
+
+**Open decisions (ask before building):** R2, B2, AWS or a self-hosted MinIO; one bucket for all orgs (the keys
+are already org-prefixed) or one per org; whether to also keep a local copy during the move.
+
+**Why a priority:** raised together with file support in chat (D-59); the alpha's local disk will not survive a
+move to a split deployment (D-33).

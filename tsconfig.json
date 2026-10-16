@@ -29,6 +29,7 @@
       "@crm/auth-builtin": ["packages/providers/auth/builtin/src/index.ts"],
       "@crm/storage": ["packages/providers/storage/src/index.ts"],
       "@crm/storage-filesystem": ["packages/providers/storage/filesystem/src/index.ts"],
+      "@crm/storage-s3": ["packages/providers/storage/s3/src/index.ts"],
       "@crm/channel-baileys": ["packages/channels/baileys/src/index.ts"],
       "@crm/core": ["packages/core/src/index.ts"]
     }

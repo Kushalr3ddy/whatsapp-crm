@@ -34,6 +34,7 @@ export default defineConfig({
       '@crm/auth-builtin': fileURLToPath(new URL('./packages/providers/auth/builtin/src/index.ts', import.meta.url)),
       '@crm/storage': fileURLToPath(new URL('./packages/providers/storage/src/index.ts', import.meta.url)),
       '@crm/storage-filesystem': fileURLToPath(new URL('./packages/providers/storage/filesystem/src/index.ts', import.meta.url)),
+      '@crm/storage-s3': fileURLToPath(new URL('./packages/providers/storage/s3/src/index.ts', import.meta.url)),
       '@crm/channel-baileys': fileURLToPath(new URL('./packages/channels/baileys/src/index.ts', import.meta.url)),
       '@crm/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url))
     }

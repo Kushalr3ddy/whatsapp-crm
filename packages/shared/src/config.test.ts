@@ -27,3 +27,39 @@ describe('GATEWAY_CHANNEL', () => {
       .toThrow(/fake channel/);
   });
 });
+
+describe('STORAGE_DRIVER and the S3 settings', () => {
+  it('defaults to the local filesystem and needs no S3 settings', () => {
+    expect(loadConfig(base).STORAGE_DRIVER).toBe('filesystem');
+  });
+
+  it('treats blank S3 values (as a compose file passes them) as unset', () => {
+    const c = loadConfig({
+      ...base, S3_BUCKET: '', S3_ENDPOINT: '', S3_REGION: '', S3_ACCESS_KEY_ID: '',
+      S3_SECRET_ACCESS_KEY: '', S3_FORCE_PATH_STYLE: ''
+    });
+    expect(c.STORAGE_DRIVER).toBe('filesystem');
+    expect(c.S3_REGION).toBe('auto');
+    expect(c.S3_FORCE_PATH_STYLE).toBeUndefined();
+  });
+
+  it('refuses s3 without a bucket and credentials, naming what is missing', () => {
+    expect(() => loadConfig({ ...base, STORAGE_DRIVER: 's3' })).toThrow(/S3_BUCKET/);
+    expect(() => loadConfig({ ...base, STORAGE_DRIVER: 's3', S3_BUCKET: 'b' }))
+      .toThrow(/S3_ACCESS_KEY_ID/);
+  });
+
+  it('accepts s3 with a full set of settings', () => {
+    const c = loadConfig({
+      ...base, STORAGE_DRIVER: 's3', S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's'
+    });
+    expect(c.STORAGE_DRIVER).toBe('s3');
+    expect(c.S3_BUCKET).toBe('b');
+  });
+
+  it('requires an endpoint for minio, since there is no default host', () => {
+    const minio = { ...base, STORAGE_DRIVER: 'minio', S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's' };
+    expect(() => loadConfig(minio)).toThrow(/S3_ENDPOINT/);
+    expect(loadConfig({ ...minio, S3_ENDPOINT: 'http://localhost:9000' }).STORAGE_DRIVER).toBe('minio');
+  });
+});

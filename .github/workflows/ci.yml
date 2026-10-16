@@ -34,6 +34,11 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # An S3-compatible server for the StorageDriver contract suite (tests/contract/s3-storage.test.ts).
+      # moto is an S3 emulator; MinIO's own images are no longer pulled from Docker Hub or Quay.
+      s3:
+        image: motoserver/moto:latest
+        ports: ['19000:5000']
 
     # The migration runner validates the app's config at boot (required secrets are a hard crash, never
     # a silent fallback), so the job needs real-shaped throwaway values even though no test uses them.
@@ -45,6 +50,10 @@ jobs:
       ENCRYPTION_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff  # gitleaks:allow
       ENCRYPTION_INDEX_KEY: ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100  # gitleaks:allow
       API_KEY: ci-only-bootstrap-api-key-0123456789abcdef  # gitleaks:allow
+      # Points the S3 contract suite at the emulator above; without it that suite skips.
+      S3_TEST_ENDPOINT: http://localhost:19000
+      S3_TEST_ACCESS_KEY_ID: test  # gitleaks:allow
+      S3_TEST_SECRET_ACCESS_KEY: test  # gitleaks:allow
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
