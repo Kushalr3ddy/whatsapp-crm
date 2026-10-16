@@ -224,6 +224,19 @@ export class BaileysChannelProvider implements ChannelProvider {
     await conn.socket.sendPresenceUpdate(state, jid);
   }
 
+  /**
+   * Whether a number has a WhatsApp account, via Baileys' `onWhatsApp` (a contact-sync query on this
+   * session). Baileys returns only the numbers that DO exist, so a result without our number means
+   * "no account", and no result at all (query failed) means "could not tell".
+   */
+  async isRegistered(sender: SenderRef, phoneE164: string): Promise<boolean | null> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return null;
+    const found = await conn.socket.onWhatsApp(`${phoneE164.replace(/\D/g, '')}@s.whatsapp.net`);
+    if (found === undefined) return null;
+    return found.some((r) => r.exists);
+  }
+
   /** Sets this number's own online/offline presence; false when the socket is not open. */
   async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<boolean> {
     const conn = this.#connections.get(sender.id);

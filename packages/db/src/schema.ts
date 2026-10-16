@@ -219,6 +219,13 @@ export const contactIdentity = pgTable('contact_identity', {
   valueNormalized: text('value_normalized').notNull(),
   isPrimary: boolean('is_primary').notNull().default(false),
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  /**
+   * Whether this phone number has a WhatsApp account, as last asked of WhatsApp (D-60): true, false,
+   * or null when never asked. Only filled for a contact with more than one number.
+   */
+  waRegistered: boolean('wa_registered'),
+  /** When `waRegistered` was last checked; a stale answer is asked again. */
+  waCheckedAt: timestamp('wa_checked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
   uniqueIndex('contact_identity_lookup_uidx').on(t.orgId, t.kind, t.valueNormalized),

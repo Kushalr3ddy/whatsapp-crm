@@ -13,6 +13,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-16 — Number fallback (D-60); lighter web tier and single executable pinned (D-61, D-62)
+- **Built D-60:** for a contact with more than one phone number, the gateway asks WhatsApp (Baileys `onWhatsApp`, one
+  lookup per number, cached 30 days if it has an account and 7 if not) before the first send and messages the first
+  number that has an account, promoting it to primary and writing a `contact.number_switched` audit row. None has one:
+  the message fails `no_whatsapp_number`. Unknown (lookup failed): the primary is kept. One-number contacts make no
+  lookup. `SEND_VERIFY_FALLBACK_NUMBERS`, default on. Migration 0029 adds `wa_registered` and `wa_checked_at` to
+  `contact_identity`. Tested with the fake channel only, **not on a real number**.
+- **Pinned D-61** (plain React with refresh buttons instead of Next on most pages) and **D-62** (single executable),
+  with what is in the way. Neither is started.
+
 ### 2026-10-16 — Import screen: columns chosen by their values, and a "rows to fix" box
 - On upload the server scores every column by what its first 200 values look like and suggests the phone, email
   and name columns; the panel pre-selects them, shows how phone-like the chosen column is, and warns on a poor

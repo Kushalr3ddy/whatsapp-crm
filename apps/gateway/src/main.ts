@@ -105,6 +105,7 @@ async function main(): Promise<void> {
       : null,
     // Make each send look human — a "typing…" beat before it lands (docs/08-antiban.md, D-24).
     typingSimulation: config.SEND_TYPING_SIMULATION,
+    verifyFallbackNumbers: config.SEND_VERIFY_FALLBACK_NUMBERS,
     // Blue-tick inbound messages only after a human-like 10–60 min delay, in active hours.
     readReceipts: config.SEND_READ_RECEIPTS,
     // Also respect the recipient's day, inferred from their number's country.

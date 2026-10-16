@@ -184,6 +184,132 @@ describe('held messages are retried on time, not at the next sweep', () => {
   });
 });
 
+describe('number fallback (D-60)', () => {
+  // The contact from beforeEach has one number, +919876511111. A second one is fiction-range.
+  const FIRST = '+919876511111';
+  const SECOND = '+12025550142';
+
+  /** Gives the conversation's contact a second phone number, after the first. */
+  async function addSecondNumber(): Promise<string> {
+    const c = await db.execute(sql`SELECT contact_id AS id FROM conversation WHERE id = ${conversationId}`);
+    const contactId = (c as unknown as Array<{ id: string }>)[0]!.id;
+    await db.execute(sql`
+      INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
+      VALUES (${orgId}, ${contactId}, 'phone', ${SECOND}, false)`);
+    return contactId;
+  }
+  const withFallback = (p: FakeChannelProvider) => ({ ...ctxWith(p), verifyFallbackNumbers: true });
+  const primaryOf = async (contactId: string): Promise<string> =>
+    ((await db.execute(sql`
+      SELECT value_normalized AS v FROM contact_identity
+      WHERE contact_id = ${contactId} AND kind = 'phone' AND is_primary`)) as unknown as Array<{ v: string }>)[0]!.v;
+
+  it('sends to the primary number when it has a WhatsApp account, after one lookup', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const contactId = await addSecondNumber();
+    const id = await queueOutbound('to the first number');
+
+    await handleSend(withFallback(provider), id);
+
+    expect(provider.registrationChecks).toEqual([FIRST]);
+    expect(provider.sent[0]!.to.phoneE164).toBe(FIRST);
+    expect(await primaryOf(contactId)).toBe(FIRST);
+  });
+
+  it('switches to the second number when the first has no WhatsApp account, and keeps it', async () => {
+    const provider = new FakeChannelProvider();
+    provider.unregistered.add(FIRST);
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const contactId = await addSecondNumber();
+    const id = await queueOutbound('to whichever has an account');
+
+    await handleSend(withFallback(provider), id);
+
+    expect(provider.registrationChecks).toEqual([FIRST, SECOND]);
+    expect(provider.sent).toHaveLength(1);
+    expect(provider.sent[0]!.to.phoneE164).toBe(SECOND);
+    expect((await statusOf(id)).status).toBe('sent');
+    // The second number is now the primary, the answers are stored, and the switch is on the record.
+    expect(await primaryOf(contactId)).toBe(SECOND);
+    const flags = await db.execute(sql`
+      SELECT value_normalized AS v, wa_registered AS r FROM contact_identity
+      WHERE contact_id = ${contactId} AND kind = 'phone' ORDER BY value_normalized`);
+    expect(flags as unknown as Array<{ v: string; r: boolean }>)
+      .toEqual([{ v: SECOND, r: true }, { v: FIRST, r: false }]);
+    const audit = await db.execute(sql`
+      SELECT action, after FROM audit_log WHERE org_id = ${orgId} AND action = 'contact.number_switched'`);
+    expect((audit as unknown as unknown[]).length).toBe(1);
+  });
+
+  it('asks only once: the next message to that contact makes no lookup', async () => {
+    const provider = new FakeChannelProvider();
+    provider.unregistered.add(FIRST);
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    await addSecondNumber();
+    await handleSend(withFallback(provider), await queueOutbound('first'));
+    const lookupsAfterFirst = provider.registrationChecks.length;
+
+    await handleSend(withFallback(provider), await queueOutbound('second'));
+
+    expect(provider.registrationChecks).toHaveLength(lookupsAfterFirst);
+    expect(provider.sent.map((m) => m.to.phoneE164)).toEqual([SECOND, SECOND]);
+  });
+
+  it('does not send, and says why, when none of the numbers has a WhatsApp account', async () => {
+    const provider = new FakeChannelProvider();
+    provider.unregistered.add(FIRST); provider.unregistered.add(SECOND);
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    await addSecondNumber();
+    const id = await queueOutbound('nobody to receive it');
+
+    await handleSend(withFallback(provider), id);
+
+    expect(provider.sent).toHaveLength(0);
+    expect(await statusOf(id)).toMatchObject({ status: 'failed', error_code: 'no_whatsapp_number' });
+  });
+
+  it('makes no lookup for a contact with a single number, since there is nothing to fall back to', async () => {
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const id = await queueOutbound('only one number');
+
+    await handleSend(withFallback(provider), id);
+
+    expect(provider.registrationChecks).toHaveLength(0);
+    expect(provider.sent).toHaveLength(1);
+  });
+
+  it('keeps the current number when WhatsApp cannot be asked, rather than switching on a guess', async () => {
+    const provider = new FakeChannelProvider();
+    provider.registrationUnknown = true;
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    const contactId = await addSecondNumber();
+    const id = await queueOutbound('lookup unavailable');
+
+    await handleSend(withFallback(provider), id);
+
+    expect(provider.sent[0]!.to.phoneE164).toBe(FIRST);
+    expect(await primaryOf(contactId)).toBe(FIRST);
+    const stored = await db.execute(sql`
+      SELECT count(*)::int AS n FROM contact_identity WHERE contact_id = ${contactId} AND wa_checked_at IS NOT NULL`);
+    expect((stored as unknown as Array<{ n: number }>)[0]!.n).toBe(0);
+  });
+
+  it('is off by default: two numbers, no lookup, the primary is used', async () => {
+    const provider = new FakeChannelProvider();
+    provider.unregistered.add(FIRST);
+    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
+    await addSecondNumber();
+    const id = await queueOutbound('fallback not enabled');
+
+    await handleSend(ctxWith(provider), id);   // verifyFallbackNumbers unset
+
+    expect(provider.registrationChecks).toHaveLength(0);
+    expect(provider.sent[0]!.to.phoneE164).toBe(FIRST);
+  });
+});
+
 describe('typing simulation in the send path (D-24)', () => {
   it('shows "typing…" before the send and clears it after, when enabled', async () => {
     const provider = new FakeChannelProvider();

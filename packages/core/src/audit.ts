@@ -139,6 +139,8 @@ export const AUDIT = {
   contactDncChanged: 'contact.dnc_changed',
   // Two contacts turned out to be one person (a privacy address was linked to a phone number).
   contactMerged: 'contact.merged',
+  // The number we message a contact on was changed because the primary one has no WhatsApp account (D-60).
+  contactNumberSwitched: 'contact.number_switched',
   messageDncOverridden: 'message.dnc_overridden',
   contactsBulkTagged: 'contacts.bulk_tagged',
   contactsBulkUntagged: 'contacts.bulk_untagged',

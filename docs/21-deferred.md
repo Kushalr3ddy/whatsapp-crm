@@ -1785,3 +1785,107 @@ to retrofit, D-11).
 it had not been exercised through the UI.
 
 **What brings it back:** now, as a priority; the choices above come first.
+
+---
+
+## D-60 · Number fallback: message the first number that has a WhatsApp account — ✅ **BUILT 2026-10-16**
+
+> **Built.** A contact can hold several phone numbers (the importer now reads cells like `98…, +91…`, D-21). The
+> first is the primary and is the one messaged. Before the first send to a contact **with more than one number**,
+> the gateway asks WhatsApp whether the primary has an account, and uses the next number that does.
+
+**How it works** (`apps/gateway/src/number-fallback.ts`, called from `handleSend` after the pacing gates and the
+pre-send pause):
+
+- **The lookup** is Baileys' `onWhatsApp` (a contact-sync query on the sending number's session), exposed on the
+  channel port as the optional `isRegistered(sender, phoneE164)`: `true`, `false`, or `null` when it could not be
+  asked. Baileys returns only numbers that exist, so "absent" means no account and "no result" means unknown.
+- **Order:** primary first, then the others in the order they were added. A known, fresh answer is used without
+  asking. **One lookup per number**, stored on `contact_identity` (`wa_registered`, `wa_checked_at`, migration
+  0029), trusted 30 days if it has an account and 7 days if not.
+- **The first number with an account wins.** If it is not the primary it is **promoted to primary**, so every later
+  message goes straight to it; the switch is written to the audit log (`contact.number_switched`, actor `system`).
+- **If none has an account** the message is **not sent** and fails with `no_whatsapp_number`, instead of going to a
+  number that cannot receive it and costing the sender its delivery ratio.
+- **It never acts on "could not tell".** A closed socket or a failed query leaves the primary in use; nothing is
+  switched or stored on a guess.
+- **A contact with one number triggers no lookup at all**, because there is nothing to fall back to. That keeps
+  lookups to the minority of contacts that need them (36% of rows in the real Naukri sample).
+- **Switch:** `SEND_VERIFY_FALLBACK_NUMBERS` (default `true`); `false` always messages the primary.
+
+**Why it is shaped this way:** a stream of existence lookups from one session is the pattern community reports link
+to restricted numbers (anecdote; not measured here), so it is one number per send, cached, only when a fallback
+exists, and inside the paced send path rather than a sweep at import time.
+
+**Not built, and not tested on a real number:** a permanent *send* error as a second trigger for the switch; showing
+"sent to the second number" in the thread; refreshing a stored answer on a schedule; ordering numbers at import
+(the order written is kept). Tested with the fake channel only (`tests/integration/gateway-work.test.ts`, "number
+fallback"): the `onWhatsApp` path has **not** been run against the real linked number.
+
+---
+
+## D-61 · Lighter web tier: plain React with refresh buttons instead of Next everywhere — pinned (Kushal, 2026-10-16)
+
+**What:** replace the server-rendered Next.js app with a plain React single-page app on most screens, and keep
+live updating only where it earns its cost. Pages that do not need to move on their own (contacts, import,
+broadcast, saved audiences, security) get a small **refresh button** instead of polling or server rendering; the
+inbox and the number-linking screen stay live. Motivation is resources: the Next server is its own always-on
+process.
+
+**What it costs today** (measured, `docs/19-capacity.md`, 2026-10-11): the web process is about **170 MB** of RAM
+and is **not optional**, next to the API (about 265 MB) and the gateway (about 340 MB with one number). Every page is
+also a server-rendered round trip, and the inbox refreshes by re-running every server component of the route on a
+timer. That is the same thing D-46 reported as laggy, and 2026-10-15 measurement found the contacts page growing
+with people x tags (fixed in #40).
+
+**Shape when it arrives:**
+- A static React bundle served by the API (or any file server), no Next process. The API already accepts the
+  browser's cookie session with CSRF (the web app forwards the same cookies on the person's behalf today), so the
+  SPA can call the API directly and the server-side forwarding layer, the server actions and the 25 MB
+  server-action limit (added in #39) all go away.
+- Live pieces (inbox, link screen) poll a small JSON endpoint instead of re-rendering a route; a refresh button
+  elsewhere. SSE or websockets only if polling proves too coarse (see D-17/D-54, which settled on polling).
+- It overlaps D-50 (test the front and back end independently): a static SPA against the HTTP API is exactly that
+  boundary.
+
+**Open decisions (ask before building):** which pages are "few" that stay live; whether the SPA keeps Next as a
+build tool only, or moves to Vite; what to do about the work already in the server actions (the import flow, the
+problem box, the contacts page); and whether the saved 170 MB matters yet (it does at the 2 GB box, less at 4 GB).
+
+**Why parked:** large (it touches every screen and the auth hand-off), and it needs the "measure first" step D-46
+asked for: a production build is already about 0.8 s on the heaviest page.
+
+**What brings it back:** a smaller box than 4 GB, the D-46 lag on a production build, or D-50.
+
+---
+
+## D-62 · Ship as a single executable, if possible — pinned (Kushal, 2026-10-16)
+
+**What:** one file that runs the app, instead of a Docker image plus a process supervisor. Today the alpha is one
+container running three processes (`infra/docker/entrypoint.sh`): API, gateway and the Next web server, with
+Postgres separate.
+
+**What "single executable" can realistically mean here:** one **application** binary plus an external Postgres.
+Postgres cannot be folded in (the system leans on row-level security, `LISTEN/NOTIFY` and a role switch, D-20).
+
+**What is in the way, and the options** (research 2026-10-16 from the Node, Deno and Bun docs and comparison
+pages; none of this was tried on this codebase):
+
+| Option | Status | Fit |
+|---|---|---|
+| **Node single executable applications (SEA)** | Built into Node, but runs **one embedded CommonJS script**; native addons and files read from disk need workarounds | This code is ESM TypeScript with the native `@node-rs/argon2`; needs a bundling step to one CJS file |
+| **`@yao-pkg/pkg`** | A packager that uses the same Node ABI, described as the most compatible with npm and native addons | The lowest-risk way to try |
+| **Deno `compile`** | Embeds assets with `--include`; native Node addons need `--self-extracting` | Different runtime (V8 still); Baileys compatibility untested |
+| **Bun `bun build --compile`** | Fastest, smallest binaries, but JavaScriptCore rather than V8, and trouble reported with packages that load `.node` files | Riskiest for Baileys and argon2 |
+| **Next.js `output: 'standalone'`** | Smaller deployment, but still needs a Node runtime; not an executable | Helps size only |
+
+**The blockers that matter:** the Next web server does not fit in an executable, so **D-61 comes first** (a static
+SPA is just files the API serves); the API and gateway can already run in one process (`PROCESS_ROLE=all`), but
+they were split on purpose so an API restart does not drop WhatsApp sockets (`docs/04-architecture.md`), which a
+single binary must either keep as two entry points or accept losing; and the native argon2 and Baileys' crypto
+are exactly what packagers trip on.
+
+**Why parked:** depends on D-61, and the Docker image already gives a one-command install, which is what the alpha
+needs.
+
+**What brings it back:** D-61 landing, or a target that cannot run Docker.

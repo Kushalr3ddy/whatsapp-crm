@@ -91,6 +91,10 @@ const configSchema = z.object({
   // proportional to the message length before each send, so a send looks human rather than
   // instant. Cosmetic anti-ban; `SEND_TYPING_SIMULATION=false` turns it off (e.g. to send faster).
   SEND_TYPING_SIMULATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // Number fallback (D-60): before the first send to a contact that has more than one phone number,
+  // ask WhatsApp whether the primary one has an account, and message the next one that does. One lookup
+  // per number, cached, only when a fallback exists. `false` always messages the primary number.
+  SEND_VERIFY_FALLBACK_NUMBERS: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   // Recipient timezone (docs/08-antiban.md, Layer 3): also respect the recipient's day, inferred from
   // their phone number's country, on top of SEND_TIMEZONE (the sender's). Only adds caution.
   SEND_RECIPIENT_TIMEZONE: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
