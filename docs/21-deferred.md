@@ -775,14 +775,47 @@ ten `Ans(<screening question>)` columns specific to the job, and `Candidate prof
 | Personal data beyond what messaging needs | Date of birth, permanent address, pin code, gender, marital status | The wizard should let a person **drop** these columns (`unmapped: drop`) rather than keep them in `import_row.raw`; with `keep` they are stored per row |
 | The columns worth keeping as custom fields | `Current Location`, `Total Experience`, `Annual Salary`, `Notice period`, `Key Skills`, `Job Title` (the job applied for) | Needs D-40 (map a column to a custom field) |
 
-**Defects this shows in the current importer** (nothing changed yet): the two-number phone cells above; the
-auto-detect's first match for "phone" is the right column (`Phone Number`), for name `Name`, for email `Email ID`,
-so a plain upload of this file works for the 103 single-number rows and fails for the rest.
+**Built 2026-10-16: phone cells are lists, and `NA` is blank.** A phone cell is split on comma, semicolon,
+slash, pipe and line breaks; each part is normalised; every valid, distinct number becomes a phone identity
+on the same contact, the first as primary. Rules that are easy to get wrong:
 
-**Fix to build (needs Kushal's go-ahead):** treat a phone cell as a *list*: split on comma, semicolon, slash and
-newline, normalise each part, import every valid one as a phone identity on the same contact (first valid one
-primary), report any part that fails. A lone country code such as `+91` should be ignored, not reported as an
-error. Add `NA`, `N/A`, `-` and `null` as blank values. That also covers `Phone 1`/`Phone 2`/`Alt Mobile` sheets.
+- a part that is only a bare country code (`+91`) is ignored, as an empty second number;
+- a bad part is dropped **only if another part is valid**, so one good number is never lost to a bad neighbour,
+  and the original cell stays on the row ledger (`unmapped: keep`);
+- a cell with nothing usable still fails the row, with the reason (text such as `not-a-phone` and too-short
+  numbers are mistakes, not blanks);
+- the same number written twice (`98…` and `+9198…`) is stored once;
+- `NA`, `N/A`, `N.A.`, `nil`, `null`, `none`, `-`, `--` and `—`, as a **whole cell**, count as blank in phone,
+  email, external-id and name columns. The one cost is a person whose entire name is "NA".
+
+Code: `normalisePhoneCell`, `splitPhoneCell` and `isBlankMarker` in `packages/shared/src/phone.ts`, used by
+`packages/core/src/ingestion.ts`. Tests: `packages/shared/src/phone.test.ts` and the "cells that hold more than
+one number" block in `tests/integration/imports.test.ts` (fiction-range and existing fixture numbers only).
+**Known limit:** if a row's second number already belongs to a different existing contact, that number is not
+moved (the insert is skipped); the row still matches by its first number that is already on file. Merging such
+contacts is D-22.
+
+**Also built 2026-10-16: column scoring and a "rows to fix" box on the import screen.**
+
+- **Column scoring.** On upload the server looks at the values in the first 200 rows of every column
+  (`profileColumns` / `suggestColumns` in `packages/shared/src/column-guess.ts`): the phone column is the one
+  whose cells parse as phone numbers (at least 60%, most matching cells wins, a phone-like header only breaks a
+  tie), and the same for email; name follows the header and avoids those two. The response carries
+  `suggestions` and per-column `columns` shares. The panel pre-selects from them, shows "N% of the values in
+  <column> look like phone numbers", and warns in red when the chosen column is under 50%. A column called
+  `Mob` or `Ph`, or `Contact Person` holding names, is now handled.
+- **Rows to fix.** After Preview or Import, a small box lists the rows that could not be imported (sheet row
+  number, the value as typed, the reason) and, more softly, rows that imported without one of their numbers
+  (for example `9…, 1111111111` where the second is junk). It comes from the existing row ledger (a dry run
+  already records it): `GET /imports/:id` now also returns `warnings`, and the run summary carries a `warnings`
+  count. The ledger's `error` text column holds the note on a successful row. The sheet row shown is the
+  ledger's data-row number plus one, because the header is row 1.
+- Tests: `column-guess.test.ts`, the "column suggestions and rows to fix" block in
+  `tests/integration/imports.test.ts`, and `tests/e2e/import-problems.spec.ts`.
+
+Still true of the sample, not yet addressed: display values are text (`19 Year(s) 0 Month(s)`, `Rs 11.37 Lakhs`),
+the personal-data columns can only be dropped by choosing `unmapped: drop` (the wizard UI for it is D-21), and
+the columns worth keeping as fields need D-40.
 
 ### Column vocabulary from public sources (2026-10-16)
 
@@ -798,9 +831,9 @@ has to close:
 
 | Gap seen | Example | Effect today |
 |---|---|---|
-| **Several numbers in one cell** | Naukri `9XXXXXXXXX, +<digits>` (the real file above) | The whole cell fails to normalise |
+| **Several numbers in one cell** | Naukri `9XXXXXXXXX, +<digits>` (the real file above) | **Fixed 2026-10-16**: each valid number is imported |
 | **Name split across two columns** | `First Name` + `Last Name` (datablist, LinkedIn, ATS templates) | Only the first name is kept |
-| **Several phone columns** | `Phone 1`, `Phone 2`; `Contact No.` + `WhatsApp No` + `Alt Mobile` | Only one number is imported |
+| **Several phone columns** | `Phone 1`, `Phone 2`; `Contact No.` + `WhatsApp No` + `Alt Mobile` | Only one column can be mapped in the UI (the API mapping already accepts several phone rules) |
 | **A phone-like word in a non-phone header** | `Contact Person`, `Total Number of Reviews` | Could be picked as the phone; the person can correct it |
 | **No email column at all** | WhatsApp bulk-sender sheets, JustDial lists | Fine; email is optional |
 | **Extra columns worth keeping** | `Current CTC`, `Notice Period`, `Total Experience`, `City` | Land in `import_row.raw` only; custom fields are D-40 |

@@ -32,6 +32,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 - **Decided D-59:** chat files get a virtual per-chat folder (a Files tab built from the database), not a physical
   directory per chat, because it keeps per-org dedup and survives contact merges. D-11 now says to decide
   encryption at rest before pointing a real deployment at a bucket.
+### 2026-10-16 — Import screen: columns chosen by their values, and a "rows to fix" box
+- On upload the server scores every column by what its first 200 values look like and suggests the phone, email
+  and name columns; the panel pre-selects them, shows how phone-like the chosen column is, and warns on a poor
+  pick. After Preview or Import, a box lists rows that could not be imported (sheet row, value as typed, reason)
+  and rows that lost a number. `GET /imports/:id` returns `warnings`; the summary has a `warnings` count.
+
+### 2026-10-16 — Importer reads cells with several phone numbers; `NA` is blank
+- A phone cell may hold several numbers (`98…, +91…`, as in 36% of a real Naukri sample): each valid, distinct
+  number is imported as a phone identity on one contact, the first as primary. A bare `+91` is ignored; one good
+  number is never lost to a bad neighbour; a cell with nothing usable still fails the row. `NA`, `N/A`, `-` and
+  similar whole-cell markers count as blank. Tests added (unit and import integration).
 
 ### 2026-10-16 — Priorities reshuffled; sample headers for the import wizard (docs and a fixture)
 - **D-19 templates withdrawn from the priority list** (Kushal); the entry now says how much templates matter for
