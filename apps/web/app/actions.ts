@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
   queueReply, startLink, getLinkState, unlinkSender, updateConversation, addParticipant, removeParticipant, addNote,
-  uploadImport, runImportMapping, queueAttachment, getSenderStatus, CrmApiError
+  uploadImport, runImportMapping, queueAttachment, getSenderStatus, getImportProblems, CrmApiError
 } from '@/lib/crm';
-import type { SenderStatus, LinkMode, ImportUpload, ImportSummary } from '@/lib/crm';
+import type { SenderStatus, LinkMode, ImportUpload, ImportSummary, ImportProblems } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
 export interface SendResult {
@@ -209,6 +209,15 @@ export async function runSheet(
   } catch (error) {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     return { ok: false, error: 'Could not reach the API.' };
+  }
+}
+
+/** The rows of an import that failed or lost something, for the problem box on the import screen. */
+export async function importProblems(id: string): Promise<ImportProblems> {
+  try {
+    return await getImportProblems(id);
+  } catch {
+    return { errors: [], warnings: [] };
   }
 }
 

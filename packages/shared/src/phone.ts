@@ -96,3 +96,73 @@ export function isMatchableIdentity(value: string | null | undefined): value is 
 export function phoneCountry(e164: string): string | null {
   return parsePhoneNumberFromString(e164)?.country ?? null;
 }
+
+/** Words a spreadsheet uses to say "nothing here" (Naukri writes `NA` in almost every optional column). */
+const BLANK_MARKERS = new Set(['na', 'n/a', 'n.a.', 'nil', 'null', 'none', '-', '--', '—']);
+
+/**
+ * True when a whole cell is one of the markers a spreadsheet uses for "no value".
+ *
+ * Matches the **entire** cell, case-insensitively, so a name that merely contains "na" is untouched.
+ * The one cost is a person whose entire name is literally "NA"; that is vanishingly rare next to
+ * thousands of rows where `NA` means empty.
+ */
+export function isBlankMarker(value: string): boolean {
+  return BLANK_MARKERS.has(value.trim().toLowerCase());
+}
+
+/**
+ * Splits a phone cell that holds more than one number.
+ *
+ * A real recruiter export has cells like `98xxxxxxxx, +91…` (36% of one 160-row sample): a bare
+ * number, then a second one. The separators are comma, semicolon, slash, pipe and line breaks.
+ * Spaces and dashes are *not* separators, because they sit inside a single number.
+ */
+export function splitPhoneCell(raw: string): string[] {
+  return raw.split(/[,;/|\n\r]+/).map((p) => p.trim()).filter((p) => p !== '');
+}
+
+/** What `normalisePhoneCell` found in one cell. */
+export interface PhoneCellResult {
+  /** Distinct valid numbers in the order they were written; the first is the primary one. */
+  readonly numbers: readonly NormalisedPhone[];
+  /** Set only when the cell had real content and none of it was a usable number. */
+  readonly firstFailure: { readonly reason: PhoneError; readonly message: string } | null;
+  /** Parts that looked like numbers but were not valid, when at least one other part was. */
+  readonly dropped: readonly string[];
+}
+
+/**
+ * Normalises every number in a cell that may hold several.
+ *
+ * - A part that is only a bare country code (an optional `+` and up to four digits, e.g. `+91`) is
+ *   ignored, not an error: it is what a second, empty number looks like. Anything with letters, or a
+ *   too-short number, still counts as a failure.
+ * - A part that looks like a number but is not valid is dropped **if another part is valid**, so one
+ *   good number is never lost to a bad neighbour. The original cell stays on the row ledger.
+ * - If nothing is valid, the first real failure is reported, so the row fails visibly (M8).
+ * - The same number written twice (`98…` and `+9198…`) is kept once.
+ */
+export function normalisePhoneCell(raw: string, defaultCountry: string): PhoneCellResult {
+  const numbers: NormalisedPhone[] = [];
+  const seen = new Set<string>();
+  let firstFailure: PhoneCellResult['firstFailure'] = null;
+  const dropped: string[] = [];
+
+  for (const part of splitPhoneCell(raw)) {
+    if (/^\+?\s*\d{1,4}$/.test(part)) continue;
+    const parsed = normalisePhone(part, defaultCountry);
+    if (!parsed.ok) {
+      firstFailure ??= { reason: parsed.reason, message: parsed.message };
+      dropped.push(part);
+      continue;
+    }
+    if (seen.has(parsed.value.e164)) continue;
+    seen.add(parsed.value.e164);
+    numbers.push(parsed.value);
+  }
+  return {
+    numbers, firstFailure: numbers.length > 0 ? null : firstFailure,
+    dropped: numbers.length > 0 ? dropped : []
+  };
+}

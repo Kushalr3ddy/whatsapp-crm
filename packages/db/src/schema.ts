@@ -725,7 +725,10 @@ export const importRowRecord = pgTable('import_row', {
   /** `created` · `updated` · `skipped` · `error`. */
   outcome: text('outcome').notNull(),
   contactId: uuid('contact_id').references(() => contact.id, { onDelete: 'set null' }),
-  /** Why it failed, in words a person can act on. Null unless outcome is `error`. */
+  /**
+   * Why it failed, in words a person can act on, when outcome is `error`. On a successful row it
+   * can hold a softer note (a second phone number that was not valid and was left out).
+   */
   error: text('error'),
   /**
    * The row as read, so a failure can be inspected and re-uploaded without the original file.
