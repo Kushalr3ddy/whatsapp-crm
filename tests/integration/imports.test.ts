@@ -288,6 +288,114 @@ describe('bad rows', () => {
   });
 });
 
+describe('cells that hold more than one number (Naukri exports)', () => {
+  // The shape of a real recruiter export: 10-digit text, and in about a third of rows a second
+  // number after a comma. `NA` stands for empty. These numbers follow the existing fixtures.
+  const NAUKRI_SHAPE =
+    'Name,Email ID,Phone Number,Annual Salary\n' +
+    '"ONE, SINGLE",one@example.com,9876500001,Rs 11 Lakhs\n' +
+    'Two Numbers,two@example.com,"9876500002, +919876500012",Rs 9 Lakhs\n' +
+    'Empty Second,three@example.com,"9876500003, +91",NA\n' +
+    'Same Twice,four@example.com,"9876500004, +919876500004",NA\n' +
+    'No Name Given,five@example.com,9876500005,NA\n' +
+    'NA,six@example.com,9876500006,NA\n';
+  const NAUKRI_MAPPING = {
+    version: 1 as const,
+    displayName: { from: 'Name', transform: ['trim' as const] },
+    identities: [
+      { kind: 'phone' as const, from: 'Phone Number', transform: ['trim' as const] },
+      { kind: 'email' as const, from: 'Email ID', transform: ['trim' as const, 'lower' as const] }
+    ],
+    defaultCountry: 'IN',
+    unmapped: 'drop' as const
+  };
+
+  it('imports every row, and none is rejected for holding two numbers', async () => {
+    const uploaded = await upload(NAUKRI_SHAPE);
+    const r = await run(uploaded.body.data.id, false, NAUKRI_MAPPING);
+    expect(r.body.data).toMatchObject({ read: 6, created: 6, errors: 0 });
+  });
+
+  it('stores both numbers of a two-number cell on the same contact, first as primary', async () => {
+    const uploaded = await upload(NAUKRI_SHAPE);
+    await run(uploaded.body.data.id, false, NAUKRI_MAPPING);
+    const rows = await db.execute(sql`
+      SELECT ci.value_normalized AS v, ci.is_primary AS p
+      FROM contact_identity ci JOIN contact c ON c.id = ci.contact_id
+      WHERE ci.org_id = ${orgId} AND ci.kind = 'phone' AND c.display_name = 'Two Numbers'
+      ORDER BY ci.is_primary DESC, ci.value_normalized`);
+    expect(rows as unknown as Array<{ v: string; p: boolean }>).toEqual([
+      { v: '+919876500002', p: true }, { v: '+919876500012', p: false }
+    ]);
+  });
+
+  it('ignores a lone +91 and a repeated number instead of failing the row', async () => {
+    const uploaded = await upload(NAUKRI_SHAPE);
+    await run(uploaded.body.data.id, false, NAUKRI_MAPPING);
+    const counts = await db.execute(sql`
+      SELECT c.display_name AS n, count(*)::int AS phones
+      FROM contact_identity ci JOIN contact c ON c.id = ci.contact_id
+      WHERE ci.org_id = ${orgId} AND ci.kind = 'phone'
+        AND c.display_name IN ('Empty Second', 'Same Twice') GROUP BY 1 ORDER BY 1`);
+    expect(counts as unknown as Array<{ n: string; phones: number }>).toEqual([
+      { n: 'Empty Second', phones: 1 }, { n: 'Same Twice', phones: 1 }
+    ]);
+  });
+
+  it('treats NA as a blank name, so the contact is named by its number instead', async () => {
+    const uploaded = await upload(NAUKRI_SHAPE);
+    await run(uploaded.body.data.id, false, NAUKRI_MAPPING);
+    const rows = await db.execute(sql`
+      SELECT count(*)::int AS n FROM contact WHERE org_id = ${orgId} AND display_name = 'NA'`);
+    expect((rows as unknown as Array<{ n: number }>)[0]!.n).toBe(0);
+  });
+
+  it('still fails a row whose only phone is junk, and says so', async () => {
+    const uploaded = await upload('Name,Phone Number\nJunk,1111111111\n');
+    const r = await run(uploaded.body.data.id, false, {
+      ...NAUKRI_MAPPING, identities: [NAUKRI_MAPPING.identities[0]!]
+    });
+    expect(r.body.data).toMatchObject({ read: 1, created: 0, errors: 1 });
+  });
+});
+
+describe('column suggestions and rows to fix', () => {
+  const SHEET =
+    'Name,Mob,Alt,Notes\n' +
+    'A One,9876500001,9876500101,fine\n' +
+    'B Two,"9876500002, 1111111111",NA,fine\n' +
+    'C Three,9876500003,NA,fine\n' +
+    'D Four,not-a-phone,NA,fine\n';
+
+  it('suggests the phone column from the values even though the header is "Mob"', async () => {
+    const uploaded = await upload(SHEET);
+    expect(uploaded.body.data.suggestions).toMatchObject({ phone: 'Mob', name: 'Name' });
+    const mob = uploaded.body.data.columns.find((c: { header: string }) => c.header === 'Mob');
+    expect(mob.phoneShare).toBeGreaterThan(0.7);
+  });
+
+  it('lists the rows that failed, with the value as typed, and the ones that lost a number', async () => {
+    const uploaded = await upload(SHEET);
+    const id = uploaded.body.data.id as string;
+    const mapping = {
+      version: 1 as const,
+      displayName: { from: 'Name', transform: ['trim' as const] },
+      identities: [{ kind: 'phone' as const, from: 'Mob', transform: ['trim' as const] }],
+      defaultCountry: 'IN', unmapped: 'keep' as const
+    };
+    const r = await run(id, true, mapping);
+    expect(r.body.data).toMatchObject({ read: 4, errors: 1, warnings: 1 });
+
+    const detail = await request(app).get(`/api/v1/imports/${id}`).set(...auth());
+    expect(detail.body.data.errors).toHaveLength(1);
+    expect(detail.body.data.errors[0]).toMatchObject({ rowNumber: 4, raw: { Mob: 'not-a-phone' } });
+    expect(detail.body.data.warnings).toHaveLength(1);
+    expect(detail.body.data.warnings[0].note).toContain('1111111111');
+    // Data row 2 is row 3 in the sheet: the header is row 1. The screen adds that one.
+    expect(detail.body.data.warnings[0].rowNumber).toBe(2);
+  });
+});
+
 describe('isolation and the trail', () => {
   it('will not show another tenant’s import', async () => {
     const uploaded = await upload(THREE_ROWS);

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
-import { normalisePhone, type CsvTable } from '@crm/shared';
+import { isBlankMarker, normalisePhoneCell, type CsvTable } from '@crm/shared';
 
 /**
  * Turning a spreadsheet into contacts.
@@ -46,6 +46,8 @@ export interface RowOutcome {
   readonly outcome: 'created' | 'updated' | 'skipped' | 'error';
   readonly contactId: string | null;
   readonly error: string | null;
+  /** A row that imported but lost something (a bad second number). Kept in the ledger's text column. */
+  readonly note?: string | null;
   readonly raw: Record<string, string> | null;
 }
 
@@ -56,6 +58,8 @@ export interface ImportSummary {
   readonly updated: number;
   readonly skipped: number;
   readonly errors: number;
+  /** Rows that imported but dropped something, e.g. a second phone number that was not valid. */
+  readonly warnings: number;
   readonly dryRun: boolean;
 }
 
@@ -99,32 +103,45 @@ interface ResolvedIdentity {
  */
 function identitiesFor(
   row: Record<string, string>, mapping: ImportMapping
-): { identities: ResolvedIdentity[]; error: string | null } {
+): { identities: ResolvedIdentity[]; error: string | null; note: string | null } {
   const identities: ResolvedIdentity[] = [];
+  const notes: string[] = [];
 
   for (const rule of mapping.identities) {
     const raw = applyTransforms(row[rule.from] ?? '', rule.transform);
     // Empty never matches anything. Enforced in the database too, by the CHECK on
     // contact_identity (M7) — a blank cell must not resolve to "the contact with no phone".
-    if (raw === '') continue;
+    // `NA`, `N/A`, `-` and friends mean "no value" in exported sheets, never a value.
+    if (raw === '' || isBlankMarker(raw)) continue;
 
     if (rule.kind === 'phone') {
-      const phone = normalisePhone(raw, mapping.defaultCountry ?? 'IN');
-      if (!phone.ok) {
-        return { identities, error: `${rule.from}: ${phone.message}` };
+      // One cell may hold several numbers (`98…, +91…`); each valid one becomes an identity on the
+      // same contact, in the order written, so the first is the primary.
+      const cell = normalisePhoneCell(raw, mapping.defaultCountry ?? 'IN');
+      if (cell.numbers.length === 0) {
+        // Nothing but a stray country code is an empty cell, not a bad number.
+        if (cell.firstFailure === null) continue;
+        return { identities, error: `${rule.from}: ${cell.firstFailure.message}`, note: null };
       }
-      identities.push({ kind: 'phone', value: phone.value.e164 });
+      if (cell.dropped.length > 0) {
+        notes.push(`${rule.from}: not imported, not a valid number: ${cell.dropped.join(', ')}`);
+      }
+      for (const number of cell.numbers) {
+        if (!identities.some((i) => i.kind === 'phone' && i.value === number.e164)) {
+          identities.push({ kind: 'phone', value: number.e164 });
+        }
+      }
     } else if (rule.kind === 'email') {
       const email = raw.toLowerCase();
       if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
-        return { identities, error: `${rule.from}: "${raw}" is not an email address` };
+        return { identities, error: `${rule.from}: "${raw}" is not an email address`, note: null };
       }
       identities.push({ kind: 'email', value: email });
     } else {
       identities.push({ kind: 'external', value: raw });
     }
   }
-  return { identities, error: null };
+  return { identities, error: null, note: notes.length === 0 ? null : notes.join('; ') };
 }
 
 /**
@@ -146,6 +163,7 @@ export async function runImport(
   }
 ): Promise<ImportSummary> {
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
+  let warnings = 0;
   const rows = input.table.rows;
 
   for (let start = 0; start < rows.length; start += BATCH) {
@@ -159,12 +177,13 @@ export async function runImport(
         const outcome = await importOneRow(tx, input.orgId, rowNumber, row, input.mapping, input.dryRun);
         outcomes.push(outcome);
         counts[outcome.outcome === 'error' ? 'errors' : outcome.outcome] += 1;
+        if (outcome.outcome !== 'error' && outcome.note) warnings += 1;
       }
       await recordRows(tx, input.orgId, input.importRunId, outcomes, input.mapping);
     });
   }
 
-  return { read: rows.length, ...counts, dryRun: input.dryRun };
+  return { read: rows.length, ...counts, warnings, dryRun: input.dryRun };
 }
 
 /** Maps, resolves and (unless this is a dry run) writes one row. Never throws for bad data. */
@@ -173,7 +192,7 @@ async function importOneRow(
   mapping: ImportMapping, dryRun: boolean
 ): Promise<RowOutcome> {
   const raw = mapping.unmapped === 'drop' ? null : row;
-  const { identities, error } = identitiesFor(row, mapping);
+  const { identities, error, note } = identitiesFor(row, mapping);
 
   if (error !== null) {
     return { rowNumber, outcome: 'error', contactId: null, error, raw };
@@ -187,8 +206,9 @@ async function importOneRow(
     };
   }
 
-  const displayName = mapping.displayName === undefined
+  const rawName = mapping.displayName === undefined
     ? '' : applyTransforms(row[mapping.displayName.from] ?? '', mapping.displayName.transform);
+  const displayName = isBlankMarker(rawName) ? '' : rawName;
 
   // First rule that matches an existing contact wins, in the order the mapping declared.
   let contactId: string | null = null;
@@ -204,7 +224,7 @@ async function importOneRow(
   if (dryRun) {
     return {
       rowNumber, outcome: contactId === null ? 'created' : 'updated',
-      contactId, error: null, raw
+      contactId, error: null, note, raw
     };
   }
 
@@ -221,7 +241,7 @@ async function importOneRow(
         VALUES (${orgId}, ${contactId}, ${identity.kind}, ${identity.value}, ${index === 0})
         ON CONFLICT DO NOTHING`);
     }
-    return { rowNumber, outcome: 'created', contactId, error: null, raw };
+    return { rowNumber, outcome: 'created', contactId, error: null, note, raw };
   }
 
   // An existing contact. **A sparse file must never destroy richer data** (M9), so a name is
@@ -245,7 +265,7 @@ async function importOneRow(
 
   const changed = (touched as unknown as unknown[]).length > 0;
   return {
-    rowNumber, outcome: changed ? 'updated' : 'skipped', contactId, error: null, raw
+    rowNumber, outcome: changed ? 'updated' : 'skipped', contactId, error: null, note, raw
   };
 }
 
@@ -258,7 +278,7 @@ async function recordRows(
     await tx.execute(sql`
       INSERT INTO import_row (org_id, import_run_id, row_number, outcome, contact_id, error, raw)
       VALUES (${orgId}, ${importRunId}, ${o.rowNumber}, ${o.outcome}, ${o.contactId},
-              ${o.error}, ${mapping.unmapped === 'drop' || o.raw === null
+              ${o.error ?? o.note ?? null}, ${mapping.unmapped === 'drop' || o.raw === null
                 ? null : JSON.stringify(o.raw)}::jsonb)
       ON CONFLICT (import_run_id, row_number) DO UPDATE
         SET outcome = EXCLUDED.outcome, contact_id = EXCLUDED.contact_id,

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { isMatchableIdentity, normalisePhone } from './phone.js';
+import {
+  isBlankMarker, isMatchableIdentity, normalisePhone, normalisePhoneCell, splitPhoneCell
+} from './phone.js';
 
 describe('normalisePhone', () => {
   it('normalises the same Indian number written five ways to one E.164 value', () => {
@@ -72,5 +74,68 @@ describe('isMatchableIdentity', () => {
     expect(isMatchableIdentity(null)).toBe(false);
     expect(isMatchableIdentity(undefined)).toBe(false);
     expect(isMatchableIdentity('+919876543210')).toBe(true);
+  });
+});
+
+// Fiction-range numbers (+1 202 555 01xx) only: they can never belong to a real person.
+describe('splitPhoneCell', () => {
+  it('splits on comma, semicolon, slash, pipe and line breaks, and nothing else', () => {
+    expect(splitPhoneCell('2025550101, +12025550102')).toEqual(['2025550101', '+12025550102']);
+    expect(splitPhoneCell('2025550101;2025550102/2025550103|2025550104\n2025550105'))
+      .toHaveLength(5);
+    // Spaces and dashes belong inside one number.
+    expect(splitPhoneCell('+1 202-555-0101')).toEqual(['+1 202-555-0101']);
+  });
+});
+
+describe('normalisePhoneCell', () => {
+  it('reads a Naukri-style cell: a bare number, a comma, then a second number', () => {
+    const r = normalisePhoneCell('2025550101, +12025550102', 'US');
+    expect(r.numbers.map((n) => n.e164)).toEqual(['+12025550101', '+12025550102']);
+    expect(r.firstFailure).toBeNull();
+  });
+
+  it('keeps a number written twice only once', () => {
+    const r = normalisePhoneCell('2025550101, +12025550101', 'US');
+    expect(r.numbers.map((n) => n.e164)).toEqual(['+12025550101']);
+  });
+
+  it('ignores a lone country code, which is what an empty second number looks like', () => {
+    const r = normalisePhoneCell('2025550101, +1', 'US');
+    expect(r.numbers.map((n) => n.e164)).toEqual(['+12025550101']);
+    expect(r.firstFailure).toBeNull();
+  });
+
+  it('does not lose a good number to a bad neighbour', () => {
+    const r = normalisePhoneCell('1111111111, 2025550103', 'US');
+    expect(r.numbers.map((n) => n.e164)).toEqual(['+12025550103']);
+  });
+
+  it('reports the failure when no part is usable', () => {
+    const r = normalisePhoneCell('1111111111', 'US');
+    expect(r.numbers).toHaveLength(0);
+    expect(r.firstFailure?.reason).toBe('invalid_for_country');
+  });
+
+  it('still fails text and too-short numbers, which are mistakes rather than empty', () => {
+    expect(normalisePhoneCell('not-a-phone', 'US').firstFailure?.reason).toBe('no_digits');
+    expect(normalisePhoneCell('12345', 'US').firstFailure?.reason).toBe('too_short');
+  });
+
+  it('treats a cell that is only a country code as empty, not as an error', () => {
+    const r = normalisePhoneCell('+1', 'US');
+    expect(r.numbers).toHaveLength(0);
+    expect(r.firstFailure).toBeNull();
+  });
+});
+
+describe('isBlankMarker', () => {
+  it('recognises the markers sheets use for "nothing here", whole cell only', () => {
+    for (const blank of ['NA', 'na', ' N/A ', 'null', 'None', '-', '--']) {
+      expect(isBlankMarker(blank), blank).toBe(true);
+    }
+    for (const real of ['Nair', 'Kana', 'Anita', 'N A', '']) {
+      expect(isBlankMarker(real), real).toBe(false);
+    }
   });
 });

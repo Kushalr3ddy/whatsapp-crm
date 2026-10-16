@@ -6,9 +6,15 @@
 export { loadConfig, ConfigError, type Config } from './config.js';
 export { createLogger, type Logger } from './logger.js';
 export { ok, err, type Result, type Ok, type Err } from './result.js';
-export { normalisePhone, phoneCountry, isMatchableIdentity, type PhoneError } from './phone.js';
+export {
+  normalisePhone, normalisePhoneCell, splitPhoneCell, isBlankMarker, phoneCountry, isMatchableIdentity,
+  type PhoneError, type PhoneCellResult
+} from './phone.js';
 export {
   detectMediaType, safeFilename, UNKNOWN_MEDIA_TYPE, type MediaType
 } from './media-type.js';
+export {
+  profileColumns, suggestColumns, type ColumnProfile, type ColumnSuggestions
+} from './column-guess.js';
 export { parseCsv, parseCsvRows, CsvError, type CsvTable } from './csv.js';
 export { parseXlsxRows, rowsToCsv, looksLikeXlsx } from './xlsx.js';

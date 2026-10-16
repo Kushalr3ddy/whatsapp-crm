@@ -692,6 +692,10 @@ export interface ImportUpload {
   rowCount: number;
   headers: string[];
   sample: Array<Record<string, string>>;
+  /** Columns the server judged to be phone / email / name from their values; null when unsure. */
+  suggestions?: { phone: string | null; email: string | null; name: string | null };
+  /** What each column's sampled values look like (shares are 0 to 1). */
+  columns?: Array<{ header: string; sampled: number; phoneShare: number; emailShare: number }>;
   /** The run this deliberately re-imported (via ?force), or null. */
   reimportOf: string | null;
 }
@@ -703,6 +707,8 @@ export interface ImportSummary {
   updated: number;
   skipped: number;
   errors: number;
+  /** Rows that imported but left something out, e.g. a second phone number that was not valid. */
+  warnings?: number;
   dryRun: boolean;
   /** People tagged by this run, when a tag was asked for on a commit. */
   tagged?: number;
@@ -1026,4 +1032,18 @@ export async function cancelCampaign(id: string): Promise<{ id: string; status: 
   return request<{ id: string; status: string }>(
     `/campaigns/${encodeURIComponent(id)}/cancel`, { method: 'POST' }
   );
+}
+
+/** Rows of a run that could not be imported, and rows that imported with something left out. */
+export interface ImportProblems {
+  errors: Array<{ rowNumber: number; error: string; raw: Record<string, string> | null }>;
+  warnings: Array<{ rowNumber: number; note: string; raw: Record<string, string> | null }>;
+}
+
+/** Fetches the problem rows of a run (after a preview or a commit) so the person can fix them. */
+export async function getImportProblems(id: string): Promise<ImportProblems> {
+  const run = await request<{
+    errors?: ImportProblems['errors']; warnings?: ImportProblems['warnings'];
+  }>(`/imports/${encodeURIComponent(id)}`);
+  return { errors: run.errors ?? [], warnings: run.warnings ?? [] };
 }

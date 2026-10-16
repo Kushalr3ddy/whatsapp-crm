@@ -1,10 +1,10 @@
 'use client';
 
 import { useRef, useState, useTransition } from 'react';
-import { uploadSheet, runSheet } from '@/app/actions';
-import type { ImportUpload, ImportSummary } from '@/lib/crm';
+import { uploadSheet, runSheet, importProblems } from '@/app/actions';
+import type { ImportUpload, ImportSummary, ImportProblems } from '@/lib/crm';
 
-/** Guesses which column holds a field, from its header name — a starting point the user can change. */
+/** Fallback guess from the header name alone, for an older server that sends no value-based suggestion. */
 function guess(headers: string[], patterns: RegExp): string | null {
   return headers.find((h) => patterns.test(h)) ?? null;
 }
@@ -26,6 +26,8 @@ export function ImportPanel() {
   // Optional: tag everyone this file creates or updates (the tag is created if new).
   const [tagName, setTagName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Rows that failed or lost something in the last preview or commit, shown in a box to fix.
+  const [problems, setProblems] = useState<ImportProblems | null>(null);
   const [pending, startTransition] = useTransition();
 
   /** Sends the chosen file, then pre-fills the column pickers from the headers. */
@@ -39,10 +41,13 @@ export function ImportPanel() {
         return;
       }
       const h = result.upload.headers;
+      const suggested = result.upload.suggestions;
       setUpload(result.upload);
-      setPhone(guess(h, /phone|mobile|number|contact|whatsapp/i) ?? h[0] ?? '');
-      setName(guess(h, /name/i) ?? '');
-      setEmail(guess(h, /e-?mail/i) ?? '');
+      setProblems(null);
+      // The server looked at the values; the header name is only the fallback.
+      setPhone(suggested?.phone ?? guess(h, /phone|mobile|number|contact|whatsapp/i) ?? h[0] ?? '');
+      setName(suggested?.name ?? guess(h, /name/i) ?? '');
+      setEmail(suggested?.email ?? guess(h, /e-?mail/i) ?? '');
     });
   }
 
@@ -62,12 +67,16 @@ export function ImportPanel() {
         return;
       }
       setSummary({ result: result.summary, committed: !dryRun });
+      // Anything that failed or lost a number is listed so it can be fixed in the sheet.
+      const found = (result.summary.errors > 0 || (result.summary.warnings ?? 0) > 0)
+        ? await importProblems(upload.id) : null;
+      setProblems(found);
     });
   }
 
   /** Clears everything back to the file picker for another import. */
   function reset() {
-    setUpload(null); setSummary(null); setError(null);
+    setUpload(null); setSummary(null); setError(null); setProblems(null);
     setPhone(''); setName(''); setEmail('');
     if (fileRef.current !== null) fileRef.current.value = '';
   }
@@ -134,6 +143,7 @@ export function ImportPanel() {
 
           <div className="grid grid-cols-[7rem_1fr] items-center gap-x-3 gap-y-2">
             <Picker label="Phone *" value={phone} onChange={setPhone} headers={upload.headers} required />
+            <PhoneHint upload={upload} phone={phone} />
             <Picker label="Name" value={name} onChange={setName} headers={upload.headers} />
             <Picker label="Email" value={email} onChange={setEmail} headers={upload.headers} />
           </div>
@@ -172,6 +182,10 @@ export function ImportPanel() {
             </button>
           </div>
 
+          {summary !== null && problems !== null && (
+            <ProblemBox problems={problems} phoneColumn={phone} committed={summary.committed} />
+          )}
+
           {summary !== null && (
             <div className={[
               'rounded-md border px-3 py-2 text-sm',
@@ -190,6 +204,97 @@ export function ImportPanel() {
               </p>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A line under the Phone picker saying how well the chosen column looks like phone numbers.
+ * Occupies the grid's second column; renders nothing when the server sent no profile (older API).
+ */
+function PhoneHint({ upload, phone }: { upload: ImportUpload; phone: string }) {
+  const profile = upload.columns?.find((c) => c.header === phone);
+  if (profile === undefined || profile.sampled === 0) return null;
+  const pct = Math.round(profile.phoneShare * 100);
+  const poor = profile.phoneShare < 0.5;
+  return (
+    <>
+      <span aria-hidden />
+      <p
+        role={poor ? 'alert' : undefined}
+        className={`-mt-1 text-xs ${poor ? 'text-danger' : 'text-muted'}`}
+      >
+        {poor
+          ? `Only ${String(pct)}% of the values in "${phone}" look like phone numbers. Is this the right column?`
+          : `${String(pct)}% of the values in "${phone}" look like phone numbers.`}
+      </p>
+    </>
+  );
+}
+
+/** Spreadsheet row number: the ledger counts data rows, and the sheet's first row is the header. */
+const sheetRow = (rowNumber: number): number => rowNumber + 1;
+
+/** How many problem rows to list before saying "and N more". */
+const SHOWN = 8;
+
+/**
+ * A small box listing the rows that could not be imported, or lost a number, so the person can
+ * correct the sheet and upload it again rather than discover the gap later. Plain words, the value
+ * as typed, and the row to find it on.
+ */
+function ProblemBox(
+  { problems, phoneColumn, committed }:
+  { problems: ImportProblems; phoneColumn: string; committed: boolean }
+) {
+  const { errors, warnings } = problems;
+  if (errors.length === 0 && warnings.length === 0) return null;
+  const typed = (raw: Record<string, string> | null): string => raw?.[phoneColumn] ?? '';
+  return (
+    <div
+      role="alert" aria-label="Rows to fix"
+      className={`rounded-md border px-3 py-2 text-sm ${errors.length > 0 ? 'border-danger' : 'border-border'}`}
+    >
+      {errors.length > 0 && (
+        <>
+          <p className="font-medium">
+            {errors.length} {errors.length === 1 ? 'row' : 'rows'} couldn’t be imported
+            {committed ? ' and ' + (errors.length === 1 ? 'was' : 'were') + ' left out' : ''}: a number or email in
+            {errors.length === 1 ? ' it' : ' them'} isn’t readable.
+          </p>
+          <p className="mt-0.5 text-muted">
+            {committed
+              ? 'Correct them in your sheet and upload it again to add them.'
+              : 'Correct them in your sheet and upload it again, or import the rest as they are.'}
+          </p>
+          <ul className="mt-2 flex flex-col gap-1 text-xs">
+            {errors.slice(0, SHOWN).map((e) => (
+              <li key={e.rowNumber}>
+                <span className="font-medium">Row {sheetRow(e.rowNumber)}</span>
+                {typed(e.raw) !== '' && <> · “{typed(e.raw)}”</>} · <span className="text-muted">{e.error}</span>
+              </li>
+            ))}
+            {errors.length > SHOWN && <li className="text-muted">…and {errors.length - SHOWN} more.</li>}
+          </ul>
+        </>
+      )}
+      {warnings.length > 0 && (
+        <div className={errors.length > 0 ? 'mt-3' : ''}>
+          <p className="font-medium">
+            {warnings.length} {warnings.length === 1 ? 'row' : 'rows'}{' '}
+            {committed ? (warnings.length === 1 ? 'was' : 'were') : 'would be'} imported without one of{' '}
+            {warnings.length === 1 ? 'its' : 'their'} numbers.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1 text-xs">
+            {warnings.slice(0, SHOWN).map((w) => (
+              <li key={w.rowNumber}>
+                <span className="font-medium">Row {sheetRow(w.rowNumber)}</span> · <span className="text-muted">{w.note}</span>
+              </li>
+            ))}
+            {warnings.length > SHOWN && <li className="text-muted">…and {warnings.length - SHOWN} more.</li>}
+          </ul>
         </div>
       )}
     </div>

@@ -169,7 +169,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));
-  api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES));
+  api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES, deps.config.DEFAULT_COUNTRY));
   api.use('/contacts', contactsRouter(deps.config.DEFAULT_COUNTRY));
   api.use('/tags', tagsRouter());
   api.use('/custom-fields', customFieldsRouter());

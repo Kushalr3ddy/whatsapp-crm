@@ -2,7 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { parseCsv, CsvError, parseXlsxRows, rowsToCsv, looksLikeXlsx } from '@crm/shared';
+import {
+  parseCsv, CsvError, parseXlsxRows, rowsToCsv, looksLikeXlsx, profileColumns, suggestColumns
+} from '@crm/shared';
 import {
   runImport, writeAudit, AUDIT, ensureTag, tagImportRun, type ImportMapping
 } from '@crm/core';
@@ -53,7 +55,7 @@ const runSchema = z.object({
  * then commit. The file never round-trips through the browser, so there is no 50 MB JSON POST
  * and no client-side parsing to disagree with the server's.
  */
-export function importsRouter(storage: StorageDriver, maxBytes: number): Router {
+export function importsRouter(storage: StorageDriver, maxBytes: number, defaultCountry = 'IN'): Router {
   const router = Router();
 
   /**
@@ -165,11 +167,16 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
       });
     });
 
+    const profiles = profileColumns(table.headers, table.rows, defaultCountry);
     res.status(201).json({
       data: {
         id, sha256, rowCount: table.rows.length, headers: table.headers,
         // Straight from the file, so a mapping is built from fact rather than guesswork.
         sample: table.rows.slice(0, 3),
+        // Which column looks like the phone, email and name, judged by the values in the first rows
+        // (not only the header), so the screen can pre-fill the pickers and warn about a bad choice.
+        suggestions: suggestColumns(profiles),
+        columns: profiles,
         reimportOf: previous?.id ?? null
       }
     });
@@ -291,14 +298,20 @@ export function importsRouter(storage: StorageDriver, maxBytes: number): Router 
           SELECT row_number AS "rowNumber", error, raw FROM import_row
           WHERE import_run_id = ${runId} AND outcome = 'error'
           ORDER BY row_number LIMIT 200`);
-        return { run, errors };
+        // Rows that imported but dropped something (a bad second phone number): same text column,
+        // a successful outcome. Shown softly, never as failures.
+        const warnings = await tx.execute(sql`
+          SELECT row_number AS "rowNumber", error AS note, raw FROM import_row
+          WHERE import_run_id = ${runId} AND outcome <> 'error' AND error IS NOT NULL
+          ORDER BY row_number LIMIT 200`);
+        return { run, errors, warnings };
       });
 
       if (result === null) {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such import.'));
         return;
       }
-      res.json({ data: { ...result.run, errors: result.errors } });
+      res.json({ data: { ...result.run, errors: result.errors, warnings: result.warnings } });
     });
 
   return router;
