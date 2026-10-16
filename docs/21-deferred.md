@@ -1584,3 +1584,34 @@ that makes a killed run resumable from the last committed batch.
 **Why parked:** real files so far are well under the ceiling, and the alpha can state it.
 
 **What brings it back:** the real-number pilot with a large export, or the first 524.
+
+---
+
+## D-58 · Public site and launch-readiness checklist — pinned (Kushal, 2026-10-15)
+
+**What:** a list of things a public-facing site or page normally needs, pinned so it is not lost. Kushal's list,
+verbatim in intent:
+
+| # | Item | # | Item |
+|---|---|---|---|
+| 1 | Custom 404 page | 11 | Sticky mobile CTA |
+| 2 | CTA above the fold | 12 | Loading states |
+| 3 | Meta title per page | 13 | Form error states |
+| 4 | Meta description per page | 14 | Thank-you page |
+| 5 | Open Graph image | 15 | Privacy policy page |
+| 6 | Favicon set | 16 | Terms page |
+| 7 | `robots.txt` | 17 | Cookie banner |
+| 8 | `sitemap.xml` | 18 | Analytics installed |
+| 9 | Alt text on every image | 19 | Real contact address |
+| 10 | Mobile breakpoints | | |
+
+**Read this against what the product is.** The CRM is a signed-in application, so most of this list (a CTA,
+Open Graph, a sitemap, a thank-you page, a cookie banner, analytics) belongs to a **public marketing or
+sign-up page** that does not exist yet (signup is D-47). Items that apply to the app itself today: 1 (the app
+has no custom 404), 3 (page titles), 6 (favicon), 9, 10 (mobile breakpoints), 12 (loading states), 13 (form
+error states) and 7 (`robots.txt`, to keep a private tool out of search engines). Items 15 and 16 interact
+with D-16, which was struck out as not this repository's to ship; they come back only with a hosted offering.
+
+**Why parked:** pinned, not scheduled. Nothing here blocks the alpha.
+
+**What brings it back:** a public landing or signup page (D-47), or the hosted offering (D-33).
