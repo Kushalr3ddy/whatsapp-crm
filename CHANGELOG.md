@@ -13,6 +13,15 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-16 — Handoff; local file storage confirmed as the existing barebones version
+- **Checked the codebase and the deferred list for storage:** it already exists on `main` as the port plus a
+  **local filesystem driver** (`./storage`, `/app/storage` in the container), wired end to end: inbound files stored
+  by the gateway, outbound attachments, magic-byte typing, per-org sha256 dedup, authenticated attachment-only
+  serving, audited reads (D-11, D-25). `main` had **no S3 or MinIO driver** (the factory threw "not implemented").
+  #44 adds only that driver and the layout decision; nothing was duplicated.
+- `HANDOFF.md` rewritten for 2026-10-16: merge order of #43 and #44, the unmerged fallback branch, the dev
+  database at migration 0029, the environment problems, and the questions to ask first.
+
 ### 2026-10-16 — S3-compatible file storage alongside local (D-63); file layout decided (D-59)
 - **Built D-63:** `STORAGE_DRIVER=s3` (or `minio`) now builds an S3-compatible `StorageDriver`
   (`packages/providers/storage/s3`) for AWS S3, Cloudflare R2, Backblaze B2 or MinIO. **Default stays
@@ -1005,24 +1014,23 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
 
-1. **Hosting and deployment (D-33, `docs/29`)**: Kushal decides the payment route (UPI for a 4 GB VPS, startup
-   credits, or a first-time account), then the packaging is built: production builds, compose, Caddy, migrations at
-   start, backups. Then the **72-hour datacenter-IP test with one spare number**.
-2. **Real-number pilot**: a spare number for a week, watching the Numbers page (and `/metrics` once D-56 exists).
-3. **D-21 import mapping wizard** (priority): waits for a real Naukri export.
-4. **D-23 inbox search** (priority): design decided (date-range-scoped decrypt-and-scan); still to settle: presets,
-   a ceiling, caching, substring, notes, audit. Not built.
-5. **D-19 message templates** (priority): not started; open design questions.
-6. **Send path speed-ups, proposed and not chosen:** the serial sweep still lets one number's backlog delay every
-   other number; and a fast path (skip the pre-send pause) for the first replies to engaged contacts, which
-   changes the ban profile and needs its own simulation scenario.
-7. **P9 — outbound webhooks, OpenAPI/SDK, shared rate limiting.**
-8. *Pinned:* **D-56** telemetry (metrics, `/metrics`, log shipping) · **D-55** licence enforcement (last) ·
-   **D-47** signup + billing gate + beta override · **D-48** OWASP security tests · **D-49** e2e revamp · **D-50**
-   frontend/backend modularity tests · **D-51** deleted-message tracking · **D-52** delete previous campaigns ·
-   **D-46** UI responsiveness (measure first) · **D-27** opt-out · **D-35/36/40** · **D-34/37/38/39** Meta adapter ·
-   **D-42** AI takeover · **D-43** alert channels · **D-44** Baileys 7 · **D-31** per-org keys (rotation is built) ·
-   remaining D-53 items (workload counts, bulk reassign, inline reassign events).
+1. **Merge #43 (import), then #44 (S3 storage); confirm each is on `main`; then open the fallback PR** (D-60, branch
+   `feat/whatsapp-number-fallback`, migration 0029).
+2. **Hosting and deployment (D-33, `docs/29`, `docs/30`)**: Kushal and the other developer pick the route, then the
+   packaging is finished and the **72-hour datacenter-IP test with one spare number** runs behind the tunnel.
+3. **Real-number pilot**: a spare number for a week, including the first real run of the number fallback.
+4. **File support (D-59) and the central store (D-63)** (priority): decide encryption at rest, then a local-to-bucket
+   copy job, the Files tab, orphan cleanup, retention.
+5. **D-21 import wizard** (priority): several phone columns, join first and last name, map a column to a custom field,
+   drop personal-data columns. The phone-list fix and column scoring are in #43.
+6. **D-23 inbox search** (priority): design decided; six open decisions.
+7. **D-31** per-org keys (rotation is built).
+8. **Proposed, not chosen:** the serial send sweep; a pre-send-pause fast path; D-57 background import before any
+   large file; D-61 lighter web tier; D-62 single executable.
+9. *Pinned:* **D-19** templates (priority withdrawn 2026-10-16) · **D-55** licence · **D-56** telemetry · **D-58** site
+   checklist · **D-47** signup · **D-48** OWASP tests · **D-49** e2e revamp · **D-50** front/back tests · **D-51**
+   deleted messages · **D-52** delete campaigns · **D-46** UI lag · **D-27** opt-out · Meta adapter (**D-34/37/38/39**)
+   · **D-42** AI takeover · **D-43** alert channels · **D-44** Baileys 7 · rest of **D-53**.
 
 ## Blockers (detail in `HANDOFF.md`)
 
