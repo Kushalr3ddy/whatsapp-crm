@@ -13,6 +13,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-16 — Priorities reshuffled; sample headers for the import wizard (docs and a fixture)
+- **D-19 templates withdrawn from the priority list** (Kushal); the entry now says how much templates matter for
+  anti-ban: not a protection on the Baileys path (spintax and the identical-body cap already cover that signal),
+  required on the Meta path.
+- **D-59 file support in chat** added as a priority, with what exists, what is rough and what is missing. It
+  records that web uploads over 1 MB failed until #39.
+- **D-21:** ten header sets from public sources (`tests/fixtures/import-header-samples.json`) and what the
+  current auto-detect does with them. Real Naukri headers are not public. Gaps found: a split first/last name
+  keeps only the first name, and only one phone column is imported.
+
 ### 2026-10-15 — Alpha container, and hardening for a Cloudflare tunnel
 - **Alpha container (#37, #38):** one image runs the API, gateway and web UI; compose adds Postgres. On first
   start it generates its secrets once, migrates, and creates a first admin; no `.env` needed. Works with

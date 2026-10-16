@@ -1,0 +1,143 @@
+{
+  "_note": "Header rows only, no data. Collected 2026-10-16 from public sources to shape the D-21 mapping wizard. 'source' says how far to trust each set: published = a vendor/dataset page lists these exact headers; reported = a help page describes the columns without an exact list; synthetic/assumed = ours.",
+  "sets": [
+    {
+      "name": "datablist customers",
+      "source": "published (datablist.com sample CSVs)",
+      "headers": [
+        "Index",
+        "Customer Id",
+        "First Name",
+        "Last Name",
+        "Company",
+        "City",
+        "Country",
+        "Phone 1",
+        "Phone 2",
+        "Email",
+        "Subscription Date",
+        "Website"
+      ]
+    },
+    {
+      "name": "datablist people",
+      "source": "published (datablist.com sample CSVs)",
+      "headers": [
+        "Index",
+        "User Id",
+        "First Name",
+        "Last Name",
+        "Sex",
+        "Email",
+        "Phone",
+        "Date of birth",
+        "Job Title"
+      ]
+    },
+    {
+      "name": "linkedin recruiter export",
+      "source": "reported (column list from a help article, not an exact header row)",
+      "headers": [
+        "First Name",
+        "Last Name",
+        "Headline",
+        "Location",
+        "Current job title",
+        "Current Company",
+        "Email Address",
+        "Phone number",
+        "Profile URL"
+      ]
+    },
+    {
+      "name": "indian ats bulk template",
+      "source": "reported (Kredily help page lists the fields, not the exact headers)",
+      "headers": [
+        "First Name",
+        "Last Name",
+        "Email",
+        "Phone",
+        "Source",
+        "Current CTC",
+        "Expected CTC",
+        "Notice Period",
+        "Total Experience",
+        "Relevant Experience",
+        "Skills"
+      ]
+    },
+    {
+      "name": "whatsapp bulk sender, style 1",
+      "source": "reported (Pushwoosh / Chakra help pages)",
+      "headers": [
+        "phone_number",
+        "customer_name",
+        "order_amount"
+      ]
+    },
+    {
+      "name": "whatsapp bulk sender, style 2",
+      "source": "reported (Chakra help page)",
+      "headers": [
+        "Name",
+        "Phone Number",
+        "Custom Message"
+      ]
+    },
+    {
+      "name": "justdial-style business list",
+      "source": "reported (scraper output fields)",
+      "headers": [
+        "Name",
+        "Area",
+        "Address",
+        "Phone",
+        "Rating",
+        "Review",
+        "Total Reviews",
+        "Type",
+        "Pincode",
+        "Doc ID",
+        "Web URL",
+        "Verified"
+      ]
+    },
+    {
+      "name": "google forms response sheet",
+      "source": "reported (form fields plus a timestamp)",
+      "headers": [
+        "Timestamp",
+        "Full Name",
+        "Email Address",
+        "Mobile Number",
+        "City"
+      ]
+    },
+    {
+      "name": "naukri-like export",
+      "source": "synthetic (tests/live/naukri-sample.ts); no real Naukri header row was found publicly",
+      "headers": [
+        "Candidate Name",
+        "Mobile Number",
+        "Email ID",
+        "Total Experience",
+        "Current CTC",
+        "Current Location"
+      ]
+    },
+    {
+      "name": "indian hand-made sheet",
+      "source": "assumed: common spellings, not taken from a real file",
+      "headers": [
+        "S.No",
+        "Name of Candidate",
+        "Contact No.",
+        "WhatsApp No",
+        "Alt Mobile",
+        "E-mail",
+        "Qualification",
+        "Pref. Location"
+      ]
+    }
+  ]
+}
