@@ -1,5 +1,7 @@
 # Repository structure
 
+> This is the short sketch. **For every directory and file, see [`docs/31-codebase-map.md`](docs/31-codebase-map.md).**
+
 What belongs where. `packages/shared`, `packages/db`, `packages/core`, `channels/baileys`,
 `providers/{storage,kms}`, and `apps/{api,gateway,web}` carry code; the remaining packages
 (`worker`, `sdk`, `antiban` as its own package, the other channels, ingestion connectors and

@@ -689,6 +689,8 @@ are fine as they are; this is additive on top, not a rewrite of them.
 
 ## D-20 · SQLite support for single-machine deployments
 
+> **See D-64** for the measured inventory of what depends on Postgres, and the shape a portable layer would take.
+
 **What:** the option to run this against **SQLite** instead of Postgres, for a customer who
 installs it as a self-contained module on their own machine rather than pointing it at a
 centralised database.
@@ -1862,3 +1864,46 @@ are already org-prefixed) or one per org; whether to also keep a local copy duri
 
 **Why a priority:** raised together with file support in chat (D-59); the alpha's local disk will not survive a
 move to a split deployment (D-33).
+
+---
+
+## D-64 · Database portability: move the database-side logic into the app so other databases can work — pinned (Kushal, 2026-10-16)
+
+**The question asked:** was the code written only for Postgres, and should every function, trigger and bit of
+database-side logic move into the JavaScript so it could run on, say, SQLite (which has no such features)?
+
+**Answer: it is written for Postgres, deliberately and deeply.** Measured on `main`, 2026-10-16:
+
+| What leans on Postgres | How much |
+|---|---|
+| **Row-level security** (the tenant isolation: 24 policies, `ENABLE`/`FORCE` on every tenant table) and the role switch that makes it apply (`SET LOCAL ROLE crm_app` plus `set_config('app.org_id', …)` in `apps/api/src/tenant.ts`, `apps/gateway/src/tenant.ts`, `packages/db/src/security-check.ts`) | The foundation of multi-tenancy. A forgotten `WHERE org_id` is a denied read, not a leak. SQLite has nothing equivalent |
+| **`LISTEN`/`NOTIFY`**: the gateway's command channel (`apps/gateway/src/main.ts`, `work.ts`), woken by the trigger function `notify_gateway()` and three triggers (`channel_session_link_requested`, `channel_session_unlink_requested`, `message_queued`) | How the API tells the gateway to send, link or unlink without polling. SQLite has no notifications; it would be polling |
+| **Database functions**: `notify_gateway()` and `envelope_key_version()` (an indexed expression) | 2, in 3 of the 29 migrations |
+| **`FOR UPDATE … SKIP LOCKED`** in campaign dispatch (`packages/core/src/campaigns.ts`) and `FOR UPDATE` in the campaigns route | Safe concurrent claiming of campaign recipients |
+| **Postgres types and operators** in the schema and the queries: `jsonb` and `->>`, arrays, `bytea`, `uuid`, `timestamptz` casts, `gen_random_uuid()`, `now()`, `interval`, `ON CONFLICT`, `RETURNING`, `LATERAL`, partial indexes, `FILTER (WHERE …)`, `unnest`/`ANY` | 41 files of application code use raw SQL (the `sql` template tag) at about 254 `execute()` call sites; the schema is Drizzle's **`pg-core`** (`packages/db/src/schema.ts`); the driver is `postgres` (`packages/db/src/client.ts`) |
+| **Privileges and roles**: a restricted `crm_app` role, `REVOKE UPDATE, DELETE` on the audit log | Part of the security model, not a convenience |
+
+So moving "the functions and triggers into JS" is **not a small refactor**. The two functions and three triggers are
+the easy part (the notify trigger becomes an in-process call or a polling loop). The hard parts are **tenant
+isolation**, which is enforced by the database today and would have to be enforced by hand on every query
+(exactly the failure mode M-series defects came from), and **every raw query**, which would need a portable form.
+It would also lose guarantees that are tested today: the "no `org_id` filter at all" isolation tests and the
+append-only audit log.
+
+**Shape if it is ever done (a decision, not a plan):**
+1. A `DbDriver` seam like the other ports (`docs/18-providers.md`): Postgres adapter keeps RLS and `NOTIFY`; a second
+   adapter does application-level tenant scoping and polling.
+2. Replace raw SQL with a portable query layer (Drizzle's query builder, which D-1b already parks) one module at a
+   time, with the integration suite run against both.
+3. Treat tenant isolation as an application-enforced property with its own cross-tenant test sweep (D-48).
+It matches **D-20** (SQLite for single-machine installs): a single-tenant, one-machine SQLite mode is far smaller
+than a portable multi-tenant core, because with one tenant there is no isolation to re-implement.
+
+**Why parked:** the product is multi-tenant on Postgres by decision (2026-09-27), the alpha runs on a Postgres
+container, and nothing asks for another database. It is a re-architecture, not a flag.
+
+**What brings it back:** a concrete need to ship a single-machine install without Postgres (D-20), or a managed
+database that cannot run these features.
+
+**Cost of deferring:** it grows with every new raw query and trigger. New database-side logic should stay behind the
+helpers that already wrap it (`setTenant`, the gateway command channel) rather than spread.

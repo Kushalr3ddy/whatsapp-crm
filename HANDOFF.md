@@ -69,16 +69,20 @@ Cloudflare-tunnel hardening** (1 MB upload cap fixed, client IP forwarded, optio
 chat (priority), D-19 templates back to deferred, D-21 real Naukri analysis, D-57 background import, D-58 site
 checklist.
 
-**Open, in the order to merge them:**
-1. **#43 import** (`feat/import-phone-lists`): a phone cell may hold several numbers, `NA` is blank, columns are
-   chosen from the values, and a "rows to fix" box lists failed rows. **Merge this first.**
-2. **#44 S3 storage** (`feat/s3-storage`, this handoff included): an S3-compatible `StorageDriver` next to the local
-   one, default stays local; D-59 layout decision; D-63. Touches `config.ts`, `.env.example` and the end of
-   `docs/21-deferred.md`, so expect a small conflict with #43 and the fallback branch.
-3. **No PR yet: `feat/whatsapp-number-fallback`** (stacked on #43, **open its PR only after #43 is on `main`**):
-   D-60, for a contact with several numbers, ask WhatsApp (`onWhatsApp`) before the first send and message the first
-   number that has an account; migration **0029**; plus pins D-61 (plain React with refresh buttons instead of Next on
-   most pages) and D-62 (single executable). Tested with the fake channel only.
+**Merged since the last handoff, confirmed on `main` (2026-10-16):** **#43 import** (several phone numbers per
+cell, `NA` as blank, columns chosen from the values, rows-to-fix box) and **#44 S3 storage** (S3-compatible driver
+next to the local one, default local; D-59 layout decision; D-63; the 2026-10-16 handoff). `main` was checked after
+the merges: the new files are there and the full check passes (701 tests, 1 skipped without an S3 endpoint).
+
+**Open, in the order to do them:**
+1. **`feat/whatsapp-number-fallback` has no PR yet and now can have one** (#43 is on `main`). It carries D-60 (for a
+   contact with several numbers, ask WhatsApp `onWhatsApp` before the first send and message the first number that
+   has an account), migration **0029**, and pins D-61 (plain React with refresh buttons instead of Next) and D-62
+   (single executable). First `git fetch`, merge `origin/main` into it (expect conflicts in `config.ts`,
+   `.env.example`, `CHANGELOG.md` and the end of `docs/21-deferred.md`, where each side appended; D-63 and D-64 are
+   already taken, D-60 to D-62 are its own), run the full `verify`, then open the PR against `main`. Tested with the
+   fake channel only.
+2. **This docs PR** (`docs/handoff-and-codebase-map`): D-64, the codebase map, this handoff. Docs only.
 
 **Dev environment state:**
 - **The dev database is at migration 0029**, ahead of `main` (0028). A checkout without that migration makes the API
@@ -92,7 +96,7 @@ checklist.
   secrets into a `state` volume, creates a first admin (password in `npm run alpha:logs` once). Ports 3000/3001, Postgres on
   loopback 5434. `npm run alpha:tunnel` adds a Cloudflare tunnel (`TUNNEL_TOKEN`). Read `docs/30` before
   publishing it. Tested through `docker-compose` 1.29; the v2 plugin path is untested.
-- Test counts: 670 on `main`, 694 with #43, 701 with the fallback, 677 (+1 skipped without an S3 endpoint) on #44.
+- Test counts: **701 on `main` (+1 skipped without an S3 endpoint)**; the fallback branch adds a few more.
 
 **Open decisions and pending (nothing here is built unless marked):**
 - **Hosting (D-33, `docs/29`)**: no VPS chosen; he is talking it over with the other developer. Cheapest 4 GB option
@@ -103,7 +107,9 @@ checklist.
   first+last name joined, a column mapped to a custom field, dropping personal-data columns), **D-23 inbox search**
   (design decided, six open decisions), **D-31** per-org keys. **D-19 templates were withdrawn from the priority
   list** (the entry says how much they matter for anti-ban: not a protection on the Baileys path, required on Meta).
-- **Pinned, not built:** D-55 licence enforcement · D-56 telemetry (an external uptime check plus a "no data" alert is
+- **Pinned, not built:** **D-64 database portability** (the code is written for Postgres on purpose: row-level
+  security, `LISTEN`/`NOTIFY`, 2 functions, 3 triggers, `SKIP LOCKED`, `jsonb`, raw SQL in 41 files; moving it into
+  the app so SQLite could work is a re-architecture, inventory in D-64; relates to D-20) · D-55 licence enforcement · D-56 telemetry (an external uptime check plus a "no data" alert is
   how to be told it is down) · D-57 import commit as a background job (Cloudflare 524 ceiling about 40,000 rows) ·
   D-58 public-site checklist · D-46 UI laggy (partly explained by #40; D-61 is the larger answer) · D-47 signup ·
   D-48 OWASP tests · D-49 e2e revamp · D-50 front/back independence · D-51 deleted-message tracking · D-52 delete
@@ -126,7 +132,8 @@ checklist.
 - MinIO's images can no longer be pulled from Docker Hub or Quay; use `motoserver/moto` as the S3 test server.
 - The Cloudflare 100 s timeout, upload caps, server-action origin checks and the rest are in `docs/30`; the first
   deploy through a real tunnel is untested.
-- `npm run db:docs` writes the schema map; `npm run keys`, the Security page and `npm run admin` are unchanged.
+- **`docs/31-codebase-map.md` explains every directory and file** (built from each file's header comment; regenerate
+  rather than hand-edit). `npm run db:docs` writes the schema map; `npm run keys`, the Security page and `npm run admin` are unchanged.
 
 Everything below is the full state. Working style and commit conventions are at the very bottom.
 
@@ -553,13 +560,13 @@ The detailed, dated record is [`CHANGELOG.md`](CHANGELOG.md). Since 2026-10-11 (
 presence (#26–#28); the fake-gateway and fixture fixes (#29); the schema visualizer (#30); the two-role pipeline
 (#31); typing and the send-anyway warning (#32); held messages released on time plus a double-send race and a
 ceiling overshoot (#33); the gateway inside each org's tenant (#34); key rotation with its wizard (#35); then, as
-docs only, logging and telemetry (`docs/28`), the free hosting plan (`docs/29`), D-56, and the D-23 search decision; then the alpha container (#37, #38), Cloudflare hardening (#39, `docs/30`), the contacts page size fix (#40) and the priority and import-header docs (#41). Open: #43 (import), #44 (S3 storage), and the number-fallback branch.
+docs only, logging and telemetry (`docs/28`), the free hosting plan (`docs/29`), D-56, and the D-23 search decision; then the alpha container (#37, #38), Cloudflare hardening (#39, `docs/30`), the contacts page size fix (#40) and the priority and import-header docs (#41). then #43 (import) and #44 (S3 storage), both merged 2026-10-16. Still unmerged: the number-fallback branch.
 
 ---
 
 ## Next
 
-**The order, remaining:** (1) **merge #43, then #44**, confirm each is on `main`, then open the fallback PR;
+**The order, remaining:** (1) **open the fallback PR** (merge `origin/main` into `feat/whatsapp-number-fallback`, run `verify`);
 (2) **hosting**: he picks a route with the other developer, then packaging is finished and one spare number is
 tested for 72 hours on the new host, behind the Cloudflare tunnel checklist in `docs/30`; (3) the **real-number
 pilot** (a week), including the first run of the number fallback; (4) priorities: **D-59/D-63** (encryption
