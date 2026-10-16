@@ -13,6 +13,18 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-16 (end of session) — Handoff, codebase map, database portability pinned
+- **#43 and #44 merged and confirmed on `main`**; the full check passes there (701 tests, 1 skipped without an S3
+  endpoint).
+- **`docs/31-codebase-map.md`**: every directory and file in the repository (420 files) and what it is for, built from
+  each file's own header comment with hand-written folder descriptions. `STRUCTURE.md` points to it.
+- **Pinned D-64: database portability.** Asked whether the code is Postgres-only and whether the database-side logic
+  could move into the app so SQLite would work. It is Postgres-only on purpose: 24 row-level-security policies and
+  the role switch behind tenant isolation, `LISTEN`/`NOTIFY` with 1 function and 3 triggers, `SKIP LOCKED`, `jsonb`,
+  arrays and raw SQL in 41 files. Moving it is a re-architecture, not a refactor; D-64 holds the measured inventory
+  and the shape a portable layer would take, and D-20 now points to it.
+- **Handoff:** the fallback branch can now get its PR (it was waiting on #43); first steps listed in `HANDOFF.md`.
+
 ### 2026-10-16 — Handoff; local file storage confirmed as the existing barebones version
 - **Checked the codebase and the deferred list for storage:** it already exists on `main` as the port plus a
   **local filesystem driver** (`./storage`, `/app/storage` in the container), wired end to end: inbound files stored
@@ -1025,8 +1037,8 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
 
-1. **Merge #43 (import), then #44 (S3 storage); confirm each is on `main`; then open the fallback PR** (D-60, branch
-   `feat/whatsapp-number-fallback`, migration 0029).
+1. **Open the fallback PR** (D-60, branch `feat/whatsapp-number-fallback`, migration 0029): merge `origin/main` into it,
+   resolve the appended-section conflicts, run `verify`. (#43 and #44 are merged.)
 2. **Hosting and deployment (D-33, `docs/29`, `docs/30`)**: Kushal and the other developer pick the route, then the
    packaging is finished and the **72-hour datacenter-IP test with one spare number** runs behind the tunnel.
 3. **Real-number pilot**: a spare number for a week, including the first real run of the number fallback.
@@ -1038,7 +1050,7 @@ In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
 7. **D-31** per-org keys (rotation is built).
 8. **Proposed, not chosen:** the serial send sweep; a pre-send-pause fast path; D-57 background import before any
    large file; D-61 lighter web tier; D-62 single executable.
-9. *Pinned:* **D-19** templates (priority withdrawn 2026-10-16) · **D-55** licence · **D-56** telemetry · **D-58** site
+9. *Pinned:* **D-64** database portability · **D-19** templates (priority withdrawn 2026-10-16) · **D-55** licence · **D-56** telemetry · **D-58** site
    checklist · **D-47** signup · **D-48** OWASP tests · **D-49** e2e revamp · **D-50** front/back tests · **D-51**
    deleted messages · **D-52** delete campaigns · **D-46** UI lag · **D-27** opt-out · Meta adapter (**D-34/37/38/39**)
    · **D-42** AI takeover · **D-43** alert channels · **D-44** Baileys 7 · rest of **D-53**.

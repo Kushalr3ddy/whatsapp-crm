@@ -7,6 +7,9 @@
 #   npm run verify -- --no-sim  skip the 4-minute anti-ban simulation
 #   npm run verify -- --no-e2e  skip the browser suite and the scripted flow
 #
+# Footprint: while it runs, memory used, load and inotify instances are sampled every 5 s. One summary line
+# per run (with the peak of each stage) is appended to ./verify-footprint.log (git-ignored).
+#
 # Safety: the browser stage starts its OWN stack with GATEWAY_CHANNEL=fake, so nothing can reach
 # WhatsApp. It refuses to run if something already listens on :3000 or :3001 (that could be a real
 # gateway), so stop `npm run dev:all` first.
@@ -30,11 +33,30 @@ STACK_PID=""
 
 now() { date +%s; }
 
+# ── footprint sampler ─────────────────────────────────────────────────────────────────────
+# Samples every 5 s: "<stage>,<used MB>,<load1>,<inotify instances>". "Used" is total minus available,
+# so page cache does not count. The inotify count covers this user's processes only (the system limit
+# is fs.inotify.max_user_instances, which has run out on this machine before).
+FP_CSV="$LOG_DIR/footprint.csv"; FP_STAGE="$LOG_DIR/.stage"; FP_PID=""
+echo "setup" >"$FP_STAGE"
+footprint_sampler() {
+  while :; do
+    local used load ino
+    used=$(awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{printf "%d",(t-a)/1024}' /proc/meminfo)
+    load=$(cut -d' ' -f1 /proc/loadavg)
+    ino=$(find /proc/[0-9]*/fd -lname 'anon_inode:inotify' 2>/dev/null | wc -l)
+    echo "$(cat "$FP_STAGE" 2>/dev/null),$used,$load,$ino" >>"$FP_CSV"
+    sleep 5
+  done
+}
+footprint_sampler & FP_PID=$!
+
 # Runs one stage, records pass/fail and how long it took; output goes to a per-stage log.
 stage() {
   local name="$1"; shift
   local log="$LOG_DIR/$(echo "$name" | tr ' /' '__').log"
   printf '▶ %-34s' "$name"
+  echo "$name" >"$FP_STAGE"
   local t0; t0=$(now)
   if "$@" >"$log" 2>&1; then
     local dt=$(( $(now) - t0 )); NAMES+=("$name"); STATUS+=("PASS"); TIMES+=("$dt")
@@ -59,7 +81,7 @@ stop_stack() {
   pkill -TERM -f "next dev apps/web" 2>/dev/null || true
   STACK_PID=""
 }
-trap stop_stack EXIT
+trap 'stop_stack; [ -n "$FP_PID" ] && kill "$FP_PID" 2>/dev/null' EXIT
 
 port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
@@ -118,4 +140,18 @@ for i in "${!NAMES[@]}"; do
 done
 echo "└──────────────────────────────────────────────────────────────┘"
 if [ "$FAILED" = 0 ]; then echo "ALL GOOD"; else echo "FAILED — logs: $LOG_DIR"; fi
+
+# ── footprint report ──────────────────────────────────────────────────────────────────────
+kill "$FP_PID" 2>/dev/null; FP_PID=""
+if [ -s "$FP_CSV" ]; then
+  FP_LOG="verify-footprint.log"
+  read -r FP_N FP_PEAK FP_AVG FP_LOAD FP_INO < <(awk -F, '
+    {n++; s+=$2; if($2>m)m=$2; if($3>l)l=$3; if($4>i)i=$4}
+    END{printf "%d %d %d %.2f %d\n", n, m, s/n, l, i}' "$FP_CSV")
+  FP_STAGES=$(awk -F, '{if($2>m[$1])m[$1]=$2} END{for(k in m)printf "%s=%dMB; ",k,m[k]}' "$FP_CSV")
+  TOTAL_MB=$(awk '/MemTotal/{printf "%d",$2/1024}' /proc/meminfo)
+  LINE="$(date '+%F %T') | $(git rev-parse --abbrev-ref HEAD) | $([ "$FAILED" = 0 ] && echo PASS || echo FAIL) | args: ${*:-none} | $FP_N samples | mem used peak ${FP_PEAK}/${TOTAL_MB} MB, avg ${FP_AVG} MB | load1 peak ${FP_LOAD} (${CORES:-$(nproc)} cores) | inotify peak ${FP_INO}/$(cat /proc/sys/fs/inotify/max_user_instances) | per stage peak: ${FP_STAGES}"
+  echo "$LINE" >>"$FP_LOG"
+  echo "footprint: mem peak ${FP_PEAK}/${TOTAL_MB} MB · load peak ${FP_LOAD} · inotify peak ${FP_INO} → $FP_LOG"
+fi
 exit "$FAILED"
