@@ -512,6 +512,8 @@ cannot touch your linked numbers or stored messages.
 | Message stays `queued` | The gateway is not running, or the number is not linked |
 | `npm run web:build` fails while the UI is running | Both write `apps/web/.next`. Stop one |
 | Migrations land in the wrong database | There is a **second Postgres on 5432** on this machine. This project uses **5434** |
+| API and gateway refuse to start: "database ahead of the code" | A newer migration was applied from another branch (the dev database is at 0029 from the number-fallback branch). Use that branch, or ask before rolling the migration back |
+| The browser stage of `verify` never starts, `EMFILE: too many open files` in `stack.log` | The machine's inotify instance limit (`fs.inotify.max_user_instances`, 128) is used up by other programs. Run `WATCHPACK_POLLING=true npm run verify`; the real fix is raising that system setting |
 | Everything returns empty for a real org | Check the `rls:` line — a wrong tenant role shows up as silence, not an error |
 
 Never `cp .env.example .env` over a working install. It destroys `ENCRYPTION_KEY`, and with it

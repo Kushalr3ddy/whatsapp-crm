@@ -11,7 +11,8 @@ either the bundled Postgres or a managed one. Right instinct; this generalises i
 ## The matrix
 
 > **What is actually implemented**, since this table describes the intent: `kms/local`,
-> `auth/builtin` and `storage/filesystem`, and `storage` is now wired end to end: the gateway
+> `auth/builtin`, `storage/filesystem` and `storage/s3` (any S3-compatible bucket: AWS S3, Cloudflare R2,
+> Backblaze B2, MinIO; `STORAGE_DRIVER=s3` or `minio`, default still `filesystem`; D-63), and `storage` is now wired end to end: the gateway
 > writes attachments through it and the API serves them back. Every other port below is an
 > empty directory — the
 > interface is not written, let alone a driver. `storage` and `channels` are the two with a
