@@ -97,6 +97,35 @@ Treat it as an experiment, not the plan.
 
 ---
 
+## 1b · Cheapest paid option on each provider (added 2026-10-15)
+
+Asked for after the free options ran out: what a 4 GB box (the size section 2 says is comfortable for 10
+numbers) costs on each cloud and on the obvious budget hosts. **How far to trust this:** prices come from
+comparison sites and calculators dated 2026, not from each vendor's own page; they exclude tax, move often
+(Hetzner raised prices on 1 April 2026), and a region changes them. Re-check at checkout.
+
+| Provider | Smallest box that fits 4 GB | Roughly per month | Notes |
+|---|---|---|---|
+| **Hetzner Cloud** | CX23: 2 vCPU, 4 GB, 40 GB, 20 TB traffic (Arm CAX11 is €4.49) | **about €4** (€3.99; €4.49 with an IPv4 address) | The cheapest real 4 GB option here by a wide margin. Germany and Finland (and a few non-EU sites at higher prices, not checked). Far from Indian phones, and a datacenter IP: run the section 8 test first. Payment and sign-up checks not verified |
+| **India-based VPS** (MilesWeb, Inservers and similar) | 4 GB plans | **about ₹430 to ₹880** | The same tier B as section 1a: UPI, rupees, Mumbai region, GST invoice. Plan sizes at the low end were not confirmed, so check that "₹430" really is 4 GB |
+| **OVH** | VPS-2: 4 vCPU, 8 GB | about $10 | More machine than needed; secondary source |
+| **Contabo** | Cloud VPS 2: 6 vCPU, 16 GB | about $11 | Cheap per GB, but shared and oversubscribed hosts are the usual complaint; secondary source |
+| **AWS** | EC2 t4g.small (2 vCPU, **2 GB**) at about $12/month on demand; Lightsail 2 GB at $12 | **$12 for 2 GB** | 2 GB is the floor for a few numbers, not ten. t4g.small has a free trial of 750 h/month **until 31 December 2026** (secondary source), which needs an AWS account that is eligible and a working card. Lightsail's first 3 months are free on its $5, $7 and $12 plans |
+| **Azure** | B2pls_v2 (2 vCPU Arm, 4 GB) | **about $16** in the cheapest regions; B2als_v2 (x86) about $18 in Central India | Dearest 4 GB of the big three after GCP; the 12-month free account in section 3 is the only way it is cheap |
+| **GCP** | e2-medium (2 vCPU, 4 GB) | **about $40** in us-central1 | Dear for always-on use. The Always Free e2-micro (section 1a, tier A) is the only cheap route |
+
+**Reading it.** Per month for a 4 GB box: Hetzner at about €4, an Indian VPS at about ₹430 to ₹880, Azure
+about $16, AWS about $24 for the same 4 GB (extrapolated, not confirmed), GCP about $40. For the alpha the
+real choice is between **an Indian VPS you can pay with UPI** (right region, rupees) and **Hetzner** (cheapest,
+needs a card or PayPal and sits far from the phones). The big three are for credits, not for price.
+
+**Anywhere else works the same way.** Any machine with 4 GB, Docker and outbound internet runs the alpha
+container unchanged (`npm run alpha:up`), and `npm run alpha:tunnel` publishes it through a Cloudflare Tunnel
+with no open inbound ports ([30 · Cloudflare Tunnel](30-cloudflare-tunnel.md)). That also means a spare
+laptop or a mini PC at someone's home is a valid host if the section 8 test says datacenter IPs are trouble.
+
+---
+
 ## 2 · What the system needs
 
 Measured in [19 · Capacity](19-capacity.md), one number:
@@ -334,3 +363,9 @@ Both deployment folders (`infra/docker`, `infra/compose`) are empty today. Rough
 - AWS Activate: <https://aws.amazon.com/activate/credits>
 - Google for Startups Cloud Program (secondary summary): <https://hub.causo.ai/startup-cloud-credits-compared-2026>
 - Microsoft for Startups Founders Hub (Microsoft Q&A on eligibility): <https://learn.microsoft.com/en-in/answers/questions/5912941/eligibility-for-microsoft-for-startups-founders-hu>
+- Hetzner Cloud prices after the April 2026 change (secondary): <https://findstack.com/resources/hetzner-price-increase-2026> and <https://agentdeals.dev/hetzner-pricing-2026>
+- AWS Lightsail pricing (secondary): <https://kuberns.com/blogs/aws-lightsail-pricing-your-comprehensive-guide/>
+- EC2 t4g.small price and free trial to end of 2026 (secondary): <https://calculator.holori.com/aws/ec2/t4g.small> and <https://dev.classmethod.jp/en/articles/ec2-t4g-small-free-tier-2026/>
+- Azure B-series VM prices (secondary): <https://www.azurespeed.com/AzureVmPricing/Series/Bpsv2> and <https://calculator.holori.com/azure/vm/standard-b2als-v2>
+- GCP e2-medium price (secondary): <https://calculator.holori.com/gcp/vm/e2-medium>
+- Indian VPS price comparison (secondary): <https://www.techplained.com/cheapest-vps-india> and <https://gbnodes.host/blogs/cheap-vps-india-2026/>

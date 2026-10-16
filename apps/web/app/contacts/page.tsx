@@ -143,6 +143,9 @@ export default async function ContactsPage(
           {contacts.length >= 50 ? ' (the first page)' : ''}. Tick people to build a campaign or tag them.
         </p>
       )}
+      <datalist id="all-tags">
+        {tags.map((t) => <option key={t.id} value={t.name} />)}
+      </datalist>
     </main>
   );
 }
@@ -364,7 +367,6 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
   const email = contact.identities.find((i) => i.kind === 'email')?.value;
   const name = contact.displayName ?? phone ?? email ?? 'Unnamed contact';
   const attached = new Set(contact.tags.map((t) => t.id));
-  const available = allTags.filter((t) => !attached.has(t.id));
   // A do-not-contact person cannot be messaged, so they cannot be picked into a campaign.
   const pickable = !contact.doNotContact;
 
@@ -418,13 +420,15 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
               ))}
             </details>
           )}
-          {available.length > 0 && (
+          {/* One shared <datalist id="all-tags"> serves every row's input; per-row <select>s of
+              every tag made the page grow as people x tags (5.7 MB at 50 people and 129 tags). */}
+          {allTags.length > attached.size && (
             <form action={attachTagAction} className="inline-flex items-center gap-1">
               <input type="hidden" name="contactId" value={contact.id} />
-              <select name="tagId" aria-label="Add a tag" defaultValue="" className="field field-sm">
-                <option value="" disabled>+ tag…</option>
-                {available.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <input
+                name="tagName" list="all-tags" aria-label="Add a tag" placeholder="+ tag…"
+                autoComplete="off" className="field field-sm"
+              />
               <button type="submit" className="btn btn-sm">Add</button>
             </form>
           )}

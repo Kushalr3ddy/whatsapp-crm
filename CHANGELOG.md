@@ -34,6 +34,15 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   now `bodySizeLimit: 25mb`. The client's address is now passed to the API (`CF-Connecting-IP`), so audit rows
   stop recording 127.0.0.1.
 - **Pinned D-57:** run the import commit as a background job (the 524 ceiling is about 40,000 rows).
+- **Contacts page size, and the `bulk-tag-flow` e2e failure.** Each row rendered a `<select>` of every tag, so the
+  page grew as people x tags (5.7 MB and about 10 s in `next dev` at 50 people and 129 tags), which is what pushed
+  the spec past its 10 s limit. Now one shared `<datalist>`; the row input is resolved by tag name in the action.
+  Spec passed 3 of 3 against the dev database. Production render was about 0.8 s even before.
+- **Cleaned the dev database's e2e leftovers** (e2e-test org only): 74 `E2E` campaigns, 109 `e2e-` tags, 96 import
+  runs, 6 custom fields and 4 contacts that existed only because of them. The real number's data and `Live
+  broadcast` campaigns were not touched.
+- **Docs:** cheapest 4 GB option per provider added to `docs/29` (section 1b); **D-58** pins Kushal's public-site
+  checklist.
 - Found while testing: a PR merged before its last commits were pushed, and a stale local `main`. See the
   handoff gotchas; check `git log origin/main` for the code after every merge.
 
