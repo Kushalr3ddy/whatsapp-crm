@@ -12,6 +12,8 @@ interface Tab {
   label: string;
   icon: ReactNode;
   soon?: boolean;
+  /** Shown only to admins. */
+  adminOnly?: boolean;
 }
 
 /** A 20px stroke icon. Decorative, so hidden from assistive tech — the label carries the meaning. */
@@ -52,6 +54,10 @@ const TABS: Tab[] = [
     icon: <Icon><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" /></Icon>
   },
   {
+    href: '/team', label: 'Team', adminOnly: true,
+    icon: <Icon><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M17 8v6M14 11h6" /></Icon>
+  },
+  {
     href: '/security', label: 'Security',
     icon: <Icon><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Icon>
   },
@@ -68,7 +74,7 @@ const TABS: Tab[] = [
  * nowhere — it makes the shape of the product legible, and makes it obvious that broadcasting
  * is a separate place rather than something that will appear inside the inbox.
  */
-export function Nav({ alerts = 0 }: { alerts?: number }) {
+export function Nav({ alerts = 0, isAdmin = false }: { alerts?: number; isAdmin?: boolean }) {
   const pathname = usePathname();
 
   // Nothing to navigate to, and no one to sign out, before signing in.
@@ -85,7 +91,7 @@ export function Nav({ alerts = 0 }: { alerts?: number }) {
       </Link>
 
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto md:flex-none md:flex-col md:items-stretch md:overflow-visible">
-        {TABS.map((tab) => {
+        {TABS.filter((tab) => tab.adminOnly !== true || isAdmin).map((tab) => {
           const active = tab.href === '/' ? pathname === '/' : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
           return (
             <Link

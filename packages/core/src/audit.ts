@@ -87,6 +87,9 @@ export const AUDIT = {
   passwordChanged: 'auth.password.changed',
   orgCreated: 'org.created',
   userAdded: 'user.added',
+  userRoleChanged: 'user.role.changed',
+  userDisabled: 'user.disabled',
+  userEnabled: 'user.enabled',
   apiKeyIssued: 'api_key.issued',
   apiKeyRevoked: 'api_key.revoked',
 

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { listConversations, listSenders, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
@@ -75,8 +76,9 @@ export default async function InboxLayout({ children }: { children: ReactNode })
 
         {failure === null && connected.length === 0 && (
           <p className="border-b border-border px-4 py-3 text-xs text-muted">
-            Nothing can be sent until a number is linked. Run <code>npm run gateway</code>, then{' '}
-            <code>npm run wa:link</code> and scan the QR. Messages sent meanwhile stay queued.
+            Nothing can be sent until a number is linked. Add one on the{' '}
+            <Link href="/link" className="underline underline-offset-2">Numbers page</Link> and scan its QR.
+            Messages sent meanwhile stay queued.
           </p>
         )}
 
