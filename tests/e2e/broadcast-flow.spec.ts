@@ -47,7 +47,7 @@ test.describe('the broadcast flow, in the browser', () => {
     await page.request.post(`${API}/contacts/${contactId}/tags`, { headers, data: { tagId } });
 
     // The flow itself, through the UI.
-    await nav(page).getByRole('link', { name: 'Broadcast', exact: true }).click();
+    await nav(page).getByRole('link', { name: 'Campaigns', exact: true }).click();
     await page.goto('/broadcast/new');
     const name = `E2E flow ${String(Date.now())}`;
     await page.locator('input[name="name"]').fill(name);

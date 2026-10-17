@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import {
-  setRotationPaused, verifyEncryption, CrmApiError, type EncryptionVerify
+  setRotationPaused, verifyEncryption, generateEncryptionKey, CrmApiError, type EncryptionVerify, type NewEncryptionKey
 } from '@/lib/crm';
 
 /** What the wizard's buttons get back: ok, or a reason to show. */
@@ -10,6 +10,7 @@ export interface RotationResult {
   ok: boolean;
   error?: string;
   verify?: EncryptionVerify;
+  newKey?: NewEncryptionKey;
 }
 
 /** Turns an error into the sentence shown next to the button. */
@@ -32,6 +33,15 @@ export async function setPausedAction(paused: boolean): Promise<RotationResult> 
 export async function verifyAction(): Promise<RotationResult> {
   try {
     return { ok: true, verify: await verifyEncryption() };
+  } catch (error) {
+    return { ok: false, error: reason(error) };
+  }
+}
+
+/** Makes a new encryption key and returns it once, for the admin to put in the server's settings. */
+export async function generateKeyAction(): Promise<RotationResult> {
+  try {
+    return { ok: true, newKey: await generateEncryptionKey() };
   } catch (error) {
     return { ok: false, error: reason(error) };
   }

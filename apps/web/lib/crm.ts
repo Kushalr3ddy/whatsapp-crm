@@ -667,6 +667,14 @@ export async function listSenders(): Promise<Sender[]> {
   return request<Sender[]>('/senders');
 }
 
+/** A freshly generated encryption key, shown once. The current key is never included. */
+export interface NewEncryptionKey { version: number; previousVersion: number; key: string }
+
+/** Asks the server for a new key for the next version. Admin only. */
+export async function generateEncryptionKey(): Promise<NewEncryptionKey> {
+  return request<NewEncryptionKey>('/encryption/new-key', { method: 'POST' });
+}
+
 /** Creates a number record. It exists but is not connected until it has been linked. */
 export async function createSender(label: string, phoneE164?: string): Promise<{ id: string }> {
   return request<{ id: string }>('/senders', {

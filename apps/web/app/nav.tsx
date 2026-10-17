@@ -50,7 +50,7 @@ const TABS: Tab[] = [
     icon: <Icon><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></Icon>
   },
   {
-    href: '/broadcast', label: 'Broadcast',
+    href: '/broadcast', label: 'Campaigns',
     icon: <Icon><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" /></Icon>
   },
   {

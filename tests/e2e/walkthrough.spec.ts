@@ -14,7 +14,7 @@ test.describe('signed-in walkthrough', () => {
     for (const [link, heading] of [
       ['Contacts', 'Contacts'],
       ['Import', 'Import contacts'],
-      ['Broadcast', 'Broadcast'],
+      ['Campaigns', 'Campaigns'],
       ['Numbers', 'Numbers']
     ] as const) {
       await nav(page).getByRole('link', { name: link, exact: true }).click();

@@ -36,7 +36,7 @@ export default async function BroadcastPage() {
   return (
     <main className="page">
       <PageHeader
-        title="Broadcast"
+        title="Campaigns"
         description="Send one message to many people, paced by the anti-ban engine so a burst can never go out at once."
         actions={
           <>

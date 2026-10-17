@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { setPausedAction, verifyAction } from './actions';
-import type { EncryptionVerify } from '@/lib/crm';
+import { setPausedAction, verifyAction, generateKeyAction } from './actions';
+import type { EncryptionVerify, NewEncryptionKey } from '@/lib/crm';
 
 /**
  * Re-reads the page every few seconds while the background job is running, so the progress bar
@@ -80,6 +80,63 @@ export function VerifyControl({ disabled }: { disabled: boolean }) {
             {result.onOldKey > 0 && <>{result.onOldKey} sampled value{result.onOldKey === 1 ? ' is' : 's are'} still on a retired key; let the re-encryption finish first.</>}
           </p>
         )
+      )}
+    </div>
+  );
+}
+
+/**
+ * Step 1 of the key wizard: a button that makes the new key. The key is shown once, with the exact
+ * lines to put in the server's settings. The current key is never shown here; the lines say to move
+ * it into the retired list yourself, which keeps the web from ever handling the key it is protecting.
+ */
+export function GenerateKeyControl({ disabled }: { disabled: boolean }) {
+  const [pending, start] = useTransition();
+  const [fresh, setFresh] = useState<NewEncryptionKey | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const lines = fresh === null ? '' : [
+    `ENCRYPTION_KEY_VERSION=${String(fresh.version)}`,
+    `ENCRYPTION_KEY=${fresh.key}`,
+    `ENCRYPTION_KEYS_PREVIOUS=<existing retired keys, if any>,${String(fresh.previousVersion)}:<your current ENCRYPTION_KEY>`
+  ].join('\n');
+
+  /** Copies the lines; if the browser refuses, they are still on screen to select. */
+  function copy() {
+    void navigator.clipboard.writeText(lines).then(() => { setCopied(true); }, () => { setCopied(false); });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <button
+          type="button" disabled={disabled || pending} className="btn btn-primary"
+          onClick={() => {
+            setError(null); setCopied(false);
+            start(async () => {
+              const r = await generateKeyAction();
+              if (!r.ok || r.newKey === undefined) { setError(r.error ?? 'Could not make a key.'); return; }
+              setFresh(r.newKey);
+            });
+          }}
+        >
+          {pending ? 'Making a key…' : fresh === null ? 'Generate a new key' : 'Generate a different key'}
+        </button>
+      </div>
+      {error !== null && <p role="alert" className="text-xs text-danger">{error}</p>}
+      {fresh !== null && (
+        <div role="status" className="notice notice-success flex flex-col gap-2">
+          <p className="font-medium">
+            Your new key is below. It is shown only now and is not stored by this page. Put these lines in the
+            server&apos;s settings, then restart (step 2).
+          </p>
+          <pre className="overflow-x-auto rounded-lg bg-surface p-3 font-mono text-[13px] text-ink">{lines}</pre>
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-sm" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
+            <button type="button" className="btn btn-sm" onClick={() => { setFresh(null); }}>Hide</button>
+          </div>
+        </div>
       )}
     </div>
   );
