@@ -2071,3 +2071,16 @@ say so and point them to Contacts to tag people, instead of leaving them with an
 simply hidden when no tags exist (`apps/web/app/broadcast/new/audience-picker.tsx`). Also noted the same day: an imported
 Naukri file only brings in name, phone and email, so its other columns (location, skills, experience…) do not show on
 Contacts; that is D-21 (map a column to a custom field), already a priority.
+
+---
+
+## D-69 · Chats available inside the job portal (and any other web app) — pinned (Kushal, 2026-10-17)
+
+The conversations should be usable **from the job portal**, not only inside this CRM's own screens: the CRM should plug
+into the portal (and into any other web app) so recruiters can read and answer a candidate's WhatsApp chat right where
+they already work, on the candidate's own page. Not designed yet. Things to settle when it comes back: the shape of the
+plug-in (an embeddable chat panel for one contact or conversation, the existing API and `packages/sdk` driven by the
+portal's own screens, or both); how the portal's user signs in without a second login (a short-lived token the portal
+asks for on the user's behalf); how a portal candidate is matched to a CRM contact (by phone or by the portal's own id,
+kept in `external_ref`); whether the portal can only read a chat or also send; and that everything stays within the
+anti-ban pacing and do-not-contact rules no matter where a message is sent from. Pinned to come back to; not started.
