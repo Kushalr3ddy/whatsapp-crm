@@ -132,12 +132,7 @@ test.describe('recorded walkthrough', () => {
       await page.getByRole('button', { name: 'Upload' }).click();
       await expect(page.getByText(/rows ·/)).toBeVisible();
       await rest();
-      // The tag box is already filled with the file's name; show it, then keep a few columns on each contact.
-      await rest();
-      for (const column of ['Current Location', 'Total Experience', 'Key Skills']) {
-        await page.getByLabel(column, { exact: true }).check();
-        await rest(500);
-      }
+      await page.getByLabel('Tag everyone in this file').pressSequentially(`purchase-manager-${stamp}`, { delay: 30 });
       await page.getByRole('button', { name: 'Preview' }).click();
       await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
       await rest(3000);

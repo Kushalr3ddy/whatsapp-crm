@@ -2061,3 +2061,13 @@ inbox and Contacts (see D-65). Kushal wants, at the top of such a chat, an **Add
 saving a new contact in WhatsApp: type the phone number and a name, and the chat is joined to that person (merged with an
 existing contact if the number is already known). He also suspects the automatic lid-to-number mapping is not working;
 check that first (does the gateway ever learn the number for a lid, and is it stored?). Pinned to come back to; not started.
+
+---
+
+## D-68 · Campaign with no tagged people: tell the user to tag them first — ✅ built in PR #56 (Kushal, 2026-10-17)
+
+When someone starts a new campaign and no contact has the tag they would pick (or no tags exist at all), the page should
+say so and point them to Contacts to tag people, instead of leaving them with an empty list. Today the "A tag" tab is
+simply hidden when no tags exist (`apps/web/app/broadcast/new/audience-picker.tsx`). Also noted the same day: an imported
+Naukri file only brings in name, phone and email, so its other columns (location, skills, experience…) do not show on
+Contacts; that is D-21 (map a column to a custom field), already a priority.
