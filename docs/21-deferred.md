@@ -1487,6 +1487,9 @@ auth forwarding (the UI forwards the user's session) and every server action.
 
 ## D-47 · Signup page, billing gate and beta-tester override
 
+> **2026-10-17:** a **front-end-only** sign-up page exists at `/signup` (PR #53): it checks the fields in the browser and says nothing
+> was created. The open decisions below still gate connecting it to a backend.
+
 **What:** there is **no signup page** today — accounts and orgs come only from `npm run admin` (or the admin API).
 Kushal wants a simple one (2026-10-10): a person signs up, and then (a) if they have **paid**, they land in the app
 (or are sent to Billing to pay), and (b) a **beta tester** is sent to sign in, because an admin can **override the
@@ -2046,5 +2049,5 @@ loaders while data loads, small toasts, a typing indicator and presence dots in 
 sign-in. Decided with it (2026-10-17): **one sans-serif font throughout**, a small set of consistent hand-drawn SVG icons
 (no icon library, no UI library), light and dark on every page, and everything honouring `prefers-reduced-motion`.
 Direction (clean light, brand sidebar, soft and friendly, or a mix) is chosen from the mockups in `mockups/` (git-ignored)
-before any page is restyled. Not started.
+before any page is restyled. Direction A and Inter were chosen; the sign-in screen, Overview and shared styles carry the motion in PR #53. Most other pages still to do.
 

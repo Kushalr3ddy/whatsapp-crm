@@ -35,7 +35,45 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 | `HANDOFF.md` — *Known defects* / *Gotchas* | New defects found, and anything paid for the hard way. |
 | `HANDOFF.md` — *Next* | The order Kushal set, remaining. |
 
+**When Kushal asks for a handoff, do these three things, in this order (Kushal, 2026-10-17):**
+1. **Ask him whether to delete old branches**, local and remote, **except the last 3** (the three most recently committed to,
+   `main` aside). List them first, say which are unmerged or have an open PR, and **delete only if he says yes**. Never
+   delete on your own, and never a branch that holds work that is on no remote without telling him that is what he loses.
+2. **Update the changelog and the docs wherever required**: the table above, plus any doc a change made wrong (for example
+   links and references when a section moves).
+3. **Give a rundown of what happened in the current session**: what was asked, what was built, what is merged, what is
+   open, what failed or is unverified, and the rules he gave.
+
 Then say in the final message which PRs are open and what the next session should ask him first.
+
+## ▶ End of day 2026-10-17: what changed after the section below was written
+
+- **Merged since:** #50 (this handoff), #51 (market research moved from `docs/01` to `docs/03`, so the competitor
+  screenshots and UI patterns now live in `03-competitive-analysis.md`), #52 (an admin may demote themselves while another
+  admin remains, with the error "At least one admin must stay" otherwise; **Numbers is now called Linked numbers**; D-66
+  pinned). Everything up to #52 is on `main`.
+- **Open: #53** (`feat/ui-direction-a`): the **new look, direction A** (clean light, one green accent, **one font: Inter**,
+  light and dark), the **animated sign-in screen with the lead scene**, a **front-end-only sign-up page** at `/signup`
+  (checks the fields in the browser, then says nothing was created; the backend is still the D-47 decision), Overview
+  greeting + getting-started checklist + count-up stats, loading skeletons, a signed-in label in the sidebar. **Not merged
+  yet:** its first CI run had 25 of 26 browser tests green; the one red was my new sign-up test (a selector bug), fixed
+  and pushed with a merge of `main`; **re-check its checks before merging**. The older local branches `feat/ui-look` and
+  `feat/ui-refresh` are superseded by it and exist only locally.
+- **The lead scene** (kept in `mockups/lead-scene.html`, git-ignored, plus the real component in `apps/web/app/login/lead-scene.tsx`):
+  your organisation (three headset agents) + our CRM message eight people; three accept (green), two decline (red), three
+  never answer (grey); a clipboard "service" is sent to the interested; cash bricks stack up beside a growing arrow. No
+  currency symbol anywhere. Mockups of all four directions (A, B, C, Mix) are in `mockups/index.html`.
+- **Direction chosen: A**, with Inter, a small hand-drawn icon set, no UI library, no ⌘K bar, no fake sparklines.
+  **Not yet restyled one by one:** most pages only pick the look up from the shared tokens.
+- **CI vs local (Kushal, 2026-10-17):** do **not** run typecheck, lint or vitest locally; **GitHub Actions runs them** (and
+  the browser suite and the simulation) on every PR, and a failing PR is fixed with another commit. Locally, run **only the
+  browser automation**, once, low priority, and only when he has said to. **Important finding:** on a loaded laptop
+  `bulk-tag-flow`, the seeded inbox test and `zz-roles-flow` fail; on GitHub's clean machine they **pass**. They are load
+  problems, not bugs; do not rerun them locally to chase them.
+- **Rules added today:** inform him **before** building anything, and ask questions whenever something is unclear; the
+  handoff procedure above; `mockups/` is git-ignored scratch for design choices.
+- **Left over:** the mockup server (`python3 -m http.server 8123` in `mockups/`) may still be running; stop it when done.
+  The VM was deleted by Kushal; nothing of it remains.
 
 ## ▶ Latest session (2026-10-17): read this first; it supersedes the PR list in "Pick up here (2026-10-16)" below
 
