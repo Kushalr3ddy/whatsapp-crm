@@ -29,8 +29,6 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3001',
     // Visible by default — that is the point. LIVE_HEADLESS=1 is for checking the suite itself in CI-ish places.
     headless: process.env.LIVE_HEADLESS === '1',
-    // LIVE_CHANNEL=chrome drives the installed Google Chrome (fresh temporary profile) instead of Playwright's Chromium.
-    channel: process.env.LIVE_CHANNEL || undefined,
     // Slow enough to follow with your eyes; override with LIVE_SLOWMO=0 for a quick run.
     launchOptions: { slowMo: Number(process.env.LIVE_SLOWMO ?? 350) },
     viewport: { width: 1360, height: 860 },
