@@ -46,7 +46,7 @@ export default async function LinkPage() {
   return (
     <main className="page">
       <PageHeader
-        title="Numbers"
+        title="Linked numbers"
         description={
           <>
             Add a number, then scan its QR from WhatsApp on that phone:{' '}

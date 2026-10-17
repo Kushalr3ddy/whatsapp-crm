@@ -36,8 +36,8 @@ test.describe('custom fields and the numbers page', () => {
 
   test('the Numbers page offers advisory mode to an admin', async ({ page }) => {
     await signIn(page);
-    await nav(page).getByRole('link', { name: 'Numbers', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Numbers', exact: true })).toBeVisible();
+    await nav(page).getByRole('link', { name: 'Linked numbers', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Linked numbers', exact: true })).toBeVisible();
     // Only present when at least one number exists; the control is hidden behind a disclosure.
     const any = await page.getByText('Advisory mode…').count();
     if (any > 0) await expect(page.getByText('Advisory mode…').first()).toBeVisible();

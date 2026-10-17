@@ -88,9 +88,9 @@ function MemberRow(
           {disabled && <span className="badge badge-warning">Disabled</span>}
           <label className="sr-only" htmlFor={`role-${member.userId}`}>Role for {member.displayName}</label>
           <select
-            id={`role-${member.userId}`} value={member.role} disabled={busy || isMe}
+            id={`role-${member.userId}`} value={member.role} disabled={busy}
             onChange={(e) => { onChange({ role: e.target.value === 'admin' ? 'admin' : 'agent' }); }}
-            className="field field-sm" title={isMe ? 'You cannot change your own role' : undefined}
+            className="field field-sm"
           >
             <option value="admin">Admin</option>
             <option value="agent">Agent</option>

@@ -44,8 +44,8 @@ export async function listMembers(db: Database, orgId: string): Promise<Member[]
 /**
  * Changes someone's role, or disables or re-enables their account.
  *
- * Rules, because both mistakes lock a team out of its own CRM: nobody may demote or disable
- * themselves, and the org may never be left without an active admin. Disabling also ends every
+ * Rules, because both mistakes lock a team out of its own CRM: nobody may disable themselves, and the org may
+ * never be left without an active admin (so you may demote yourself only while another admin remains). Disabling also ends every
  * session the person holds, so it takes effect at once instead of at their next login.
  */
 export async function changeMember(
@@ -66,15 +66,17 @@ export async function changeMember(
     const losesAdmin = current.role === 'admin' && current.status === 'active'
       && (newRole !== 'admin' || newStatus !== 'active');
 
-    if (losesAdmin && actor.id === userId) {
-      throw new MemberRuleError('You cannot remove your own admin access. Ask another admin to do it.');
+    // Nobody locks themselves out by disabling their own account. Demoting yourself is fine, but only while
+    // someone else remains an active admin (checked next).
+    if (newStatus === 'disabled' && current.status === 'active' && actor.id === userId) {
+      throw new MemberRuleError('You cannot disable your own account. Ask another admin to do it.');
     }
     if (losesAdmin) {
       const others = await tx.execute(sql`
         SELECT count(*)::int AS n FROM org_membership m JOIN app_user u ON u.id = m.user_id
         WHERE m.org_id = ${orgId} AND m.role = 'admin' AND u.status = 'active' AND m.user_id <> ${userId}`);
       if (((others as unknown as Array<{ n: number }>)[0]?.n ?? 0) === 0) {
-        throw new MemberRuleError('That would leave the team with no active admin. Make someone else an admin first.');
+        throw new MemberRuleError('At least one admin must stay. Make someone else an admin first.');
       }
     }
 
