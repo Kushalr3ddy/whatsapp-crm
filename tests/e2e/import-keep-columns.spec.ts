@@ -12,10 +12,13 @@ test.describe('import: keep columns, default tag', () => {
   test('a ticked column lands on the contact and is searchable; the tag is the file name', async ({ page }) => {
     const stamp = String(Date.now());
     const city = `Keepville${stamp}`;
+    // Numbers vary per run (inside the reserved 0200-0289 block) so an earlier run's contacts, which keep their
+    // own names, are not picked up again.
+    const n = Number(stamp.slice(-2)) % 45;
     const csv =
       'Name,Mob,City,Skills\n' +
-      `Keep One,+12025550111,${city},welding\n` +
-      `Keep Two,+12025550112,${city},NA\n`;
+      `Keep One,+1202555${String(200 + n * 2).padStart(4, '0')},${city},welding\n` +
+      `Keep Two,+1202555${String(201 + n * 2).padStart(4, '0')},${city},NA\n`;
 
     await signIn(page);
     await page.goto('/import');
@@ -37,9 +40,7 @@ test.describe('import: keep columns, default tag', () => {
 
     // Searching by the City value finds both people.
     await page.goto(`/contacts?q=${encodeURIComponent(city)}`);
-    await expect(page.getByText('Keep One').first()).toBeVisible();
-    await expect(page.getByText('Keep Two').first()).toBeVisible();
-    await expect(page.getByText(city).first()).toBeVisible();
+    await expect(page.locator('summary', { hasText: `City: ${city}` })).toHaveCount(2);
 
     // And the file-named tag is on them.
     await expect(page.getByRole('link', { name: new RegExp(`keep-${stamp}`) }).first()).toBeVisible();
