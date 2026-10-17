@@ -19,8 +19,9 @@ test.describe('add a number and manage the team, in the browser', () => {
 
     // With numbers already present the button sits in the header; on a fresh install the form is open.
     const open = page.getByRole('button', { name: 'Add a number', exact: true });
-    if (await open.count() > 0) await open.click();
     const form = page.getByRole('form', { name: 'Add a number' });
+    await expect(open.or(form)).toBeVisible();
+    if (await open.isVisible()) await open.click();
     await form.getByLabel('Name').fill(label);
     await form.getByRole('button', { name: 'Add number' }).click();
 
@@ -33,8 +34,9 @@ test.describe('add a number and manage the team, in the browser', () => {
     await signIn(page);
     await page.goto('/link');
     const open = page.getByRole('button', { name: 'Add a number', exact: true });
-    if (await open.count() > 0) await open.click();
     const form = page.getByRole('form', { name: 'Add a number' });
+    await expect(open.or(form)).toBeVisible();
+    if (await open.isVisible()) await open.click();
     await form.getByLabel('Name').fill(`e2e-bad-${String(Date.now())}`);
     await form.getByLabel('Phone number (optional)').fill('98765');
     await form.getByRole('button', { name: 'Add number' }).click();
