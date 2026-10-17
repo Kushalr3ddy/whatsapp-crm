@@ -32,7 +32,7 @@ export function Stat(
   const colour = tone === 'success' ? 'text-success' : tone === 'warning' ? 'text-warning'
     : tone === 'danger' ? 'text-danger' : 'text-ink';
   const body = (
-    <div className="card h-full p-4 transition-colors hover:border-accent/50">
+    <div className="card stat-tile h-full p-4 pt-5">
       <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
       <p className={`mt-1.5 text-3xl font-semibold tabular-nums tracking-tight ${colour}`}>{value}</p>
       {hint !== undefined && <p className="mt-1 text-sm text-muted">{hint}</p>}
