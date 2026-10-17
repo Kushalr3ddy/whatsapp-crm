@@ -63,3 +63,6 @@ verify-footprint.log
 
 # throwaway design mockups (static HTML for choosing a look; never part of the app)
 mockups/
+
+# Real end-user data files kept for local testing only (personal data; never commit)
+/private/
