@@ -103,6 +103,8 @@ export function ImportPanel() {
   const [fileName, setFileName] = useState('');
   // Set when the server says this exact file was uploaded before; shows the "Upload anyway" button.
   const [duplicate, setDuplicate] = useState(false);
+  // React empties the file box once a form action finishes, so the last file is kept here for "Upload anyway".
+  const lastFile = useRef<File | null>(null);
   // Said once when the page comes back with a commit that was running when the person left it.
   const [resumed, setResumed] = useState(false);
 
@@ -136,6 +138,9 @@ export function ImportPanel() {
 
   /** Sends the chosen file, then pre-fills the column pickers from the headers. */
   function submitUpload(formData: FormData) {
+    const picked = formData.get('file');
+    if (picked instanceof File && picked.size > 0) lastFile.current = picked;
+    else if (lastFile.current !== null) formData.set('file', lastFile.current);
     setError(null);
     setDuplicate(false);
     setSummary(null);
@@ -193,7 +198,7 @@ export function ImportPanel() {
   function reset() {
     setUpload(null); setSummary(null); setError(null); setProblems(null);
     setPhone(''); setName(''); setEmail(''); setKeep([]); setTagName('');
-    setFileName(''); setResumed(false); saveDraft(null);
+    setFileName(''); setResumed(false); saveDraft(null); lastFile.current = null;
     if (fileRef.current !== null) fileRef.current.value = '';
   }
 
