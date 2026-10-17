@@ -20,8 +20,8 @@ export default function LoginPage() {
           <p className="mb-6 mt-1 text-muted">Welcome back. Enter your details to continue.</p>
           <LoginForm />
           <p className="mt-6 text-xs text-muted">
-            There is no self-service password reset yet. An administrator can set one with{' '}
-            <code>npm run admin -- password</code>.
+            There is no self-service password reset yet. Ask an administrator to set a new password for you
+            from the Team page.
           </p>
         </div>
       </section>

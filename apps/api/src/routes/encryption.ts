@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { sql } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
@@ -103,6 +104,30 @@ export function encryptionRouter(deps: { kms: KmsDriver }): Router {
       return r;
     });
     res.json({ data: result });
+  });
+
+  /**
+   * Makes a fresh key for the next version and hands it over once. It is never stored here and the
+   * current key is never shown: the web only ever sees the new one, which is why the wizard tells the
+   * admin to move the existing key into the retired list themselves. Only the fact that a key was made
+   * is audited, never the key.
+   */
+  router.post('/new-key', requireRole('admin'), async (req: Request, res: Response) => {
+    const next = kms.keyVersion + 1;
+    if (next > 255) {
+      res.status(409).json({ type: 'about:blank', title: 'KEY_VERSIONS_EXHAUSTED', status: 409, code: 'KEY_VERSIONS_EXHAUSTED',
+        detail: 'Key version 255 is the last one; start a fresh install to go further.', request_id: String(req.id) });
+      return;
+    }
+    await req.tenant!(async (tx) => {
+      await writeAudit(tx, {
+        orgId: req.crm!.orgId, actor: auditActor(req), action: AUDIT.encryptionKeyGenerated,
+        targetType: 'key_rotation', after: { version: next },
+        ip: req.ip ?? null, requestId: String(req.id)
+      });
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ data: { version: next, previousVersion: kms.keyVersion, key: randomBytes(32).toString('hex') } });
   });
 
   return router;

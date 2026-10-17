@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { Nav } from './nav';
-import { listSenders } from '@/lib/crm';
+import { listSenders, getMe } from '@/lib/crm';
 import './globals.css';
 
 /** Browser tab title and description. Generic on purpose — the product is not one company's. */
@@ -28,10 +28,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // How many numbers WhatsApp may be limiting, for the badge on "Numbers". Only when signed in, and
   // never allowed to break a page: the badge is a convenience, the Numbers page is the source.
   let alerts = 0;
+  // Admins get a Team tab; everyone else does not see it. The API refuses non-admins either way.
+  let isAdmin = false;
   if ((await cookies()).get('crm_session') !== undefined) {
     try {
       alerts = (await listSenders()).filter((s) => s.restrictionState !== 'ok').length;
     } catch { alerts = 0; }
+    try {
+      isAdmin = (await getMe()).role === 'admin';
+    } catch { isAdmin = false; }
   }
 
   // An optional line across the top of every page, set with ENVIRONMENT_BANNER (for example on a test or
@@ -56,7 +61,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </div>
         )}
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <Nav alerts={alerts} />
+          <Nav alerts={alerts} isAdmin={isAdmin} />
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</div>
         </div>
       </body>

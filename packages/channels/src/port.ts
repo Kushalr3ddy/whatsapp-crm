@@ -170,6 +170,11 @@ export interface NormalisedConnectionEvent {
   readonly reason: DisconnectReason | null;
   /** The provider's raw close code (WhatsApp: 401, 403, 428, 463, …), when it gave one. */
   readonly code?: number | null;
+  /**
+   * The phone number the connection belongs to (E.164), reported on open when the transport knows it.
+   * Lets the app fill in a number's own phone after linking instead of showing "no number yet".
+   */
+  readonly phoneE164?: string | null | undefined;
   readonly at: Date;
 }
 

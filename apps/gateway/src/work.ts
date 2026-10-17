@@ -1185,6 +1185,19 @@ async function applyConnectionEventInOrg(
       SET status = 'active', warmup_started_at = COALESCE(warmup_started_at, now()),
           updated_at = now()
       WHERE id = ${event.senderId} AND status IN ('linking', 'degraded')`);
+
+    // Record the number this connection belongs to, so a linked number is not left reading "no number
+    // yet". Only fills a blank (a number someone typed in stays as typed), and only when no other number
+    // of this org already has that phone, which the unique index would otherwise reject.
+    if (event.phoneE164 !== undefined && event.phoneE164 !== null) {
+      await ctx.db.execute(sql`
+        UPDATE sender_identity si
+        SET phone_e164 = ${event.phoneE164}, updated_at = now()
+        WHERE si.id = ${event.senderId} AND si.phone_e164 IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM sender_identity o
+            WHERE o.org_id = si.org_id AND o.provider = si.provider AND o.phone_e164 = ${event.phoneE164})`);
+    }
   }
 
   if (event.state === 'logged_out') {

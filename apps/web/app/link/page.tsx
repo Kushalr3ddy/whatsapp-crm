@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation';
 import { listSenders, listHealthEvents, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Sender, HealthEvent } from '@/lib/crm';
 import { LinkPanel } from './link-panel';
-import { PageHeader, EmptyState } from '../ui';
+import { AddNumber } from './add-number';
+import { PageHeader } from '../ui';
 import { setEnforcementAction } from './actions';
 
 /** Rendered per request — linking state changes second by second. */
@@ -12,8 +13,8 @@ export const dynamic = 'force-dynamic';
  * The screen for connecting a WhatsApp number.
  *
  * Linking is a two-process dance: this app records the request through the API, and the
- * **gateway** is what actually opens the socket and produces the QR. Nothing appears here
- * unless `npm run gateway` is running, so the page says so rather than spinning forever.
+ * **gateway** is what actually opens the socket and produces the QR. If the gateway is down the
+ * card says so and the Link button reports it, rather than spinning forever.
  */
 export default async function LinkPage() {
   let senders: Sender[] = [];
@@ -48,19 +49,17 @@ export default async function LinkPage() {
         title="Numbers"
         description={
           <>
-            Scan the QR from WhatsApp on your phone: <strong>Settings → Linked Devices → Link a device</strong>.
-            The gateway must be running — <code>npm run gateway</code>.
+            Add a number, then scan its QR from WhatsApp on that phone:{' '}
+            <strong>Settings → Linked Devices → Link a device</strong>.
           </>
         }
+        actions={failure === null && senders.length > 0 ? <AddNumber first={false} /> : undefined}
       />
 
       {failure !== null && <p className="notice notice-danger">{failure}</p>}
 
       {failure === null && senders.length === 0 && (
-        <EmptyState
-          title="No numbers yet"
-          body={<>Create one first: <code>POST /api/v1/senders</code>, then link it here.</>}
-        />
+        <AddNumber first />
       )}
 
       <ul className="grid items-start gap-4 lg:grid-cols-2">

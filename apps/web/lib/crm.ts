@@ -667,6 +667,58 @@ export async function listSenders(): Promise<Sender[]> {
   return request<Sender[]>('/senders');
 }
 
+/** A freshly generated encryption key, shown once. The current key is never included. */
+export interface NewEncryptionKey { version: number; previousVersion: number; key: string }
+
+/** Asks the server for a new key for the next version. Admin only. */
+export async function generateEncryptionKey(): Promise<NewEncryptionKey> {
+  return request<NewEncryptionKey>('/encryption/new-key', { method: 'POST' });
+}
+
+/** Creates a number record. It exists but is not connected until it has been linked. */
+export async function createSender(label: string, phoneE164?: string): Promise<{ id: string }> {
+  return request<{ id: string }>('/senders', {
+    method: 'POST',
+    body: JSON.stringify({ label, provider: 'baileys', ...(phoneE164 !== undefined && phoneE164 !== '' ? { phoneE164 } : {}) })
+  });
+}
+
+/** One person on the team, as the Team page shows them. Mirrors `GET /api/v1/admin/users`. */
+export interface TeamMember {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: 'admin' | 'agent';
+  status: 'active' | 'disabled';
+  lastLoginAt: string | null;
+}
+
+/** Lists everyone in the org. Admin only. */
+export async function listTeam(): Promise<TeamMember[]> {
+  return request<TeamMember[]>('/admin/users');
+}
+
+/** Adds a person to the org with a password the admin has chosen. */
+export async function addTeamMember(
+  input: { email: string; displayName: string; role: 'admin' | 'agent'; password: string }
+): Promise<{ userId: string }> {
+  return request<{ userId: string }>('/admin/users', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** Changes a person's role, or disables or re-enables their account. */
+export async function updateTeamMember(
+  userId: string, change: { role?: 'admin' | 'agent'; status?: 'active' | 'disabled' }
+): Promise<TeamMember> {
+  return request<TeamMember>(`/admin/users/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify(change) });
+}
+
+/** Sets a new password for a person and ends their sessions. */
+export async function resetTeamPassword(userId: string, password: string): Promise<{ sessionsRevoked: number }> {
+  return request<{ sessionsRevoked: number }>(
+    `/admin/users/${encodeURIComponent(userId)}/password`, { method: 'POST', body: JSON.stringify({ password }) }
+  );
+}
+
 /** Lists a thread's internal notes, oldest first. */
 export async function listNotes(conversationId: string): Promise<Note[]> {
   return request<Note[]>(`/conversations/${encodeURIComponent(conversationId)}/notes`);

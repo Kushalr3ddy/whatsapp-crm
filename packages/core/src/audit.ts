@@ -87,6 +87,9 @@ export const AUDIT = {
   passwordChanged: 'auth.password.changed',
   orgCreated: 'org.created',
   userAdded: 'user.added',
+  userRoleChanged: 'user.role.changed',
+  userDisabled: 'user.disabled',
+  userEnabled: 'user.enabled',
   apiKeyIssued: 'api_key.issued',
   apiKeyRevoked: 'api_key.revoked',
 
@@ -118,6 +121,7 @@ export const AUDIT = {
   encryptionRotationPaused: 'encryption.rotation_paused',
   encryptionRotationResumed: 'encryption.rotation_resumed',
   encryptionVerified: 'encryption.verified',
+  encryptionKeyGenerated: 'encryption.key_generated',
 
   // Imports. The upload is recorded separately from the commit because they are different
   // acts: one stores somebody's spreadsheet, the other changes the contact database.
