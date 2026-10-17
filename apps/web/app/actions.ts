@@ -191,7 +191,8 @@ export async function runSheet(
   id: string,
   cols: { phone: string; name: string | null; email: string | null },
   dryRun: boolean,
-  tagName?: string
+  tagName?: string,
+  keep: string[] = []
 ): Promise<RunResult> {
   const identities: unknown[] = [{ kind: 'phone', from: cols.phone, transform: ['trim'] }];
   if (cols.email !== null) identities.push({ kind: 'email', from: cols.email, transform: ['trim', 'lower'] });
@@ -200,7 +201,9 @@ export async function runSheet(
     displayName: cols.name !== null ? { from: cols.name, transform: ['trim'] } : undefined,
     identities,
     defaultCountry: 'IN',
-    unmapped: 'keep'
+    unmapped: 'keep',
+    // Columns the person ticked to keep on each contact. Never the three already used above.
+    fields: keep.filter((h) => h !== cols.phone && h !== cols.name && h !== cols.email).slice(0, 40).map((from) => ({ from }))
   };
   try {
     const summary = await runImportMapping(id, mapping, dryRun, tagName?.trim() || undefined);

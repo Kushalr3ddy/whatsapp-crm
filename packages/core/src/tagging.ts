@@ -32,6 +32,7 @@ export function searchPredicate(
   return sql`c.org_id = ${orgId} AND c.deleted_at IS NULL
     AND (${like}::text IS NULL
          OR c.display_name ILIKE ${like}
+         OR EXISTS (SELECT 1 FROM jsonb_each_text(c.custom_fields) cf WHERE cf.value ILIKE ${like})
          OR EXISTS (SELECT 1 FROM contact_identity ci2
                     WHERE ci2.contact_id = c.id AND ci2.value_normalized ILIKE ${like}))
     AND (${tagId}::uuid IS NULL

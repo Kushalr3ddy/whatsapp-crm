@@ -14,7 +14,7 @@ const DRAFT_KEY = 'crm.import.draft';
 
 /** What is remembered of an import in progress. The file itself lives on the server, referred to by `upload.id`. */
 interface Draft {
-  upload: ImportUpload; phone: string; name: string; email: string; tagName: string;
+  upload: ImportUpload; phone: string; name: string; email: string; tagName: string; keep?: string[];
   summary: { result: ImportSummary; committed: boolean } | null;
   /** Set while a commit is running, cleared when its answer arrives. */
   committing: boolean;
@@ -94,6 +94,8 @@ export function ImportPanel() {
   const [summary, setSummary] = useState<{ result: ImportSummary; committed: boolean } | null>(null);
   // Optional: tag everyone this file creates or updates (the tag is created if new).
   const [tagName, setTagName] = useState('');
+  // Extra columns to keep on each contact (as fields). None are ticked until the person chooses.
+  const [keep, setKeep] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Rows that failed or lost something in the last preview or commit, shown in a box to fix.
   const [problems, setProblems] = useState<ImportProblems | null>(null);
@@ -107,7 +109,7 @@ export function ImportPanel() {
     const draft = loadDraft();
     if (draft === null) return;
     setUpload(draft.upload); setPhone(draft.phone); setName(draft.name); setEmail(draft.email);
-    setTagName(draft.tagName); setSummary(draft.summary);
+    setTagName(draft.tagName); setKeep(draft.keep ?? []); setSummary(draft.summary);
     if (draft.committing && draft.summary?.committed !== true) setResumed(true);
     // The rows-to-fix box is not remembered, it is asked for again.
     const sm = draft.summary?.result;
@@ -119,8 +121,8 @@ export function ImportPanel() {
   // Remember each change. Runs only once there is an upload to remember.
   useEffect(() => {
     if (upload === null) return;
-    saveDraft({ upload, phone, name, email, tagName, summary, committing: false });
-  }, [upload, phone, name, email, tagName, summary]);
+    saveDraft({ upload, phone, name, email, tagName, keep, summary, committing: false });
+  }, [upload, phone, name, email, tagName, keep, summary]);
 
   // A hard reload or closing the tab mid-run would lose the answer: ask first.
   useEffect(() => {
@@ -148,6 +150,9 @@ export function ImportPanel() {
       setPhone(suggested?.phone ?? guess(h, /phone|mobile|number|contact|whatsapp/i) ?? h[0] ?? '');
       setName(suggested?.name ?? guess(h, /name/i) ?? '');
       setEmail(suggested?.email ?? guess(h, /e-?mail/i) ?? '');
+      setKeep([]);
+      // Everyone in a file is tagged with the file's name unless the person clears or changes it.
+      setTagName(fileName.replace(/\.[^.]+$/, '').replace(/[_\s]+/g, '-').slice(0, 60));
     });
   }
 
@@ -157,13 +162,14 @@ export function ImportPanel() {
     setError(null);
     setResumed(false);
     // Note a commit as running, so coming back mid-run can say so.
-    if (!dryRun) saveDraft({ upload, phone, name, email, tagName, summary, committing: true });
+    if (!dryRun) saveDraft({ upload, phone, name, email, tagName, keep, summary, committing: true });
     startTransition(async () => {
       const result = await runSheet(
         upload.id,
         { phone, name: name === '' ? null : name, email: email === '' ? null : email },
         dryRun,
-        tagName
+        tagName,
+        keep
       );
       if (!result.ok || result.summary === undefined) {
         setError(result.error ?? 'Run failed.');
@@ -171,7 +177,7 @@ export function ImportPanel() {
       }
       setSummary({ result: result.summary, committed: !dryRun });
       // Written directly as well: if the person left the page, this answer still lands in the draft.
-      saveDraft({ upload, phone, name, email, tagName, summary: { result: result.summary, committed: !dryRun }, committing: false });
+      saveDraft({ upload, phone, name, email, tagName, keep, summary: { result: result.summary, committed: !dryRun }, committing: false });
       // Anything that failed or lost a number is listed so it can be fixed in the sheet.
       const found = (result.summary.errors > 0 || (result.summary.warnings ?? 0) > 0)
         ? await importProblems(upload.id) : null;
@@ -182,7 +188,7 @@ export function ImportPanel() {
   /** Clears everything back to the file picker for another import. */
   function reset() {
     setUpload(null); setSummary(null); setError(null); setProblems(null);
-    setPhone(''); setName(''); setEmail('');
+    setPhone(''); setName(''); setEmail(''); setKeep([]); setTagName('');
     setFileName(''); setResumed(false); saveDraft(null);
     if (fileRef.current !== null) fileRef.current.value = '';
   }
@@ -255,10 +261,15 @@ export function ImportPanel() {
             <Picker label="Email" value={email} onChange={setEmail} headers={upload.headers} />
           </div>
 
+          <KeepColumns
+            headers={upload.headers.filter((h) => h !== phone && h !== name && h !== email)}
+            keep={keep} onChange={setKeep}
+          />
+
           <Sample upload={upload} />
 
           <label className="mb-2 flex flex-col gap-1 text-xs font-medium text-muted">
-            Tag everyone in this file (optional)
+            Tag everyone in this file (named after the file; clear it to skip)
             <input
               value={tagName} onChange={(e) => { setTagName(e.target.value); }} maxLength={60}
               placeholder="e.g. october-batch" aria-label="Tag everyone in this file"
@@ -316,6 +327,34 @@ export function ImportPanel() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Tick boxes for the other columns in the sheet. A ticked column becomes a field on every contact in the file,
+ * shown on the contact's details and searchable; nothing is ticked until the person chooses, so personal data
+ * nobody needs is not copied.
+ */
+function KeepColumns({ headers, keep, onChange }: { headers: string[]; keep: string[]; onChange: (next: string[]) => void }) {
+  if (headers.length === 0) return null;
+  const toggle = (h: string) => { onChange(keep.includes(h) ? keep.filter((k) => k !== h) : [...keep, h].slice(0, 40)); };
+  return (
+    <fieldset className="rounded-md border border-border bg-surface px-3 py-2">
+      <legend className="px-1 text-xs font-medium text-muted">Keep these columns on each contact (optional, up to 40)</legend>
+      <div className="mb-2 flex gap-3 text-xs">
+        <button type="button" className="underline underline-offset-2" onClick={() => { onChange(headers.slice(0, 40)); }}>Tick all</button>
+        <button type="button" className="underline underline-offset-2" onClick={() => { onChange([]); }}>Clear</button>
+        <span className="text-muted">{keep.length} ticked</span>
+      </div>
+      <div className="grid max-h-56 grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto text-sm sm:grid-cols-2">
+        {headers.map((h) => (
+          <label key={h} className="flex items-center gap-2">
+            <input type="checkbox" checked={keep.includes(h)} onChange={() => { toggle(h); }} />
+            <span className="truncate" title={h}>{h}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
