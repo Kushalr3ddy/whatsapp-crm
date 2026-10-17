@@ -109,6 +109,11 @@ export function ImportPanel() {
     setUpload(draft.upload); setPhone(draft.phone); setName(draft.name); setEmail(draft.email);
     setTagName(draft.tagName); setSummary(draft.summary);
     if (draft.committing && draft.summary?.committed !== true) setResumed(true);
+    // The rows-to-fix box is not remembered, it is asked for again.
+    const sm = draft.summary?.result;
+    if (sm !== undefined && (sm.errors > 0 || (sm.warnings ?? 0) > 0)) {
+      void importProblems(draft.upload.id).then(setProblems);
+    }
   }, []);
 
   // Remember each change. Runs only once there is an upload to remember.
