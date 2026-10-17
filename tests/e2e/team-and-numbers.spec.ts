@@ -12,8 +12,8 @@ test.describe('add a number and manage the team, in the browser', () => {
   test('an admin adds a number from the Numbers page and gets a Link button for it', async ({ page }) => {
     const label = `e2e-number-${String(Date.now())}`;
     await signIn(page);
-    await nav(page).getByRole('link', { name: 'Numbers', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Numbers', exact: true })).toBeVisible();
+    await nav(page).getByRole('link', { name: 'Linked numbers', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Linked numbers', exact: true })).toBeVisible();
     // No terminal command is asked of anyone any more.
     await expect(page.getByText('npm run gateway')).toHaveCount(0);
 
@@ -73,12 +73,14 @@ test.describe('add a number and manage the team, in the browser', () => {
     await expect(row.getByText('Disabled')).toHaveCount(0);
   });
 
-  test('an admin cannot demote or disable themselves from the Team page', async ({ page }) => {
+  test('your own row can pick a role (the server decides) but cannot disable you', async ({ page }) => {
     await signIn(page);
     await page.goto('/team');
     const me = page.locator('li', { hasText: '(you)' });
     await expect(me).toBeVisible();
     await expect(me.getByRole('button', { name: 'Disable' })).toBeDisabled();
-    await expect(me.getByRole('combobox')).toBeDisabled();
+    // Not disabled any more: demoting yourself is allowed while another admin remains, and refused with a
+    // message when you are the last one. Not exercised here, because succeeding would demote the test admin.
+    await expect(me.getByRole('combobox')).toBeEnabled();
   });
 });

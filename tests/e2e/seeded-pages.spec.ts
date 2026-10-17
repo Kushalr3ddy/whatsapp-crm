@@ -91,7 +91,7 @@ test.describe('seeded pages', () => {
 
   test('numbers: the seeded number shows with its health panel', async ({ page }) => {
     await signIn(page);
-    await nav(page).getByRole('link', { name: 'Numbers', exact: true }).click();
+    await nav(page).getByRole('link', { name: 'Linked numbers', exact: true }).click();
     await expect(page.getByText('Seed number').first()).toBeVisible();
     await expect(page.getByRole('progressbar', { name: 'Risk score' }).first()).toBeVisible();
   });

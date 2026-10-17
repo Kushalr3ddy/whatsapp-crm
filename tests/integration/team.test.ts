@@ -143,14 +143,30 @@ describe('PATCH /admin/users/:id', () => {
     expect((await signIn(pat.email, PASSWORD)).status).toBe(200);
   });
 
-  it('will not let an admin demote or disable themselves', async () => {
+  it('lets an admin demote themselves while another active admin remains', async () => {
     const admin = await newOrg();
     await addPerson(admin, 'admin', 'Second Admin');
-    const demote = await patch(admin, admin.userId, { role: 'agent' });
-    const disable = await patch(admin, admin.userId, { status: 'disabled' });
-    expect(demote.status).toBe(409);
-    expect(disable.status).toBe(409);
-    expect(demote.body.code).toBe('TEAM_RULE');
+    const r = await patch(admin, admin.userId, { role: 'agent' });
+    expect(r.status).toBe(200);
+    expect(r.body.data.role).toBe('agent');
+  });
+
+  it('says at least one admin must stay when the only admin demotes themselves', async () => {
+    const admin = await newOrg();
+    const r = await patch(admin, admin.userId, { role: 'agent' });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe('TEAM_RULE');
+    expect(r.body.detail).toContain('At least one admin must stay');
+    const rows = await db.execute(sql`SELECT role FROM org_membership WHERE user_id = ${admin.userId}`);
+    expect((rows as unknown as Array<{ role: string }>)[0]!.role).toBe('admin');
+  });
+
+  it('will not let an admin disable their own account, even with another admin present', async () => {
+    const admin = await newOrg();
+    await addPerson(admin, 'admin', 'Second Admin');
+    const r = await patch(admin, admin.userId, { status: 'disabled' });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe('TEAM_RULE');
   });
 
   it('takes team management away from a demoted admin straight away', async () => {

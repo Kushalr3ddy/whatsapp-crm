@@ -2035,3 +2035,16 @@ multi-email cells (#46, #47). **Still open:**
 9. **Login over plain `http://` cannot keep a session** (Secure cookie); there is no test-install setting for it.
 10. **Alpha container connects to Postgres as a superuser**, so row-level security is not enforced (log warning); fine
     single-tenant, not for several orgs.
+
+---
+
+## D-66 · Motion on most pages, not just the sign-in screen — pinned (Kushal, 2026-10-17)
+
+The sign-in screen has an animated background and Kushal likes it. He wants the same life across **most pages**: quick,
+subtle motion inside the app (pages ease in, buttons press, cards lift on hover, stat numbers count up, skeleton
+loaders while data loads, small toasts, a typing indicator and presence dots in the inbox), with the showy kind kept to
+sign-in. Decided with it (2026-10-17): **one sans-serif font throughout**, a small set of consistent hand-drawn SVG icons
+(no icon library, no UI library), light and dark on every page, and everything honouring `prefers-reduced-motion`.
+Direction (clean light, brand sidebar, soft and friendly, or a mix) is chosen from the mockups in `mockups/` (git-ignored)
+before any page is restyled. Not started.
+

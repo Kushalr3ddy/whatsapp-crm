@@ -79,7 +79,7 @@ export default async function Home() {
 
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat
-          label="Numbers" href="/link"
+          label="Linked numbers" href="/link"
           value={`${String(connected.length)}/${String(senders.length)}`}
           hint={senders.length === 0 ? 'None added yet' : connected.length === senders.length ? 'All connected' : 'connected'}
           tone={senders.length === 0 || connected.length === senders.length ? 'default' : 'warning'}
@@ -105,7 +105,7 @@ export default async function Home() {
       )}
 
       <div className="grid gap-8 lg:grid-cols-2">
-        <Section title="Numbers" action={<Link href="/link" className="text-sm text-accent">Manage</Link>}>
+        <Section title="Linked numbers" action={<Link href="/link" className="text-sm text-accent">Manage</Link>}>
           {senders.length === 0 ? (
             <EmptyState
               title="No number yet"

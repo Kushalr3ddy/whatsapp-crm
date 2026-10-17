@@ -60,3 +60,6 @@ docs/generated/
 
 # per-run resource footprint written by scripts/verify.sh
 verify-footprint.log
+
+# throwaway design mockups (static HTML for choosing a look; never part of the app)
+mockups/
