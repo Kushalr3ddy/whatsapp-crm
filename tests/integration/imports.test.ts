@@ -359,6 +359,40 @@ describe('cells that hold more than one number (Naukri exports)', () => {
   });
 });
 
+describe('cells that hold more than one email address', () => {
+  const SHEET =
+    'Name,Email ID,Phone Number\n' +
+    'Same Twice,"dup.one@example.test, dup.one@example.test",9876500021\n' +
+    'Second Is Good,"not-an-email, good.two@example.test",9876500022\n' +
+    'Semicolon,"semi.three@example.test; other.three@example.test",9876500023\n' +
+    'Neither Valid,"junk, worse",9876500024\n';
+  const MAP = {
+    version: 1 as const,
+    displayName: { from: 'Name', transform: ['trim' as const] },
+    identities: [
+      { kind: 'phone' as const, from: 'Phone Number', transform: ['trim' as const] },
+      { kind: 'email' as const, from: 'Email ID', transform: ['trim' as const, 'lower' as const] }
+    ],
+    defaultCountry: 'IN',
+    unmapped: 'drop' as const
+  };
+
+  it('uses the first valid address, and fails only the row where none is valid', async () => {
+    const uploaded = await upload(SHEET);
+    const r = await run(uploaded.body.data.id, false, MAP);
+    expect(r.body.data).toMatchObject({ read: 4, created: 3, errors: 1 });
+    const rows = await db.execute(sql`
+      SELECT c.display_name AS n, ci.value_normalized AS v
+      FROM contact_identity ci JOIN contact c ON c.id = ci.contact_id
+      WHERE ci.org_id = ${orgId} AND ci.kind = 'email' ORDER BY 1`);
+    expect(rows as unknown as Array<{ n: string; v: string }>).toEqual([
+      { n: 'Same Twice', v: 'dup.one@example.test' },
+      { n: 'Second Is Good', v: 'good.two@example.test' },
+      { n: 'Semicolon', v: 'semi.three@example.test' }
+    ]);
+  });
+});
+
 describe('column suggestions and rows to fix', () => {
   const SHEET =
     'Name,Mob,Alt,Notes\n' +
