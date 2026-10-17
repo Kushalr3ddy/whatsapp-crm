@@ -2087,7 +2087,16 @@ plug-in (an embeddable chat panel for one contact or conversation, the existing 
 portal's own screens, or both); how the portal's user signs in without a second login (a short-lived token the portal
 asks for on the user's behalf); how a portal candidate is matched to a CRM contact (by phone or by the portal's own id,
 kept in `external_ref`); whether the portal can only read a chat or also send; and that everything stays within the
-anti-ban pacing and do-not-contact rules no matter where a message is sent from. Pinned to come back to; not started.
+anti-ban pacing and do-not-contact rules no matter where a message is sent from.
+
+**Added 2026-10-17 (Kushal): the front end should be pluggable into other codebases and applications**, not just the chat.
+The CRM's screens (inbox and thread, contact list, import, campaigns) should be droppable into an existing app as
+components or an embeddable widget, themeable to the host's look, without taking this whole Next.js app with them.
+Questions for later: ship them as a framework-free web component or an npm package of React components; keep them
+talking only to the public API (so a host never reaches into the database); how a host overrides colours, fonts and
+which actions show; and how this fits D-61 (plain React instead of Next) and D-62 (single executable).
+
+Pinned to come back to; not started.
 
 ---
 
