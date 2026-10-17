@@ -2054,7 +2054,17 @@ before any page is restyled. Direction A and Inter were chosen; the sign-in scre
 
 ---
 
-## D-68 · Campaign with no tagged people: tell the user to tag them first — pinned (Kushal, 2026-10-17)
+## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — pinned (Kushal, 2026-10-17)
+
+Some chats arrive from WhatsApp with a hidden `…@lid` id instead of a phone number, so they show as a raw id in the
+inbox and Contacts (see D-65). Kushal wants, at the top of such a chat, an **Add number / contact** action that works like
+saving a new contact in WhatsApp: type the phone number and a name, and the chat is joined to that person (merged with an
+existing contact if the number is already known). He also suspects the automatic lid-to-number mapping is not working;
+check that first (does the gateway ever learn the number for a lid, and is it stored?). Pinned to come back to; not started.
+
+---
+
+## D-68 · Campaign with no tagged people: tell the user to tag them first — ✅ built in PR #56 (Kushal, 2026-10-17)
 
 When someone starts a new campaign and no contact has the tag they would pick (or no tags exist at all), the page should
 say so and point them to Contacts to tag people, instead of leaving them with an empty list. Today the "A tag" tab is

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { LeadScene } from './login/lead-scene';
+import { ThemeToggle } from './theme-toggle';
 
 /** A tick used in the feature list. */
 function Tick() {
@@ -21,6 +22,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <div aria-hidden className="auth-blobs"><span /><span /><span /></div>
 
       <section className="relative z-10 flex items-center justify-center px-6 py-12">
+        <div className="absolute right-4 top-4 w-36"><ThemeToggle /></div>
         <div className="auth-card w-full max-w-sm p-8">
           <div className="mb-7 flex items-center gap-3">
             <span className="avatar size-10 text-base" aria-hidden>W</span>
