@@ -1,12 +1,81 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { uploadSheet, runSheet, importProblems } from '@/app/actions';
 import type { ImportUpload, ImportSummary, ImportProblems } from '@/lib/crm';
 
 /** Fallback guess from the header name alone, for an older server that sends no value-based suggestion. */
 function guess(headers: string[], patterns: RegExp): string | null {
   return headers.find((h) => patterns.test(h)) ?? null;
+}
+
+/** Where an unfinished import is kept, so switching to another tab and back does not lose it. */
+const DRAFT_KEY = 'crm.import.draft';
+
+/** What is remembered of an import in progress. The file itself lives on the server, referred to by `upload.id`. */
+interface Draft {
+  upload: ImportUpload; phone: string; name: string; email: string; tagName: string;
+  summary: { result: ImportSummary; committed: boolean } | null;
+  /** Set while a commit is running, cleared when its answer arrives. */
+  committing: boolean;
+}
+
+/** Reads the saved draft; null when there is none or storage is blocked. */
+function loadDraft(): Draft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    return raw === null ? null : JSON.parse(raw) as Draft;
+  } catch { return null; }
+}
+
+/** Saves the draft, or clears it with null. Never throws: blocked storage only means no memory. */
+function saveDraft(draft: Draft | null): void {
+  try {
+    if (draft === null) sessionStorage.removeItem(DRAFT_KEY);
+    else sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } catch { /* blocked storage: the import still works, it just is not remembered */ }
+}
+
+/**
+ * The file picker: a large box to drop a file onto, or click to browse.
+ *
+ * The real `<input type="file">` stays in the page (visually hidden) so keyboard users, screen
+ * readers and tests reach it exactly as before; the box is its label.
+ */
+function DropZone({ inputRef, fileName, onFile }: {
+  inputRef: React.RefObject<HTMLInputElement | null>; fileName: string; onFile: (name: string) => void;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <label
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => { setOver(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const dropped = e.dataTransfer.files;
+        if (dropped.length === 0 || inputRef.current === null) return;
+        inputRef.current.files = dropped;
+        onFile(dropped[0]?.name ?? '');
+      }}
+      className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
+        over ? 'border-accent bg-accent-soft' : 'border-border bg-surface hover:border-accent'}`}
+    >
+      <span className="text-3xl" aria-hidden>⬆</span>
+      <span className="font-medium">
+        {fileName !== '' ? fileName : 'Drop your file here, or click to choose one'}
+      </span>
+      <span className="text-xs text-muted">CSV or Excel (.xlsx)</span>
+      <input
+        ref={inputRef}
+        type="file"
+        name="file"
+        accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="sr-only"
+        onChange={(e) => { onFile(e.target.files?.[0]?.name ?? ''); }}
+      />
+    </label>
+  );
 }
 
 /**
@@ -29,6 +98,37 @@ export function ImportPanel() {
   // Rows that failed or lost something in the last preview or commit, shown in a box to fix.
   const [problems, setProblems] = useState<ImportProblems | null>(null);
   const [pending, startTransition] = useTransition();
+  const [fileName, setFileName] = useState('');
+  // Said once when the page comes back with a commit that was running when the person left it.
+  const [resumed, setResumed] = useState(false);
+
+  // Come back to where the import was left (switching tabs unmounts this page).
+  useEffect(() => {
+    const draft = loadDraft();
+    if (draft === null) return;
+    setUpload(draft.upload); setPhone(draft.phone); setName(draft.name); setEmail(draft.email);
+    setTagName(draft.tagName); setSummary(draft.summary);
+    if (draft.committing && draft.summary?.committed !== true) setResumed(true);
+    // The rows-to-fix box is not remembered, it is asked for again.
+    const sm = draft.summary?.result;
+    if (sm !== undefined && (sm.errors > 0 || (sm.warnings ?? 0) > 0)) {
+      void importProblems(draft.upload.id).then(setProblems);
+    }
+  }, []);
+
+  // Remember each change. Runs only once there is an upload to remember.
+  useEffect(() => {
+    if (upload === null) return;
+    saveDraft({ upload, phone, name, email, tagName, summary, committing: false });
+  }, [upload, phone, name, email, tagName, summary]);
+
+  // A hard reload or closing the tab mid-run would lose the answer: ask first.
+  useEffect(() => {
+    if (!pending) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => { window.removeEventListener('beforeunload', warn); };
+  }, [pending]);
 
   /** Sends the chosen file, then pre-fills the column pickers from the headers. */
   function submitUpload(formData: FormData) {
@@ -55,6 +155,9 @@ export function ImportPanel() {
   function go(dryRun: boolean) {
     if (upload === null || phone === '') return;
     setError(null);
+    setResumed(false);
+    // Note a commit as running, so coming back mid-run can say so.
+    if (!dryRun) saveDraft({ upload, phone, name, email, tagName, summary, committing: true });
     startTransition(async () => {
       const result = await runSheet(
         upload.id,
@@ -67,6 +170,8 @@ export function ImportPanel() {
         return;
       }
       setSummary({ result: result.summary, committed: !dryRun });
+      // Written directly as well: if the person left the page, this answer still lands in the draft.
+      saveDraft({ upload, phone, name, email, tagName, summary: { result: result.summary, committed: !dryRun }, committing: false });
       // Anything that failed or lost a number is listed so it can be fixed in the sheet.
       const found = (result.summary.errors > 0 || (result.summary.warnings ?? 0) > 0)
         ? await importProblems(upload.id) : null;
@@ -78,6 +183,7 @@ export function ImportPanel() {
   function reset() {
     setUpload(null); setSummary(null); setError(null); setProblems(null);
     setPhone(''); setName(''); setEmail('');
+    setFileName(''); setResumed(false); saveDraft(null);
     if (fileRef.current !== null) fileRef.current.value = '';
   }
 
@@ -115,19 +221,20 @@ export function ImportPanel() {
         </p>
       )}
 
+      {resumed && (
+        <p role="status" className="mt-4 notice notice-warning">
+          An import was running when you left this page. Check the Contacts page to see how far it got,
+          or press Preview to see what is still waiting. Rows already imported are not added twice.
+        </p>
+      )}
+
       {upload === null ? (
         <form action={submitUpload} className="mt-5 flex flex-col gap-3">
-          <input
-            ref={fileRef}
-            type="file"
-            name="file"
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="field field-sm"
-          />
+          <DropZone inputRef={fileRef} fileName={fileName} onFile={setFileName} />
           <div>
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || fileName === ''}
               className="btn btn-primary"
             >
               {pending ? 'Uploading…' : 'Upload'}
@@ -170,10 +277,12 @@ export function ImportPanel() {
             </button>
             <button
               type="button"
-              onClick={() => { go(false); }}
-              disabled={pending || phone === '' || summary === null || summary.committed}
+              onClick={() => {
+                if (summary === null) { setError('Please click Preview first, so you can see what will be imported.'); return; }
+                go(false);
+              }}
+              disabled={pending || phone === '' || summary?.committed === true}
               className="btn btn-primary"
-              title={summary === null ? 'Preview first' : undefined}
             >
               Import
             </button>
@@ -183,7 +292,7 @@ export function ImportPanel() {
           </div>
 
           {summary !== null && problems !== null && (
-            <ProblemBox problems={problems} phoneColumn={phone} committed={summary.committed} />
+            <ProblemBox problems={problems} phoneColumn={phone} headers={upload.headers} committed={summary.committed} />
           )}
 
           {summary !== null && (
@@ -246,8 +355,8 @@ const SHOWN = 8;
  * as typed, and the row to find it on.
  */
 function ProblemBox(
-  { problems, phoneColumn, committed }:
-  { problems: ImportProblems; phoneColumn: string; committed: boolean }
+  { problems, phoneColumn, headers, committed }:
+  { problems: ImportProblems; phoneColumn: string; headers: string[]; committed: boolean }
 ) {
   const { errors, warnings } = problems;
   if (errors.length === 0 && warnings.length === 0) return null;
@@ -259,6 +368,7 @@ function ProblemBox(
     >
       {errors.length > 0 && (
         <>
+          <p className="mb-1 font-semibold text-danger">Invalid numbers found, please check these rows.</p>
           <p className="font-medium">
             {errors.length} {errors.length === 1 ? 'row' : 'rows'} couldn’t be imported
             {committed ? ' and ' + (errors.length === 1 ? 'was' : 'were') + ' left out' : ''}: a number or email in
@@ -297,6 +407,74 @@ function ProblemBox(
           </ul>
         </div>
       )}
+      <RowsFromSheet
+        rows={[
+          ...errors.map((e) => ({ rowNumber: e.rowNumber, raw: e.raw, problem: e.error })),
+          ...warnings.map((w) => ({ rowNumber: w.rowNumber, raw: w.raw, problem: w.note }))
+        ].sort((a, b) => a.rowNumber - b.rowNumber)}
+        headers={headers} phoneColumn={phoneColumn}
+      />
+    </div>
+  );
+}
+
+/** One problem row, with the sheet's own cells so it can be found and fixed. */
+interface SheetRow { rowNumber: number; raw: Record<string, string> | null; problem: string }
+
+/** Quotes a value for CSV: wrapped in quotes, with inner quotes doubled. */
+const csvCell = (value: string): string => `"${value.replace(/"/g, '""')}"`;
+
+/**
+ * The problem rows laid out like the sheet (row number, every column, what is wrong) and a button to
+ * download just those rows, so they can be fixed in Excel and uploaded again.
+ */
+function RowsFromSheet(
+  { rows, headers, phoneColumn }: { rows: SheetRow[]; headers: string[]; phoneColumn: string }
+) {
+  if (rows.length === 0) return null;
+
+  /** Builds a CSV of just these rows, with the sheet's own columns, and hands it to the browser as a download. */
+  function download() {
+    const lines = [['Sheet row', ...headers, 'Problem'].map(csvCell).join(',')];
+    for (const r of rows) {
+      lines.push([String(sheetRow(r.rowNumber)), ...headers.map((h) => r.raw?.[h] ?? ''), r.problem].map(csvCell).join(','));
+    }
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'rows-to-fix.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted">These rows, as they are in your sheet</p>
+        <button type="button" onClick={download} className="btn btn-sm">Download these rows (CSV)</button>
+      </div>
+      <div className="max-h-64 overflow-auto rounded-md border border-border">
+        <table className="w-full text-left text-xs">
+          <thead className="sticky top-0 bg-surface text-muted">
+            <tr>
+              <th className="px-2 py-1 font-medium">Row</th>
+              {headers.map((h) => <th key={h} className="px-2 py-1 font-medium">{h}</th>)}
+              <th className="px-2 py-1 font-medium">Problem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.rowNumber} className="border-t border-border align-top">
+                <td className="px-2 py-1 font-medium">{sheetRow(r.rowNumber)}</td>
+                {headers.map((h) => (
+                  <td key={h} className={`px-2 py-1 ${h === phoneColumn ? 'font-medium text-danger' : ''}`}>
+                    {r.raw?.[h] ?? ''}
+                  </td>
+                ))}
+                <td className="px-2 py-1 text-muted">{r.problem}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

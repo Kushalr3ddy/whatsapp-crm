@@ -94,6 +94,14 @@ interface ResolvedIdentity {
   readonly value: string;
 }
 
+/** What a usable email address looks like: something@domain.tld, no spaces. */
+const EMAIL_SHAPE = /^[^@\s]+@[^@\s.]+\.[^@\s]+$/;
+
+/** Splits an email cell that holds more than one address (comma, semicolon, slash, pipe, line break or space). */
+function splitEmailCell(raw: string): string[] {
+  return raw.toLowerCase().split(/[,;/|\s]+/).map((e) => e.trim()).filter((e) => e !== '');
+}
+
 /**
  * Turns one row into the identities it claims, in rule order.
  *
@@ -132,11 +140,15 @@ function identitiesFor(
         }
       }
     } else if (rule.kind === 'email') {
-      const email = raw.toLowerCase();
-      if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
+      // One cell may hold several addresses (`a@x.in, a@x.in`). Use the first that is valid; the row
+      // only fails when none of them is.
+      const candidates = splitEmailCell(raw);
+      const index = candidates.findIndex((c) => EMAIL_SHAPE.test(c));
+      if (index === -1) {
         return { identities, error: `${rule.from}: "${raw}" is not an email address`, note: null };
       }
-      identities.push({ kind: 'email', value: email });
+      if (index > 0) notes.push(`${rule.from}: first address "${candidates[0] ?? ''}" is not valid, used "${candidates[index] ?? ''}"`);
+      identities.push({ kind: 'email', value: candidates[index] ?? '' });
     } else {
       identities.push({ kind: 'external', value: raw });
     }
