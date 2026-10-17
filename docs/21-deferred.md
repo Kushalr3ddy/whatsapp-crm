@@ -2009,3 +2009,29 @@ database that cannot run these features.
 
 **Cost of deferring:** it grows with every new raw query and trigger. New database-side logic should stay behind the
 helpers that already wrap it (`setTenant`, the gateway command channel) rather than spread.
+
+---
+
+## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed
+
+Found by using the app for real (sign in, link a number, import, Team, Numbers) on a throwaway VM. Fixed and merged
+the same day: the missing phone after linking, the terminal-only Numbers/Security/sign-in text, Import-before-Preview,
+multi-email cells (#46, #47). **Still open:**
+
+1. **False "possible ban" alarm.** Pressing **Try again** after an unscanned QR makes the gateway log the number out,
+   WhatsApp answers 401 (nothing was ever linked), and the app shows two red notices ("WhatsApp logged this number
+   out: check the phone first", "refused the saved login"), logs "number logged out by WhatsApp - possible ban" and
+   left the number at "Degraded", risk 60. Nothing was banned. Likely fix: do not log out a number that has no stored
+   credentials; do not raise the ban alarm for a 401 on a link attempt that never connected.
+2. **Dead-end card** after that: no Link/Try again button until the page is reloaded.
+3. **QR lasts about 55 s and sits below the fold** on a tall card; easy to miss.
+4. **Browser tab title is "Inbox" on every page** (root layout metadata).
+5. **Import counts:** the preview counted a row that the commit then merged as a duplicate of an earlier row; the
+   summary does not mention the merge ("27 would be created", "26 created", 29 read, 2 errors).
+6. **A bad email fails the whole row** even when the phone is good. Option: import the contact and warn about the email.
+7. **Contacts shows inbound-only contacts by raw `...@lid` ids** with "no contact details".
+8. **Security wizard step 2** (put the new key in the server's settings and restart) is manual by design; the web never
+   sees the current key. A button that applies it would need a deliberate security decision first.
+9. **Login over plain `http://` cannot keep a session** (Secure cookie); there is no test-install setting for it.
+10. **Alpha container connects to Postgres as a superuser**, so row-level security is not enforced (log warning); fine
+    single-tenant, not for several orgs.

@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-16
+# Handoff — state as of 2026-10-17
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -37,7 +37,79 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
-## ▶ Pick up here (2026-10-16)
+## ▶ Latest session (2026-10-17): read this first; it supersedes the PR list in "Pick up here (2026-10-16)" below
+
+**`main` now has PRs #46–#49 merged** (check each is really there: `git show origin/main:<path>`):
+- **#46 import**: first valid email from a cell with several; big drop-box picker; "rows to fix" table laid out like the
+  sheet with a **Download these rows (CSV)** button; progress kept across tabs (sessionStorage; a running commit is
+  noted on return); pressing **Import before Preview** now says "Please click Preview first".
+- **#47**: **Team tab** (admins only: list, add with a generated or chosen password shown once, change role,
+  disable/enable, reset password; nobody can demote or disable themselves, never zero active admins, disabling ends
+  sessions at once; API `GET /admin/users`, `PATCH /admin/users/:id`, `POST /admin/users/:id/password`, audit rows);
+  **Add a number** button on Numbers (stale `npm run` text removed from Numbers, the inbox banner and the sign-in
+  page); the gateway now **records the phone a linked number belongs to** (it said "no number yet" forever);
+  Security's step 1 is a **Generate a new key** button (`POST /encryption/new-key`; the current key is never shown);
+  **Broadcast is now called Campaigns** (URL still `/broadcast`).
+- **#48** optional `ENVIRONMENT_BANNER` line across the top of every page (empty = nothing).
+- **#49 number fallback (D-60)** with **migration 0029**. Still **never run against a real number**.
+
+**Standing rules added this session (Kushal, angry about all three; follow them):**
+1. **Do not start a local app stack or `npm run verify` without asking first.** A cold `dev:all` + gateway + Next dev
+   pushed his laptop to load 36–66 on 4 cores (inotify 145 of 128) and froze it more than once. When he does ask for
+   a run: once, `nice -n 15`, nothing alongside it, stopped straight afterwards. `verify` logs its own footprint
+   to the git-ignored `verify-footprint.log`; do the same by hand for any other run.
+2. **Do only what was asked.** "Run the UI changes locally first" meant *ask*, not "build a whole restyle". He also
+   did not ask for the Team tab at the start (he liked it, but it was not requested); ask before adding scope.
+3. **No shadcn or other UI library** (bloat; he wants everything optimised later). For the look, copy the apps in the
+   research (`docs/01-vision-scope.md`, images in `docs/assets/competitors/`: Wati, Interakt, Respond.io, Chatwoot,
+   Pipedrive, Twenty): light grey page, white cards, light sidebar, green primary.
+- Tool quirk: `pkill -f "<text that is in my own command>"` kills the very shell running it (exit 144). Use
+  `pgrep -x`, a bracket pattern (`[s]ampler`), or a pid.
+
+**The look is NOT done.** Kushal finds it "depressing" (login, overview, every page; light theme "bland").
+Two commits exist **only on the local branch `feat/ui-look`, never pushed, never seen by him** (the screenshot run was
+cancelled): `f12d6dc` (new colour tokens in `globals.css`: light grey page, white cards, **light sidebar**, green
+primary, mint selection tint, light-green outgoing bubbles, dark variant, serif page titles via `next/font`, gentle
+motion that respects reduced-motion) and `0b80b21` (animated **sign-in screen**: drifting blurred blobs, message bubbles
+rising, a small inbox preview with a typing indicator, all CSS; Overview **Getting started checklist**, icons on stat
+tiles, new floating empty-state illustration). Typecheck and lint pass; the browser tests were not run on it. There is
+**no signup page** (backed out earlier, D-47); only sign-in. An older `feat/ui-refresh` branch (cyan/dark-teal sidebar)
+is superseded; ignore it. **Ask Kushal before continuing**: show him screenshots first (one run, per rule 1).
+
+**VM test (Linode, 2 cores / 4 GB, Ubuntu 24.04, deleted by Kushal; resource log saved at
+`~/Downloads/vm-test-resource-logs/`, 4,553 samples every 5 s)** for the hosting talk (D-33):
+- Idle: about 0.9–1.0 GB of 3.9 GB used with the app at 350–390 MB, Postgres 41–53 MB, Caddy 11 MB; CPU about 0%;
+  swap never touched; disk 3.5 GB used after Docker and the build.
+- `npm run alpha:up` build and each rebuild: about 3 minutes, memory peak 1.0–1.45 GB, CPU 98% on both cores, load 2.5.
+- A real WhatsApp number **linked fine from a datacenter IP** (QR). Idle with a linked number: CPU peak 7%.
+- **Login needs HTTPS**: the session cookie is `Secure`, so a plain `http://<ip>` drops it and every click asks
+  to sign in again. There is no plain-http test setting; the test used Caddy `tls internal` (self-signed) with
+  `PUBLIC_URL=https://<ip>`. In production it sits behind the Cloudflare tunnel, which is fine.
+- The alpha container logs "connected as SUPERUSER ... tenant isolation is NOT in effect" (fine single-tenant, not for
+  more than one org).
+
+**Bugs seen and NOT fixed** (pinned together as **D-65**): the false "possible ban" alarm and dead-end card after
+**Try again** on an unscanned QR; QR lasts about 55 s and sits below the fold; browser tab title is "Inbox" on every
+page; import preview counts one merged duplicate that the result then drops without saying so; a bad email fails a
+whole row that has a good phone; Contacts lists inbound-only contacts by raw `...@lid` ids; a "Degraded" risk of 60
+stayed on the number after the false alarm; Security step 2 (put the key in the server's settings and restart) is
+still manual **by design** (the web never handles the current key; an "apply" button would be a security decision).
+
+**Verification gaps (be honest about these):** PR #47's full verify had **two browser failures never reproduced in
+isolation** (`bulk-tag-flow`: "Add tag … to 26 people" not shown; `seeded-pages` inbox test timed out); the retry runs
+could not start their stack under load. `zz-roles-flow` ("Send anyway": the button stays disabled) failed on every run
+on the loaded laptop and passed once; **it was never run on a clean `main`**, and the fake sender sits in state `closed`
+on a fresh stack ("sender not connected" repeated). A full verify on `main` after all four merges was started and
+**stopped by Kushal**, so it has not been done. The PRs were merged without it.
+
+**Ask Kushal first next time:** (1) the look: see screenshots of `feat/ui-look` before anything else; (2) whether to
+run one `verify` on `main` (and when his laptop is free); (3) the two unexplained browser failures; (4) a real-number
+try of the fallback on a spare number; (5) what "add more stuff to the pages" means beyond the Overview checklist;
+(6) hosting route (D-33).
+
+---
+
+## ▶ Pick up here (2026-10-16; older, partly superseded above)
 
 **Standing rules (Kushal):**
 - **Every change is a branch + pull request** (`scripts/open-pr.sh "title" body.md [base]`); **never push to
