@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { getEncryptionStatus, CrmApiError, NotAuthenticatedError, type EncryptionStatus } from '@/lib/crm';
 import { PageHeader, Meter } from '../ui';
-import { PauseControl, VerifyControl, RefreshWhile } from './controls';
+import { PauseControl, VerifyControl, RefreshWhile, GenerateKeyControl } from './controls';
 
 /** Rendered per request: the progress comes from the database. */
 export const dynamic = 'force-dynamic';
@@ -118,10 +118,10 @@ export default async function SecurityPage() {
       <ol className="mt-6 space-y-4">
         <Step n={1} state={step1} title="Make a new key">
           <p>
-            On the server, run the command below. It prints a fresh key and the exact lines to change.
-            It does not edit anything itself.
+            Press the button to make a fresh key. It shows you the exact lines to use. Nothing is changed by
+            pressing it, and your current key is never shown here.
           </p>
-          <Code>npm run keys -- generate</Code>
+          <GenerateKeyControl disabled={s.stage === 'key_missing'} />
           <p className="text-muted">
             <strong>Back up your current key first.</strong> Until step 3 finishes, anything not yet
             re-encrypted can only be opened with it.

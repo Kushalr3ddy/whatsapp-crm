@@ -4,10 +4,12 @@ import type { Database } from '@crm/db';
 import type { PasswordHasher } from '@crm/auth-builtin';
 import {
   createOrgWithAdmin, addUserToOrg, issueApiKey, listApiKeys, revokeApiKey,
-  API_SCOPES, AlreadyExistsError, writeAuditInTenant, AUDIT
+  API_SCOPES, AlreadyExistsError, writeAuditInTenant, AUDIT,
+  listMembers, changeMember, resetMemberPassword, MemberNotFoundError, MemberRuleError
 } from '@crm/core';
 import { auditActor, requireBootstrap, requireRole } from '../auth.js';
 import { problem } from '../problem.js';
+import { requireUuidParam } from '../params.js';
 
 /** Body for provisioning an organisation and its first admin. */
 const createOrg = z.object({
@@ -36,6 +38,15 @@ const createUser = z.object({
   role: z.enum(['admin', 'agent'])
 });
 
+
+/** Body for changing a member: a new role, or disabling or re-enabling the account. At least one. */
+const updateUser = z.object({
+  role: z.enum(['admin', 'agent']).optional(),
+  status: z.enum(['active', 'disabled']).optional()
+}).refine((v) => v.role !== undefined || v.status !== undefined, 'give a role or a status');
+
+/** Body for setting someone's password. */
+const resetPassword = z.object({ password: z.string().min(12, 'at least 12 characters').max(512) });
 
 /** Turns Zod issues into one readable line. */
 function issues(error: z.ZodError): string {
@@ -154,6 +165,53 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
     } catch (error) {
       if (error instanceof AlreadyExistsError) {
         res.status(409).json(problem(req, 409, 'ALREADY_EXISTS', 'That person is already in this organisation.'));
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /** Everyone in this org, for the Team page. Admin only: it includes email addresses. */
+  router.get('/users', requireRole('admin'), async (req: Request, res: Response) => {
+    res.json({ data: await listMembers(db, req.crm!.orgId) });
+  });
+
+  /** Changes a member's role, or disables or re-enables them. */
+  router.patch('/users/:id', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = updateUser.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', issues(parsed.error)));
+      return;
+    }
+    try {
+      const member = await changeMember(db, req.crm!.orgId, String(req.params.id), parsed.data, auditActor(req));
+      res.json({ data: member });
+    } catch (error) {
+      if (error instanceof MemberNotFoundError) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such person in this organisation.'));
+        return;
+      }
+      if (error instanceof MemberRuleError) {
+        res.status(409).json(problem(req, 409, 'TEAM_RULE', error.reason));
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /** Sets a new password for a member and ends their sessions. The admin hands the password over. */
+  router.post('/users/:id/password', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = resetPassword.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', issues(parsed.error)));
+      return;
+    }
+    try {
+      const result = await resetMemberPassword(db, hasher, req.crm!.orgId, String(req.params.id), parsed.data.password, auditActor(req));
+      res.json({ data: result });
+    } catch (error) {
+      if (error instanceof MemberNotFoundError) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such person in this organisation.'));
         return;
       }
       throw error;

@@ -345,6 +345,40 @@ describe('link failures and stale sessions', () => {
     expect(row[0]!.e).toBeNull();
   });
 
+  it('records the phone number the connection belongs to, when the sender has none', async () => {
+    await db.execute(sql`UPDATE sender_identity SET phone_e164 = NULL WHERE id = ${senderId}`);
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
+
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, phoneE164: '+12025550188', at: new Date() });
+
+    const row = (await db.execute(sql`SELECT phone_e164 AS p FROM sender_identity WHERE id = ${senderId}`)
+    ) as unknown as Array<{ p: string | null }>;
+    expect(row[0]!.p).toBe('+12025550188');
+  });
+
+  it('leaves a phone number someone typed in alone, and a number another sender already has', async () => {
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
+      limits: { perMinute: 1000, perDay: 10_000 } };
+    await db.execute(sql`UPDATE sender_identity SET phone_e164 = '+12025550177' WHERE id = ${senderId}`);
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, phoneE164: '+12025550188', at: new Date() });
+    const kept = (await db.execute(sql`SELECT phone_e164 AS p FROM sender_identity WHERE id = ${senderId}`)
+    ) as unknown as Array<{ p: string | null }>;
+    expect(kept[0]!.p).toBe('+12025550177');
+
+    // Another sender of the same org already holds +12025550166: the update is skipped, not an error.
+    const other = (await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+      SELECT org_id, provider, 'other', '+12025550166', 'active' FROM sender_identity WHERE id = ${senderId}
+      RETURNING id`)) as unknown as Array<{ id: string }>;
+    expect(other).toHaveLength(1);
+    await db.execute(sql`UPDATE sender_identity SET phone_e164 = NULL WHERE id = ${senderId}`);
+    await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, phoneE164: '+12025550166', at: new Date() });
+    const still = (await db.execute(sql`SELECT phone_e164 AS p FROM sender_identity WHERE id = ${senderId}`)
+    ) as unknown as Array<{ p: string | null }>;
+    expect(still[0]!.p).toBeNull();
+  });
+
   it('records one ban-suspected event per logout, not one per failed re-login', async () => {
     const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
       limits: { perMinute: 1000, perDay: 10_000 } };

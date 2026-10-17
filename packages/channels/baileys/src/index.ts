@@ -389,7 +389,9 @@ export class BaileysChannelProvider implements ChannelProvider {
       // A successful open clears the budget: the next failure starts backing off from scratch.
       this.#reconnectAttempts.delete(senderId);
       this.#options.logger.info({ senderId }, 'whatsapp connection open');
-      this.#connectionEvents.push({ senderId, state: 'open', reason: null, at: new Date() });
+      this.#connectionEvents.push({
+        senderId, state: 'open', reason: null, at: new Date(), phoneE164: phoneFromJid(conn.socket.user?.id)
+      });
     }
 
     if (update.connection === 'close') {

@@ -20,6 +20,11 @@ export {
 } from './provisioning.js';
 
 export {
+  listMembers, changeMember, resetMemberPassword, MemberNotFoundError, MemberRuleError,
+  type Member
+} from './team.js';
+
+export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
   type AuditActor, type AuditEntry, type ActorType
 } from './audit.js';
