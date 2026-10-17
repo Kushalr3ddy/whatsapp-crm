@@ -152,6 +152,8 @@ export interface UploadResult {
   ok: boolean;
   error?: string;
   upload?: ImportUpload;
+  /** True when the refusal was "these exact bytes were uploaded before", so the screen can offer to upload anyway. */
+  duplicate?: boolean;
 }
 
 /**
@@ -167,10 +169,13 @@ export async function uploadSheet(formData: FormData): Promise<UploadResult> {
     ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     : 'text/csv';
   try {
-    const upload = await uploadImport(await file.arrayBuffer(), name, contentType);
+    // `force` is only ever set by the "Upload anyway" button, after the person has seen why it was refused.
+    const upload = await uploadImport(await file.arrayBuffer(), name, contentType, formData.get('force') === '1');
     return { ok: true, upload };
   } catch (error) {
-    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    if (error instanceof CrmApiError) {
+      return { ok: false, error: error.message, ...(error.code === 'ALREADY_IMPORTED' ? { duplicate: true } : {}) };
+    }
     return { ok: false, error: 'Could not reach the API.' };
   }
 }

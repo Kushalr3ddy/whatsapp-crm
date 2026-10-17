@@ -101,6 +101,10 @@ export function ImportPanel() {
   const [problems, setProblems] = useState<ImportProblems | null>(null);
   const [pending, startTransition] = useTransition();
   const [fileName, setFileName] = useState('');
+  // Set when the server says this exact file was uploaded before; shows the "Upload anyway" button.
+  const [duplicate, setDuplicate] = useState(false);
+  // React empties the file box once a form action finishes, so the last file is kept here for "Upload anyway".
+  const lastFile = useRef<File | null>(null);
   // Said once when the page comes back with a commit that was running when the person left it.
   const [resumed, setResumed] = useState(false);
 
@@ -134,12 +138,17 @@ export function ImportPanel() {
 
   /** Sends the chosen file, then pre-fills the column pickers from the headers. */
   function submitUpload(formData: FormData) {
+    const picked = formData.get('file');
+    if (picked instanceof File && picked.size > 0) lastFile.current = picked;
+    else if (lastFile.current !== null) formData.set('file', lastFile.current);
     setError(null);
+    setDuplicate(false);
     setSummary(null);
     startTransition(async () => {
       const result = await uploadSheet(formData);
       if (!result.ok || result.upload === undefined) {
         setError(result.error ?? 'Upload failed.');
+        setDuplicate(result.duplicate === true);
         return;
       }
       const h = result.upload.headers;
@@ -189,7 +198,7 @@ export function ImportPanel() {
   function reset() {
     setUpload(null); setSummary(null); setError(null); setProblems(null);
     setPhone(''); setName(''); setEmail(''); setKeep([]); setTagName('');
-    setFileName(''); setResumed(false); saveDraft(null);
+    setFileName(''); setResumed(false); saveDraft(null); lastFile.current = null;
     if (fileRef.current !== null) fileRef.current.value = '';
   }
 
@@ -245,7 +254,18 @@ export function ImportPanel() {
             >
               {pending ? 'Uploading…' : 'Upload'}
             </button>
+            {duplicate && (
+              <button type="submit" name="force" value="1" disabled={pending || fileName === ''} className="btn ml-2">
+                Upload anyway
+              </button>
+            )}
           </div>
+          {duplicate && (
+            <p className="text-xs text-muted">
+              “Upload anyway” starts a fresh import of the same file. Contacts already in the CRM are matched by phone
+              or email and updated, not duplicated.
+            </p>
+          )}
         </form>
       ) : (
         <div className="mt-5 flex flex-col gap-4">
