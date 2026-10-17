@@ -772,11 +772,11 @@ export interface ImportSummary {
  * bytes regardless.
  */
 export async function uploadImport(
-  bytes: ArrayBuffer, filename: string, contentType: string
+  bytes: ArrayBuffer, filename: string, contentType: string, force = false
 ): Promise<ImportUpload> {
   const auth = await forwardedAuth();
   const response = await fetch(
-    `${baseUrl()}/api/v1/imports?filename=${encodeURIComponent(filename)}`,
+    `${baseUrl()}/api/v1/imports?filename=${encodeURIComponent(filename)}${force ? '&force=true' : ''}`,
     { method: 'POST', cache: 'no-store', headers: { 'Content-Type': contentType, ...auth },
       body: new Uint8Array(bytes) }
   );
