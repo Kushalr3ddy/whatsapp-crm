@@ -25,6 +25,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   and the shape a portable layer would take, and D-20 now points to it.
 - **Handoff:** the fallback branch can now get its PR (it was waiting on #43); first steps listed in `HANDOFF.md`.
 
+### 2026-10-16 — Number fallback (D-60); lighter web tier and single executable pinned (D-61, D-62)
+- **Built D-60:** for a contact with more than one phone number, the gateway asks WhatsApp (Baileys `onWhatsApp`, one
+  lookup per number, cached 30 days if it has an account and 7 if not) before the first send and messages the first
+  number that has an account, promoting it to primary and writing a `contact.number_switched` audit row. None has one:
+  the message fails `no_whatsapp_number`. Unknown (lookup failed): the primary is kept. One-number contacts make no
+  lookup. `SEND_VERIFY_FALLBACK_NUMBERS`, default on. Migration 0029 adds `wa_registered` and `wa_checked_at` to
+  `contact_identity`. Tested with the fake channel only, **not on a real number**.
+- **Pinned D-61** (plain React with refresh buttons instead of Next on most pages) and **D-62** (single executable),
+  with what is in the way. Neither is started.
+
 ### 2026-10-16 — Handoff; local file storage confirmed as the existing barebones version
 - **Checked the codebase and the deferred list for storage:** it already exists on `main` as the port plus a
   **local filesystem driver** (`./storage`, `/app/storage` in the container), wired end to end: inbound files stored

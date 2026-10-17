@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { setTenant, type Database, type Transaction } from '@crm/db';
 import { tenantDatabase } from './tenant.js';
+import { chooseRecipientNumber } from './number-fallback.js';
 import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   classifyLinkFailure, encodeLinkError,
@@ -102,6 +103,12 @@ export interface WorkContext {
    * the send.
    */
   readonly typingSimulation?: boolean;
+  /**
+   * Before the first send to a contact with more than one phone number, ask the transport whether the
+   * primary number has a WhatsApp account, and use the next one that does (D-60). Opt-in like the
+   * other behaviour layers, so tests that do not exercise it never trigger a lookup.
+   */
+  readonly verifyFallbackNumbers?: boolean;
   /**
    * Mark inbound messages read after a human-like 10–60 minute delay, in active hours only
    * (docs/08-antiban.md, Layer 3). Opt-in like the other behaviour layers, so tests that do not
@@ -763,9 +770,22 @@ async function handleSendOnce(ctx: WorkContext, messageId: string): Promise<void
     if (ctx.sleep) await ctx.sleep(delayMs);
 
     const senderRef = { id: job.senderIdentityId, phoneE164: job.senderPhone ?? '' };
+    // A contact with more than one number: make sure the one we send to has a WhatsApp account, and
+    // move to the next that does if not (D-60). Runs after the pacing gates and the pre-send pause.
+    let recipientValue = job.recipientValue;
+    if (ctx.verifyFallbackNumbers) {
+      const pick = await chooseRecipientNumber(ctx, job, senderRef);
+      if (pick.kind === 'none') {
+        // Sending to a number with no account would only cost the sender its delivery ratio.
+        await markMessageFailed(ctx.db, messageId, 'no_whatsapp_number');
+        ctx.logger.warn({ messageId, contactId: job.contactId }, 'none of this contact\'s numbers has a WhatsApp account');
+        return;
+      }
+      if (pick.kind === 'switched') recipientValue = pick.phone;
+    }
     const recipient = job.recipientKind === 'phone'
-      ? { phoneE164: job.recipientValue }
-      : { phoneE164: '', providerAddress: job.recipientValue };
+      ? { phoneE164: recipientValue }
+      : { phoneE164: '', providerAddress: recipientValue };
     const body = ctx.decrypt(job.bodyEnc);
 
     // An attachment (D-25): read the file back from storage so the adapter can upload it. Done

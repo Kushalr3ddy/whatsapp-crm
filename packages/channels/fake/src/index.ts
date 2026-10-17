@@ -65,6 +65,12 @@ export class FakeChannelProvider implements ChannelProvider {
 
   /** Every typing-presence call, in order, so a test can assert composing fired before the send. */
   readonly typingCalls: Array<{ senderId: string; to: Recipient; state: 'composing' | 'paused' }> = [];
+  /** Numbers (E.164) this fake reports as having no WhatsApp account; every other number is registered. */
+  readonly unregistered = new Set<string>();
+  /** Every registration lookup, in order, so a test can assert how many were made and for which numbers. */
+  readonly registrationChecks: string[] = [];
+  /** When set, lookups answer "could not tell" (null), as a closed socket or a failed query would. */
+  registrationUnknown = false;
 
   /** Every read receipt sent, in order, so a test can assert when (and whether) one went out. */
   readonly readCalls: Array<{ senderId: string; to: Recipient; providerMessageId: string }> = [];
@@ -178,6 +184,13 @@ export class FakeChannelProvider implements ChannelProvider {
     if (this.health_.get(sender.id)?.state !== 'open') return false;
     this.presenceCalls.push({ senderId: sender.id, state });
     return true;
+  }
+
+  /** Answers a registration lookup from `unregistered`, recording it; null when set to be unable to tell. */
+  async isRegistered(_sender: SenderRef, phoneE164: string): Promise<boolean | null> {
+    this.registrationChecks.push(phoneE164);
+    if (this.registrationUnknown) return null;
+    return !this.unregistered.has(phoneE164);
   }
 
   /** Records a read receipt; false (like the real adapter) when the sender is not connected. */

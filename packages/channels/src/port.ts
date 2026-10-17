@@ -225,6 +225,18 @@ export interface ChannelProvider {
   typing?(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void>;
 
   /**
+   * Asks whether a phone number has a WhatsApp account, the lookup the app does when you type a
+   * number into "new chat". Resolves `true` or `false` when the answer is known and `null` when it
+   * could not be asked (socket closed, query failed), in which case the caller must not act on it.
+   *
+   * Optional: a transport with no such lookup omits it. Used only by the number fallback
+   * (docs/21-deferred.md, D-60), and only for a contact with more than one number, one number per
+   * send and cached, never as a bulk sweep: a stream of existence lookups from one session is the
+   * kind of pattern reported to get numbers restricted.
+   */
+  isRegistered?(sender: SenderRef, phoneE164: string): Promise<boolean | null>;
+
+  /**
    * Sets the number's own presence — `available` (shows online) or `unavailable` — with no
    * recipient. Optional and best-effort like `typing`; used only by the anti-ban background
    * entropy (docs/08-antiban.md, Layer 3) to give an idle number human-shaped noise. Resolves
