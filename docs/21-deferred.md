@@ -2051,3 +2051,13 @@ sign-in. Decided with it (2026-10-17): **one sans-serif font throughout**, a sma
 Direction (clean light, brand sidebar, soft and friendly, or a mix) is chosen from the mockups in `mockups/` (git-ignored)
 before any page is restyled. Direction A and Inter were chosen; the sign-in screen, Overview and shared styles carry the motion in PR #53. Most other pages still to do.
 
+
+---
+
+## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — pinned (Kushal, 2026-10-17)
+
+Some chats arrive from WhatsApp with a hidden `…@lid` id instead of a phone number, so they show as a raw id in the
+inbox and Contacts (see D-65). Kushal wants, at the top of such a chat, an **Add number / contact** action that works like
+saving a new contact in WhatsApp: type the phone number and a name, and the chat is joined to that person (merged with an
+existing contact if the number is already known). He also suspects the automatic lid-to-number mapping is not working;
+check that first (does the gateway ever learn the number for a lid, and is it stored?). Pinned to come back to; not started.
