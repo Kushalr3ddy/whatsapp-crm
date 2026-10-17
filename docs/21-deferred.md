@@ -2051,3 +2051,13 @@ sign-in. Decided with it (2026-10-17): **one sans-serif font throughout**, a sma
 Direction (clean light, brand sidebar, soft and friendly, or a mix) is chosen from the mockups in `mockups/` (git-ignored)
 before any page is restyled. Direction A and Inter were chosen; the sign-in screen, Overview and shared styles carry the motion in PR #53. Most other pages still to do.
 
+
+---
+
+## D-68 · Campaign with no tagged people: tell the user to tag them first — pinned (Kushal, 2026-10-17)
+
+When someone starts a new campaign and no contact has the tag they would pick (or no tags exist at all), the page should
+say so and point them to Contacts to tag people, instead of leaving them with an empty list. Today the "A tag" tab is
+simply hidden when no tags exist (`apps/web/app/broadcast/new/audience-picker.tsx`). Also noted the same day: an imported
+Naukri file only brings in name, phone and email, so its other columns (location, skills, experience…) do not show on
+Contacts; that is D-21 (map a column to a custom field), already a priority.
