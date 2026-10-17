@@ -63,6 +63,8 @@ services:
       ORG_NAME: ${ORG_NAME:-My Organisation}
       ORG_SLUG: ${ORG_SLUG:-my-org}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3001}
+      # Optional line shown across the top of every page, e.g. "Test environment: expect bugs, note them".
+      ENVIRONMENT_BANNER: ${ENVIRONMENT_BANNER:-}
       SEND_TIMEZONE: ${SEND_TIMEZONE:-Asia/Kolkata}
       DEFAULT_COUNTRY: ${DEFAULT_COUNTRY:-IN}
     volumes:
