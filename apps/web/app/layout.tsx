@@ -1,14 +1,13 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
-import { Noto_Sans, EB_Garamond } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import { Nav } from './nav';
 import { listSenders, getMe } from '@/lib/crm';
 import './globals.css';
 
-/** Body text, and the serif used for headings. Self-hosted by Next at build time; Latin only, to keep them light. */
-const body = Noto_Sans({ subsets: ['latin'], variable: '--font-body', display: 'swap', weight: ['400', '500', '600'] });
-const display = EB_Garamond({ subsets: ['latin'], variable: '--font-display', display: 'swap', weight: ['500', '600'] });
+/** The one font used everywhere. Self-hosted by Next at build time; Latin only, to keep it light. */
+const body = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap' });
 
 /** Browser tab title and description. Generic on purpose — the product is not one company's. */
 export const metadata: Metadata = {
@@ -55,7 +54,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // hydration mismatch can throw a full-screen error overlay that hides the page, which this clears.
   // It suppresses ONLY these two elements' own attributes, never the page content below.
   return (
-    <html lang="en" className={`${body.variable} ${display.variable}`} suppressHydrationWarning>
+    <html lang="en" className={body.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>

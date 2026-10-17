@@ -17,39 +17,41 @@
  * Colour roles: `accent` is the brand (buttons, links, the active nav item); `success`, `warning`
  * and `danger` carry meaning and are never used decoratively; `muted` is secondary text.
  */
-@theme {
-  --font-sans: var(--font-body), "Noto Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-heading: var(--font-display), "EB Garamond", Georgia, "Times New Roman", serif;
+/* Pure-CSS count-up: the real number is in the markup (--to), the animation only runs it up from zero. */
+@property --n { syntax: '<integer>'; initial-value: 0; inherits: false; }
 
-  /* The look of the WhatsApp tools in the research (Wati, Interakt, Respond.io): a light grey page, white
-     cards, a light sidebar, and green as the one primary colour. Blue is only for links and info. */
-  --color-canvas: #f3f6f8;
+@theme {
+  --font-sans: var(--font-body), Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-heading: var(--font-sans);
+
+  /* Direction A (clean light): near-white surfaces, thin borders, one green accent. Blue is for info only. */
+  --color-canvas: #f7f8f9;
   --color-surface: #ffffff;
-  --color-border: #e1e8ed;
-  --color-ink: #13212b;
-  --color-muted: #5e7080;
-  --color-accent: #138a4f;
-  --color-accent-soft: #e2f5ea;
+  --color-border: #e5e7eb;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-accent: #16a34a;
+  --color-accent-soft: #e8f7ee;
   --color-on-accent: #ffffff;
-  --color-lime: #25d366;
+  --color-lime: #4ade80;
   --color-info: #2563eb;
-  --color-success: #138a4f;
-  --color-success-soft: #e2f5ea;
-  --color-danger: #d92d20;
-  --color-warning: #a85a00;
-  --color-warning-soft: #fdf0d2;
+  --color-success: #15803d;
+  --color-success-soft: #e8f7ee;
+  --color-danger: #dc2626;
+  --color-warning: #a16207;
+  --color-warning-soft: #fef3c7;
 
   --color-sidebar: #ffffff;
-  --color-sidebar-ink: #13212b;
-  --color-sidebar-muted: #5e7080;
-  --color-sidebar-hover: #f0f4f7;
-  --color-sidebar-active: #e2f5ea;
-  --color-sidebar-active-ink: #0e6b3c;
+  --color-sidebar-ink: #0f172a;
+  --color-sidebar-muted: #64748b;
+  --color-sidebar-hover: #f1f5f9;
+  --color-sidebar-active: #e8f7ee;
+  --color-sidebar-active-ink: #15803d;
 
   --radius-card: 0.5rem;
   --radius-control: 0.375rem;
-  --shadow-card: 0 1px 2px rgb(19 33 43 / 0.06), 0 2px 6px rgb(19 33 43 / 0.04);
-  --shadow-pop: 0 10px 28px rgb(19 33 43 / 0.14);
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-pop: 0 10px 28px rgb(15 23 42 / 0.12);
 }
 
 @layer base {
@@ -58,63 +60,63 @@
   }
 
   :root[data-theme="dark"] {
-    --color-canvas: #0b1318;
-    --color-surface: #131d24;
-    --color-border: #22323c;
-    --color-ink: #e6eef2;
-    --color-muted: #8ea2af;
-    --color-accent: #34d27b;
-    --color-accent-soft: #12301f;
+    --color-canvas: #0a0e11;
+    --color-surface: #10161b;
+    --color-border: #1e2830;
+    --color-ink: #e6edf3;
+    --color-muted: #8b98a5;
+    --color-accent: #3ddc84;
+    --color-accent-soft: #10261a;
     --color-on-accent: #04210f;
-    --color-lime: #5ee59a;
-    --color-info: #6aa6ff;
-    --color-success: #34d27b;
-    --color-success-soft: #12301f;
+    --color-lime: #86efac;
+    --color-info: #7fb0ff;
+    --color-success: #5ee59a;
+    --color-success-soft: #10261a;
     --color-danger: #ff8a7a;
     --color-warning: #f5c26b;
     --color-warning-soft: #3a2d12;
-    --color-sidebar: #0f181e;
-    --color-sidebar-ink: #e0eaef;
-    --color-sidebar-muted: #8ea2af;
-    --color-sidebar-hover: #17242c;
-    --color-sidebar-active: #12301f;
-    --color-sidebar-active-ink: #5ee59a;
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45);
+    --color-sidebar: #0a0e11;
+    --color-sidebar-ink: #e6edf3;
+    --color-sidebar-muted: #8b98a5;
+    --color-sidebar-hover: #141c23;
+    --color-sidebar-active: #10261a;
+    --color-sidebar-active-ink: #3ddc84;
+    --shadow-card: none;
     --shadow-pop: 0 10px 28px rgb(0 0 0 / 0.55);
     color-scheme: dark;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --color-canvas: #0b1318;
-      --color-surface: #131d24;
-      --color-border: #22323c;
-      --color-ink: #e6eef2;
-      --color-muted: #8ea2af;
-      --color-accent: #34d27b;
-      --color-accent-soft: #12301f;
+      --color-canvas: #0a0e11;
+      --color-surface: #10161b;
+      --color-border: #1e2830;
+      --color-ink: #e6edf3;
+      --color-muted: #8b98a5;
+      --color-accent: #3ddc84;
+      --color-accent-soft: #10261a;
       --color-on-accent: #04210f;
-      --color-lime: #5ee59a;
-      --color-info: #6aa6ff;
-      --color-success: #34d27b;
-      --color-success-soft: #12301f;
+      --color-lime: #86efac;
+      --color-info: #7fb0ff;
+      --color-success: #5ee59a;
+      --color-success-soft: #10261a;
       --color-danger: #ff8a7a;
       --color-warning: #f5c26b;
       --color-warning-soft: #3a2d12;
-      --color-sidebar: #0f181e;
-      --color-sidebar-ink: #e0eaef;
-      --color-sidebar-muted: #8ea2af;
-      --color-sidebar-hover: #17242c;
-      --color-sidebar-active: #12301f;
-      --color-sidebar-active-ink: #5ee59a;
-      --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45);
+      --color-sidebar: #0a0e11;
+      --color-sidebar-ink: #e6edf3;
+      --color-sidebar-muted: #8b98a5;
+      --color-sidebar-hover: #141c23;
+      --color-sidebar-active: #10261a;
+      --color-sidebar-active-ink: #3ddc84;
+      --shadow-card: none;
       --shadow-pop: 0 10px 28px rgb(0 0 0 / 0.55);
       color-scheme: dark;
     }
   }
 
   html {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   h1, h2, .font-heading {
@@ -210,7 +212,7 @@
   /* Page frame ---------------------------------------------------------------------------- */
   .page { margin-inline: auto; width: 100%; max-width: 64rem; padding: 2rem 1.5rem 4rem; }
   .page-narrow { max-width: 42rem; }
-  .page-title { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+  .page-title { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; }
   .page-desc { margin-top: 0.35rem; font-size: 0.9375rem; color: var(--color-muted); }
   .section-title { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; color: var(--color-muted); text-transform: uppercase; }
 
@@ -257,7 +259,7 @@
   /* Motion: small and quick. Pages ease in, buttons press, cards lift when they are links. ---- */
   .btn { transition: background-color 140ms, border-color 140ms, opacity 140ms, transform 90ms, box-shadow 140ms; }
   .btn:active:not(:disabled) { transform: scale(0.97); }
-  .btn-primary { box-shadow: 0 1px 2px rgb(19 138 79 / 0.35); }
+  .btn-primary { box-shadow: 0 1px 2px rgb(22 163 74 / 0.35); }
   .btn-primary:hover { opacity: 1; filter: brightness(1.08); box-shadow: 0 3px 10px color-mix(in srgb, var(--color-accent) 35%, transparent); }
   a > .card { transition: transform 160ms, box-shadow 160ms, border-color 160ms; }
   a:hover > .card { transform: translateY(-2px); box-shadow: var(--shadow-pop); border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)); }
@@ -288,53 +290,94 @@
 
   /* Sign-in screen --------------------------------------------------------------------------- */
   .auth-page { background: var(--color-canvas); }
-  .auth-blobs { position: absolute; inset: 0; pointer-events: none; }
-  .auth-blobs span { position: absolute; border-radius: 9999px; filter: blur(70px); opacity: 0.55; will-change: transform; }
-  .auth-blobs span:nth-child(1) { width: 28rem; height: 28rem; left: -8rem; top: -6rem; background: color-mix(in srgb, var(--color-lime) 55%, transparent); animation: blob-a 22s ease-in-out infinite alternate; }
-  .auth-blobs span:nth-child(2) { width: 24rem; height: 24rem; left: 18%; bottom: -9rem; background: color-mix(in srgb, var(--color-accent) 40%, transparent); animation: blob-b 26s ease-in-out infinite alternate; }
-  .auth-blobs span:nth-child(3) { width: 20rem; height: 20rem; right: 30%; top: 20%; background: color-mix(in srgb, var(--color-info) 28%, transparent); animation: blob-c 30s ease-in-out infinite alternate; }
+  .auth-blobs { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .auth-blobs span { position: absolute; border-radius: 9999px; filter: blur(70px); opacity: 0.5; will-change: transform; }
+  .auth-blobs span:nth-child(1) { width: 28rem; height: 28rem; left: -8rem; top: -6rem; background: #86efac; animation: blob-a 22s ease-in-out infinite alternate; }
+  .auth-blobs span:nth-child(2) { width: 24rem; height: 24rem; left: 16%; bottom: -9rem; background: var(--color-accent); animation: blob-b 27s ease-in-out infinite alternate; }
+  .auth-blobs span:nth-child(3) { width: 20rem; height: 20rem; right: 34%; top: 18%; background: #93c5fd; animation: blob-c 31s ease-in-out infinite alternate; }
   @keyframes blob-a { to { transform: translate(9rem, 7rem) scale(1.15); } }
   @keyframes blob-b { to { transform: translate(-6rem, -8rem) scale(1.2); } }
   @keyframes blob-c { to { transform: translate(7rem, 6rem) scale(0.85); } }
-
   .auth-card {
-    border-radius: calc(var(--radius-card) + 4px);
-    border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+    border-radius: calc(var(--radius-card) + 6px);
+    border: 1px solid color-mix(in srgb, var(--color-border) 85%, transparent);
     background: color-mix(in srgb, var(--color-surface) 88%, transparent);
     backdrop-filter: blur(10px);
     box-shadow: var(--shadow-pop);
     animation: rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
+  .auth-aside { position: relative; z-index: 1; background: linear-gradient(155deg, #0b5d3b 0%, #138a4f 55%, #1fb36b 100%); }
+  .auth-aside::before { content: ""; position: absolute; inset: 0; background: radial-gradient(60rem 30rem at 85% 0%, rgb(255 255 255 / 0.16), transparent 60%); pointer-events: none; }
 
-  .auth-aside { background: linear-gradient(155deg, #0b5d3b 0%, #138a4f 52%, #1fb36b 100%); }
-  .auth-aside::before { content: ""; position: absolute; inset: 0; background: radial-gradient(60rem 30rem at 85% 0%, rgb(255 255 255 / 0.16), transparent 60%), radial-gradient(40rem 26rem at 0% 100%, rgb(0 0 0 / 0.18), transparent 60%); }
-  .auth-bubbles { position: absolute; inset: 0; overflow: hidden; }
-  .auth-bubble {
-    position: absolute; bottom: -4rem; max-width: 15rem; border-radius: 1rem 1rem 1rem 0.25rem;
-    background: rgb(255 255 255 / 0.16); border: 1px solid rgb(255 255 255 / 0.22); backdrop-filter: blur(4px);
-    padding: 0.5rem 0.8rem; font-size: 0.8125rem; color: rgb(255 255 255 / 0.92);
-    animation: bubble-rise 20s linear infinite; opacity: 0; will-change: transform, opacity;
-  }
-  .auth-bubble-mine { border-radius: 1rem 1rem 0.25rem 1rem; background: rgb(255 255 255 / 0.26); }
-  @keyframes bubble-rise {
-    0% { transform: translateY(0); opacity: 0; }
-    10% { opacity: 1; }
-    85% { opacity: 1; }
-    100% { transform: translateY(-110vh); opacity: 0; }
-  }
-  .auth-preview { border-radius: calc(var(--radius-card) + 4px); background: rgb(255 255 255 / 0.12); border: 1px solid rgb(255 255 255 / 0.22); backdrop-filter: blur(8px); box-shadow: 0 18px 40px rgb(0 0 0 / 0.2); }
-  .typing { display: inline-flex; gap: 3px; }
-  .typing i { width: 5px; height: 5px; border-radius: 9999px; background: currentColor; animation: typing-dot 1.2s ease-in-out infinite; }
-  .typing i:nth-child(2) { animation-delay: 0.15s; }
-  .typing i:nth-child(3) { animation-delay: 0.3s; }
-  @keyframes typing-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+  /* The lead scene: message everyone, a few reply, they are served, the cash stack grows. Drawn on a 960x560 canvas
+     and scaled to fit; every loop is 14 s, and every moving part is timed to that one clock. */
+  .scene { position: relative; width: 960px; height: 560px; transform-origin: top left; }
+  .scene .lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .scene .lines line { stroke: rgb(255 255 255 / 0.16); stroke-width: 1.5; stroke-dasharray: 4 6; }
+  .scene .crm { position: absolute; left: 70px; top: 196px; width: 96px; height: 96px; border-radius: 26px; background: #fff; color: #138a4f; display: grid; place-items: center; font-weight: 800; font-size: 40px; box-shadow: 0 12px 30px rgb(0 0 0 / 0.25); animation: crm-pulse 14s infinite; }
+  .scene .crm small { position: absolute; bottom: -26px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #fff; opacity: 0.85; white-space: nowrap; }
+  @keyframes crm-pulse { 0%, 24% { transform: scale(1); } 4%, 12%, 20% { transform: scale(1.06); } 30%, 46% { transform: scale(1); } 40% { transform: scale(1.07); } 100% { transform: scale(1); } }
+  .scene .sil { position: absolute; width: 84px; height: 92px; }
+  .scene .sil svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .scene .sil .grey path, .scene .sil .grey circle { fill: rgb(255 255 255 / 0.38); }
+  .scene .sil .lit path, .scene .sil .lit circle { fill: #fff; }
+  .scene .sil .lit { opacity: 0; }
+  .scene .sil.rep .lit { animation: sc-lit 14s infinite; }
+  @keyframes sc-lit { 0%, 24% { opacity: 0; } 29%, 86% { opacity: 1; } 94%, 100% { opacity: 0; } }
+  .scene .msg, .scene .reply { position: absolute; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; }
+  .scene .msg { width: 34px; height: 24px; border-radius: 12px 12px 12px 3px; background: #fff; color: #138a4f; gap: 3px; box-shadow: 0 4px 10px rgb(0 0 0 / 0.2); animation: sc-fly 14s infinite; }
+  .scene .msg i { width: 4px; height: 4px; border-radius: 9999px; background: currentColor; }
+  @keyframes sc-fly { 0% { opacity: 0; transform: translate(0, 0) scale(0.5); } 3% { opacity: 1; } 19% { opacity: 1; transform: translate(var(--dx), var(--dy)) scale(1); } 23%, 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1.5); } }
+  .scene .reply { padding: 4px 10px; font-size: 12px; font-weight: 700; background: #fde68a; color: #713f12; border-radius: 12px 12px 3px 12px; box-shadow: 0 4px 10px rgb(0 0 0 / 0.2); white-space: nowrap; animation: sc-back 14s infinite; }
+  @keyframes sc-back { 0%, 28% { opacity: 0; transform: translate(0, 0) scale(0.5); } 31% { opacity: 1; } 44% { opacity: 1; transform: translate(calc(var(--dx) * -1), calc(var(--dy) * -1)) scale(1); } 47%, 100% { opacity: 0; transform: translate(calc(var(--dx) * -1), calc(var(--dy) * -1)) scale(0.6); } }
+  .scene .badge { position: absolute; right: -6px; top: -6px; width: 30px; height: 30px; border-radius: 9999px; background: #22c55e; border: 3px solid #fff; display: grid; place-items: center; opacity: 0; animation: sc-serve 14s infinite; box-shadow: 0 4px 10px rgb(0 0 0 / 0.25); padding: 0; }
+  .scene .badge svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  @keyframes sc-serve { 0%, 47% { opacity: 0; transform: scale(0) rotate(-40deg); } 52% { opacity: 1; transform: scale(1.3) rotate(0); } 56%, 86% { opacity: 1; transform: scale(1); } 93%, 100% { opacity: 0; transform: scale(0.8); } }
+  .scene .spark { position: absolute; width: 8px; height: 8px; border-radius: 9999px; background: #fde047; opacity: 0; animation: sc-spark 14s infinite; }
+  @keyframes sc-spark { 0%, 50% { opacity: 0; transform: translate(0, 0) scale(0.3); } 54% { opacity: 1; } 62%, 100% { opacity: 0; transform: translate(var(--sx), var(--sy)) scale(1); } }
+  .scene .note { position: absolute; left: 20px; top: 24px; width: 40px; height: 22px; border-radius: 4px; background: linear-gradient(135deg, #bbf7d0, #4ade80 60%, #22c55e); border: 1.5px solid #15803d; opacity: 0; animation: sc-note 14s infinite; box-shadow: 0 6px 14px rgb(0 0 0 / 0.3); }
+  .scene .note::before { content: ""; position: absolute; left: 50%; top: 50%; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 9999px; border: 1.5px solid #15803d; }
+  .scene .note::after { content: ""; position: absolute; inset: 4px; border: 1px dashed rgb(21 128 61 / 0.45); border-radius: 2px; }
+  @keyframes sc-note { 0%, 58% { opacity: 0; transform: translateY(0) rotate(-14deg) scale(0.5); } 62% { opacity: 1; transform: translateY(-32px) rotate(10deg) scale(1.1); } 66% { transform: translateY(-52px) rotate(-8deg) scale(1); } 71% { opacity: 1; transform: translateY(-74px) rotate(9deg) scale(1); } 77%, 100% { opacity: 0; transform: translateY(-104px) rotate(-6deg) scale(0.9); } }
+  .scene .cash { position: absolute; left: -2px; top: -2px; display: flex; align-items: center; gap: 5px; padding: 3px 9px 3px 6px; border-radius: 9999px; background: #fff; color: #15803d; font-weight: 800; font-size: 16px; opacity: 0; white-space: nowrap; animation: sc-cash 14s infinite; box-shadow: 0 6px 14px rgb(0 0 0 / 0.25); }
+  .scene .cash svg { width: 18px; height: 18px; fill: none; stroke: #16a34a; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  @keyframes sc-cash { 0%, 59% { opacity: 0; transform: translateY(8px) scale(0.7); } 64% { opacity: 1; transform: translateY(-26px) scale(1.1); } 70% { opacity: 1; transform: translateY(-50px) scale(1); } 80%, 100% { opacity: 0; transform: translateY(-84px) scale(1); } }
+  .scene .tally { position: absolute; left: 24px; top: 332px; width: 204px; height: 212px; padding: 12px 14px; border-radius: 16px; background: rgb(255 255 255 / 0.16); backdrop-filter: blur(6px); border: 1px solid rgb(255 255 255 / 0.2); }
+  .scene .tally label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.9; }
+  .scene .stack { position: absolute; left: 14px; bottom: 12px; width: 112px; height: 172px; }
+  .scene .brick { position: absolute; left: 2px; bottom: calc(var(--k) * 28px); width: 108px; height: 54px; opacity: 0; filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.25)); animation-duration: 14s; animation-iteration-count: infinite; }
+  .scene .arrow { position: absolute; right: 18px; bottom: 16px; width: 44px; height: 0; opacity: 0; animation: sc-arrow 14s infinite; }
+  .scene .arrow .head { position: absolute; left: 0; top: 0; width: 0; height: 0; border-left: 22px solid transparent; border-right: 22px solid transparent; border-bottom: 30px solid #bbf7d0; filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.25)); }
+  .scene .arrow .shaft { position: absolute; left: 13px; right: 13px; top: 26px; bottom: 0; border-radius: 4px 4px 8px 8px; background: linear-gradient(180deg, #bbf7d0, #4ade80); box-shadow: 0 4px 10px rgb(0 0 0 / 0.2); }
+  @keyframes sc-arrow { 0%, 61% { height: 0; opacity: 0; } 62% { height: 30px; opacity: 1; animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1); } 83% { height: 152px; opacity: 1; } 93% { height: 152px; opacity: 1; } 97%, 100% { height: 152px; opacity: 0; } }
+  .scene .cap { position: absolute; top: 20px; left: 0; right: 0; text-align: center; height: 28px; }
+  .scene .cap span { position: absolute; left: 0; right: 0; opacity: 0; font-size: 15px; font-weight: 650; color: #fff; }
+  .scene .cap span b { display: inline-block; background: rgb(255 255 255 / 0.16); border: 1px solid rgb(255 255 255 / 0.2); border-radius: 9999px; padding: 4px 14px; }
+  .scene .cap .c1 { animation: sc-c1 14s infinite; } .scene .cap .c2 { animation: sc-c2 14s infinite; } .scene .cap .c3 { animation: sc-c3 14s infinite; } .scene .cap .c4 { animation: sc-c4 14s infinite; }
+  @keyframes sc-c1 { 0%, 1% { opacity: 0; transform: translateY(6px); } 3%, 24% { opacity: 1; transform: none; } 26%, 100% { opacity: 0; } }
+  @keyframes sc-c2 { 0%, 26% { opacity: 0; transform: translateY(6px); } 29%, 46% { opacity: 1; transform: none; } 48%, 100% { opacity: 0; } }
+  @keyframes sc-c3 { 0%, 48% { opacity: 0; transform: translateY(6px); } 51%, 60% { opacity: 1; transform: none; } 62%, 100% { opacity: 0; } }
+  @keyframes sc-c4 { 0%, 62% { opacity: 0; transform: translateY(6px); } 65%, 92% { opacity: 1; transform: none; } 95%, 100% { opacity: 0; } }
 
   /* Empty states float gently; the illustration is decorative. */
   .empty-float { animation: float 5s ease-in-out infinite; }
   @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 
   @media (prefers-reduced-motion: reduce) {
-    .auth-blobs span, .auth-bubble, .typing i, .auth-card, .empty-float { animation: none !important; }
-    .auth-bubble { opacity: 0.0; }
+    .auth-blobs span, .auth-card, .empty-float, .scene *, .count, .sk { animation: none !important; }
+    .scene .sil.rep .lit, .scene .badge, .scene .brick, .scene .cap .c4 { opacity: 1; } .scene .arrow { opacity: 1; height: 152px; }
   }
+
+  .count { --n: var(--to); counter-reset: num var(--n); animation: countup 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .count::after { content: counter(num); }
+  @keyframes countup { from { --n: 0; } to { --n: var(--to); } }
+
+  /* Skeletons shimmer while a page's data loads. */
+  .sk { border-radius: var(--radius-control); background: linear-gradient(90deg, var(--color-border) 25%, color-mix(in srgb, var(--color-border) 45%, var(--color-surface)) 50%, var(--color-border) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  @keyframes sc-brick0 { 0%, 61.0% { opacity: 0; transform: translateY(-34px) scale(0.92); } 63.6% { opacity: 1; transform: translateY(4px); } 65.0%, 93% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(4px); } }
+  @keyframes sc-brick1 { 0%, 65.7% { opacity: 0; transform: translateY(-34px) scale(0.92); } 68.3% { opacity: 1; transform: translateY(4px); } 69.7%, 93% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(4px); } }
+  @keyframes sc-brick2 { 0%, 70.4% { opacity: 0; transform: translateY(-34px) scale(0.92); } 73.0% { opacity: 1; transform: translateY(4px); } 74.4%, 93% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(4px); } }
+  @keyframes sc-brick3 { 0%, 75.1% { opacity: 0; transform: translateY(-34px) scale(0.92); } 77.7% { opacity: 1; transform: translateY(4px); } 79.1%, 93% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(4px); } }
+  @keyframes sc-brick4 { 0%, 79.8% { opacity: 0; transform: translateY(-34px) scale(0.92); } 82.4% { opacity: 1; transform: translateY(4px); } 83.8%, 93% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(4px); } }
 }

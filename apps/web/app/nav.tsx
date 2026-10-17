@@ -121,6 +121,13 @@ export function Nav({ alerts = 0, isAdmin = false }: { alerts?: number; isAdmin?
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 md:mt-auto md:flex-col md:items-stretch md:border-t md:border-border md:pt-3">
+        <div className="hidden items-center gap-2.5 px-1.5 pb-1 md:flex" aria-label={isAdmin ? 'Signed in as admin' : 'Signed in as user'}>
+          <span className="avatar size-8 text-xs" aria-hidden>{isAdmin ? 'A' : 'U'}</span>
+          <span className="min-w-0 text-sm leading-tight">
+            <span className="block font-medium">{isAdmin ? 'Admin' : 'User'}</span>
+            <span className="block text-xs text-muted">Signed in</span>
+          </span>
+        </div>
         <ThemeToggle />
         <form action={signOut} className="md:contents">
           <button type="submit" className="btn btn-ghost btn-sm w-full whitespace-nowrap">

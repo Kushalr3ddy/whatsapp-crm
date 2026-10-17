@@ -19,6 +19,17 @@ function numberBadge(s: Sender): { label: string; cls: string } {
   return { label: 'Connected', cls: 'badge-success' };
 }
 
+/** "Good morning/afternoon/evening" for the install's time zone (the one sending hours use), or a plain "Welcome" if it is not valid. */
+function greeting(): string {
+  try {
+    const zone = process.env.SEND_TIMEZONE ?? 'Asia/Kolkata';
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: zone }).format(new Date()));
+    return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  } catch {
+    return 'Welcome';
+  }
+}
+
 /**
  * The landing screen: how the whole operation is doing at a glance — are the numbers up, is anyone
  * waiting on a reply, what is running — with a way into each. It reads only things other screens
@@ -62,7 +73,7 @@ export default async function Home() {
   return (
     <main className="page">
       <PageHeader
-        title="Overview"
+        title={`${greeting()}, ${isAdmin ? 'Admin' : 'User'}`}
         description="How your numbers, conversations and campaigns are doing right now."
         actions={
           <>

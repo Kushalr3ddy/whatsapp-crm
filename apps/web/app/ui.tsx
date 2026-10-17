@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import Link from 'next/link';
 
 /**
@@ -41,7 +41,11 @@ export function Stat(
           </span>
         )}
       </div>
-      <p className={`mt-1.5 text-3xl font-semibold tabular-nums tracking-tight ${colour}`}>{value}</p>
+      <p className={`mt-1.5 text-3xl font-semibold tabular-nums tracking-tight ${colour}`}>
+        {typeof value === 'number'
+          ? (<><span aria-hidden className="count" style={{ '--to': value } as CSSProperties} /><span className="sr-only">{value}</span></>)
+          : value}
+      </p>
       {hint !== undefined && <p className="mt-1 text-sm text-muted">{hint}</p>}
     </div>
   );
