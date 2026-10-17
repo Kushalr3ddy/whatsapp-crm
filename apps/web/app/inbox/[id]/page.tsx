@@ -118,7 +118,7 @@ function MessageBubble({ message }: { message: Message }) {
     <div
       className={[
         'max-w-[min(34rem,80%)] rounded-2xl px-3.5 py-2',
-        message.direction === 'outbound' ? 'bg-accent text-on-accent' : 'border border-border bg-surface'
+        message.direction === 'outbound' ? 'border border-accent/25 bg-accent-soft text-ink' : 'border border-border bg-surface'
       ].join(' ')}
     >
       {author !== null && <p className="mb-0.5 text-[11px] font-medium text-on-accent/70">{author}</p>}

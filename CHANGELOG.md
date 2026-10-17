@@ -13,6 +13,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-17 (end of day) — Team fix, Linked numbers, the new look (#53 open)
+- **Merged:** #50 handoff, #51 market research moved to `docs/03`, #52 (admin may demote themselves while another admin
+  remains; **Numbers renamed Linked numbers**; D-66 pinned).
+- **Open #53:** direction A look (Inter, light/dark), animated sign-in with the lead scene (org + CRM, accept/decline/grey,
+  clipboard service, cash stack and arrow), **front-end-only sign-up page**, Overview greeting/checklist/count-up, skeletons,
+  signed-in label. First CI run: 25/26 browser tests green (the red one was a bug in the new sign-up test, fixed since).
+- **Found:** the browser tests that fail on a loaded laptop (`bulk-tag-flow`, seeded inbox, `zz-roles-flow`) pass on CI.
+- **Process:** CI runs typecheck, lint, vitest, the browser suite and the simulation; locally only the browser automation,
+  when asked. New handoff procedure in `HANDOFF.md`.
+
 ### 2026-10-17 — Import fixes, Team tab, Add a number, banner, number fallback merged; VM test; look not done
 - **Merged to `main`:** #46 import usability, #47 Team tab + Add a number + Security key button + Campaigns rename + phone
   recorded after linking, #48 `ENVIRONMENT_BANNER`, #49 number fallback (D-60, migration 0029). Details in `HANDOFF.md`.
@@ -1057,12 +1067,13 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
 
-1. **The look** (Kushal: "depressing"): show him screenshots of `feat/ui-look` first (one low-priority local run, ask
-   before starting it), then restyle page by page with the research apps as the model, no UI library.
-2. **One full `verify` on `main`** (never done after the four merges) and the two unexplained browser failures
-   (`bulk-tag-flow`, seeded inbox); decide about `zz-roles-flow`. Ask before running.
-3. **D-65 bugs** found on the VM (false ban alarm on Try again, dead-end card, QR window, tab titles, import count
-   wording, row failing on a bad email, raw `@lid` contacts).
+1. **Merge #53** once its checks are green, then **restyle the remaining pages one by one** in direction A (inbox, contacts,
+   import, campaigns, linked numbers, team, security, billing); motion on most pages (D-66).
+2. **D-47 sign-up backend**: the page exists as a front end; decide payment, whether sign-up makes an org, email
+   verification, abuse limits, then connect it.
+3. **D-65 bugs** found on the VM (false ban alarm on Try again, dead-end card, QR window, tab titles, import count wording, row
+   failing on a bad email, raw `@lid` contacts); real names in the greeting (`/auth/me` needs a display name).
+4. **One full `verify` on `main`** after the merges (ask first; CI already runs most of it).
 2. **Hosting and deployment (D-33, `docs/29`, `docs/30`)**: Kushal and the other developer pick the route, then the
    packaging is finished and the **72-hour datacenter-IP test with one spare number** runs behind the tunnel.
 3. **Real-number pilot**: a spare number for a week, including the first real run of the number fallback.
