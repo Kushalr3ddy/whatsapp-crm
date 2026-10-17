@@ -13,6 +13,16 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-17 — Import fixes, Team tab, Add a number, banner, number fallback merged; VM test; look not done
+- **Merged to `main`:** #46 import usability, #47 Team tab + Add a number + Security key button + Campaigns rename + phone
+  recorded after linking, #48 `ENVIRONMENT_BANNER`, #49 number fallback (D-60, migration 0029). Details in `HANDOFF.md`.
+- **Real-install test on a 2-core / 4 GB VM** (deleted afterwards): alpha container up, number linked from a
+  datacenter IP, imports, Team and Numbers screens exercised, resource log kept. Findings: login needs HTTPS
+  (Secure cookie), build peaks at 1.45 GB / 98% CPU for about 3 minutes, idle about 1 GB used. Unfixed bugs pinned as **D-65**.
+- **Not done:** the visual refresh (local branch `feat/ui-look`, unpushed, unseen by Kushal); a full `verify` on `main`
+  after the merges (started, stopped by Kushal); two browser failures on #47's run never reproduced.
+- **Process:** local stacks and `verify` lag his laptop (load up to 66); do not start them without asking.
+
 ### 2026-10-16 (end of session) — Handoff, codebase map, database portability pinned
 - **#43 and #44 merged and confirmed on `main`**; the full check passes there (701 tests, 1 skipped without an S3
   endpoint).
@@ -1047,8 +1057,12 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
 
-1. **Open the fallback PR** (D-60, branch `feat/whatsapp-number-fallback`, migration 0029): merge `origin/main` into it,
-   resolve the appended-section conflicts, run `verify`. (#43 and #44 are merged.)
+1. **The look** (Kushal: "depressing"): show him screenshots of `feat/ui-look` first (one low-priority local run, ask
+   before starting it), then restyle page by page with the research apps as the model, no UI library.
+2. **One full `verify` on `main`** (never done after the four merges) and the two unexplained browser failures
+   (`bulk-tag-flow`, seeded inbox); decide about `zz-roles-flow`. Ask before running.
+3. **D-65 bugs** found on the VM (false ban alarm on Try again, dead-end card, QR window, tab titles, import count
+   wording, row failing on a bad email, raw `@lid` contacts).
 2. **Hosting and deployment (D-33, `docs/29`, `docs/30`)**: Kushal and the other developer pick the route, then the
    packaging is finished and the **72-hour datacenter-IP test with one spare number** runs behind the tunnel.
 3. **Real-number pilot**: a spare number for a week, including the first real run of the number fallback.
