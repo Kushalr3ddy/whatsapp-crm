@@ -855,6 +855,10 @@ field.**
 That table is the evidence for the wizard's first three features: **concatenate columns into a name,
 map more than one phone column, and map a column onto a custom field.**
 
+**Added 2026-10-17 (Kushal):** make the **column selector and the preview bigger** on the Import screen (the pickers, the
+"keep these columns" box and the sample table are small for a sheet with ~80 columns). Picking columns to keep as custom
+fields is built (PR #56); the size and layout of this step are what is left.
+
 ---
 
 ## D-22 · Row-level de-duplication with a diff-style review
@@ -2071,3 +2075,49 @@ say so and point them to Contacts to tag people, instead of leaving them with an
 simply hidden when no tags exist (`apps/web/app/broadcast/new/audience-picker.tsx`). Also noted the same day: an imported
 Naukri file only brings in name, phone and email, so its other columns (location, skills, experience…) do not show on
 Contacts; that is D-21 (map a column to a custom field), already a priority.
+
+---
+
+## D-69 · Chats available inside the job portal (and any other web app) — pinned (Kushal, 2026-10-17)
+
+The conversations should be usable **from the job portal**, not only inside this CRM's own screens: the CRM should plug
+into the portal (and into any other web app) so recruiters can read and answer a candidate's WhatsApp chat right where
+they already work, on the candidate's own page. Not designed yet. Things to settle when it comes back: the shape of the
+plug-in (an embeddable chat panel for one contact or conversation, the existing API and `packages/sdk` driven by the
+portal's own screens, or both); how the portal's user signs in without a second login (a short-lived token the portal
+asks for on the user's behalf); how a portal candidate is matched to a CRM contact (by phone or by the portal's own id,
+kept in `external_ref`); whether the portal can only read a chat or also send; and that everything stays within the
+anti-ban pacing and do-not-contact rules no matter where a message is sent from.
+
+**Added 2026-10-17 (Kushal): the front end should be pluggable into other codebases and applications**, not just the chat.
+The CRM's screens (inbox and thread, contact list, import, campaigns) should be droppable into an existing app as
+components or an embeddable widget, themeable to the host's look, without taking this whole Next.js app with them.
+Questions for later: ship them as a framework-free web component or an npm package of React components; keep them
+talking only to the public API (so a host never reaches into the database); how a host overrides colours, fonts and
+which actions show; and how this fits D-61 (plain React instead of Next) and D-62 (single executable).
+
+Pinned to come back to; not started.
+
+---
+
+## D-70 · Contacts page: refresh, admin-chosen columns, tidier layout, sort and search by date — pinned (Kushal, 2026-10-17)
+
+Five wishes about the Contacts page, from testing the import with a real Naukri file (the first wish, a bigger column
+selector and preview on Import, was filed under **D-21** instead):
+
+1. **A refresh button** on Contacts, to reload the list without reloading the whole page. Related to D-46 (UI lag) and
+   D-61 (plain pages with refresh buttons).
+2. **Columns on Contacts, chosen by an admin.** Which fields show as columns in the list (name, phone, tags, and any custom
+   field such as location or experience) is set once by an admin for the whole team, rather than fixed in the code.
+   Custom fields are built (D-40, PR #56 for imports).
+3. **Better formatting.** Today each row crams the name, numbers, tags, fields editor and actions together ("a
+   clusterfuck of information"). Needs a calmer layout: a table with the chosen columns, details tucked into a side
+   panel or an expandable row, tags as small chips, consistent spacing. Copy the contact lists in the research apps
+   (`docs/03-competitive-analysis.md`).
+4. **Sort and search by the date a contact was added or imported**, and sort by any chosen column.
+5. **Do the sorting and searching in the browser** with SQLite on the end user's side, to keep load off the server. Open
+   question: this means shipping the contact list to the browser (size, privacy, staleness, and what an agent with limited
+   access is allowed to hold locally), so it needs a decision before a build. Not the same as D-20 (SQLite as the
+   server's database). The server-side alternative is a date filter and a sort parameter on `GET /contacts`.
+
+Pinned to come back to; not started.
