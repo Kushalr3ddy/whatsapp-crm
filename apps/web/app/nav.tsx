@@ -78,7 +78,7 @@ export function Nav({ alerts = 0, isAdmin = false }: { alerts?: number; isAdmin?
   const pathname = usePathname();
 
   // Nothing to navigate to, and no one to sign out, before signing in.
-  if (pathname === '/login') return null;
+  if (pathname === '/login' || pathname === '/signup') return null;
 
   return (
     <nav
