@@ -11,7 +11,7 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 
 1. **Read, in order:** this file, `CHANGELOG.md` (top "Latest" and "To do"), `docs/21-deferred.md` (every pin
    and its ✅ / priority / struck-out mark), then **go through all of `docs/`** — start at `docs/README.md` and
-   `docs/20-orientation.md`, then `01` vision/scope (it holds the 2026-10-10 market research), `08` anti-ban,
+   `docs/20-orientation.md`, then `01` vision/scope, `03` competitive analysis (it holds the 2026-10-10 market research and the UI patterns to copy), `08` anti-ban,
    `15` API, `23` auth, `24` local testing, `26` linking lifecycle, `27` restriction tracking. Do not skim: the
    decisions that cost the most to re-litigate are written down there.
 2. **Then ask Kushal questions before building anything.** He wants to be consulted on scope. Good questions
@@ -61,7 +61,7 @@ Then say in the final message which PRs are open and what the next session shoul
 2. **Do only what was asked.** "Run the UI changes locally first" meant *ask*, not "build a whole restyle". He also
    did not ask for the Team tab at the start (he liked it, but it was not requested); ask before adding scope.
 3. **No shadcn or other UI library** (bloat; he wants everything optimised later). For the look, copy the apps in the
-   research (`docs/01-vision-scope.md`, images in `docs/assets/competitors/`: Wati, Interakt, Respond.io, Chatwoot,
+   research (`docs/03-competitive-analysis.md`, images in `docs/assets/competitors/`: Wati, Interakt, Respond.io, Chatwoot,
    Pipedrive, Twenty): light grey page, white cards, light sidebar, green primary.
 - Tool quirk: `pkill -f "<text that is in my own command>"` kills the very shell running it (exit 144). Use
   `pgrep -x`, a bracket pattern (`[s]ampler`), or a pid.

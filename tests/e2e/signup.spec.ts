@@ -19,19 +19,19 @@ test.describe('sign-up screen (front end only)', () => {
     await form.getByRole('button', { name: 'Create account' }).click();
     await expect(form.getByRole('alert')).toContainText('name and your organisation');
 
-    await form.getByLabel('Your name').fill('Test Person');
-    await form.getByLabel('Organisation').fill('Test Org');
-    await form.getByLabel('Work email').fill('test.person@example.test');
-    await form.getByLabel('Password', { exact: true }).fill('short');
+    await form.locator('input[name="name"]').fill('Test Person');
+    await form.locator('input[name="organisation"]').fill('Test Org');
+    await form.locator('input[name="email"]').fill('test.person@example.test');
+    await form.locator('input[name="password"]').fill('short');
     await form.getByRole('button', { name: 'Create account' }).click();
     await expect(form.getByRole('alert')).toContainText('at least 12 characters');
 
-    await form.getByLabel('Password', { exact: true }).fill('a-long-enough-pass-1');
-    await form.getByLabel('Confirm password').fill('a-long-enough-pass-2');
+    await form.locator('input[name="password"]').fill('a-long-enough-pass-1');
+    await form.locator('input[name="confirm"]').fill('a-long-enough-pass-2');
     await form.getByRole('button', { name: 'Create account' }).click();
     await expect(form.getByRole('alert')).toContainText('do not match');
 
-    await form.getByLabel('Confirm password').fill('a-long-enough-pass-1');
+    await form.locator('input[name="confirm"]').fill('a-long-enough-pass-1');
     await form.getByRole('button', { name: 'Create account' }).click();
     await expect(form.getByRole('status')).toContainText('not connected to the server yet');
   });

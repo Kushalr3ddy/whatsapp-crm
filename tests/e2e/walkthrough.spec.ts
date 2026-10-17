@@ -15,7 +15,7 @@ test.describe('signed-in walkthrough', () => {
       ['Contacts', 'Contacts'],
       ['Import', 'Import contacts'],
       ['Campaigns', 'Campaigns'],
-      ['Numbers', 'Numbers']
+      ['Linked numbers', 'Linked numbers']
     ] as const) {
       await nav(page).getByRole('link', { name: link, exact: true }).click();
       await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();

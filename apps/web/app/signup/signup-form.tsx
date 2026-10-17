@@ -47,15 +47,15 @@ export function SignupForm() {
     <form onSubmit={submit} className="flex flex-col gap-4" aria-label="Create your account" noValidate>
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">Your name</span>
-        <input value={name} onChange={(e) => { setName(e.target.value); }} autoComplete="name" className="field" />
+        <input name="name" value={name} onChange={(e) => { setName(e.target.value); }} autoComplete="name" className="field" />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">Organisation</span>
-        <input value={org} onChange={(e) => { setOrg(e.target.value); }} autoComplete="organization" className="field" placeholder="e.g. Acme Hiring" />
+        <input name="organisation" value={org} onChange={(e) => { setOrg(e.target.value); }} autoComplete="organization" className="field" placeholder="e.g. Acme Hiring" />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">Work email</span>
-        <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); }} autoComplete="email" className="field" />
+        <input name="email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); }} autoComplete="email" className="field" />
       </label>
       <label className="flex flex-col gap-1">
         <span className="flex items-center justify-between text-sm font-medium">
@@ -64,7 +64,7 @@ export function SignupForm() {
             {show ? 'Hide' : 'Show'}
           </button>
         </span>
-        <input type={show ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); }} autoComplete="new-password" className="field" />
+        <input name="password" type={show ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); }} autoComplete="new-password" className="field" />
         <span className="mt-1 flex items-center gap-2" aria-live="polite">
           <span className="flex flex-1 gap-1" aria-hidden>
             {[1, 2, 3, 4].map((n) => (
@@ -76,7 +76,7 @@ export function SignupForm() {
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">Confirm password</span>
-        <input type={show ? 'text' : 'password'} value={confirm} onChange={(e) => { setConfirm(e.target.value); }} autoComplete="new-password" className="field" />
+        <input name="confirm" type={show ? 'text' : 'password'} value={confirm} onChange={(e) => { setConfirm(e.target.value); }} autoComplete="new-password" className="field" />
       </label>
 
       {error !== null && <p role="alert" className="notice notice-danger">{error}</p>}
