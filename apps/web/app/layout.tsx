@@ -39,6 +39,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     } catch { isAdmin = false; }
   }
 
+  // An optional line across the top of every page, set with ENVIRONMENT_BANNER (for example on a test or
+  // staging server, so nobody mistakes it for the real thing). Read per request, so changing it needs a
+  // restart, not a rebuild. Empty or unset shows nothing.
+  const banner = (process.env.ENVIRONMENT_BANNER ?? '').trim();
+
   // suppressHydrationWarning on <html> and <body> only: the theme script above sets `data-theme` on
   // <html> before hydration (by design, to avoid a flash), and browser extensions (Grammarly, etc.)
   // inject attributes onto <body>. Both are expected one-level attribute diffs — in Next dev a
@@ -49,9 +54,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>
-      <body className="flex h-screen flex-col overflow-hidden antialiased md:flex-row" suppressHydrationWarning>
-        <Nav alerts={alerts} isAdmin={isAdmin} />
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</div>
+      <body className="flex h-screen flex-col overflow-hidden antialiased" suppressHydrationWarning>
+        {banner !== '' && (
+          <div role="status" className="notice notice-warning shrink-0 rounded-none border-x-0 border-t-0 py-1.5 text-center text-sm">
+            {banner}
+          </div>
+        )}
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <Nav alerts={alerts} isAdmin={isAdmin} />
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</div>
+        </div>
       </body>
     </html>
   );
