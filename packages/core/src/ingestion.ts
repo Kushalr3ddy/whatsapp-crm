@@ -38,6 +38,11 @@ export interface ImportMapping {
   readonly defaultCountry?: string;
   /** `keep` preserves the whole row on `import_row.raw` for inspection. */
   readonly unmapped?: 'keep' | 'drop';
+  /**
+   * Columns to keep **on each contact** as custom fields, so they show on Contacts and can be searched.
+   * A field is created for a column that has none yet (text); a value never overwrites one already there.
+   */
+  readonly fields?: ReadonlyArray<{ readonly from: string }>;
 }
 
 /** What happened to one row. */
@@ -61,6 +66,39 @@ export interface ImportSummary {
   /** Rows that imported but dropped something, e.g. a second phone number that was not valid. */
   readonly warnings: number;
   readonly dryRun: boolean;
+}
+
+/** The longest value kept in a custom field; the same limit `checkFieldValue` applies to text. */
+const MAX_FIELD_VALUE = 500;
+
+/** A column kept as a custom field: where it comes from and the key and label it is stored under. */
+export interface KeptField { readonly from: string; readonly key: string; readonly label: string }
+
+/**
+ * Turns the columns a person chose to keep into field keys (`Total Experience` → `total_experience`).
+ *
+ * Keys are lower-case slugs (`FIELD_KEY`), starting with a letter and at most 40 long; two headers that
+ * slug to the same key get `_2`, `_3`… so neither is lost.
+ */
+export function keptFieldsFor(mapping: ImportMapping): KeptField[] {
+  const taken = new Set<string>();
+  const out: KeptField[] = [];
+  for (const { from } of mapping.fields ?? []) {
+    let base = from.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!/^[a-z]/.test(base)) base = `f_${base}`;
+    base = base.slice(0, 36).replace(/_+$/, '') || 'field';
+    let key = base;
+    for (let n = 2; taken.has(key); n++) key = `${base}_${String(n)}`;
+    taken.add(key);
+    out.push({ from, key, label: from.trim().slice(0, 80) || key });
+  }
+  return out;
+}
+
+/** One kept field's cleaned value, or null when the cell is empty or only a "no value" marker. */
+function fieldValue(row: Record<string, string>, from: string): string | null {
+  const v = (row[from] ?? '').trim();
+  return v === '' || isBlankMarker(v) ? null : v.slice(0, MAX_FIELD_VALUE);
 }
 
 /** Rows committed per transaction. The spec's number, and small enough to resume from. */
@@ -177,6 +215,7 @@ export async function runImport(
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
   let warnings = 0;
   const rows = input.table.rows;
+  const kept = input.dryRun ? [] : await ensureKeptFields(tenant, input.orgId, keptFieldsFor(input.mapping));
 
   for (let start = 0; start < rows.length; start += BATCH) {
     const chunk = rows.slice(start, start + BATCH);
@@ -186,7 +225,7 @@ export async function runImport(
       for (let i = 0; i < chunk.length; i++) {
         const rowNumber = start + i + 1;
         const row = chunk[i]!;
-        const outcome = await importOneRow(tx, input.orgId, rowNumber, row, input.mapping, input.dryRun);
+        const outcome = await importOneRow(tx, input.orgId, rowNumber, row, input.mapping, input.dryRun, kept);
         outcomes.push(outcome);
         counts[outcome.outcome === 'error' ? 'errors' : outcome.outcome] += 1;
         if (outcome.outcome !== 'error' && outcome.note) warnings += 1;
@@ -198,10 +237,32 @@ export async function runImport(
   return { read: rows.length, ...counts, warnings, dryRun: input.dryRun };
 }
 
+/**
+ * Makes sure each kept column has a text field definition, and returns the ones that can be written to.
+ * A column whose key already exists as another type (number, date, select) is left out rather than
+ * guessed at: its values would need that type's checks.
+ */
+async function ensureKeptFields(tenant: TenantWork, orgId: string, wanted: readonly KeptField[]): Promise<KeptField[]> {
+  if (wanted.length === 0) return [];
+  return tenant(async (tx) => {
+    for (const f of wanted) {
+      await tx.execute(sql`
+        INSERT INTO custom_field (org_id, key, label, type, options)
+        VALUES (${orgId}, ${f.key}, ${f.label}, 'text', ARRAY[]::text[])
+        ON CONFLICT (org_id, key) DO NOTHING`);
+    }
+    const defs = await tx.execute(sql`
+      SELECT key FROM custom_field
+      WHERE org_id = ${orgId} AND type = 'text' AND key = ANY(${sql`ARRAY[${sql.join(wanted.map((f) => sql`${f.key}`), sql`, `)}]::text[]`})`);
+    const usable = new Set((defs as unknown as Array<{ key: string }>).map((d) => d.key));
+    return wanted.filter((f) => usable.has(f.key));
+  });
+}
+
 /** Maps, resolves and (unless this is a dry run) writes one row. Never throws for bad data. */
 async function importOneRow(
   tx: Transaction, orgId: string, rowNumber: number, row: Record<string, string>,
-  mapping: ImportMapping, dryRun: boolean
+  mapping: ImportMapping, dryRun: boolean, kept: readonly KeptField[]
 ): Promise<RowOutcome> {
   const raw = mapping.unmapped === 'drop' ? null : row;
   const { identities, error, note } = identitiesFor(row, mapping);
@@ -240,10 +301,17 @@ async function importOneRow(
     };
   }
 
+  const keptValues: Record<string, string> = {};
+  for (const f of kept) {
+    const v = fieldValue(row, f.from);
+    if (v !== null) keptValues[f.key] = v;
+  }
+
   if (contactId === null) {
     const created = await tx.execute(sql`
-      INSERT INTO contact (org_id, display_name, source)
-      VALUES (${orgId}, ${displayName === '' ? identities[0]!.value : displayName}, 'import')
+      INSERT INTO contact (org_id, display_name, source, custom_fields)
+      VALUES (${orgId}, ${displayName === '' ? identities[0]!.value : displayName}, 'import',
+              ${JSON.stringify(keptValues)}::jsonb)
       RETURNING id`);
     contactId = (created as unknown as Array<{ id: string }>)[0]!.id;
 
@@ -275,7 +343,17 @@ async function importOneRow(
       ON CONFLICT DO NOTHING`);
   }
 
-  const changed = (touched as unknown as unknown[]).length > 0;
+  // Kept columns fill gaps only: `new || existing` leaves any value already on the contact as it was.
+  let fieldsAdded = false;
+  if (Object.keys(keptValues).length > 0) {
+    const filled = await tx.execute(sql`
+      UPDATE contact SET custom_fields = ${JSON.stringify(keptValues)}::jsonb || custom_fields, updated_at = now()
+      WHERE id = ${contactId} AND org_id = ${orgId} AND NOT (custom_fields @> ${JSON.stringify(keptValues)}::jsonb)
+      RETURNING id`);
+    fieldsAdded = (filled as unknown as unknown[]).length > 0;
+  }
+
+  const changed = (touched as unknown as unknown[]).length > 0 || fieldsAdded;
   return {
     rowNumber, outcome: changed ? 'updated' : 'skipped', contactId, error: null, note, raw
   };

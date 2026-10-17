@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { previewAudienceAction } from '../actions';
 
@@ -23,6 +24,8 @@ export function AudiencePicker({ tags, imports, segments }: Props) {
   const first: Mode = tags.length > 0 ? 'tag' : imports.length > 0 ? 'import'
     : segments.length > 0 ? 'segment' : 'filter';
   const [mode, setMode] = useState<Mode>(first);
+  // No tag has anyone in it (or there are no tags): say so, and point to where people get tagged.
+  const noTagged = tags.every((t) => (t.contactCount ?? 1) === 0);
   const [filterTag, setFilterTag] = useState('');
   const [replied, setReplied] = useState('');
   const [days, setDays] = useState('');
@@ -49,6 +52,13 @@ export function AudiencePicker({ tags, imports, segments }: Props) {
   return (
     <div>
       <input type="hidden" name="audienceMode" value={mode} />
+      {noTagged && (
+        <p className="notice mb-4" role="status">
+          No one is tagged yet. Tag the people you want to message first, on the{' '}
+          <Link href="/contacts" className="font-medium underline underline-offset-2">Contacts page</Link>
+          {' '}(or tick “Tag everyone in this file” when you import). You can still build a filter below.
+        </p>
+      )}
       <div role="tablist" aria-label="How to choose the audience" className="mb-4 flex flex-wrap gap-2">
         {options.filter((o) => o.show).map((o) => (
           <button
