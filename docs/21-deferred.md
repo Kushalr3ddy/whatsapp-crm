@@ -1222,7 +1222,7 @@ and add a retry that re-downloads through the live socket while WhatsApp still h
 
 ---
 
-## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation — **ROTATION BUILT 2026-10-13**; per-org keys still pinned (was **PRIORITY, Kushal, 2026-10-06**)
+## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation — ✅ **ROTATION BUILT 2026-10-13**; per-org keys still pinned (was **PRIORITY, Kushal, 2026-10-06**)
 
 > **Built (rotation only, as chosen 2026-10-13):** a key ring (`ENCRYPTION_KEY_VERSION`, `ENCRYPTION_KEY`,
 > `ENCRYPTION_KEYS_PREVIOUS`); the gateway re-encrypts `message.body_enc` and `channel_auth_state.value_enc`
@@ -1301,7 +1301,7 @@ the decision to take the engine from the simulation to a real number (the pilot)
 
 ---
 
-## D-35 · Contact export to Excel (.xlsx)
+## D-35 · Contact export to Excel (.xlsx) · ✅ CSV and vCard export built (2026-10-06); `.xlsx` not
 
 **What:** the admin contact export (built 2026-10-06 as CSV and vCard) as an `.xlsx` too. Pinned by Kushal
 ("just csv for now"). CSV opens in Excel already; `.xlsx` adds typed columns and a styled header, using the
@@ -1577,7 +1577,7 @@ hide it as WhatsApp does for the recipient. Edited messages are the sibling case
 
 ---
 
-## D-52 · Deleting previous campaigns
+## D-52 · Deleting previous campaigns — **PRIORITY (Kushal, 2026-10-17)**
 
 **What:** campaigns can be cancelled but not deleted, so old drafts, cancelled runs and test campaigns pile up
 in the Broadcast list (the dev database holds dozens). Pinned (Kushal, 2026-10-10): an operator needs to
@@ -1785,8 +1785,8 @@ rough, and what is missing. Raised as a priority on 2026-10-16.
 | Large documents | Capped at 16 MB; WhatsApp allows about 100 MB |
 | Voice notes | Not sendable (`ptt`) |
 | Inline preview | Deliberately none: images are download-only, which is a security choice (D-11), so a preview means a separate, safe thumbnail path |
-| A file that fails to store | Invisible to the operator and not retried (**D-30**) |
-| Files in campaigns | Not supported; text only |
+| A file that fails to store | Round 1 (PR #60): retried three times and the thread says why it failed. Still missing: a manual **Retry** button. It needs the original WhatsApp message kept (so the file can be fetched again) and a way for the API to ask the gateway to do it (they are separate processes) |
+| Files in campaigns | Not supported; text only. **Pinned 2026-10-17 (Kushal): add images and GIFs to campaigns** (one picture or GIF sent with the campaign message, caption = the message). Not this round; needs the campaign model to carry a media file, and WhatsApp sends a GIF as a looping video, so the type handling from round 1 comes first |
 | Files in templates | Waits on D-19 |
 | At rest | Not encrypted, no retention job, no virus scan (**D-11**) |
 
@@ -2058,7 +2058,7 @@ before any page is restyled. Direction A and Inter were chosen; the sign-in scre
 
 ---
 
-## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — pinned (Kushal, 2026-10-17)
+## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **PRIORITY (Kushal, 2026-10-17)**
 
 Some chats arrive from WhatsApp with a hidden `…@lid` id instead of a phone number, so they show as a raw id in the
 inbox and Contacts (see D-65). Kushal wants, at the top of such a chat, an **Add number / contact** action that works like
@@ -2100,7 +2100,7 @@ Pinned to come back to; not started.
 
 ---
 
-## D-70 · Contacts page: refresh, admin-chosen columns, tidier layout, sort and search by date — pinned (Kushal, 2026-10-17)
+## D-70 · Contacts page: refresh, admin-chosen columns, tidier layout, sort and search by date — **PRIORITY (Kushal, 2026-10-17)**
 
 Five wishes about the Contacts page, from testing the import with a real Naukri file (the first wish, a bigger column
 selector and preview on Import, was filed under **D-21** instead):
