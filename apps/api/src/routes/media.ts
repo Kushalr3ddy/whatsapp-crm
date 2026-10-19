@@ -3,6 +3,7 @@ import { pipeline } from 'node:stream/promises';
 import { resolveMedia, writeAudit, AUDIT } from '@crm/core';
 import { ObjectNotFoundError, type StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
+import { makeThumbnail, THUMBNAIL_TYPES } from '../thumbnail.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
 
@@ -16,8 +17,8 @@ import { requireUuidParam } from '../params.js';
  *    the sender's filename or declared type. An HTML attachment served as `text/html` from our
  *    own origin is stored XSS against a logged-in session, and the attacker only has to send a
  *    message.
- *  - `Content-Disposition: attachment` on every response, always. Nothing is ever rendered
- *    inline, including images — the cost is a download instead of a preview, and the benefit is
+ *  - `Content-Disposition: attachment` on every response, always. The original is never rendered
+ *    inline, including images (the `/thumb` route below shows a re-encoded copy instead) — the cost is a download instead of a preview, and the benefit is
  *    that a file which slips past type detection still cannot execute.
  *  - `X-Content-Type-Options: nosniff`, so a browser cannot decide for itself that the bytes
  *    look like something more interesting than what we said.
@@ -100,6 +101,48 @@ export function mediaRouter(storage: StorageDriver): Router {
       res.destroy();
     }
   });
+
+  /**
+   * A small preview of an image, for the thread.
+   *
+   * The one place an image is shown inline, and it is safe because it is **not the sender's file**:
+   * the original is decoded and re-encoded to a fixed WebP (see `makeThumbnail`), so what is served is
+   * bytes we wrote. The original still only ever downloads, through the route above. Same
+   * file-to-org check; not audited per image, since opening the thread is already audited.
+   */
+  router.get('/:id/thumb', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const media = await req.tenant!((tx) => resolveMedia(tx, orgId, String(req.params.id)));
+      if (media === null) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such attachment.'));
+        return;
+      }
+      if (!THUMBNAIL_TYPES.has(media.contentType)) {
+        res.status(415).json(problem(req, 415, 'NO_PREVIEW', 'This kind of file has no preview.'));
+        return;
+      }
+      try {
+        const bytes = await storage.get(media.storageKey);
+        const thumb = await makeThumbnail(bytes);
+        res.setHeader('Content-Type', 'image/webp');
+        res.setHeader('Content-Length', String(thumb.byteLength));
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        // A preview of a file that never changes, but still personal data: the browser may keep it for
+        // the session's sake, a shared cache never.
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        res.end(thumb);
+      } catch (error) {
+        if (error instanceof ObjectNotFoundError) {
+          res.status(500).json(problem(req, 500, 'MEDIA_UNREADABLE',
+            'The attachment is recorded but its contents could not be read.'));
+          return;
+        }
+        // Not decodable, or too many pixels: no preview, the download still works.
+        req.log.warn({ mediaId: media.mediaId, err: String(error) }, 'could not make a preview');
+        res.status(415).json(problem(req, 415, 'NO_PREVIEW', 'A preview could not be made for this file.'));
+      }
+    });
 
   return router;
 }

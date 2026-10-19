@@ -92,6 +92,58 @@ async function inboundWithFile(
 
 const auth = () => ['Authorization', `Bearer ${keyA}`] as const;
 
+describe('image previews', () => {
+  /** A real, large PNG: 2000 x 1000, so a preview has to shrink it. */
+  const bigPng = async (): Promise<Uint8Array> => {
+    const sharp = (await import('sharp')).default;
+    return new Uint8Array(await sharp({ create: { width: 2000, height: 1000, channels: 3, background: '#cc3333' } }).png().toBuffer());
+  };
+
+  it('serves a small re-encoded WebP, inline, while the original stays a download', async () => {
+    const { mediaId } = await inboundWithFile(orgA, senderA, await bigPng(), 'photo.png');
+    const r = await request(app).get(`/api/v1/media/${mediaId}/thumb`).set(...auth())
+      .buffer(true).parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => { cb(null, Buffer.concat(chunks)); });
+      });
+
+    expect(r.status).toBe(200);
+    expect(r.headers['content-type']).toBe('image/webp');
+    expect(r.headers['x-content-type-options']).toBe('nosniff');
+    expect(r.headers['content-disposition']).toBeUndefined();
+    const sharp = (await import('sharp')).default;
+    const meta = await sharp(r.body as Buffer).metadata();
+    expect(meta.format).toBe('webp');
+    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(320);
+
+    const original = await request(app).get(`/api/v1/media/${mediaId}`).set(...auth());
+    expect(original.headers['content-disposition']).toContain('attachment');
+  });
+
+  it('has no preview for a file that is not a picture', async () => {
+    const { mediaId } = await inboundWithFile(orgA, senderA, PDF_BYTES, 'cv.pdf');
+    const r = await request(app).get(`/api/v1/media/${mediaId}/thumb`).set(...auth());
+    expect(r.status).toBe(415);
+    expect(r.body.code).toBe('NO_PREVIEW');
+  });
+
+  it('answers 404 for another tenant\'s picture', async () => {
+    const senders = await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${orgB}, 'baileys', 'B-thumb', 'active') RETURNING id`);
+    const senderB = (senders as unknown as Array<{ id: string }>)[0]!.id;
+    const theirs = await inboundWithFile(orgB, senderB, await bigPng(), 'theirs.png');
+    const r = await request(app).get(`/api/v1/media/${theirs.mediaId}/thumb`).set(...auth());
+    expect(r.status).toBe(404);
+  });
+
+  it('needs a credential', async () => {
+    const { mediaId } = await inboundWithFile(orgA, senderA, await bigPng(), 'photo.png');
+    expect((await request(app).get(`/api/v1/media/${mediaId}/thumb`)).status).toBe(401);
+  });
+});
+
 describe('storing an attachment', () => {
   it('types the file from its bytes, not from what it is called', async () => {
     // The whole game. The name says PDF, the bytes say HTML, and a browser handed

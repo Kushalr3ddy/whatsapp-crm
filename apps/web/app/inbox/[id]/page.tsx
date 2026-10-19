@@ -40,23 +40,36 @@ function fileSize(bytes: number | null): string {
  *
  * The link points at the web-side proxy (`/media/:id`), never the API directly — the browser
  * has no way to authenticate to the API itself. The API serves every attachment as a download
- * (`Content-Disposition: attachment`), so this is a link, not an inline preview, by design.
+ * (`Content-Disposition: attachment`), so the original is a link, not shown inline, by design. Pictures also
+ * get a small re-encoded preview from `/media/:id/thumb`, which is bytes the API wrote, not the sender's.
  */
 function Attachment({ message }: { message: Message }) {
   if (message.media !== null) {
     const { id, filename, contentType, sizeBytes } = message.media;
     const meta = [contentType, fileSize(sizeBytes)].filter((s) => s !== null && s !== '').join(' · ');
+    const hasPreview = contentType !== null && ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(contentType);
     return (
-      <a
-        href={`/media/${id}`}
-        className="mb-1 flex items-center gap-2 rounded-lg border border-current/20 px-2.5 py-1.5 text-xs hover:opacity-80"
-      >
-        <span aria-hidden>↓</span>
-        <span className="min-w-0">
-          <span className="block truncate font-medium">{filename ?? 'attachment'}</span>
-          {meta !== '' && <span className="block opacity-70">{meta}</span>}
-        </span>
-      </a>
+      <div className="mb-1">
+        {hasPreview && (
+          <a href={`/media/${id}`} aria-label={`Download ${filename ?? 'image'}`} className="mb-1 block">
+            {/* A re-encoded preview made by the API; the original still only downloads. */}
+            <img
+              src={`/media/${id}/thumb`} alt={filename ?? 'image attachment'} loading="lazy"
+              className="max-h-60 max-w-full rounded-lg"
+            />
+          </a>
+        )}
+        <a
+          href={`/media/${id}`}
+          className="flex items-center gap-2 rounded-lg border border-current/20 px-2.5 py-1.5 text-xs hover:opacity-80"
+        >
+          <span aria-hidden>↓</span>
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{filename ?? 'attachment'}</span>
+            {meta !== '' && <span className="block opacity-70">{meta}</span>}
+          </span>
+        </a>
+      </div>
     );
   }
   if (message.mediaUnavailable) {
