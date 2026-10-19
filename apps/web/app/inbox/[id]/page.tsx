@@ -53,7 +53,6 @@ function Attachment({ message }: { message: Message }) {
         {hasPreview && (
           <a href={`/media/${id}`} aria-label={`Download ${filename ?? 'image'}`} className="mb-1 block">
             {/* A re-encoded preview made by the API; the original still only downloads. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/media/${id}/thumb`} alt={filename ?? 'image attachment'} loading="lazy"
               className="max-h-60 max-w-full rounded-lg"
