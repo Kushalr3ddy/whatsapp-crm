@@ -65,7 +65,7 @@ function Attachment({ message }: { message: Message }) {
         <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">
           {message.contentType} · attachment could not be fetched
         </p>
-        {message.mediaError != null && message.mediaError !== '' && (
+        {(message.mediaError ?? '') !== '' && (
           <p className="text-xs opacity-70">Reason: {message.mediaError} It was tried three times. Ask them to send it again.</p>
         )}
       </div>
