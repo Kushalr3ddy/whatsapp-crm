@@ -1786,7 +1786,7 @@ rough, and what is missing. Raised as a priority on 2026-10-16.
 | Voice notes | Not sendable (`ptt`) |
 | Inline preview | Deliberately none: images are download-only, which is a security choice (D-11), so a preview means a separate, safe thumbnail path |
 | A file that fails to store | Invisible to the operator and not retried (**D-30**) |
-| Files in campaigns | Not supported; text only |
+| Files in campaigns | Not supported; text only. **Pinned 2026-10-17 (Kushal): add images and GIFs to campaigns** (one picture or GIF sent with the campaign message, caption = the message). Not this round; needs the campaign model to carry a media file, and WhatsApp sends a GIF as a looping video, so the type handling from round 1 comes first |
 | Files in templates | Waits on D-19 |
 | At rest | Not encrypted, no retention job, no virus scan (**D-11**) |
 
