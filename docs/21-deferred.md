@@ -1785,7 +1785,7 @@ rough, and what is missing. Raised as a priority on 2026-10-16.
 | Large documents | Capped at 16 MB; WhatsApp allows about 100 MB |
 | Voice notes | Not sendable (`ptt`) |
 | Inline preview | Deliberately none: images are download-only, which is a security choice (D-11), so a preview means a separate, safe thumbnail path |
-| A file that fails to store | Invisible to the operator and not retried (**D-30**) |
+| A file that fails to store | Round 1 (PR #60): retried three times and the thread says why it failed. Still missing: a manual **Retry** button. It needs the original WhatsApp message kept (so the file can be fetched again) and a way for the API to ask the gateway to do it (they are separate processes) |
 | Files in campaigns | Not supported; text only. **Pinned 2026-10-17 (Kushal): add images and GIFs to campaigns** (one picture or GIF sent with the campaign message, caption = the message). Not this round; needs the campaign model to carry a media file, and WhatsApp sends a GIF as a looping video, so the type handling from round 1 comes first |
 | Files in templates | Waits on D-19 |
 | At rest | Not encrypted, no retention job, no virus scan (**D-11**) |
