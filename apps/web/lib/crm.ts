@@ -97,6 +97,8 @@ export interface Message {
   } | null;
   /** True for a media message whose file could not be fetched — the attachment existed, the bytes did not. */
   mediaUnavailable: boolean;
+  /** Why the file could not be fetched, when the gateway recorded a reason (D-30). */
+  mediaError?: string | null;
 }
 
 /** One internal note on a thread. Mirrors `GET /api/v1/conversations/:id/notes`. */

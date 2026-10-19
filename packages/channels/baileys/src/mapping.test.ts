@@ -112,3 +112,29 @@ describe('phoneFromJid', () => {
     expect(phoneFromJid('12@s.whatsapp.net')).toBeNull();          // too short to be a number
   });
 });
+
+describe('extractBody: kinds that used to vanish', () => {
+  it('treats a sticker as an image to download', () => {
+    expect(extractBody({ stickerMessage: {} })).toEqual({ body: '', contentType: 'image' });
+  });
+
+  it('shows a shared contact and a location as text instead of dropping them', () => {
+    expect(extractBody({ contactMessage: { displayName: 'Asha Rao' } }))
+      .toEqual({ body: 'Contact card: Asha Rao', contentType: 'text' });
+    expect(extractBody({ contactsArrayMessage: { contacts: [{ displayName: 'A' }, { displayName: 'B' }] } }).body)
+      .toBe('Contact cards: A, B');
+    expect(extractBody({ locationMessage: { degreesLatitude: 18.5, degreesLongitude: 73.8, name: 'Pune office' } }).body)
+      .toBe('Location: Pune office (18.5, 73.8)');
+    expect(extractBody({ liveLocationMessage: { degreesLatitude: 1, degreesLongitude: 2 } }).body)
+      .toBe('Live location: 1, 2');
+  });
+
+  it('looks through disappearing-chat, view-once and caption wrappers', () => {
+    expect(extractBody({ ephemeralMessage: { message: { conversation: 'hello' } } }))
+      .toEqual({ body: 'hello', contentType: 'text' });
+    expect(extractBody({ viewOnceMessageV2: { message: { imageMessage: { caption: 'cv' } } } }))
+      .toEqual({ body: 'cv', contentType: 'image' });
+    expect(extractBody({ documentWithCaptionMessage: { message: { documentMessage: { caption: 'resume', fileName: 'r.pdf' } } } }))
+      .toEqual({ body: 'resume', contentType: 'document' });
+  });
+});

@@ -469,6 +469,11 @@ export const message = pgTable('message', {
   // inbox can say an attachment exists and could not be fetched rather than showing nothing.
   mediaId: uuid('media_id').references(() => mediaAsset.id, { onDelete: 'set null' }),
 
+  /** Why an inbound file could not be fetched, when it could not (D-30). Null when there was no problem. */
+  mediaError: text('media_error'),
+  /** When the last fetch attempt failed. */
+  mediaFailedAt: timestamp('media_failed_at', { withTimezone: true }),
+
   /** Which campaign sent this, if any. Null for a reply or a one-off send. */
   campaignId: uuid('campaign_id').references(() => campaign.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
