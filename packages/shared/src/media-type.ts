@@ -40,16 +40,38 @@ const SIGNATURES: readonly Signature[] = [
   { type: 'image/webp', offset: 0, magic: ASCII('RIFF'), also: { offset: 8, ascii: 'WEBP' }, extension: 'webp' },
   { type: 'audio/wav', offset: 0, magic: ASCII('RIFF'), also: { offset: 8, ascii: 'WAVE' }, extension: 'wav' },
   { type: 'application/pdf', offset: 0, magic: ASCII('%PDF-'), extension: 'pdf' },
-  // ISO base media: 'ftyp' at offset 4. WhatsApp video and voice notes both land here.
+  // ISO base media: 'ftyp' at offset 4 and a four-letter brand at offset 8. The specific brands come
+  // first; WhatsApp video and voice notes fall through to the generic mp4 below.
+  { type: 'video/quicktime', offset: 4, magic: ASCII('ftyp'), also: { offset: 8, ascii: 'qt  ' }, extension: 'mov' },
+  { type: 'audio/mp4', offset: 4, magic: ASCII('ftyp'), also: { offset: 8, ascii: 'M4A ' }, extension: 'm4a' },
+  { type: 'image/heic', offset: 4, magic: ASCII('ftyp'), also: { offset: 8, ascii: 'heic' }, extension: 'heic' },
+  { type: 'image/heic', offset: 4, magic: ASCII('ftyp'), also: { offset: 8, ascii: 'heix' }, extension: 'heic' },
+  { type: 'image/heic', offset: 4, magic: ASCII('ftyp'), also: { offset: 8, ascii: 'mif1' }, extension: 'heic' },
   { type: 'video/mp4', offset: 4, magic: ASCII('ftyp'), extension: 'mp4' },
+  { type: 'video/webm', offset: 0, magic: [0x1a, 0x45, 0xdf, 0xa3], extension: 'webm' },    // Matroska/EBML
   { type: 'audio/ogg', offset: 0, magic: ASCII('OggS'), extension: 'ogg' },
   { type: 'audio/mpeg', offset: 0, magic: [0x49, 0x44, 0x33], extension: 'mp3' },       // ID3 tag
   { type: 'audio/mpeg', offset: 0, magic: [0xff, 0xfb], extension: 'mp3' },             // bare frame
   { type: 'audio/amr', offset: 0, magic: ASCII('#!AMR'), extension: 'amr' },
-  // ZIP, which is also every Office document. Distinguishing docx from xlsx means reading the
-  // central directory, and it is not worth it: both download rather than render either way.
+  { type: 'application/rtf', offset: 0, magic: ASCII('{\\rtf'), extension: 'rtf' },
+  { type: 'application/vnd.rar', offset: 0, magic: ASCII('Rar!'), extension: 'rar' },
+  { type: 'application/x-7z-compressed', offset: 0, magic: [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c], extension: '7z' },
+  // The old binary Office formats (.doc, .xls, .ppt) share one container; telling them apart means
+  // parsing it, so they are labelled by the container and still download under their own filename.
+  { type: 'application/x-ole-storage', offset: 0, magic: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1], extension: 'doc' },
+  // ZIP. Also every modern Office document, which `detectMediaType` tells apart below.
   { type: 'application/zip', offset: 0, magic: [0x50, 0x4b, 0x03, 0x04], extension: 'zip' }
 ];
+
+/** Modern Office files are ZIPs whose entry names say which application made them. */
+const OFFICE_ZIPS: ReadonlyArray<{ readonly entry: string; readonly type: string; readonly extension: string }> = [
+  { entry: 'word/', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', extension: 'docx' },
+  { entry: 'xl/', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', extension: 'xlsx' },
+  { entry: 'ppt/', type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', extension: 'pptx' }
+];
+
+/** How far into a ZIP to look for entry names. Local file headers sit at the front, so this is plenty. */
+const ZIP_SCAN_BYTES = 32 * 1024;
 
 /** What the bytes turned out to be. */
 export interface MediaType {
@@ -73,9 +95,19 @@ export function detectMediaType(bytes: Uint8Array): MediaType {
   for (const sig of SIGNATURES) {
     if (!startsWith(bytes, sig.magic, sig.offset)) continue;
     if (sig.also !== undefined && !startsWith(bytes, ASCII(sig.also.ascii), sig.also.offset)) continue;
+    if (sig.type === 'application/zip') return refineZip(bytes, sig);
     return { contentType: sig.type, extension: sig.extension, recognised: true };
   }
   return { contentType: UNKNOWN_MEDIA_TYPE, extension: 'bin', recognised: false };
+}
+
+/** Looks at the entry names near the start of a ZIP to tell a Word, Excel or PowerPoint file from a plain archive. */
+function refineZip(bytes: Uint8Array, sig: Signature): MediaType {
+  const head = Buffer.from(bytes.subarray(0, ZIP_SCAN_BYTES)).toString('latin1');
+  for (const o of OFFICE_ZIPS) {
+    if (head.includes(o.entry)) return { contentType: o.type, extension: o.extension, recognised: true };
+  }
+  return { contentType: sig.type, extension: sig.extension, recognised: true };
 }
 
 /** True when `bytes` carries `magic` at `offset`. */

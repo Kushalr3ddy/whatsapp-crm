@@ -597,17 +597,49 @@ export function mapStatus(code: number): NormalisedStatusEvent['status'] | null 
   }
 }
 
-/** Extracts readable text and a content type from Baileys' nested message union. */
+/** Wrappers WhatsApp puts around a message (disappearing chats, view-once, a document with a caption). */
+const WRAPPERS = [
+  'ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension',
+  'documentWithCaptionMessage', 'editedMessage'
+] as const;
+
+/** Looks through the wrappers to the message inside, a few levels at most. */
+function unwrap(message: Record<string, unknown>): Record<string, unknown> {
+  let current = message;
+  for (let depth = 0; depth < 4; depth++) {
+    const wrapper = WRAPPERS.find((w) => (current[w] as { message?: unknown } | undefined)?.message !== undefined);
+    if (wrapper === undefined) break;
+    current = (current[wrapper] as { message: Record<string, unknown> }).message;
+  }
+  return current;
+}
+
+/** One line for a shared contact card, from its display name. */
+function contactLine(name: string | undefined): string {
+  return name !== undefined && name !== '' ? `Contact card: ${name}` : 'Contact card';
+}
+
+/**
+ * Extracts readable text and a content type from Baileys' nested message union.
+ *
+ * Stickers come through as images (they are downloaded like one). Shared contacts and locations have
+ * no file to fetch, so they become a line of text rather than vanishing from the thread.
+ */
 export function extractBody(message: Record<string, unknown>): {
   body: string; contentType: NormalisedInboundEvent['contentType'];
 } {
-  const m = message as {
+  const m = unwrap(message) as {
     conversation?: string;
     extendedTextMessage?: { text?: string };
     imageMessage?: { caption?: string };
     videoMessage?: { caption?: string };
     documentMessage?: { caption?: string; fileName?: string };
     audioMessage?: unknown;
+    stickerMessage?: unknown;
+    contactMessage?: { displayName?: string };
+    contactsArrayMessage?: { displayName?: string; contacts?: Array<{ displayName?: string }> };
+    locationMessage?: { degreesLatitude?: number; degreesLongitude?: number; name?: string; address?: string };
+    liveLocationMessage?: { degreesLatitude?: number; degreesLongitude?: number; caption?: string };
   };
   if (typeof m.conversation === 'string') return { body: m.conversation, contentType: 'text' };
   if (m.extendedTextMessage?.text !== undefined) return { body: m.extendedTextMessage.text, contentType: 'text' };
@@ -615,6 +647,20 @@ export function extractBody(message: Record<string, unknown>): {
   if (m.videoMessage) return { body: m.videoMessage.caption ?? '', contentType: 'video' };
   if (m.documentMessage) return { body: m.documentMessage.caption ?? m.documentMessage.fileName ?? '', contentType: 'document' };
   if (m.audioMessage) return { body: '', contentType: 'audio' };
+  if (m.stickerMessage) return { body: '', contentType: 'image' };
+  if (m.contactMessage) return { body: contactLine(m.contactMessage.displayName), contentType: 'text' };
+  if (m.contactsArrayMessage) {
+    const names = (m.contactsArrayMessage.contacts ?? []).map((c) => c.displayName).filter((n): n is string => !!n);
+    const body = names.length > 0 ? `Contact cards: ${names.join(', ')}` : contactLine(m.contactsArrayMessage.displayName);
+    return { body, contentType: 'text' };
+  }
+  const place = m.locationMessage ?? m.liveLocationMessage;
+  if (place !== undefined) {
+    const where = place.degreesLatitude !== undefined && place.degreesLongitude !== undefined
+      ? `${String(place.degreesLatitude)}, ${String(place.degreesLongitude)}` : 'location unknown';
+    const label = (m.locationMessage?.name ?? m.locationMessage?.address ?? m.liveLocationMessage?.caption ?? '').trim();
+    return { body: `${m.liveLocationMessage !== undefined ? 'Live location' : 'Location'}: ${label === '' ? where : `${label} (${where})`}`, contentType: 'text' };
+  }
   return { body: '', contentType: 'other' };
 }
 

@@ -207,29 +207,49 @@ async function main(): Promise<void> {
   async function fetchAttachment(
     messageId: string, orgId: string, event: NormalisedInboundEvent
   ): Promise<void> {
-    try {
-      const media = await provider.downloadMedia(event);
-      if (media === null) return;
+    /** Records why the file is missing, so the inbox can say so (D-30). Never throws. */
+    const recordFailure = async (reason: string): Promise<void> => {
+      try {
+        await inOrg(orgId).execute(sql`
+          UPDATE message SET media_error = ${reason.slice(0, 300)}, media_failed_at = now()
+          WHERE id = ${messageId} AND org_id = ${orgId}`);
+      } catch (error) {
+        logger.error({ messageId, err: error instanceof Error ? error.message : String(error) },
+          'could not record why an attachment failed');
+      }
+    };
 
-      const stored = await storeMedia(inOrg(orgId), storage, {
-        orgId, messageId, bytes: media.bytes, filename: media.filename
-      });
-      logger.info(
-        {
-          messageId, mediaId: stored.mediaId, contentType: stored.contentType,
-          sizeBytes: stored.sizeBytes, deduplicated: stored.deduplicated,
-          // Logged when they disagree, because a mismatch is either a broken sender or an
-          // attempt to have the file served as something it is not (D-11).
-          declared: media.declaredContentType
-        },
-        'attachment stored'
-      );
-    } catch (error) {
-      logger.error(
-        { messageId, err: error instanceof Error ? error.message : String(error) },
-        'could not fetch an attachment; the message is stored without it'
-      );
+    // Three tries, a few seconds apart: a dropped socket or a slow WhatsApp media server often
+    // recovers on its own. A permanent failure (expired or deleted media) just fails three times.
+    const DELAYS_MS = [0, 2_000, 6_000];
+    let lastReason = 'The file was no longer available from WhatsApp.';
+    for (const delay of DELAYS_MS) {
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      try {
+        const media = await provider.downloadMedia(event);
+        if (media === null) { lastReason = 'The file was no longer available from WhatsApp.'; continue; }
+
+        const stored = await storeMedia(inOrg(orgId), storage, {
+          orgId, messageId, bytes: media.bytes, filename: media.filename
+        });
+        logger.info(
+          {
+            messageId, mediaId: stored.mediaId, contentType: stored.contentType,
+            sizeBytes: stored.sizeBytes, deduplicated: stored.deduplicated,
+            // Logged when they disagree, because a mismatch is either a broken sender or an
+            // attempt to have the file served as something it is not (D-11).
+            declared: media.declaredContentType
+          },
+          'attachment stored'
+        );
+        return;
+      } catch (error) {
+        lastReason = error instanceof Error ? error.message : String(error);
+        logger.warn({ messageId, err: lastReason }, 'attachment fetch attempt failed');
+      }
     }
+    logger.error({ messageId, err: lastReason }, 'could not fetch an attachment; the message is stored without it');
+    await recordFailure(lastReason);
   }
 
   // ── delivery receipts ───────────────────────────────────────────────────────────────

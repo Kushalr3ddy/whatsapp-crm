@@ -211,6 +211,13 @@
       "when": 1792150446488,
       "tag": "0029_contact_identity_wa_check",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792430062895,
+      "tag": "0030_message_media_error",
+      "breakpoints": true
     }
   ]
 }

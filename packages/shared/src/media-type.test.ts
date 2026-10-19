@@ -36,6 +36,33 @@ describe('detectMediaType', () => {
     expect(detectMediaType(ascii('RIFF')).contentType).toBe(UNKNOWN_MEDIA_TYPE);
   });
 
+  it('recognises the other formats people send', () => {
+    const brand = (b: string): Uint8Array => { const x = ascii('ftyp', 4); x.set([...b].map((c) => c.charCodeAt(0)), 8); return x; };
+    expect(detectMediaType(brand('qt  ')).contentType).toBe('video/quicktime');
+    expect(detectMediaType(brand('M4A ')).contentType).toBe('audio/mp4');
+    expect(detectMediaType(brand('heic')).contentType).toBe('image/heic');
+    expect(detectMediaType(brand('isom')).contentType).toBe('video/mp4');
+    expect(detectMediaType(withMagic(0x1a, 0x45, 0xdf, 0xa3)).contentType).toBe('video/webm');
+    expect(detectMediaType(ascii('{\\rtf1')).contentType).toBe('application/rtf');
+    expect(detectMediaType(ascii('Rar!')).contentType).toBe('application/vnd.rar');
+    expect(detectMediaType(withMagic(0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c)).contentType).toBe('application/x-7z-compressed');
+    expect(detectMediaType(withMagic(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1)).contentType)
+      .toBe('application/x-ole-storage');
+  });
+
+  it('tells a Word, Excel or PowerPoint file from a plain zip by its entry names', () => {
+    const zipWith = (entry: string): Uint8Array => {
+      const x = new Uint8Array(512);
+      x.set([0x50, 0x4b, 0x03, 0x04], 0);
+      x.set([...`[Content_Types].xml${entry}document.xml`].map((c) => c.charCodeAt(0)), 30);
+      return x;
+    };
+    expect(detectMediaType(zipWith('word/')).extension).toBe('docx');
+    expect(detectMediaType(zipWith('xl/')).extension).toBe('xlsx');
+    expect(detectMediaType(zipWith('ppt/')).extension).toBe('pptx');
+    expect(detectMediaType(zipWith('notes/')).contentType).toBe('application/zip');
+  });
+
   it('never returns a type a browser will execute', () => {
     // The whole point. Both are real formats and both run script from our own origin, so
     // neither has a signature and both come back as a download (D-11).

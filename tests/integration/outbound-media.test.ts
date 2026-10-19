@@ -214,4 +214,12 @@ describe('mapping to a Baileys message', () => {
     });
     expect(make('application/zip', '', null)).toMatchObject({ fileName: 'file' });
   });
+
+  it('keeps an Office file\'s real type, and sends a HEIC photo as a file so it arrives', () => {
+    const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    expect(make(docx, '', 'CV.docx')).toMatchObject({ mimetype: docx, fileName: 'CV.docx' });
+    const heic = make('image/heic', '', 'IMG.heic');
+    expect(heic).toHaveProperty('document');
+    expect(heic).not.toHaveProperty('image');
+  });
 });

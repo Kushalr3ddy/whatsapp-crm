@@ -795,7 +795,8 @@ export function messagesRouter(
                m.sent_by_user_id AS "sentByUserId", u.display_name AS "sentByName",
                m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt",
                m.media_id AS "mediaId", ma.content_type AS "mediaContentType",
-               ma.size_bytes AS "mediaSizeBytes", ma.filename AS "mediaFilename"
+               ma.size_bytes AS "mediaSizeBytes", ma.filename AS "mediaFilename",
+               m.media_error AS "mediaError"
         FROM message m
         JOIN conversation v ON v.id = m.conversation_id
         LEFT JOIN media_asset ma ON ma.id = m.media_id

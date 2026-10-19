@@ -18,7 +18,10 @@ export function toBaileysContent(content: Extract<OutboundContent, { kind: 'free
   const caption = content.body === '' ? undefined : content.body;
   const type = media.contentType;
 
-  if (type.startsWith('image/')) return { image: buffer, ...(caption ? { caption } : {}) };
+  // Only formats WhatsApp shows as a photo go as an image; others (HEIC, say) are sent as a file so they arrive.
+  if (['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(type)) {
+    return { image: buffer, ...(caption ? { caption } : {}) };
+  }
   if (type.startsWith('video/')) return { video: buffer, mimetype: type, ...(caption ? { caption } : {}) };
   if (type.startsWith('audio/')) return { audio: buffer, mimetype: type };
   return {

@@ -256,7 +256,7 @@ export function Composer(
           <>
             <input
               ref={fileInput} type="file" className="hidden" aria-label="Attach a file"
-              accept="image/*,video/*,audio/*,application/pdf,.zip,.docx,.xlsx,.pptx"
+              accept="image/*,video/*,audio/*,application/pdf,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) sendFile(f); }}
             />
             <button
