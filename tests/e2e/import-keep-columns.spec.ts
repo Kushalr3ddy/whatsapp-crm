@@ -25,7 +25,6 @@ test.describe('import: keep columns, default tag', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: `keep-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv)
     });
-    await page.getByRole('button', { name: 'Upload' }).click();
     await expect(page.getByText(/rows ·/)).toBeVisible();
 
     // The tag box is already filled with the file's name.

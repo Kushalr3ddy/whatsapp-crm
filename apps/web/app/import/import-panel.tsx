@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { uploadSheet, runSheet, importProblems } from '@/app/actions';
 import type { ImportUpload, ImportSummary, ImportProblems } from '@/lib/crm';
 
@@ -14,7 +15,7 @@ const DRAFT_KEY = 'crm.import.draft';
 
 /** What is remembered of an import in progress. The file itself lives on the server, referred to by `upload.id`. */
 interface Draft {
-  upload: ImportUpload; phone: string; name: string; email: string; tagName: string; keep?: string[];
+  upload: ImportUpload; phone: string; name: string; email: string; tagName: string; keep?: string[]; fileName?: string;
   summary: { result: ImportSummary; committed: boolean } | null;
   /** Set while a commit is running, cleared when its answer arrives. */
   committing: boolean;
@@ -87,6 +88,7 @@ function DropZone({ inputRef, fileName, onFile }: {
  */
 export function ImportPanel() {
   const fileRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [upload, setUpload] = useState<ImportUpload | null>(null);
   const [phone, setPhone] = useState<string>('');
   const [name, setName] = useState<string>('');
@@ -113,7 +115,7 @@ export function ImportPanel() {
     const draft = loadDraft();
     if (draft === null) return;
     setUpload(draft.upload); setPhone(draft.phone); setName(draft.name); setEmail(draft.email);
-    setTagName(draft.tagName); setKeep(draft.keep ?? []); setSummary(draft.summary);
+    setTagName(draft.tagName); setKeep(draft.keep ?? []); setFileName(draft.fileName ?? ''); setSummary(draft.summary);
     if (draft.committing && draft.summary?.committed !== true) setResumed(true);
     // The rows-to-fix box is not remembered, it is asked for again.
     const sm = draft.summary?.result;
@@ -125,8 +127,8 @@ export function ImportPanel() {
   // Remember each change. Runs only once there is an upload to remember.
   useEffect(() => {
     if (upload === null) return;
-    saveDraft({ upload, phone, name, email, tagName, keep, summary, committing: false });
-  }, [upload, phone, name, email, tagName, keep, summary]);
+    saveDraft({ upload, phone, name, email, tagName, keep, fileName, summary, committing: false });
+  }, [upload, phone, name, email, tagName, keep, fileName, summary]);
 
   // A hard reload or closing the tab mid-run would lose the answer: ask first.
   useEffect(() => {
@@ -141,6 +143,8 @@ export function ImportPanel() {
     const picked = formData.get('file');
     if (picked instanceof File && picked.size > 0) lastFile.current = picked;
     else if (lastFile.current !== null) formData.set('file', lastFile.current);
+    // The file's own name, not the `fileName` state: a file picked a moment ago has not reached state yet.
+    const uploadedName = lastFile.current?.name ?? fileName;
     setError(null);
     setDuplicate(false);
     setSummary(null);
@@ -149,6 +153,10 @@ export function ImportPanel() {
       if (!result.ok || result.upload === undefined) {
         setError(result.error ?? 'Upload failed.');
         setDuplicate(result.duplicate === true);
+        return;
+      }
+      if (result.upload.rowCount === 0) {
+        setError('This file has no rows to import. It needs a header row on top and at least one row of people under it.');
         return;
       }
       const h = result.upload.headers;
@@ -161,7 +169,8 @@ export function ImportPanel() {
       setEmail(suggested?.email ?? guess(h, /e-?mail/i) ?? '');
       setKeep([]);
       // Everyone in a file is tagged with the file's name unless the person clears or changes it.
-      setTagName(fileName.replace(/\.[^.]+$/, '').replace(/[_\s]+/g, '-').slice(0, 60));
+      setFileName(uploadedName);
+      setTagName(uploadedName.replace(/\.[^.]+$/, '').replace(/[_\s]+/g, '-').slice(0, 60));
     });
   }
 
@@ -171,7 +180,7 @@ export function ImportPanel() {
     setError(null);
     setResumed(false);
     // Note a commit as running, so coming back mid-run can say so.
-    if (!dryRun) saveDraft({ upload, phone, name, email, tagName, keep, summary, committing: true });
+    if (!dryRun) saveDraft({ upload, phone, name, email, tagName, keep, fileName, summary, committing: true });
     startTransition(async () => {
       const result = await runSheet(
         upload.id,
@@ -186,7 +195,7 @@ export function ImportPanel() {
       }
       setSummary({ result: result.summary, committed: !dryRun });
       // Written directly as well: if the person left the page, this answer still lands in the draft.
-      saveDraft({ upload, phone, name, email, tagName, keep, summary: { result: result.summary, committed: !dryRun }, committing: false });
+      saveDraft({ upload, phone, name, email, tagName, keep, fileName, summary: { result: result.summary, committed: !dryRun }, committing: false });
       // Anything that failed or lost a number is listed so it can be fixed in the sheet.
       const found = (result.summary.errors > 0 || (result.summary.warnings ?? 0) > 0)
         ? await importProblems(upload.id) : null;
@@ -244,22 +253,23 @@ export function ImportPanel() {
       )}
 
       {upload === null ? (
-        <form action={submitUpload} className="mt-5 flex flex-col gap-3">
-          <DropZone inputRef={fileRef} fileName={fileName} onFile={setFileName} />
-          <div>
-            <button
-              type="submit"
-              disabled={pending || fileName === ''}
-              className="btn btn-primary"
-            >
-              {pending ? 'Uploading…' : 'Upload'}
-            </button>
-            {duplicate && (
-              <button type="submit" name="force" value="1" disabled={pending || fileName === ''} className="btn ml-2">
+        <form ref={formRef} action={submitUpload} className="mt-5 flex flex-col gap-3">
+          {/* Choosing or dropping a file uploads it straight away; there is no separate Upload button. */}
+          <DropZone
+            inputRef={fileRef} fileName={fileName}
+            onFile={(picked) => {
+              setFileName(picked);
+              if (picked !== '') formRef.current?.requestSubmit();
+            }}
+          />
+          {pending && <p role="status" className="text-sm text-muted">Reading {fileName}…</p>}
+          {duplicate && (
+            <div>
+              <button type="submit" name="force" value="1" disabled={pending || fileName === ''} className="btn">
                 Upload anyway
               </button>
-            )}
-          </div>
+            </div>
+          )}
           {duplicate && (
             <p className="text-xs text-muted">
               “Upload anyway” starts a fresh import of the same file. Contacts already in the CRM are matched by phone
@@ -271,9 +281,16 @@ export function ImportPanel() {
         <div className="mt-5 flex flex-col gap-4">
           <p className="text-sm">
             <span className="font-medium">{upload.rowCount}</span> rows ·{' '}
-            <span className="text-muted">{upload.headers.length} columns</span>
+            <span className="text-muted">{upload.headers.length} columns{fileName !== '' ? ` · ${fileName}` : ''}</span>
           </p>
 
+          <div>
+            <h2 className="text-base font-semibold">Which column is which?</h2>
+            <p className="text-sm text-muted">
+              Tell us which column of your sheet holds each of these. We have guessed for you; change a dropdown if the
+              guess is wrong. Only the phone is required.
+            </p>
+          </div>
           <div className="grid grid-cols-[7rem_1fr] items-center gap-x-3 gap-y-2">
             <Picker label="Phone *" value={phone} onChange={setPhone} headers={upload.headers} required />
             <PhoneHint upload={upload} phone={phone} />
@@ -281,12 +298,22 @@ export function ImportPanel() {
             <Picker label="Email" value={email} onChange={setEmail} headers={upload.headers} />
           </div>
 
+          <div>
+            <h2 className="text-lg font-semibold">Select the columns to be stored</h2>
+            <p className="text-sm text-muted">
+              Tick any other column you want saved on each person (for example city or skills). Columns you leave
+              unticked are not stored on the contact.
+            </p>
+          </div>
           <KeepColumns
             headers={upload.headers.filter((h) => h !== phone && h !== name && h !== email)}
             keep={keep} onChange={setKeep}
           />
 
-          <Sample upload={upload} />
+          <Sample
+            upload={upload} fileName={fileName}
+            columns={[phone, name, email, ...keep].filter((c, i, all) => c !== '' && all.indexOf(c) === i)}
+          />
 
           <label className="mb-2 flex flex-col gap-1 text-xs font-medium text-muted">
             Tag everyone in this file (named after the file; clear it to skip)
@@ -342,6 +369,20 @@ export function ImportPanel() {
                   <> · {summary.result.tagged} tagged “{tagName.trim()}”</>
                 )}
               </p>
+              {summary.committed && (
+                <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="What next">
+                  <span className="text-muted">What next?</span>
+                  <Link
+                    href={summary.result.tagId !== undefined ? `/contacts?tag=${summary.result.tagId}` : '/contacts'}
+                    className="btn btn-sm"
+                  >
+                    View the {summary.result.tagged ?? summary.result.created + summary.result.updated} imported contacts
+                  </Link>
+                  <Link href={`/broadcast/new?import=${upload.id}`} className="btn btn-sm btn-primary">
+                    Message these people
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -559,22 +600,27 @@ function Picker(
 }
 
 /** A tiny preview of the first sampled rows, so the mapping is checked against real values. */
-function Sample({ upload }: { upload: ImportUpload }) {
-  if (upload.sample.length === 0) return null;
+function Sample({ upload, fileName, columns }: { upload: ImportUpload; fileName: string; columns: string[] }) {
+  if (upload.sample.length === 0 || columns.length === 0) return null;
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-left text-xs">
-        <thead className="bg-surface text-muted">
-          <tr>{upload.headers.map((h) => <th key={h} className="px-2 py-1 font-medium">{h}</th>)}</tr>
-        </thead>
-        <tbody>
-          {upload.sample.map((row, i) => (
-            <tr key={i} className="border-t border-border">
-              {upload.headers.map((h) => <td key={h} className="truncate px-2 py-1">{row[h]}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div>
+      <p className="mb-1 text-sm font-medium">
+        Preview of all the columns you have selected from {fileName !== '' ? fileName : 'your file'}
+      </p>
+      <div className="overflow-x-auto rounded-md border border-border">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-surface text-muted">
+            <tr>{columns.map((h) => <th key={h} className="px-2 py-1 font-medium">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {upload.sample.map((row, i) => (
+              <tr key={i} className="border-t border-border">
+                {columns.map((h) => <td key={h} className="truncate px-2 py-1">{row[h]}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

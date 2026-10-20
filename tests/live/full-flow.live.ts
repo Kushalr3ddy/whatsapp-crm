@@ -113,7 +113,6 @@ test.describe('live walkthrough', () => {
       await nav(page).getByRole('link', { name: 'Import', exact: true }).click();
       let mark = Date.now();
       await page.locator('input[type="file"]').setInputFiles(file);
-      await page.getByRole('button', { name: 'Upload' }).click();
       await expect(page.getByText(/rows ·/)).toBeVisible();
       lap('  import: upload → rows read', mark);
       await page.getByLabel('Tag everyone in this file').fill(importTag);

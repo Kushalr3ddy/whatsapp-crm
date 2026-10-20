@@ -238,7 +238,8 @@ export function importsRouter(storage: StorageDriver, maxBytes: number, defaultC
           const tagId = 'id' in wantTag ? wantTag.id : await ensureTag(tx, orgId, wantTag.name);
           tagged = { id: tagId, count: await tagImportRun(tx, orgId, runId, tagId) };
         }
-        const finalSummary = tagged === null ? summary : { ...summary, tagged: tagged.count };
+        // `tagId` lets the screen link straight to the tagged people after a commit.
+        const finalSummary = tagged === null ? summary : { ...summary, tagged: tagged.count, tagId: tagged.id };
         await tx.execute(sql`
           UPDATE import_run
           SET status = ${parsed.data.dryRun ? 'dry_run' : 'committed'},

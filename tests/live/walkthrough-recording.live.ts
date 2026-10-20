@@ -129,7 +129,6 @@ test.describe('recorded walkthrough', () => {
       test.skip(!existsSync(IMPORT_FILE), 'sample file missing');
       await go('Import');
       await page.locator('input[type="file"]').setInputFiles(IMPORT_FILE);
-      await page.getByRole('button', { name: 'Upload' }).click();
       await expect(page.getByText(/rows ·/)).toBeVisible();
       await rest();
       await page.getByLabel('Tag everyone in this file').pressSequentially(`purchase-manager-${stamp}`, { delay: 30 });

@@ -17,7 +17,6 @@ test.describe('contacts: tags', () => {
     await signIn(page);
     await page.goto('/import');
     await page.locator('input[type="file"]').setInputFiles({ name: `${tag}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv) });
-    await page.getByRole('button', { name: 'Upload', exact: true }).click();
     await expect(page.getByText(/rows ·/)).toBeVisible();
     await page.getByRole('button', { name: 'Preview' }).click();
     await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
@@ -50,6 +49,6 @@ test.describe('contacts: tags', () => {
     await openDetails(page, 'Tag many at once');
     await page.getByLabel('Tag to apply').selectOption({ label: 'No tag' });
     await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByRole('alert')).toContainText('No tag');
+    await expect(page.getByText(/You chose “No tag”/)).toBeVisible();
   });
 });

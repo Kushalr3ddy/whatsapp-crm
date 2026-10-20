@@ -868,6 +868,8 @@ fields is built (PR #56); the size and layout of this step are what is left.
 
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-2 ([#65](https://github.com/Kushalr3ddy/whatsapp-crm/issues/65)): show how many rows the file has. **Kushal's decision:** drop the Upload button; choosing or dropping a file uploads it straight away, and an invalid file or one without enough rows shows an error. Issue-10 ([#72](https://github.com/Kushalr3ddy/whatsapp-crm/issues/72)): the Match columns step is confusing. **Decisions:** add a big line after phone, name and email are chosen saying to select the columns to be stored (today only a small "Keep these columns on each contact" label), and a line above the preview: "Preview of all the columns you have selected from the excel/csv: <file name>".
 
+✅ **Alpha-feedback issues 2 and 10 built 2026-10-20 (issues #65, #72):** choosing or dropping a file uploads it at once (no Upload button) with the row count and file name shown, and a file with no people is explained; the columns step has a plain "Which column is which?" and a big "Select the columns to be stored" line, and the preview shows only the chosen columns under "Preview of all the columns you have selected from <file>". The rest of the wizard is still open.
+
 ---
 
 ## D-22 · Row-level de-duplication with a diff-style review
@@ -2196,6 +2198,8 @@ big import cannot be blasted by accident. Related: D-68 (tag people first), D-57
 Pinned to come back to; not started.
 
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-1 ([#64](https://github.com/Kushalr3ddy/whatsapp-crm/issues/64)): after an import finishes the page just ends ("looks sus"). Show suggestions, never force: after linking a number, suggest Import or Campaigns; after an import, buttons to see the tagged contacts and to send them a message. Kushal: this may mean starting on the import wizard (D-21) too.
+
+✅ **First slice built 2026-10-20 (issue #64):** a finished import shows "View the N imported contacts" and "Message these people" (opens a new campaign on that import). The faster one-step quick message is still open.
 
 ---
 
