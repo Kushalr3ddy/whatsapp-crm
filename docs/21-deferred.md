@@ -184,7 +184,7 @@ horizontally, at which point `pg-boss` stops being appropriate and BullMQ on Red
 
 ---
 
-## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling
+## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling — **PRIORITY (Kushal, 2026-10-20)**
 
 **What:** a first-run wizard that provisions an org and its first admin in the browser, a guided
 walkthrough for someone new, and the branding layer that makes the product not visibly one
@@ -196,6 +196,11 @@ anticipated** elsewhere: P12's exit criterion is *"a stranger self-hosts it in u
 from the README alone"*, and F11's Branding section already specifies product name, logo,
 colours, favicon and sender display name as configuration rather than code.
 
+**Raised to priority 2026-10-20 (Kushal)**, after starting over from a wiped machine and finding the manual setup
+(secrets in `.env`, `db:setup`, a command-line `admin org`, then `dev:all`) slow and easy to get wrong. First slice: a **first-run
+wizard** in the browser, shown when the database has no organisation, that creates the org and first admin (through the
+existing `createOrgWithAdmin()` service) and shows the password once. Branding and the guided walkthrough come after.
+
 **What brings it back:**
 1. **A second deployment that neither developer runs** — the recruiter, another team, or a
    whitelabelled instance. The moment setup cannot be a phone call, it has to be a wizard.
@@ -206,6 +211,8 @@ hand-created rows exist that no code path can reproduce — `sender_identity` al
 created by hand, and that single row caused two separate misdiagnoses before anyone worked out
 where it came from. Keeping provisioning behind one `createOrgWithAdmin()` service, as decided,
 is what keeps this cheap.
+
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-1 ([#64](https://github.com/Kushalr3ddy/whatsapp-crm/issues/64)): "what to do next" links after each step. The ideal flow he describes: log in, link a number, import a sheet, open the tagged sheet, send messages.
 
 ---
 
@@ -859,6 +866,8 @@ map more than one phone column, and map a column onto a custom field.**
 "keep these columns" box and the sample table are small for a sheet with ~80 columns). Picking columns to keep as custom
 fields is built (PR #56); the size and layout of this step are what is left.
 
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-2 ([#65](https://github.com/Kushalr3ddy/whatsapp-crm/issues/65)): show how many rows the file has. **Kushal's decision:** drop the Upload button; choosing or dropping a file uploads it straight away, and an invalid file or one without enough rows shows an error. Issue-10 ([#72](https://github.com/Kushalr3ddy/whatsapp-crm/issues/72)): the Match columns step is confusing. **Decisions:** add a big line after phone, name and email are chosen saying to select the columns to be stored (today only a small "Keep these columns on each contact" label), and a line above the preview: "Preview of all the columns you have selected from the excel/csv: <file name>".
+
 ---
 
 ## D-22 · Row-level de-duplication with a diff-style review
@@ -1158,6 +1167,15 @@ last-contacted-within-N-days, AND/OR) — a CRM, not a query language.
 
 **Cost of deferring:** none for the near term — hand-pick (search + tags + explicit list) and
 whole-import targeting cover it.
+
+**Added 2026-10-20 (Kushal): the name "segment" is confusing; low priority.** It is jargon for a saved rule that picks a group
+of contacts (tags, replied or not, last messaged within N days), re-checked each time it is used. It is **not required for the
+core to work**: a campaign can go to a tag or to an import without it. What it adds is "A saved audience" and "Build a filter"
+(with a live count) on the new-campaign page. The Segments screen is already folded into Campaigns, so the word shows up in only
+a few places: the audience picker, the `/segments` page folder, the `/api/v1/segments` routes, the `segment` table and the docs.
+To decide later: (1) rename what people see to **"Saved audience"** (the picker already says so) or "Smart list", and leave the
+API and table names (renaming those is a migration and a breaking API change, rarely worth it alone); or (2) keep it and make it
+earn its place with filters on custom fields such as city and skills (D-40, D-70).
 
 ---
 
@@ -1540,6 +1558,7 @@ smoke / full split so PRs stay fast. The live walkthrough (`tests/live/`) stays 
 **Why parked:** large, and best done after the UI settles (D-46 responsiveness may change the page structure).
 
 **What brings it back:** the UI stops moving, or a regression the current specs miss.
+
 
 ---
 
@@ -2019,7 +2038,7 @@ helpers that already wrap it (`setTenant`, the gateway command channel) rather t
 
 ---
 
-## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed
+## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed — **PRIORITY (Kushal, 2026-10-20)**
 
 Found by using the app for real (sign in, link a number, import, Team, Numbers) on a throwaway VM. Fixed and merged
 the same day: the missing phone after linking, the terminal-only Numbers/Security/sign-in text, Import-before-Preview,
@@ -2042,6 +2061,10 @@ multi-email cells (#46, #47). **Still open:**
 9. **Login over plain `http://` cannot keep a session** (Secure cookie); there is no test-install setting for it.
 10. **Alpha container connects to Postgres as a superuser**, so row-level security is not enforced (log warning); fine
     single-tenant, not for several orgs.
+
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-9 ([#71](https://github.com/Kushalr3ddy/whatsapp-crm/issues/71)): after scanning the QR the Linked numbers card still says "Not connected" until the page is reloaded. **Decisions:** auto-refresh when the link succeeds; once linked, grey out "Link this number", "Scan a QR" and "Type a code"; "linked" and "connected" mean the same, so use only "Linked".
+
+✅ **Issue-9 built 2026-10-20 (PR #73):** the Linked numbers card refreshes itself the moment a scan succeeds; "Link this number", "Scan a QR" and "Type a code" are greyed out once linked; the word is "Linked" everywhere (Linked / Not linked / Linking…). The other bugs listed in this pin are still open.
 
 ---
 
@@ -2126,6 +2149,8 @@ selector and preview on Import, was filed under **D-21** instead):
 
 Pinned to come back to; not started.
 
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-3 ([#66](https://github.com/Kushalr3ddy/whatsapp-crm/issues/66)): the "Tag many at once" dropdown stretches out of its box; a UI fix. Issue-4 ([#67](https://github.com/Kushalr3ddy/whatsapp-crm/issues/67)): add a **"No tag"** option at the bottom of the tag list; choosing it warns that without a tag those contacts will have to be found and tagged again later; "choose a tag…" stays visible but greyed out. Issue-5 ([#68](https://github.com/Kushalr3ddy/whatsapp-crm/issues/68)): clicking a tag chip must filter (the tag ID in the address bar does not matter to users); once contacts are tagged or selected, suggest starting a campaign with them; if they are only selected and untagged, tag them first; if a campaign already exists that contains them as a subset, ask whether to use this tagged group or create a new one (see D-68, D-73). Issue-6 ([#69](https://github.com/Kushalr3ddy/whatsapp-crm/issues/69)): removing a tag with the × asks "Are you sure?" and says the contact may have to be searched for and tagged again.
+
 ---
 
 ## D-71 · A big background picture for each tab — pinned (Kushal, 2026-10-19)
@@ -2138,3 +2163,46 @@ illustration library), and does not move for anyone who asked for reduced motion
 Questions for later: one illustration per page or a shared set, and whether the empty states reuse them.
 
 Pinned to come back to; not started.
+
+---
+
+## D-72 · Mobile-friendly UI — pinned (Kushal, 2026-10-20)
+
+Every page should work well on a phone, not just a laptop: the inbox (list and thread as two screens with a back button, a
+composer that sits above the keyboard, tap targets big enough), Contacts, Import, Campaigns and Linked numbers (including
+scanning the QR with a second device), the sidebar as a bottom bar or slide-out menu, tables that become cards, and no
+sideways scrolling. Some of it exists already (the sidebar has small-screen rules and the sign-in page is responsive), but it
+was never tested or designed phone-first. Related: D-66 (look and motion), D-70 (the Contacts layout), D-61 (lighter web
+tier). Questions for later: a responsive web app only, or an installable one (a PWA with home-screen icon and push
+notifications for new messages); what to test on (real phones, and Playwright's mobile viewport, which D-49 also wants).
+
+Pinned to come back to; not started.
+
+---
+
+## D-73 · "Message these people" right after an import — pinned (Kushal, 2026-10-20) — **PRIORITY (Kushal, 2026-10-20)**
+
+After an import finishes, offer a quick way to send one message to everyone who was just imported: a **Message these people**
+button on the result box that opens a new campaign with the audience already set to that import (and with a short, quick form
+rather than the full campaign page). Most of the machinery exists: a campaign can already target "An import" as its audience
+(`fromImportRunId`), the import is tagged with the file name by default, and sending goes through the same pacing and
+do-not-contact rules as any campaign, so this is mostly a shortcut and not a new way to send. Things to settle: whether it is a
+real campaign underneath (recommended, so it is paced, listed and auditable) with the page simplified, or something lighter; a
+confirmation showing how many people it reaches and that some may be skipped (do-not-contact, recently messaged); and that a
+big import cannot be blasted by accident. Related: D-68 (tag people first), D-57 (import as a background job), D-52.
+
+Pinned to come back to; not started.
+
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-1 ([#64](https://github.com/Kushalr3ddy/whatsapp-crm/issues/64)): after an import finishes the page just ends ("looks sus"). Show suggestions, never force: after linking a number, suggest Import or Campaigns; after an import, buttons to see the tagged contacts and to send them a message. Kushal: this may mean starting on the import wizard (D-21) too.
+
+---
+
+## D-74 · Add-number form: country-code dropdown and a numbers-only phone field — ✅ **BUILT 2026-10-20**
+
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-8 ([#70](https://github.com/Kushalr3ddy/whatsapp-crm/issues/70)). The optional phone field on Add a number makes people type the country code themselves, and
+typing `9964122631` fails with "Write the number with its country code…". **Decisions:** a country-code dropdown next to the
+field, defaulted from the person's location (browser locale or time zone is enough, no precise location needed), changeable;
+if they start typing `+91`, `+63` and so on, switch the dropdown to that country and let them carry on, as Google's phone
+field does; the field accepts digits only and asks phones for the numeric keypad (`inputmode="tel"`). Related: D-72 (mobile).
+
+✅ **Built 2026-10-20 (PR #73):** a country list next to a digits-only phone box, defaulted from the browser language and changeable; typing `+91…` or `+63…` switches the country. Code: `apps/web/lib/dial-codes.ts`.
