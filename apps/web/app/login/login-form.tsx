@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { signIn, type SignInResult } from './actions';
+import { PasswordInput } from '../password-input';
 
 /** The sign-in form. A server action does the work, so no credential touches client code. */
 export function LoginForm() {
@@ -18,17 +19,12 @@ export function LoginForm() {
           required
           className="field"
         />
+        <span className="text-xs text-muted">Use your email address, not your name.</span>
       </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">Password</span>
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          className="field"
-        />
+        <PasswordInput name="password" autoComplete="current-password" required />
       </label>
 
       {state.error !== '' && <p role="alert" className="notice notice-danger">{state.error}</p>}
