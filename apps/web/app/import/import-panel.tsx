@@ -143,6 +143,8 @@ export function ImportPanel() {
     const picked = formData.get('file');
     if (picked instanceof File && picked.size > 0) lastFile.current = picked;
     else if (lastFile.current !== null) formData.set('file', lastFile.current);
+    // The file's own name, not the `fileName` state: a file picked a moment ago has not reached state yet.
+    const uploadedName = lastFile.current?.name ?? fileName;
     setError(null);
     setDuplicate(false);
     setSummary(null);
@@ -167,7 +169,8 @@ export function ImportPanel() {
       setEmail(suggested?.email ?? guess(h, /e-?mail/i) ?? '');
       setKeep([]);
       // Everyone in a file is tagged with the file's name unless the person clears or changes it.
-      setTagName(fileName.replace(/\.[^.]+$/, '').replace(/[_\s]+/g, '-').slice(0, 60));
+      setFileName(uploadedName);
+      setTagName(uploadedName.replace(/\.[^.]+$/, '').replace(/[_\s]+/g, '-').slice(0, 60));
     });
   }
 
