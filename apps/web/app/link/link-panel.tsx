@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { beginLink, pollLink, unlinkNumber } from '@/app/actions';
 import type { LinkStatus } from '@/app/actions';
@@ -211,9 +212,17 @@ export function LinkPanel(
       )}
 
       {status?.state === 'connected' && (
-        <p className="mt-2 text-xs text-success">
-          ✓ {status.detail} Any queued message is sent by the gateway within a minute.
-        </p>
+        <div className="mt-2">
+          <p className="text-xs text-success">
+            ✓ {status.detail} Any queued message is sent by the gateway within a minute.
+          </p>
+          {/* Only once the link has actually worked, and only as suggestions: nothing here is forced. */}
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" aria-label="What next">
+            <span className="text-muted">What next?</span>
+            <Link href="/import" className="btn btn-sm btn-primary">Import your contacts</Link>
+            <Link href="/broadcast" className="btn btn-sm">Open campaigns</Link>
+          </div>
+        </div>
       )}
 
       {status?.state === 'error' && (
