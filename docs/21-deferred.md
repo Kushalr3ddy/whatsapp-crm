@@ -2157,3 +2157,21 @@ tier). Questions for later: a responsive web app only, or an installable one (a 
 notifications for new messages); what to test on (real phones, and Playwright's mobile viewport, which D-49 also wants).
 
 Pinned to come back to; not started.
+
+---
+
+## D-73 · "Segments" is a confusing name; rename it and decide if it stays — pinned, low priority (Kushal, 2026-10-20)
+
+"Segment" is marketing jargon for a saved rule that picks a group of contacts (tags, replied or not, last messaged within N
+days), re-checked each time it is used (D-28). Kushal found the word confusing. It is **not required for the core to work**:
+a campaign can be sent to a tag or to an import without it. What it adds is "A saved audience" and "Build a filter" (with a live
+count) on the new-campaign page. The Segments screen was already folded into Campaigns (it is not in the sidebar), so the
+word shows up in only a few places: the campaign audience picker, the `/segments` page folder, the `/api/v1/segments` routes,
+the `segment` table and the docs.
+
+To decide later: (1) rename what people see to **"Saved audience"** (the picker already says so) or "Smart list" and drop
+"segment" from the screens and docs; keep or rename the API and table (renaming those is a migration and a breaking API change,
+so probably not worth it alone); (2) or fold it into D-70/D-40, where filters on custom fields (city, skills) would make it
+useful enough to keep. Low priority.
+
+Pinned to come back to; not started.
