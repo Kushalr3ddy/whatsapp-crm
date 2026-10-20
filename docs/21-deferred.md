@@ -216,6 +216,8 @@ is what keeps this cheap.
 
 ✅ **"What next" after linking a number built 2026-10-20 (issue #64):** once a scan works, the card suggests "Import your contacts" and "Open campaigns" (suggestions only). The rest of the guided flow and the first-run wizard are still open.
 
+**Plan written 2026-10-20:** see [`32 · Setup, signup, teams and billing`](32-onboarding-and-billing.md). The first-run wizard is phase 1 and the signup page is the same form behind an invite code (phase 2). **Documents only; no implementation until the alpha test is complete.**
+
 ---
 
 ## D-9 · Generating `.env`, and a secrets driver
@@ -1266,6 +1268,8 @@ capability: no cheap KEK rotation, no crypto-shredding for tenant erasure, a lar
 **Cost of deferring:** it grows with every message stored — the refactor is cheapest before there is real
 history to re-encrypt (22-encryption.md, "Not built yet").
 
+**Note 2026-10-20:** one encryption key per organisation is a prerequisite for letting untrusted organisations share a database; it is listed as "later" in the roadmap in [`32`](32-onboarding-and-billing.md).
+
 ---
 
 ## D-32 · Encrypting contact identifiers (phone numbers and emails)
@@ -1511,7 +1515,7 @@ auth forwarding (the UI forwards the user's session) and every server action.
 
 ---
 
-## D-47 · Signup page, billing gate and beta-tester override
+## D-47 · Signup page, billing gate and beta-tester override — **PRIORITY (Kushal, 2026-10-20)**
 
 > **2026-10-17:** a **front-end-only** sign-up page exists at `/signup` (PR #53): it checks the fields in the browser and says nothing
 > was created. The open decisions below still gate connecting it to a backend.
@@ -1530,6 +1534,8 @@ email verification (email is an optional driver, so a non-email path is needed);
 **Why parked:** it touches money, tenancy and the first public write route, so it needs Kushal's calls above first.
 
 **What brings it back:** Kushal choosing the payment provider and the signup-creates-org question.
+
+**Plan written 2026-10-20 (priority):** invite-only beta first, teammates added by an org admin (reset password, revoke access, never delete), payments after reading [`33 · Payment providers`](33-payment-providers.md); the design is in [`32 · Setup, signup, teams and billing`](32-onboarding-and-billing.md). **Documents only; no implementation until the alpha test is complete.**
 
 ---
 
@@ -1682,7 +1688,7 @@ wrong. The reply lock stays the hard rule; this stays a soft warning.
 
 ---
 
-## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end")
+## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end") — **PRIORITY (Kushal, 2026-10-20)**
 
 **What:** if an org (or a self-hosted install) has not paid, the product should stop being usable, not just show a
 billing page. Companion to [D-47](#d-47) (signup, billing gate, beta override): D-47 decides who gets in and
@@ -1706,6 +1712,8 @@ API and the gateway.
 hosted-versus-self-hosted call before any design is honest.
 
 **What brings it back:** Kushal's go-ahead with D-47, and the hosted/self-hosted answer.
+
+**Plan written 2026-10-20 (priority):** limits for seats and numbers in one place, read-only when payment lapses, the operator override as the "paid" switch; see [`32`](32-onboarding-and-billing.md) section 5 and [`33`](33-payment-providers.md). **Documents only; no implementation until the alpha test is complete.**
 
 ---
 
