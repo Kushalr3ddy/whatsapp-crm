@@ -1727,6 +1727,8 @@ hosted-versus-self-hosted call before any design is honest.
 
 **2026-10-20: more research and planning needed.** Research how projects whose **source code is available** enforce payment and licences, and what actually works against copying: study open-source and source-available products that sell licences (for example OpenVPN, Proxmox, Grafana, and others with open core or enterprise keys) and write down how each does it: signed licence files, phone-home checks, feature flags for paid tiers, enterprise-only code, and the licence terms that carry the real weight when the code can be read. Decide what is realistic for a product whose code is visible, then plan.
 
+**Research written 2026-10-20:** see [`34 · Licensing and enforcement`](34-licensing-and-drm.md). Kushal's requirement: only the developers authorise who may use the software, and use is highly restricted outside the organisation. That rules out open-source and the public source-available licences; the fit is a **proprietary, all-rights-reserved licence with a private repository and a signed agreement per customer**, ideally **hosted by us**, plus an offline-checked signed licence token for limits (seats, numbers, expiry) with soft-then-read-only lapse. The "what other products do" table there is from memory and marked verify; more examples (and the actual licence pages of Proxmox, Grafana, OpenVPN, GitLab) still need reading.
+
 ---
 
 ## D-56 · Telemetry: metrics, tracing and error tracking beyond logs — pinned (Kushal, 2026-10-13)
@@ -1872,6 +1874,8 @@ RAM); which of the gaps in the table above to build first.
 **What brings it back:** now, as a priority; the choices above come first.
 
 **2026-10-20: more research and planning needed before round 3.** Rounds 1 and 2 are merged (file types, failed-download reasons, image previews). Round 3 is multi-file, drag-and-drop, paste, bigger uploads, voice notes, the Files tab, manual Retry, and images and GIFs in campaigns. Plan it properly before building.
+
+**2026-10-20:** where files can be stored (Microsoft 365, Google, bring-your-own bucket, managed by us for a monthly fee) is written up under D-63.
 
 ---
 
@@ -2019,6 +2023,21 @@ are already org-prefixed) or one per org; whether to also keep a local copy duri
 **Why a priority:** raised together with file support in chat (D-59); the alpha's local disk will not survive a
 move to a split deployment (D-33).
 
+**Other places to keep files (2026-10-20, Kushal asked: what if a customer has Microsoft 365 Premium with 5 TB, or Google premium storage, or should we charge monthly for managed storage?).** Everything goes behind the existing storage driver (`packages/providers/storage`, built for local disk and S3-compatible); a new place is a new driver, not a rewrite.
+
+| Option | What it is | Good | Watch out for |
+|---|---|---|---|
+| **Local disk** (today's default) | Files on the server | Simple, free | One machine; backups are yours |
+| **Any S3-compatible bucket** (built) | AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Hetzner, MinIO | Cheap, standard; R2 has no egress fee; customer can bring their own bucket | A consumer with only Microsoft 365 or Google storage usually has no bucket |
+| **Customer's OneDrive / SharePoint (Microsoft 365)** | Microsoft Graph API; an app-folder permission (`Files.ReadWrite.AppFolder`) keeps the app inside `Apps/<app name>`; or a SharePoint document library for a company | Uses storage they already pay for (a 5 TB plan) | OAuth tokens that expire and must be protected; throttling; chunked upload for big files; the folder stays **visible** to the user; a personal account ties files to one person (if they leave, files go), so prefer a company SharePoint site; Microsoft's docs disagree on which account types the app-folder scope covers, so verify |
+| **Customer's Google Drive / Workspace** | Drive API with a narrow scope (`drive.file`) or the hidden app-data folder | Same: their storage | Same OAuth and quota issues; Google's app-data folder is hidden from the user (a plus and a minus); quotas not verified here |
+| **Dropbox / Box** | Their APIs | Some customers live there | More drivers to maintain |
+| **WebDAV / SFTP** | Nextcloud, many NAS boxes, some SharePoint setups | One driver reaches many self-hosted options | Speed and reliability vary |
+| **Managed by us** | We keep their files in our bucket and **bill monthly** by storage used (for example per 50 GB) | Nothing for the customer to set up; we control backups and encryption | We carry the cost and the risk: egress fees, a per-org quota, retention, backups, and **encryption at rest first** (D-11); price it with a margin |
+| **Hybrid** | Recent files with us, older ones moved to the customer's storage | Controls our cost | More moving parts |
+
+For any customer-owned cloud the design is the same: files are **served through us** (no raw links, so the access check and the audit log still apply), the tokens are encrypted, a failed upload is visible (D-30) and retried, and a per-org setting chooses the driver. **Questions for Kushal:** which customers actually ask for this; managed storage as a paid add-on or included; and whether the first extra driver is "bring your own S3-compatible bucket" (cheapest to build) or Microsoft 365 (most requested by small offices). Sources: [Microsoft Graph app folder](https://learn.microsoft.com/en-us/graph/onedrive-sharepoint-appfolder). The Google Drive details were not found in this research and must be read from Google's documentation. (Raised under the label D-23; it is about files, so it lives here and in D-59.)
+
 ---
 
 ## D-64 · Database portability: move the database-side logic into the app so other databases can work — pinned (Kushal, 2026-10-16)
@@ -2125,6 +2144,19 @@ check that first (does the gateway ever learn the number for a lid, and is it st
 - **Which chats should never become contacts?** `@newsletter` addresses (channels), communities, groups and WhatsApp broadcast lists. Groups and `status@broadcast` are already skipped on the way in; check newsletters and communities too, and decide whether broadcasts should be ignored everywhere.
 - **Unknown numbers.** What happens when a stranger who is not a contact messages in: spam, promotions, random people? Does it create a contact and a conversation? Options to weigh: a separate "unknown senders" inbox (see D-10), a block or mute action, rate-limiting or auto-archiving, and keeping spam out of campaign audiences.
 - **The `@lid` mapping itself:** does the gateway ever learn the real number, and is it stored?
+
+**Decisions (2026-10-20, Kushal):**
+- **Ignore `@newsletter` chats and similar** (channels, communities, WhatsApp broadcast lists). Today only groups (`@g.us`) and `status@broadcast` are skipped on the way in (`packages/channels/baileys/src/index.ts` ~503); nothing skips newsletters or other broadcast addresses, so they would create contacts and conversations.
+- **Alert the user on a message from an unknown number** (someone who is not a saved contact): a clear notice on the thread or in the inbox saying "message from an unknown number", with the pushed name if there is one, so spam and promotions are recognised and not mistaken for a customer. Related: D-10 (unknown senders).
+- **Find out why the automatic `@lid` mapping is not working.**
+
+**Findings from reading the code and the Baileys build (2026-10-20; not run, so unconfirmed in practice):**
+1. The mapping has only two sources today. (a) `key.senderPn` / `participantPn`, which Baileys copies from the stanza's `sender_pn` / `participant_pn` attribute, **present only when WhatsApp includes it, which it often does not for privacy addresses**. (b) The `chats.phoneNumberShare` event (`index.ts` ~378), which fires only when the other person shares their number.
+2. **Not used at all:** Baileys' `contacts.upsert` and `contacts.update` events. A `Contact` there carries **both `lid` and `jid`**, which is exactly a lid-to-number pair, plus `notify` (the name the person set for themselves) and `name` (the name saved on the linked phone). Nothing in the repo listens to them, so every pair WhatsApp already sends is thrown away. The history sync is another source.
+3. **Baileys can give the person's own chosen name.** Every inbound message carries `pushName` (the display name the sender set for themselves; the same as `notify`), which the gateway does not store. A profile picture (`profilePictureUrl`), an about text (`fetchStatus`) and a business name (`verifiedName`, `getBusinessProfile`) can also be fetched. The phone number cannot be read from a name; only from the pairs in (1) and (2).
+4. So the likely reasons the mapping seems broken: WhatsApp does not send `sender_pn` for these chats, we ignore the contact events that do carry the pair, and the display name is never saved, so a lid chat shows as a raw id.
+
+**Next steps (research, then plan):** confirm on a real linked number which events arrive for a lid chat (log, do not store); decide to store `pushName` on the contact; add listeners for contacts events; write the ignore list; design the unknown-sender notice; then the "add a number to this chat" action.
 
 ---
 
