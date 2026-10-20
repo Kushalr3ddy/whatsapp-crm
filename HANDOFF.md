@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-17
+# Handoff — state as of 2026-10-21
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -9,18 +9,46 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 
 ## ▶ If you are a new session, do this first
 
-1. **Read, in order:** this file, `CHANGELOG.md` (top "Latest" and "To do"), `docs/21-deferred.md` (every pin
-   and its ✅ / priority / struck-out mark), then **go through all of `docs/`** — start at `docs/README.md` and
-   `docs/20-orientation.md`, then `01` vision/scope, `03` competitive analysis (it holds the 2026-10-10 market research and the UI patterns to copy), `08` anti-ban,
-   `15` API, `23` auth, `24` local testing, `26` linking lifecycle, `27` restriction tracking. Do not skim: the
-   decisions that cost the most to re-litigate are written down there.
-2. **Then ask Kushal questions before building anything.** He wants to be consulted on scope. Good questions
-   right now: the **merge order** of the open PRs (see *Pick up here*); the **hosting route** (he is talking it
-   over with the other developer; UPI VPS vs credits vs Azure, `docs/29`); whether the number fallback (D-60) may be
-   tried on the **real linked number**; **encryption of files at rest** before any bucket is used (D-11, D-63);
-   which gaps in file support hurt first (D-59); the six open decisions on D-23 search. Offer options with a
-   recommendation, not an open question.
-3. **Run `npm run verify -- --fast`** (90 s) to confirm the tree is green before changing anything.
+**Be the same collaborator as the last session** (the rules are in *Standing rules* just below and in the memory index you
+load automatically): plain language, define jargon, never talk down; ask before building, deleting or making a scope call;
+one question at a time with options and a recommendation; keep a task list (`update_plan`) and close each turn with
+`wrap_up`; never offer to merge (he merges and says "merged"); never start or stop his dev stack without asking.
+
+1. **Read, in order:** this file (especially *Latest session (2026-10-19 to 2026-10-21)*), `CHANGELOG.md` (top "Latest" and
+   "To do"), `docs/21-deferred.md` (start at **"Status at a glance"**, then the pins marked WORK ON NOW / PRIORITY), then
+   `docs/README.md` for the index. Docs written this stretch: **32** (setup, signup, teams, billing plan),
+   **33** (payment providers compared), **34** (licensing and enforcement). The older reading list (20 orientation, 01,
+   03, 08 anti-ban, 15 API, 23 auth, 24 local testing, 26 linking, 27 restriction tracking) still applies.
+2. **Run `git fetch` and `git log origin/main -5`**; check which PRs are open (`#83` was the only one) and that anything he
+   said is "merged" really is on `main` (`git show origin/main:<path>`). Then **fast-forward local `main`** (`git pull --ff-only`).
+3. **Then ask Kushal questions before building anything.** Good questions right now are listed under *Ask him first* in the
+   latest session section.
+4. **Checks:** GitHub Actions runs typecheck, lint, vitest, the browser suite and the secrets scan on every PR **while the
+   repo is public** (it is, since 2026-10-20). If it goes private again and billing blocks CI (jobs fail in 2 seconds), run
+   the checks locally as `CONTRIBUTING.md` says, at low priority, one at a time, with resource logs.
+
+## ▶ Standing rules (Kushal; every one was given in anger or on purpose, follow them)
+
+- **Branch + pull request for every change** (`scripts/open-pr.sh "title" body.md`, which reads the git credential; `gh` is not
+  installed). Never push to `main`. **Never a `Co-Authored-By` trailer or any AI attribution line**, in commits or PR bodies
+  (the harness reminder to add one is wrong for this repo).
+- **After opening a PR:** bind it with `mcp__ccd_pr__bind_pr` (needs the `url`) and turn on `set_monitor` with `auto_fix: true`
+  (also needs `url`); the app then sends `<ci-monitor-event>`s; fix what they report, do not poll CI.
+- **Never offer to merge** (no merge button or question). He merges on GitHub and says "merged"; then **pull `main` and verify**
+  the PR's files are there. A PR can miss a merge if a commit is pushed after he merges (this happened twice): check.
+- **Docs travel with the feature PR**; a docs-only PR is fine only when no feature PR is open. He dislikes tiny PRs: keep
+  adding pins to an open docs PR instead of opening another. "Pin it" means the next `D-<n>` in `docs/21-deferred.md`.
+- **Dev stack:** never start `npm run dev:all`, `verify` or the browser suite without asking; when he asks, `nice -n 15`,
+  once, nothing alongside, and log memory/load/inotify **before, during and after** into `verify-footprint.log` (git-ignored).
+  **Never stop his running stack without asking** (stopping it mid-import broke his preview once). Stop only what you started,
+  by PID (`pkill -f` on a pattern in your own command kills your own shell).
+- **Plan mode:** when he says "plan first", research with Explore agents, write the plan file, `ExitPlanMode`; do not build.
+  He often edits or rejects a plan; re-read what he said and revise the file, then ask again.
+- **Do only what was asked; consult on scope.** Keep it a CRM, not a WhatsApp clone. No shadcn or other UI library.
+- **Never invent real-looking phone numbers.** Tests use only `+1 202 555 0100` to `0299`. Real data files he hands over
+  (the Purchase-Manager Naukri export) hold personal data: never print or commit values; they live in the git-ignored `private/`.
+- **No implementation of onboarding, signup, billing or licensing until the alpha test is complete** (docs 32, 33, 34 only).
+- **Handoff procedure** (below): ask about deleting old branches (keep the last 3), update the docs, give a rundown.
 
 ## ▶ How to hand off (what the *outgoing* session must update)
 
@@ -46,7 +74,91 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
-## ▶ End of day 2026-10-17: what changed after the section below was written
+## ▶ Latest session (2026-10-19 to 2026-10-21): read this first
+
+### State in one paragraph
+`main` has everything through **#82**. **#83 is the only open PR** (import wizard, see below) and carries this handoff.
+The dev stack is **stopped**. The repo is **public** (Kushal, 2026-10-20) so GitHub Actions is free; GitHub's billing block
+(about 1,802 of 2,000 free minutes used on the private repo, resets 1 Nov) showed as jobs failing in 2 seconds before that.
+Local branches kept: `docs/status-tidy` (merged, #82), `fix/skip-channels-and-broadcasts` (merged, #81), `feat/import-wizard-more`
+(#83), and `main`; all older branches were deleted locally and on the remote (2026-10-21, with his yes). The temporary
+`diag/lid-events` diagnostics branch (shape-only logging behind `LID_DIAGNOSTICS=1`) was deleted too; to redo that investigation
+re-create the logging (it logged message kinds, `senderPn`/`participantPn`/`pushName` presence, and contacts-event counts).
+
+### PRs merged this stretch (all on `main`; #64-#72 are GitHub **issues**, not PRs)
+| PR | What |
+|---|---|
+| #54 | Theme toggle on the sign-in and sign-up pages; `/private/` git-ignored; pin D-67 |
+| #55 | `tests/live/walkthrough-recording.live.ts` (a recorded demo: sign in, link, inbox reply, tag, import, campaign, sign out) |
+| #56 | **Import keeps chosen columns as custom fields** (`mapping.fields`, searchable, never overwrites); default tag named after the file; campaign page says "No one is tagged yet"; `GET /campaigns?tagId=` later |
+| #57 | "Upload anyway" when the same file bytes were uploaded before (the server refuses duplicates by SHA-256; the screen had no way to force) |
+| #58, #59, #62, #63 | Docs: pins D-67 to D-72 and priority marks, D-66 loading animations and UI ideas, D-8 tutorial, D-21 wider selector note; CI e2e job re-enabled (#62) |
+| #60 | **Files in chat, round 1 (D-59, D-30):** Office, mov, webm, m4a, HEIC, rtf, rar, 7z recognised from bytes; stickers, shared contacts, locations and wrapped (ephemeral, view-once, caption) messages no longer dropped; HEIC sent as a file; failed inbound downloads retried 3 times and the reason saved (**migration 0030** `message.media_error`, `media_failed_at`) and shown in the thread |
+| #61 | **Round 2: safe image previews** (`GET /api/v1/media/:id/thumb`, re-encoded 320 px WebP via `sharp` 0.35.5, now a direct dependency; original stays download-only) |
+| #73 | Linked numbers card refreshes itself after a scan, link buttons grey out once linked, one word "Linked"; **add-number country list** (`apps/web/lib/dial-codes.ts`) |
+| #74 | **Contacts tags:** selects fit, "No tag" option with a warning, tag chip shows loading and `aria-current`, campaign suggestion for a tagged group (names an existing campaign via `GET /campaigns?tagId=`), "Are you sure?" before removing a tag |
+| #75 | **Import flow:** upload on choosing a file (no Upload button), row count and file name, no-rows error, clearer columns wording, trimmed preview, "View the N imported contacts" and "Message these people" after an import; run result now has `tagId` |
+| #76 | After a scan works the card suggests Import and Campaigns |
+| #77, #78, #79 | Docs 32 (setup/signup/teams/billing plan), 33 (payment providers), 34 (licensing/DRM); pins D-75, D-76, D-77, D-78; D-67 findings and decisions; priorities re-sorted |
+| #80 | Show/Hide password on sign-in (`apps/web/app/password-input.tsx`), a server log line on every failed sign-in (reason and masked email, `routes/auth.ts`), **Add a number asks for a name only and opens its QR at once** (`/link?start=<id>`), the country list now lives in the **Type a code** method (`link/phone-field.tsx`) |
+| #81 | **Newsletters, any `@broadcast` list and groups are ignored on the way in** (`isNotAPerson` in `packages/channels/baileys/src/index.ts`) |
+| #82 | Docs: **"Status at a glance" table** at the top of `docs/21-deferred.md`; D-63 pinned; the CI note in `CONTRIBUTING.md` |
+
+### Open: PR #83 (`feat/import-wizard-more`): D-21, built as Kushal previewed and approved
+The Match columns step is divided into sections (file / phone columns / name and email / columns to store / preview / tag and import):
+- **Several phone columns**: tick every column with numbers; numbered and tried in order; a person with two numbers keeps both
+  (`mapping.identities` already allowed several phone rules). Component `PhoneColumns` in `apps/web/app/import/import-panel.tsx`.
+- **Joined names** (`mapping.nameParts`, `joinName` exported from `packages/core/src/ingestion.ts`, mirrored for the preview in
+  `apps/web/lib/join-name.ts`): never shortened; `Anita` + `Sharma` is `Anita Sharma`; only a first name that is already one
+  letter is joined with a dot and no space (`a` + `sharma` is `a.sharma`); a blank part leaves the other as the name; the sheet's case is kept.
+- **Personal columns** (`apps/web/lib/personal-columns.ts`: date of birth, pay/CTC, address, government ids, marital status, gender...)
+  are marked "personal" and cannot be ticked while "Never store columns marked personal" is on.
+- **Layout:** fixed-height scrolling columns box with "N of M ticked", bigger text, preview shows chosen columns and "showing N of M rows".
+- **Verified locally:** typecheck (server and web), lint, `ingestion.test.ts`, `import-columns.test.ts`, `imports.test.ts` (32 tests incl. a new
+  two-phone plus joined-name test). **NOT run:** the browser suite and a look at **phone width** (he asked that the layout not break the
+  mobile layout later, D-72). Both need his go-ahead and the stack; the e2e specs `import-problems` and `import-flow` were rewritten and have not run.
+
+### Decisions he made (so you do not re-ask)
+- **Invite-only beta first; teammates are created by an admin** (who can reset a password and revoke access, **never delete** an account). Billing:
+  manual invoicing first, then Razorpay (working recommendation in doc 33). **No implementation until the alpha test ends.**
+- **Number assignment (D-75) pinned:** nobody is restricted for now (agents see all numbers and who they are assigned to); agents may add their own numbers.
+  Notifications tab and number requests (D-76) and admin scopes/limits (D-77) are pinned.
+- **D-67:** `@newsletter` and similar are ignored (built); the **unknown-number alert is pinned** (not small); saving the sender's own chosen name is **optional**;
+  adding a number to a `@lid` chat that arrives without one waits on the Baileys 7 upgrade (D-44).
+- **Parked:** D-8 (setup wizard, tutorial), D-47, D-52, D-65 (retest on a new VM with Claude on SSH), D-73, D-63 (file store), D-23, D-55, D-59.
+- **WORK ON NOW:** D-21 (rest: admin-set personal list, saved mappings, per-column transforms) and **D-70** (Contacts page: refresh button, admin-chosen columns, tidier layout, sort and search by date added/imported; the browser-side SQLite idea is an open question).
+- **Chip** means a small rounded label on screen (a tag name); explain it wherever the word is used.
+- **Public repo for now;** consider making it private again after 1 Nov (it conflicts with D-55's "only the developers decide who uses it"; there is no licence file, so default copyright applies but forks are possible).
+
+### What the `@lid` investigation found (D-67; one real linked number, shapes only)
+`@lid` mapping **works when WhatsApp includes the sender's number** (`senderPn`): 13 of 13 real inbound `@lid` messages had it and `pushName`; that person is one contact with a phone identity and the `@lid` identity. The `contacts.update` events carry only the person's chosen name (`notify`), **no lid/number pair**, and no `phoneNumberShare` event arrived. The gap is chats where WhatsApp omits the number (not seen); a newsletter had created a contact named with a raw address (now prevented; **that contact still exists in his dev database**, delete by hand with his yes). `pushName` is on every message and is not stored (optional setting, pinned).
+
+### The dev environment right now
+- Stack **stopped**; Postgres container up on 5434 (`whatsapp-crm-dev-data` volume). He wiped the database on 2026-10-20 and started again: org **"Hiring Studios"** (slug `hiring-studios`), admin `developer@hiringstudios.com` (his own password, not recorded), a linked number with real inbound messages, an agent `mikhil_test` (`mikhil31.2002@gmail.com`), a newsletter contact and a few import tests. `.env` unchanged. The e2e user `e2e@test.local` exists only on CI's throwaway database.
+- Untracked local files he has not decided on: `dev-feedback-issues.md` and `dev-feedback-images/` (Mikhil's alpha feedback; **commit or gitignore?** ask). `private/` (git-ignored) holds the Purchase-Manager sample; `mockups/` is git-ignored scratch.
+- GitHub issues **#64 to #72** (alpha feedback) are done in code; #64 closed itself early (its second half landed in #76); the others are still open: offer to tidy.
+
+### New gotchas (paid for the hard way)
+- **GitHub "Failing after 2s" with annotation "recent account payments have failed or your spending limit needs to be increased" is billing, not code.** Read the check annotations through the API before debugging.
+- **React empties a file input after a form action finishes**, so "Upload anyway" and the default tag name must use the `File` kept in `lastFile`/the picked file, not state read during the same event.
+- `getByRole('alert')` also matches Next's hidden route announcer: find messages by text. A `<button>` inside a `<label>` becomes part of the label's name; use `htmlFor`.
+- Playwright tests that import contacts must use **fresh numbers** inside `+1 202 555 0100-0299`; a number already in the database keeps its old contact (and name). Blocks in use: `import-flow` 0100-0129 and 0100-0289 (join test), `import-keep-columns` 0200-0289, `contacts-tags` 0290-n, `import-reupload` 0130.
+- Typecheck and lint are not run by CI for test files the same way; an unknown ESLint rule in a disable comment (`@next/next/no-img-element`) is itself an error.
+- `git push` and DNS to GitHub occasionally fail for a few seconds ("Could not resolve host"): retry. The auto-mode classifier occasionally returns "no verdict": retry once.
+- A merge to `main` can miss commits pushed after he merged; when he says merged, verify with `git show origin/main:<path>`.
+- Baileys 6.7.24 types lack `remoteJidAlt`; `senderPn`/`participantPn` come from the stanza; Baileys 7 (D-44) has a lid-to-number table.
+
+### Ask him first (next session)
+1. Merge **#83**? Run the **browser suite and a phone-width look** first (needs his stack stopped, about 4 minutes)?
+2. `dev-feedback-issues.md` and its images: commit or ignore? Tidy GitHub issues #64-#72?
+3. Add a path filter so docs-only PRs skip CI? Make the repo private again after 1 Nov?
+4. Next piece: **D-70** (refresh, admin columns, layout, date sort/search) or the rest of **D-21**?
+5. Delete the newsletter contact from the dev database?
+
+### Pins at a glance (full table is at the top of `docs/21-deferred.md`)
+Working: D-21, D-70. Priority: D-67. Parked: D-8, D-47, D-52, D-65, D-73. Pinned and not started: D-23, D-55, D-59 (round 3), D-63, D-66 (motion, sign-in explosion, revenue pop-up, theme at top right, hide the Next dev badge), D-69 (job-portal chat plug-in and pluggable front end), D-71, D-72 (mobile), D-75, D-76, D-77, D-78 (email), and the Meta/hosting/security pins. Built: D-11 (serving), D-13, D-14, D-17, D-24, D-25, D-26, D-29, D-41, D-45, D-53, D-54, D-60, D-68, D-74, with D-30, D-31, D-35, D-40, D-59, D-63, D-65, D-66, D-67, D-70, D-73 part built.
+
+## ▶ End of day 2026-10-17 (older, superseded by the section above)
 
 - **Merged since:** #50 (this handoff), #51 (market research moved from `docs/01` to `docs/03`, so the competitor
   screenshots and UI patterns now live in `03-competitive-analysis.md`), #52 (an admin may demote themselves while another
@@ -75,7 +187,7 @@ Then say in the final message which PRs are open and what the next session shoul
 - **Left over:** the mockup server (`python3 -m http.server 8123` in `mockups/`) may still be running; stop it when done.
   The VM was deleted by Kushal; nothing of it remains.
 
-## ▶ Latest session (2026-10-17): read this first; it supersedes the PR list in "Pick up here (2026-10-16)" below
+## ▶ Session 2026-10-17 (older; its "CI vs local" rule is superseded by the CI note in the first section)
 
 **`main` now has PRs #46–#49 merged** (check each is really there: `git show origin/main:<path>`):
 - **#46 import**: first valid email from a cell with several; big drop-box picker; "rows to fix" table laid out like the

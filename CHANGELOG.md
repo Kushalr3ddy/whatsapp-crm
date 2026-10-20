@@ -13,6 +13,34 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-21 — Import wizard (D-21) built as previewed; branches tidied; handoff (#83 open)
+- **Open #83:** the Match columns step is divided into sections with several phone columns (tried in order, a person with two
+  numbers keeps both), first and last name joined as written (never shortened; a one-letter first name becomes `a.sharma`),
+  personal-looking columns marked and protected, a scrolling columns box, bigger text, a preview of the chosen columns. Typecheck,
+  lint and the unit and integration suites pass locally (`imports.test.ts` 32 tests); **the browser tests and a phone-width look
+  are not run yet**.
+- **Process:** previewed the design as mockups first (three rounds of changes by Kushal), as he asked for D-21.
+- **Housekeeping:** deleted 22 old branches locally and 21 on the remote (kept `main` and the last three); `git worktree prune`.
+- **Handoff written** (`HANDOFF.md`: standing rules, the full session, ask-him-first list; this ledger).
+
+### 2026-10-19 to 2026-10-20 — Alpha feedback fixed, files in chat, number access planned, docs for signup and billing
+- **Merged #54 to #82** (see `HANDOFF.md` for the table). Highlights: import keeps chosen columns as searchable contact fields (#56),
+  "Upload anyway" for a repeated file (#57), **files in chat rounds 1 and 2** (types, dropped message kinds, failed-download reasons,
+  safe image previews with `sharp`; migration 0030) (#60, #61), the whole **alpha-feedback list** from the other dev (#73 to #76, #80),
+  newsletters and broadcast lists ignored (#81), and the **"Status at a glance"** table for the pins (#82).
+- **Docs added:** 32 (setup, signup, teams, billing plan: invite-only beta, admin-created teammates, other products' flows, CRM and
+  WhatsApp-tool prices, a placeholder price list), 33 (payment providers compared; recommendation: manual invoicing then Razorpay),
+  34 (licensing and enforcement: proprietary licence, signed offline key, hosted by us). **No implementation until the alpha test ends.**
+- **`@lid` investigation** on a real linked number: the mapping works when WhatsApp includes the number; contacts events carry no pair;
+  newsletters leaked in (fixed in #81); `pushName` unused (optional, pinned).
+- **New pins:** D-67 (decisions), D-69 (job-portal plug-in and pluggable front end), D-70, D-71, D-72, D-73, D-74 (built), D-75, D-76,
+  D-77, D-78 (email); D-66 extended; priorities re-sorted three times (parked, work now, research first, pinned).
+- **CI:** the e2e job was suspended then re-enabled (#61, #62); GitHub billing blocked every job; Kushal made the repo **public** to
+  use free minutes; `CONTRIBUTING.md` says where checks run. Resource logs for every local run are in `verify-footprint.log`.
+- **Mistakes to learn from:** stopped his running stack mid-import (never stop it without asking); two pins pushed just after he
+  merged and so missed `main` (verify after "merged").
+- **Test counts:** vitest 740 passed, 1 skipped (58 files) at #80; browser suite 32 tests on CI at #80.
+
 ### 2026-10-17 (end of day) — Team fix, Linked numbers, the new look (#53 open)
 - **Merged:** #50 handoff, #51 market research moved to `docs/03`, #52 (admin may demote themselves while another admin
   remains; **Numbers renamed Linked numbers**; D-66 pinned).
@@ -1065,30 +1093,26 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 ## To do (top = next)
 
-In the order Kushal set, remaining. Items marked *pinned* are deliberately held:
+In the order Kushal set, remaining (2026-10-21). *Pinned* items are deliberately held:
 
-1. **Merge #53** once its checks are green, then **restyle the remaining pages one by one** in direction A (inbox, contacts,
-   import, campaigns, linked numbers, team, security, billing); motion on most pages (D-66).
-2. **D-47 sign-up backend**: the page exists as a front end; decide payment, whether sign-up makes an org, email
-   verification, abuse limits, then connect it.
-3. **D-65 bugs** found on the VM (false ban alarm on Try again, dead-end card, QR window, tab titles, import count wording, row
-   failing on a bad email, raw `@lid` contacts); real names in the greeting (`/auth/me` needs a display name).
-4. **One full `verify` on `main`** after the merges (ask first; CI already runs most of it).
-2. **Hosting and deployment (D-33, `docs/29`, `docs/30`)**: Kushal and the other developer pick the route, then the
-   packaging is finished and the **72-hour datacenter-IP test with one spare number** runs behind the tunnel.
-3. **Real-number pilot**: a spare number for a week, including the first real run of the number fallback.
-4. **File support (D-59) and the central store (D-63)** (priority): decide encryption at rest, then a local-to-bucket
-   copy job, the Files tab, orphan cleanup, retention.
-5. **D-21 import wizard** (priority): several phone columns, join first and last name, map a column to a custom field,
-   drop personal-data columns. The phone-list fix and column scoring are in #43.
-6. **D-23 inbox search** (priority): design decided; six open decisions.
-7. **D-31** per-org keys (rotation is built).
-8. **Proposed, not chosen:** the serial send sweep; a pre-send-pause fast path; D-57 background import before any
-   large file; D-61 lighter web tier; D-62 single executable.
-9. *Pinned:* **D-64** database portability · **D-19** templates (priority withdrawn 2026-10-16) · **D-55** licence · **D-56** telemetry · **D-58** site
-   checklist · **D-47** signup · **D-48** OWASP tests · **D-49** e2e revamp · **D-50** front/back tests · **D-51**
-   deleted messages · **D-52** delete campaigns · **D-46** UI lag · **D-27** opt-out · Meta adapter (**D-34/37/38/39**)
-   · **D-42** AI takeover · **D-43** alert channels · **D-44** Baileys 7 · rest of **D-53**.
+1. **#83** (D-21): his merge, after one local **browser run and a phone-width look** (ask first; the stack must be stopped).
+2. **D-70 Contacts page** (working on it): a refresh button, admin-chosen columns, a tidier layout, sort and search by date added
+   or imported (the browser-side SQLite idea is an open question; the server-side option is a date filter and a sort parameter).
+3. **D-21 remainder:** an admin-set list of personal columns, saved mappings, per-column transforms.
+4. **D-67 (priority):** save the sender's own chosen name as an optional setting; the unknown-number alert is *pinned*; adding a
+   number to a `@lid` chat that arrives without one waits on the Baileys 7 upgrade (D-44). Delete the newsletter contact in the dev DB (with his yes).
+5. **Housekeeping to offer:** commit or ignore `dev-feedback-issues.md` and its images; tidy GitHub issues #64 to #72; a path filter so
+   docs-only PRs skip CI; make the repo private again after 1 Nov (it conflicts with D-55).
+6. *Parked (not working on it):* **D-8** setup wizard and first-time tutorial, **D-47** signup and billing gate, **D-52** deleting
+   campaigns, **D-65** VM bugs (retest on a new VM with Claude on SSH), **D-73** quick message after an import.
+7. *Pinned, research or plan first:* **D-23** inbox search, **D-55** licensing (doc 34), **D-59** file support round 3 (multi-file,
+   drag-and-drop, paste, bigger uploads, voice notes, Files tab, manual Retry, images and GIFs in campaigns), **D-63** file store.
+8. *Pinned:* **D-66** motion (sign-in button burst, revenue pop-up, theme toggle top right, hide the Next dev badge, loading animations),
+   **D-69** job-portal chat and a pluggable front end, **D-71** background pictures per tab, **D-72** mobile UI, **D-75** number
+   assignment, **D-76** notifications and requests, **D-77** admin scopes and number limits, **D-78** email (SMTP or API),
+   **D-33** deployment, **D-34/37/38/39** Meta, **D-31** per-org keys, **D-44** Baileys 7, **D-48** security tests, **D-49** e2e revamp,
+   **D-56** telemetry, **D-57** background import, **D-61/62/64** web tier, executable, database portability.
+9. **Real-number pilot** and the **72-hour datacenter-IP test** once hosting (D-33) is chosen; a spare number is needed.
 
 ## Blockers (detail in `HANDOFF.md`)
 
