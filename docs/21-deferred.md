@@ -2143,3 +2143,17 @@ illustration library), and does not move for anyone who asked for reduced motion
 Questions for later: one illustration per page or a shared set, and whether the empty states reuse them.
 
 Pinned to come back to; not started.
+
+---
+
+## D-72 · Mobile-friendly UI — pinned (Kushal, 2026-10-20)
+
+Every page should work well on a phone, not just a laptop: the inbox (list and thread as two screens with a back button, a
+composer that sits above the keyboard, tap targets big enough), Contacts, Import, Campaigns and Linked numbers (including
+scanning the QR with a second device), the sidebar as a bottom bar or slide-out menu, tables that become cards, and no
+sideways scrolling. Some of it exists already (the sidebar has small-screen rules and the sign-in page is responsive), but it
+was never tested or designed phone-first. Related: D-66 (look and motion), D-70 (the Contacts layout), D-61 (lighter web
+tier). Questions for later: a responsive web app only, or an installable one (a PWA with home-screen icon and push
+notifications for new messages); what to test on (real phones, and Playwright's mobile viewport, which D-49 also wants).
+
+Pinned to come back to; not started.
