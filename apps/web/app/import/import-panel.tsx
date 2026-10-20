@@ -4,6 +4,11 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { uploadSheet, runSheet, importProblems } from '@/app/actions';
 import type { ImportUpload, ImportSummary, ImportProblems } from '@/lib/crm';
+import { isPersonalColumn } from '@/lib/personal-columns';
+import { joinNamePreview } from '@/lib/join-name';
+
+/** The value of the name dropdown that means "join a first-name and a last-name column". */
+const JOIN = '__join__';
 
 /** Fallback guess from the header name alone, for an older server that sends no value-based suggestion. */
 function guess(headers: string[], patterns: RegExp): string | null {
@@ -15,7 +20,7 @@ const DRAFT_KEY = 'crm.import.draft';
 
 /** What is remembered of an import in progress. The file itself lives on the server, referred to by `upload.id`. */
 interface Draft {
-  upload: ImportUpload; phone: string; name: string; email: string; tagName: string; keep?: string[]; fileName?: string;
+  upload: ImportUpload; phone: string; phones?: string[]; name: string; first?: string; last?: string; skipPersonal?: boolean; email: string; tagName: string; keep?: string[]; fileName?: string;
   summary: { result: ImportSummary; committed: boolean } | null;
   /** Set while a commit is running, cleared when its answer arrives. */
   committing: boolean;
@@ -90,8 +95,15 @@ export function ImportPanel() {
   const fileRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [upload, setUpload] = useState<ImportUpload | null>(null);
-  const [phone, setPhone] = useState<string>('');
+  // Every column that holds a phone number, in the order they are tried.
+  const [phones, setPhones] = useState<string[]>([]);
+  const phone = phones[0] ?? '';
+  // The name: one column, or JOIN for a first-name column plus a last-name column.
   const [name, setName] = useState<string>('');
+  const [first, setFirst] = useState<string>('');
+  const [last, setLast] = useState<string>('');
+  // While on, columns that look like personal data cannot be kept on a contact.
+  const [skipPersonal, setSkipPersonal] = useState(true);
   const [email, setEmail] = useState<string>('');
   const [summary, setSummary] = useState<{ result: ImportSummary; committed: boolean } | null>(null);
   // Optional: tag everyone this file creates or updates (the tag is created if new).
@@ -114,7 +126,8 @@ export function ImportPanel() {
   useEffect(() => {
     const draft = loadDraft();
     if (draft === null) return;
-    setUpload(draft.upload); setPhone(draft.phone); setName(draft.name); setEmail(draft.email);
+    setUpload(draft.upload); setPhones(draft.phones ?? (draft.phone === '' ? [] : [draft.phone])); setName(draft.name);
+    setFirst(draft.first ?? ''); setLast(draft.last ?? ''); setSkipPersonal(draft.skipPersonal ?? true); setEmail(draft.email);
     setTagName(draft.tagName); setKeep(draft.keep ?? []); setFileName(draft.fileName ?? ''); setSummary(draft.summary);
     if (draft.committing && draft.summary?.committed !== true) setResumed(true);
     // The rows-to-fix box is not remembered, it is asked for again.
@@ -127,8 +140,8 @@ export function ImportPanel() {
   // Remember each change. Runs only once there is an upload to remember.
   useEffect(() => {
     if (upload === null) return;
-    saveDraft({ upload, phone, name, email, tagName, keep, fileName, summary, committing: false });
-  }, [upload, phone, name, email, tagName, keep, fileName, summary]);
+    saveDraft({ upload, phone, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary, committing: false });
+  }, [upload, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary]);
 
   // A hard reload or closing the tab mid-run would lose the answer: ask first.
   useEffect(() => {
@@ -164,8 +177,12 @@ export function ImportPanel() {
       setUpload(result.upload);
       setProblems(null);
       // The server looked at the values; the header name is only the fallback.
-      setPhone(suggested?.phone ?? guess(h, /phone|mobile|number|contact|whatsapp/i) ?? h[0] ?? '');
-      setName(suggested?.name ?? guess(h, /name/i) ?? '');
+      setPhones([suggested?.phone ?? guess(h, /phone|mobile|number|contact|whatsapp/i) ?? h[0] ?? ''].filter((c) => c !== ''));
+      // A sheet with separate first-name and last-name columns defaults to joining them.
+      const firstGuess = guess(h, /^first.?name$|^given.?name$/i);
+      const lastGuess = guess(h, /^last.?name$|^sur.?name$|^family.?name$/i);
+      setFirst(firstGuess ?? ''); setLast(lastGuess ?? '');
+      setName(firstGuess !== null && lastGuess !== null ? JOIN : suggested?.name ?? guess(h, /name/i) ?? '');
       setEmail(suggested?.email ?? guess(h, /e-?mail/i) ?? '');
       setKeep([]);
       // Everyone in a file is tagged with the file's name unless the person clears or changes it.
@@ -174,20 +191,28 @@ export function ImportPanel() {
     });
   }
 
+  /** The kept columns that will really be saved: personal-looking ones are dropped while the protection is on. */
+  const keepStored = keep.filter((h) => !(skipPersonal && isPersonalColumn(h)));
+
   /** Previews (dry run) or commits the mapping. */
   function go(dryRun: boolean) {
     if (upload === null || phone === '') return;
     setError(null);
     setResumed(false);
     // Note a commit as running, so coming back mid-run can say so.
-    if (!dryRun) saveDraft({ upload, phone, name, email, tagName, keep, fileName, summary, committing: true });
+    if (!dryRun) saveDraft({ upload, phone, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary, committing: true });
     startTransition(async () => {
       const result = await runSheet(
         upload.id,
-        { phone, name: name === '' ? null : name, email: email === '' ? null : email },
+        {
+          phones,
+          name: name === '' || name === JOIN ? null : name,
+          nameParts: name === JOIN && first !== '' && last !== '' ? { first, last } : null,
+          email: email === '' ? null : email
+        },
         dryRun,
         tagName,
-        keep
+        keepStored
       );
       if (!result.ok || result.summary === undefined) {
         setError(result.error ?? 'Run failed.');
@@ -195,7 +220,7 @@ export function ImportPanel() {
       }
       setSummary({ result: result.summary, committed: !dryRun });
       // Written directly as well: if the person left the page, this answer still lands in the draft.
-      saveDraft({ upload, phone, name, email, tagName, keep, fileName, summary: { result: result.summary, committed: !dryRun }, committing: false });
+      saveDraft({ upload, phone, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary: { result: result.summary, committed: !dryRun }, committing: false });
       // Anything that failed or lost a number is listed so it can be fixed in the sheet.
       const found = (result.summary.errors > 0 || (result.summary.warnings ?? 0) > 0)
         ? await importProblems(upload.id) : null;
@@ -206,7 +231,7 @@ export function ImportPanel() {
   /** Clears everything back to the file picker for another import. */
   function reset() {
     setUpload(null); setSummary(null); setError(null); setProblems(null);
-    setPhone(''); setName(''); setEmail(''); setKeep([]); setTagName('');
+    setPhones([]); setName(''); setFirst(''); setLast(''); setEmail(''); setKeep([]); setTagName('');
     setFileName(''); setResumed(false); saveDraft(null); lastFile.current = null;
     if (fileRef.current !== null) fileRef.current.value = '';
   }
@@ -278,77 +303,132 @@ export function ImportPanel() {
           )}
         </form>
       ) : (
-        <div className="mt-5 flex flex-col gap-4">
-          <p className="text-sm">
-            <span className="font-medium">{upload.rowCount}</span> rows ·{' '}
-            <span className="text-muted">{upload.headers.length} columns{fileName !== '' ? ` · ${fileName}` : ''}</span>
-          </p>
-
-          <div>
-            <h2 className="text-base font-semibold">Which column is which?</h2>
-            <p className="text-sm text-muted">
-              Tell us which column of your sheet holds each of these. We have guessed for you; change a dropdown if the
-              guess is wrong. Only the phone is required.
+        <div className="mt-5">
+         <div className="rounded-xl border border-border bg-surface px-5 sm:px-6">
+          <section className="py-4" aria-label="The file">
+            <p className="text-base">
+              <span className="font-semibold">{upload.rowCount}</span> rows ·{' '}
+              <span className="text-muted">{upload.headers.length} columns{fileName !== '' ? ` · ${fileName}` : ''}</span>
             </p>
-          </div>
-          <div className="grid grid-cols-[7rem_1fr] items-center gap-x-3 gap-y-2">
-            <Picker label="Phone *" value={phone} onChange={setPhone} headers={upload.headers} required />
-            <PhoneHint upload={upload} phone={phone} />
-            <Picker label="Name" value={name} onChange={setName} headers={upload.headers} />
-            <Picker label="Email" value={email} onChange={setEmail} headers={upload.headers} />
-          </div>
+          </section>
 
-          <div>
+          <hr className="border-border" />
+          <section className="py-4" aria-label="Phone columns">
+            <h2 className="text-base font-semibold">Which columns hold phone numbers?</h2>
+            <p className="mb-2 text-sm text-muted">
+              Tick every column that has a number. If a person has more than one, we try them in this order.
+            </p>
+            <PhoneColumns upload={upload} phones={phones} onChange={setPhones} />
+          </section>
+
+          <hr className="border-border" />
+          <section className="py-4" aria-label="Name and email">
+            <h2 className="mb-2 text-base font-semibold">Name and email</h2>
+            <div className="grid grid-cols-[8rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[15px]">
+              <label htmlFor="import-name" className="text-muted">Name from</label>
+              <select id="import-name" value={name} onChange={(e) => { setName(e.target.value); }} className="field w-full">
+                <option value="">— none —</option>
+                <option value={JOIN}>First name + Last name (joined)</option>
+                {upload.headers.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+              {name === JOIN && (
+                <>
+                  <label htmlFor="import-first" className="text-muted">First name</label>
+                  <select id="import-first" value={first} onChange={(e) => { setFirst(e.target.value); }} className="field w-full">
+                    <option value="">— choose —</option>
+                    {upload.headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                  <label htmlFor="import-last" className="text-muted">Last name</label>
+                  <select id="import-last" value={last} onChange={(e) => { setLast(e.target.value); }} className="field w-full">
+                    <option value="">— choose —</option>
+                    {upload.headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </>
+              )}
+              <label htmlFor="import-email" className="text-muted">Email</label>
+              <select id="import-email" value={email} onChange={(e) => { setEmail(e.target.value); }} className="field w-full">
+                <option value="">— none —</option>
+                {upload.headers.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+            {name === JOIN && (
+              <p className="mt-2 text-sm text-muted">
+                Names are joined as they are written, never shortened: Anita and Sharma become Anita Sharma. Only if the
+                first name is already a single letter is it joined with a dot: a and sharma become a.sharma.
+              </p>
+            )}
+          </section>
+
+          <hr className="border-border" />
+          <section className="py-4" aria-label="Columns to store">
             <h2 className="text-lg font-semibold">Select the columns to be stored</h2>
-            <p className="text-sm text-muted">
-              Tick any other column you want saved on each person (for example city or skills). Columns you leave
-              unticked are not stored on the contact.
+            <p className="mb-2 text-sm text-muted">
+              Tick what you want saved on each person. Columns you leave unticked are not stored on the contact.
             </p>
-          </div>
-          <KeepColumns
-            headers={upload.headers.filter((h) => h !== phone && h !== name && h !== email)}
-            keep={keep} onChange={setKeep}
-          />
-
-          <Sample
-            upload={upload} fileName={fileName}
-            columns={[phone, name, email, ...keep].filter((c, i, all) => c !== '' && all.indexOf(c) === i)}
-          />
-
-          <label className="mb-2 flex flex-col gap-1 text-xs font-medium text-muted">
-            Tag everyone in this file (named after the file; clear it to skip)
-            <input
-              value={tagName} onChange={(e) => { setTagName(e.target.value); }} maxLength={60}
-              placeholder="e.g. october-batch" aria-label="Tag everyone in this file"
-              className="field font-normal text-ink"
+            <KeepColumns
+              headers={upload.headers.filter((h) => !phones.includes(h) && h !== name && h !== first && h !== last && h !== email)}
+              keep={keep} onChange={setKeep} skipPersonal={skipPersonal}
             />
-          </label>
+            <label className="mt-3 flex items-center gap-2 text-sm text-muted">
+              <input type="checkbox" checked={skipPersonal} onChange={(e) => { setSkipPersonal(e.target.checked); }} />
+              Never store columns marked personal (you can untick this)
+            </label>
+          </section>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => { go(true); }}
-              disabled={pending || phone === ''}
-              className="btn"
-            >
-              {pending ? 'Working…' : 'Preview'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (summary === null) { setError('Please click Preview first, so you can see what will be imported.'); return; }
-                go(false);
-              }}
-              disabled={pending || phone === '' || summary?.committed === true}
-              className="btn btn-primary"
-            >
-              Import
-            </button>
-            <button type="button" onClick={reset} className="text-xs text-muted underline underline-offset-2">
-              Start over
-            </button>
-          </div>
+          <hr className="border-border" />
+          <section className="py-4" aria-label="Preview of the import">
+            <Sample
+              upload={upload} fileName={fileName}
+              columns={[
+                ...phones.map((h, i) => ({ key: h, label: phones.length > 1 ? `Phone ${String(i + 1)}` : 'Phone', value: (row: Record<string, string>) => row[h] ?? '' })),
+                ...(name === JOIN
+                  ? [{ key: JOIN, label: 'Name', value: (row: Record<string, string>) => joinNamePreview(row[first] ?? '', row[last] ?? '') }]
+                  : name !== '' ? [{ key: name, label: 'Name', value: (row: Record<string, string>) => row[name] ?? '' }] : []),
+                ...(email !== '' ? [{ key: email, label: 'Email', value: (row: Record<string, string>) => row[email] ?? '' }] : []),
+                ...keepStored.map((h) => ({ key: h, label: h, value: (row: Record<string, string>) => row[h] ?? '' }))
+              ]}
+            />
+          </section>
 
+          <hr className="border-border" />
+          <section className="py-4" aria-label="Tag and import">
+            <label className="mb-3 flex flex-col gap-1 text-xs font-medium text-muted">
+              Tag everyone in this file (named after the file; clear it to skip)
+              <input
+                value={tagName} onChange={(e) => { setTagName(e.target.value); }} maxLength={60}
+                placeholder="e.g. october-batch" aria-label="Tag everyone in this file"
+                className="field font-normal text-ink"
+              />
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { go(true); }}
+                disabled={pending || phone === ''}
+                className="btn"
+              >
+                {pending ? 'Working…' : 'Preview'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (summary === null) { setError('Please click Preview first, so you can see what will be imported.'); return; }
+                  go(false);
+                }}
+                disabled={pending || phone === '' || summary?.committed === true}
+                className="btn btn-primary"
+              >
+                Import
+              </button>
+              <button type="button" onClick={reset} className="text-xs text-muted underline underline-offset-2">
+                Start over
+              </button>
+            </div>
+          </section>
+         </div>
+
+         <div className="mt-4 flex flex-col gap-3">
           {summary !== null && problems !== null && (
             <ProblemBox problems={problems} phoneColumn={phone} headers={upload.headers} committed={summary.committed} />
           )}
@@ -385,6 +465,7 @@ export function ImportPanel() {
               )}
             </div>
           )}
+         </div>
         </div>
       )}
     </div>
@@ -396,50 +477,85 @@ export function ImportPanel() {
  * shown on the contact's details and searchable; nothing is ticked until the person chooses, so personal data
  * nobody needs is not copied.
  */
-function KeepColumns({ headers, keep, onChange }: { headers: string[]; keep: string[]; onChange: (next: string[]) => void }) {
+function KeepColumns(
+  { headers, keep, onChange, skipPersonal }:
+  { headers: string[]; keep: string[]; onChange: (next: string[]) => void; skipPersonal: boolean }
+) {
   if (headers.length === 0) return null;
+  // Personal-looking columns cannot be ticked while the protection is on.
+  const locked = (h: string): boolean => skipPersonal && isPersonalColumn(h);
+  const tickable = headers.filter((h) => !locked(h));
+  const ticked = keep.filter((h) => !locked(h));
   const toggle = (h: string) => { onChange(keep.includes(h) ? keep.filter((k) => k !== h) : [...keep, h].slice(0, 40)); };
   return (
-    <fieldset className="rounded-md border border-border bg-surface px-3 py-2">
-      <legend className="px-1 text-xs font-medium text-muted">Keep these columns on each contact (optional, up to 40)</legend>
-      <div className="mb-2 flex gap-3 text-xs">
-        <button type="button" className="underline underline-offset-2" onClick={() => { onChange(headers.slice(0, 40)); }}>Tick all</button>
+    <div>
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+        <button type="button" className="underline underline-offset-2" onClick={() => { onChange(tickable.slice(0, 40)); }}>Tick all</button>
         <button type="button" className="underline underline-offset-2" onClick={() => { onChange([]); }}>Clear</button>
-        <span className="text-muted">{keep.length} ticked</span>
+        <span className="text-muted">{ticked.length} of {headers.length} ticked, up to 40. Scroll for more.</span>
       </div>
-      <div className="grid max-h-56 grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto text-sm sm:grid-cols-2">
+      {/* A box of fixed height with its own scrollbar, so a sheet with 80 columns does not push the page down. */}
+      <div className="grid max-h-40 grid-cols-1 content-start gap-x-4 gap-y-1.5 overflow-y-auto rounded-md border border-border px-3 py-2 text-[15px] sm:grid-cols-2 lg:grid-cols-3">
         {headers.map((h) => (
-          <label key={h} className="flex items-center gap-2">
-            <input type="checkbox" checked={keep.includes(h)} onChange={() => { toggle(h); }} />
+          <label key={h} className={`flex items-center gap-2 ${locked(h) ? 'text-muted' : ''}`}>
+            <input type="checkbox" checked={!locked(h) && keep.includes(h)} disabled={locked(h)} onChange={() => { toggle(h); }} />
             <span className="truncate" title={h}>{h}</span>
+            {isPersonalColumn(h) && <span className="shrink-0 rounded bg-warning-soft px-1.5 py-0.5 text-xs text-warning">personal</span>}
           </label>
         ))}
       </div>
-    </fieldset>
+    </div>
   );
 }
 
 /**
- * A line under the Phone picker saying how well the chosen column looks like phone numbers.
- * Occupies the grid's second column; renders nothing when the server sent no profile (older API).
+ * The phone columns: a tick box per likely column (those whose values mostly look like phone numbers, and any already
+ * ticked), numbered in the order they will be tried, with a note on how well each one looks like phone numbers. A
+ * dropdown adds any other column.
  */
-function PhoneHint({ upload, phone }: { upload: ImportUpload; phone: string }) {
-  const profile = upload.columns?.find((c) => c.header === phone);
-  if (profile === undefined || profile.sampled === 0) return null;
-  const pct = Math.round(profile.phoneShare * 100);
-  const poor = profile.phoneShare < 0.5;
+function PhoneColumns(
+  { upload, phones, onChange }: { upload: ImportUpload; phones: string[]; onChange: (next: string[]) => void }
+) {
+  const profile = (h: string) => upload.columns?.find((c) => c.header === h);
+  const likely = upload.headers.filter((h) => phones.includes(h) || (profile(h)?.phoneShare ?? 0) >= 0.3);
+  const shown = likely.length > 0 ? likely : upload.headers.slice(0, 6);
+  const others = upload.headers.filter((h) => !shown.includes(h));
+  const toggle = (h: string) => { onChange(phones.includes(h) ? phones.filter((p) => p !== h) : [...phones, h]); };
   return (
-    <>
-      <span aria-hidden />
-      <p
-        role={poor ? 'alert' : undefined}
-        className={`-mt-1 text-xs ${poor ? 'text-danger' : 'text-muted'}`}
-      >
-        {poor
-          ? `Only ${String(pct)}% of the values in "${phone}" look like phone numbers. Is this the right column?`
-          : `${String(pct)}% of the values in "${phone}" look like phone numbers.`}
-      </p>
-    </>
+    <div className="grid gap-1.5">
+      {shown.map((h) => {
+        const order = phones.indexOf(h);
+        const p = profile(h);
+        const pct = p === undefined || p.sampled === 0 ? null : Math.round(p.phoneShare * 100);
+        return (
+          <label
+            key={h}
+            className={`flex items-center gap-3 rounded-md border px-3 py-2 text-[15px] ${
+              order >= 0 ? 'border-accent bg-accent-soft' : 'border-border'}`}
+          >
+            <input type="checkbox" checked={order >= 0} onChange={() => { toggle(h); }} />
+            <span className="w-5 text-center font-medium text-accent">{order >= 0 ? order + 1 : '–'}</span>
+            <span className="min-w-0 truncate" title={h}>{h}</span>
+            {pct !== null && (
+              <span className="ml-auto shrink-0 text-xs text-muted">
+                {pct >= 50 ? `${String(pct)}% of the values look like phone numbers` : `only ${String(pct)}% look like phone numbers`}
+              </span>
+            )}
+          </label>
+        );
+      })}
+      {others.length > 0 && (
+        <select
+          aria-label="Add another column that holds phone numbers" value=""
+          onChange={(e) => { if (e.target.value !== '') onChange([...phones, e.target.value]); }}
+          className="field mt-1 w-full sm:w-72"
+        >
+          <option value="">Another column holds numbers…</option>
+          {others.map((h) => <option key={h} value={h}>{h}</option>)}
+        </select>
+      )}
+      {phones.length === 0 && <p className="text-sm text-danger">Pick at least one column with phone numbers.</p>}
+    </div>
   );
 }
 
@@ -579,43 +695,27 @@ function RowsFromSheet(
   );
 }
 
-/** One labelled column dropdown. The Phone picker offers no blank option; Name/Email may be none. */
-function Picker(
-  { label, value, onChange, headers, required }:
-  { label: string; value: string; onChange: (v: string) => void; headers: string[]; required?: boolean }
-) {
-  return (
-    <>
-      <label className="text-xs font-medium text-muted">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => { onChange(e.target.value); }}
-        className="field field-sm"
-      >
-        {required !== true && <option value="">— none —</option>}
-        {headers.map((h) => <option key={h} value={h}>{h}</option>)}
-      </select>
-    </>
-  );
-}
-
 /** A tiny preview of the first sampled rows, so the mapping is checked against real values. */
-function Sample({ upload, fileName, columns }: { upload: ImportUpload; fileName: string; columns: string[] }) {
+function Sample(
+  { upload, fileName, columns }:
+  { upload: ImportUpload; fileName: string; columns: Array<{ key: string; label: string; value: (row: Record<string, string>) => string }> }
+) {
   if (upload.sample.length === 0 || columns.length === 0) return null;
   return (
     <div>
-      <p className="mb-1 text-sm font-medium">
-        Preview of all the columns you have selected from {fileName !== '' ? fileName : 'your file'}
+      <h2 className="text-base font-semibold">Preview of the columns and rows that will be imported</h2>
+      <p className="mb-2 text-sm text-muted">
+        From {fileName !== '' ? fileName : 'your file'}. Showing {upload.sample.length} of {upload.rowCount} rows.
       </p>
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-sm">
           <thead className="bg-surface text-muted">
-            <tr>{columns.map((h) => <th key={h} className="px-2 py-1 font-medium">{h}</th>)}</tr>
+            <tr>{columns.map((c) => <th key={c.key} className="whitespace-nowrap px-3 py-2 font-medium">{c.label}</th>)}</tr>
           </thead>
           <tbody>
             {upload.sample.map((row, i) => (
               <tr key={i} className="border-t border-border">
-                {columns.map((h) => <td key={h} className="truncate px-2 py-1">{row[h]}</td>)}
+                {columns.map((c) => <td key={c.key} className="whitespace-nowrap px-3 py-2">{c.value(row)}</td>)}
               </tr>
             ))}
           </tbody>

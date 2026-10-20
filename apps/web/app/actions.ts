@@ -194,21 +194,30 @@ export interface RunResult {
  */
 export async function runSheet(
   id: string,
-  cols: { phone: string; name: string | null; email: string | null },
+  cols: {
+    /** Every column that holds a phone number, in the order to try them. At least one. */
+    phones: string[];
+    name: string | null;
+    /** A first-name and a last-name column to join into the name, instead of one name column. */
+    nameParts: { first: string; last: string } | null;
+    email: string | null;
+  },
   dryRun: boolean,
   tagName?: string,
   keep: string[] = []
 ): Promise<RunResult> {
-  const identities: unknown[] = [{ kind: 'phone', from: cols.phone, transform: ['trim'] }];
+  const identities: unknown[] = cols.phones.map((from) => ({ kind: 'phone', from, transform: ['trim'] }));
   if (cols.email !== null) identities.push({ kind: 'email', from: cols.email, transform: ['trim', 'lower'] });
   const mapping = {
     version: 1,
-    displayName: cols.name !== null ? { from: cols.name, transform: ['trim'] } : undefined,
+    displayName: cols.nameParts === null && cols.name !== null ? { from: cols.name, transform: ['trim'] } : undefined,
+    nameParts: cols.nameParts ?? undefined,
     identities,
     defaultCountry: 'IN',
     unmapped: 'keep',
     // Columns the person ticked to keep on each contact. Never the three already used above.
-    fields: keep.filter((h) => h !== cols.phone && h !== cols.name && h !== cols.email).slice(0, 40).map((from) => ({ from }))
+    fields: keep.filter((h) => !cols.phones.includes(h) && h !== cols.name && h !== cols.nameParts?.first && h !== cols.nameParts?.last && h !== cols.email)
+      .slice(0, 40).map((from) => ({ from }))
   };
   try {
     const summary = await runImportMapping(id, mapping, dryRun, tagName?.trim() || undefined);

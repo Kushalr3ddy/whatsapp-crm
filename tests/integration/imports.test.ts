@@ -527,3 +527,40 @@ describe('listing runs to target', () => {
     expect(ids).not.toContain(first.body.data.id);
   });
 });
+
+describe('importing with several phone columns and a joined name', () => {
+  it('puts every phone column on the one contact and joins first and last name as written', async () => {
+    const csv =
+      'First,Last,Phone,Alt\n' +
+      'Anita,Sharma,9876500011,9876500012\n' +
+      'a,sharma,9876500013,\n' +
+      ',Rao,9876500014,\n';
+    const up = await upload(csv, '?filename=join.csv');
+    expect(up.status).toBe(201);
+    const mapping = {
+      version: 1 as const,
+      nameParts: { first: 'First', last: 'Last' },
+      identities: [
+        { kind: 'phone' as const, from: 'Phone', transform: ['trim' as const] },
+        { kind: 'phone' as const, from: 'Alt', transform: ['trim' as const] }
+      ],
+      defaultCountry: 'IN',
+      unmapped: 'keep' as const
+    };
+    const r = await run(up.body.data.id, false, mapping);
+    expect(r.status).toBe(200);
+    expect(r.body.data).toMatchObject({ read: 3, created: 3, errors: 0 });
+
+    const rows = await db.execute(sql`
+      SELECT c.display_name AS name, count(i.*)::int AS phones
+      FROM contact c JOIN contact_identity i ON i.contact_id = c.id AND i.kind = 'phone'
+      WHERE c.org_id = ${orgId} GROUP BY c.id, c.display_name ORDER BY c.display_name`);
+    const got = (rows as unknown as Array<{ name: string; phones: number }>);
+    expect(got).toEqual([
+      { name: 'Anita Sharma', phones: 2 },   // both columns, one person
+      { name: 'Rao', phones: 1 },              // only the last name was filled in
+      { name: 'a.sharma', phones: 1 }          // a one-letter first name is joined with a dot
+    ]);
+  });
+});
+

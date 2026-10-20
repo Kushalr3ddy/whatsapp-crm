@@ -882,6 +882,8 @@ fields is built (PR #56); the size and layout of this step are what is left.
 
 **Added 2026-10-20 (Kushal):** make the **column selector and the preview wider and bigger, with a slightly bigger font** on the Import screen. **Do not do it if it breaks the mobile layout later** (D-72): check phone width first, and prefer a layout that is roomy on a desktop and still scrolls cleanly on a phone.
 
+✅ **Built 2026-10-21 (the previewed design):** the Match columns step is now divided into sections (file, phone columns, name and email, columns to store, preview, tag and import). **Several phone columns** can be ticked and are tried in order (a person with two numbers keeps both); a **first-name column plus a last-name column** are joined as written, never shortened (`Anita Sharma`; a one-letter first name becomes `a.sharma`); **personal-looking columns** (date of birth, pay, address, government ids) are marked and cannot be ticked while "never store columns marked personal" is on; the columns box scrolls; text is slightly bigger. Still open from this pin: dropping personal-data columns by an admin-set list, saved mappings, per-column transforms.
+
 ---
 
 ## D-22 · Row-level de-duplication with a diff-style review
