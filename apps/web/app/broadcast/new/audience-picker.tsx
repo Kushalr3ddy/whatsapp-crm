@@ -9,6 +9,8 @@ interface Props {
   tags: Array<{ id: string; name: string; contactCount?: number }>;
   imports: Array<{ id: string; label: string }>;
   segments: Array<{ id: string; name: string; contactCount: number }>;
+  /** A tag to start on (the Contacts page sends people here with `?tag=`). */
+  defaultTagId?: string | undefined;
 }
 
 /** The four ways to choose who a campaign goes to. */
@@ -20,7 +22,7 @@ type Mode = 'tag' | 'import' | 'segment' | 'filter';
  * of who it reaches (the old standalone Segments screen, folded in). Only the chosen way's field is
  * rendered, so the form posts exactly one audience.
  */
-export function AudiencePicker({ tags, imports, segments }: Props) {
+export function AudiencePicker({ tags, imports, segments, defaultTagId }: Props) {
   const first: Mode = tags.length > 0 ? 'tag' : imports.length > 0 ? 'import'
     : segments.length > 0 ? 'segment' : 'filter';
   const [mode, setMode] = useState<Mode>(first);
@@ -74,7 +76,7 @@ export function AudiencePicker({ tags, imports, segments }: Props) {
       {mode === 'tag' && (
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Everyone tagged</span>
-          <select name="fromTagId" defaultValue="" className="field">
+          <select name="fromTagId" defaultValue={tags.some((t) => t.id === defaultTagId) ? defaultTagId : ''} className="field">
             <option value="">— choose a tag —</option>
             {tags.map((t) => (
               <option key={t.id} value={t.id}>

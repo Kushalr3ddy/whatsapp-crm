@@ -1,13 +1,15 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { listContacts, listTags, listSenders, listCustomFields, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { Contact, Tag, Sender, CustomField } from '@/lib/crm';
+import { listContacts, listTags, listSenders, listCustomFields, listCampaigns, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { Contact, Tag, Sender, CustomField, Campaign } from '@/lib/crm';
 import {
   createFieldAction, deleteFieldAction, saveContactFieldsAction, setDncAction,
   bulkTagPreviewAction, bulkTagConfirmAction, bulkTagCheckedAction,
   createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
 } from './actions';
 import { PageHeader, EmptyState, initialsOf } from '../ui';
+import { TagChip } from './tag-chip';
+import { RemoveTag } from './remove-tag';
 
 /** Rendered per request — the search term and tag filter come from the query string. */
 export const dynamic = 'force-dynamic';
@@ -55,6 +57,12 @@ export default async function ContactsPage(
 
   if (expired) redirect('/login?next=/contacts');
 
+  // Campaigns already aimed at the tag being looked at, so the page can offer to reuse one instead of starting another.
+  let tagCampaigns: Campaign[] = [];
+  if (activeTag !== '') {
+    try { tagCampaigns = await listCampaigns(activeTag); } catch { tagCampaigns = []; }
+  }
+
   const bulkOpen = sp.bulkTag !== undefined || sp.bulkDone !== undefined || sp.bulkError !== undefined;
   const activeTagName = tags.find((t) => t.id === activeTag)?.name;
 
@@ -91,6 +99,14 @@ export default async function ContactsPage(
           <p className="mt-2 text-sm text-muted">Showing people tagged <strong className="text-ink">{activeTagName}</strong>.</p>
         )}
       </div>
+
+      {failure === null && activeTag !== '' && activeTagName !== undefined && contacts.length > 0 && (
+        <CampaignSuggestion
+          tagId={activeTag} tagName={activeTagName}
+          count={tags.find((t) => t.id === activeTag)?.contactCount ?? contacts.length}
+          existing={tagCampaigns}
+        />
+      )}
 
       <div className="mb-4 grid gap-2 sm:grid-cols-3">
         <details className="card px-4 py-2.5" open={bulkOpen}>
@@ -156,7 +172,8 @@ const BULK_ERROR: Record<string, string> = {
   pick_people: 'Tick at least one contact, and choose a tag.',
   COUNT_CHANGED: 'The audience changed while you were looking. Preview again.',
   FORBIDDEN: 'Only an admin can tag everyone at once.',
-  NOT_FOUND: 'That tag no longer exists.'
+  NOT_FOUND: 'That tag no longer exists.',
+  no_tag: 'You chose “No tag”, so nothing was tagged. If you do not tag these people now, you will have to find and select them all again later.'
 };
 
 /**
@@ -202,26 +219,59 @@ function BulkTagBar(
           <a href="/contacts" className="text-xs text-muted underline">Cancel</a>
         </form>
       ) : (
-        <form action={bulkTagPreviewAction} className="mt-2 flex flex-wrap items-center gap-2">
+        <form action={bulkTagPreviewAction} className="mt-2 flex flex-col items-stretch gap-2">
           <input type="hidden" name="q" value={q} />
           <input type="hidden" name="tag" value={activeTag} />
-          <select name="bulkAction" aria-label="Add or remove" className="field field-sm">
+          <select name="bulkAction" aria-label="Add or remove" className="field field-sm w-full min-w-0">
             <option value="add">Add tag</option>
             <option value="remove">Remove tag</option>
           </select>
-          <select name="bulkTag" aria-label="Tag to apply" defaultValue="" className="field field-sm">
+          <select name="bulkTag" aria-label="Tag to apply" defaultValue="" className="field field-sm w-full min-w-0">
             <option value="" disabled>choose a tag…</option>
             {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            <option value="none">No tag</option>
           </select>
-          <select name="bulkScope" aria-label="Who" className="field field-sm">
+          <select name="bulkScope" aria-label="Who" className="field field-sm w-full min-w-0">
             <option value="matching">everyone matching the current search / tag filter</option>
             <option value="all">everyone in the book (admin)</option>
           </select>
-          <button type="submit" className="btn btn-sm">
+          <button type="submit" className="btn btn-sm self-start">
             Preview
           </button>
         </form>
       )}
+    </section>
+  );
+}
+
+/**
+ * Offered when a tag filter is on: the natural next step is to message those people. Suggests, never forces.
+ * If a campaign is already aimed at this tag it is named first, so the person can reuse it or still start a new one.
+ */
+function CampaignSuggestion(
+  { tagId, tagName, count, existing }: { tagId: string; tagName: string; count: number; existing: Campaign[] }
+) {
+  return (
+    <section aria-label="Next step" className="notice mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+      <span>
+        Ready to message the {count} {count === 1 ? 'person' : 'people'} tagged <strong>{tagName}</strong>?
+        {existing.length > 0 && (
+          <>
+            {' '}A campaign already uses this tag:{' '}
+            {existing.slice(0, 3).map((c, i) => (
+              <span key={c.id}>
+                {i > 0 && ', '}
+                <Link href={`/broadcast/${c.id}`} className="font-medium underline underline-offset-2">{c.name}</Link>
+                {' '}({c.status})
+              </span>
+            ))}
+            . Open it, or start a new one.
+          </>
+        )}
+      </span>
+      <Link href={`/broadcast/new?tag=${encodeURIComponent(tagId)}`} className="btn btn-sm btn-primary">
+        Start a new campaign
+      </Link>
     </section>
   );
 }
@@ -242,12 +292,12 @@ function TagFilterBar({ tags, activeTag, query }: { tags: Tag[]; activeTag: stri
   return (
     <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1">
       <span className="shrink-0 text-sm text-muted">Tag:</span>
-      <Link href={href('')} className={chip(activeTag === '')}>All</Link>
+      <TagChip href={href('')} active={activeTag === ''} className={chip(activeTag === '')}>All</TagChip>
       {tags.map((t) => (
-        <Link key={t.id} href={href(t.id)} className={chip(activeTag === t.id)}>
+        <TagChip key={t.id} href={href(t.id)} active={activeTag === t.id} className={chip(activeTag === t.id)}>
           {t.name}
           {t.contactCount !== undefined && <span className="ml-1 opacity-60">{t.contactCount}</span>}
-        </Link>
+        </TagChip>
       ))}
     </div>
   );
@@ -294,6 +344,10 @@ function CampaignFromSelection(
         Campaign from checked contacts
       </summary>
       <div className="border-t border-border px-4 py-3">
+        <p className="mb-2 text-xs text-muted">
+          Only ticked people, no tag yet? To reuse this group later, tag them first (“Tag ticked” below), then start a
+          campaign from the tag.
+        </p>
         {errMsg !== null && <p className="mb-2 text-sm text-danger">{errMsg}</p>}
         {senders.length === 0 ? (
           <p className="text-sm text-muted">Link a WhatsApp number first, on the Numbers tab.</p>
@@ -321,6 +375,7 @@ function CampaignFromSelection(
               <select name="bulkTag" aria-label="Tag for ticked people" defaultValue="" className="field field-sm">
                 <option value="" disabled>choose a tag…</option>
                 {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                <option value="none">No tag</option>
               </select>
               <button type="submit" formAction={bulkTagCheckedAction} formNoValidate
                 className="btn btn-sm">
@@ -392,31 +447,13 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
 
         <div className="flex flex-wrap items-center gap-1.5">
           {contact.tags.slice(0, 5).map((t) => (
-            <form key={t.id} action={detachTagAction} className="inline-flex">
-              <input type="hidden" name="contactId" value={contact.id} />
-              <input type="hidden" name="tagId" value={t.id} />
-              <button
-                type="submit" title="Remove tag"
-                className="badge badge-accent cursor-pointer hover:!border-danger hover:!text-danger"
-              >
-                {t.name} <span aria-hidden className="opacity-60">×</span>
-              </button>
-            </form>
+            <RemoveTag key={t.id} contactId={contact.id} tagId={t.id} tagName={t.name} action={detachTagAction} />
           ))}
           {contact.tags.length > 5 && (
             <details className="inline-flex flex-wrap items-center gap-1.5">
               <summary className="badge cursor-pointer text-muted">+{contact.tags.length - 5} more</summary>
               {contact.tags.slice(5).map((t) => (
-            <form key={t.id} action={detachTagAction} className="inline-flex">
-              <input type="hidden" name="contactId" value={contact.id} />
-              <input type="hidden" name="tagId" value={t.id} />
-              <button
-                type="submit" title="Remove tag"
-                className="badge badge-accent cursor-pointer hover:!border-danger hover:!text-danger"
-              >
-                {t.name} <span aria-hidden className="opacity-60">×</span>
-              </button>
-            </form>
+            <RemoveTag key={t.id} contactId={contact.id} tagId={t.id} tagName={t.name} action={detachTagAction} />
               ))}
             </details>
           )}
