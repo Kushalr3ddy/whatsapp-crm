@@ -2064,6 +2064,8 @@ multi-email cells (#46, #47). **Still open:**
 
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-9 ([#71](https://github.com/Kushalr3ddy/whatsapp-crm/issues/71)): after scanning the QR the Linked numbers card still says "Not connected" until the page is reloaded. **Decisions:** auto-refresh when the link succeeds; once linked, grey out "Link this number", "Scan a QR" and "Type a code"; "linked" and "connected" mean the same, so use only "Linked".
 
+✅ **Issue-9 built 2026-10-20 (PR #73):** the Linked numbers card refreshes itself the moment a scan succeeds; "Link this number", "Scan a QR" and "Type a code" are greyed out once linked; the word is "Linked" everywhere (Linked / Not linked / Linking…). The other bugs listed in this pin are still open.
+
 ---
 
 ## D-66 · Motion on most pages, not just the sign-in screen — pinned (Kushal, 2026-10-17)
@@ -2195,10 +2197,12 @@ Pinned to come back to; not started.
 
 ---
 
-## D-74 · Add-number form: country-code dropdown and a numbers-only phone field — **PRIORITY (Kushal, 2026-10-20)**
+## D-74 · Add-number form: country-code dropdown and a numbers-only phone field — ✅ **BUILT 2026-10-20**
 
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-8 ([#70](https://github.com/Kushalr3ddy/whatsapp-crm/issues/70)). The optional phone field on Add a number makes people type the country code themselves, and
 typing `9964122631` fails with "Write the number with its country code…". **Decisions:** a country-code dropdown next to the
 field, defaulted from the person's location (browser locale or time zone is enough, no precise location needed), changeable;
 if they start typing `+91`, `+63` and so on, switch the dropdown to that country and let them carry on, as Google's phone
 field does; the field accepts digits only and asks phones for the numeric keypad (`inputmode="tel"`). Related: D-72 (mobile).
+
+✅ **Built 2026-10-20 (PR #73):** a country list next to a digits-only phone box, defaulted from the browser language and changeable; typing `+91…` or `+63…` switches the country. Code: `apps/web/lib/dial-codes.ts`.
