@@ -65,7 +65,7 @@ export default async function InboxLayout({ children }: { children: ReactNode })
                 ? `${String(connected.length)} number${connected.length === 1 ? '' : 's'} connected`
                 : senders.length === 0
                   ? 'No number added'
-                  : 'Not connected'}
+                  : 'Not linked'}
             </p>
           </div>
         </header>

@@ -34,7 +34,7 @@ export async function addNumberAction(label: string, phone: string): Promise<Add
   if (name === '') return { ok: false, error: 'Give the number a name, for example "Sales line".' };
   const cleaned = phone.replace(/[\s()-]/g, '');
   if (cleaned !== '' && !/^\+[1-9]\d{6,14}$/.test(cleaned)) {
-    return { ok: false, error: 'Write the number with its country code, like +919876543210, or leave it empty.' };
+    return { ok: false, error: 'That number does not look right for the country chosen. Check the country and the digits, or leave the number empty.' };
   }
   try {
     await createSender(name, cleaned);
