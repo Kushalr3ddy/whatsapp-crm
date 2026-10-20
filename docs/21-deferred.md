@@ -220,6 +220,8 @@ is what keeps this cheap.
 
 **2026-10-20:** parked again; the plan in [`32`](32-onboarding-and-billing.md) stays as the reference. Not working on it for now.
 
+**Added 2026-10-20 (Kushal):** a **tutorial / walkthrough for first-time users after they sign up** (step-by-step tips on the first visit to each page, dismissible, with a way to replay it). Part of the guided flow listed here.
+
 ---
 
 ## D-9 · Generating `.env`, and a secrets driver
@@ -877,6 +879,8 @@ fields is built (PR #56); the size and layout of this step are what is left.
 ✅ **Alpha-feedback issues 2 and 10 built 2026-10-20 (issues #65, #72):** choosing or dropping a file uploads it at once (no Upload button) with the row count and file name shown, and a file with no people is explained; the columns step has a plain "Which column is which?" and a big "Select the columns to be stored" line, and the preview shows only the chosen columns under "Preview of all the columns you have selected from <file>". The rest of the wizard is still open.
 
 **2026-10-20: work on this now.** Built: upload on choosing a file, the clearer columns step and the trimmed preview. Still to do: several phone columns, joining first and last name, and dropping personal-data columns.
+
+**Added 2026-10-20 (Kushal):** make the **column selector and the preview wider and bigger, with a slightly bigger font** on the Import screen. **Do not do it if it breaks the mobile layout later** (D-72): check phone width first, and prefer a layout that is roomy on a desktop and still scrolls cleanly on a phone.
 
 ---
 
@@ -2135,6 +2139,12 @@ before any page is restyled. Direction A and Inter were chosen; the sign-in scre
 starting, a number linking, a big search). A visible animation with a plain-words label ("Importing 160 contacts…"), not just
 a disabled button, so nobody thinks it froze. D-57 (import as a background job) is the same wish for imports.
 
+**Added 2026-10-20 (Kushal):**
+- **Look at how other SaaS products animate** (sign-in, onboarding, dashboards, loading, empty states) before choosing more motion; collect examples.
+- **Sign-in transition:** when Sign in is clicked, the button **expands to cover the whole screen** and the app opens on the dashboard (a "burst" reveal).
+- **Sign-in screen animation:** after the cash flows back to the organisation, a **revenue box pops up** (extends the lead scene in `apps/web/app/login/lead-scene.tsx`; no currency symbol, as before).
+- **Theme changer at the top right** of the page, not the bottom left of the sidebar, with a **sun / moon icon** next to the Light / Dark text.
+- **The "N" badge in the bottom corner** (the Next.js development indicator, shown only while running `next dev`): hide it, or confirm it does not appear in a production build (`devIndicators` in `apps/web/next.config.ts`).
 
 ---
 
@@ -2173,6 +2183,11 @@ check that first (does the gateway ever learn the number for a lid, and is it st
 - **Noise to ignore:** 361 of the 377 logged messages were `fromMe` echoes or empty stubs (our own sends and history sync) with no content; they are already skipped.
 - **`pushName` is present on every real incoming message and is not stored.** Saving it would give each contact the name they chose for themselves instead of just their number.
 - **Fix list now:** (1) skip `@newsletter`, other broadcast lists and communities in `#emitInbound` (`packages/channels/baileys/src/index.ts`), with a test in `mapping.test.ts`; (2) store `pushName` as the contact's name when the contact has none; (3) the unknown-number alert on first contact; (4) the add-a-number action for a `@lid` chat that arrives **without** `senderPn`. The diagnostics commit stays on the local branch `diag/lid-events`, unpushed.
+
+**Decisions after the findings (2026-10-20, Kushal):**
+- **Saving the sender's own chosen name (`pushName`) is optional**, a setting and not automatic. Off means the contact is named by number as today.
+- **Why a `@lid` chat can show a raw id while WhatsApp Web and the phone show the number.** The phone and WhatsApp Web know the person from your address book and from WhatsApp's own servers. A linked device through Baileys is handed only the privacy address (`@lid`) for some chats, plus the real number **only when WhatsApp chooses to include it** (it did for 13 of 13 messages in the test). When it does not, our code has nothing to map. This is partly a **Baileys 6.7.24 limitation**: newer Baileys (7.x) keeps its own lid-to-number table and can look a number up, which is part of why D-44 (Baileys 7 upgrade) matters here. So "add a number to a `@lid` chat that arrives without one" is a real gap, and the better answer may be the upgrade, with the manual add-a-number action as the fallback. Revisit after D-44 is looked at.
+- Still to do from the fix list: skip newsletters, broadcast lists and communities; the unknown-number alert.
 
 ---
 
@@ -2330,3 +2345,9 @@ presence and typing, notes, sender status, thread messages, attachments, sending
 the senders list and link status, and campaign create, list, start, get, preview and recipients). **How many numbers each person may link**, or a
 **predefined list of numbers the admin types or uploads** that may be linked to the CRM. **Who may add, link or unlink numbers** per scope (today
 any signed-in person can). Related: D-75, D-76, D-53, D-47 (limits per organisation).
+
+---
+
+## D-78 · Email: invitations to join an organisation, via SMTP or an email API (decide later) — pinned (Kushal, 2026-10-20)
+
+Email is **optional** and the choice is **not made yet**: either plain **SMTP** (any mail server the operator already has) or an **email API** (a hosted sending service). What it would unlock: an **invite sent from the Team tab** (today an admin creates the account and hands over the password), a self-service password reset, and email verification at signup. Until a choice is made the product works without email, and the admin-created-account flow stays. Today there is no email code at all (`packages/providers/email` is empty, no email settings in `packages/shared/src/config.ts`). To decide: SMTP vs an API provider, who pays for sending, and what an invite looks like (a single-use link). Related: D-8, D-33 (the unbuilt email driver), D-43 (email alerts), D-47, and docs [`32`](32-onboarding-and-billing.md).
