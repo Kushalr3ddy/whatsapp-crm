@@ -75,8 +75,12 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
     }
     const email = parsed.data.email.trim().toLowerCase();
 
+    // For whoever reads the server log: a masked email (first letter and domain), never the whole address.
+    const masked = `${email.slice(0, 1)}***@${email.split('@')[1] ?? '?'}`;
+
     const wait = blockedFor(email);
     if (wait > 0) {
+      req.log.warn({ email: masked, reason: 'locked_out' }, 'sign-in refused');
       res.status(429).json(problem(req, 429, 'TOO_MANY_ATTEMPTS',
         `Too many failed sign-ins. Try again in ${String(Math.ceil(wait / 1000))} seconds.`));
       return;
@@ -102,6 +106,11 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
 
     if (!ok || user === undefined || user.status !== 'active') {
       recordFailure(email);
+      // The screen says the same thing for every cause (so it cannot be used to find valid emails); the log does not.
+      req.log.warn({
+        email: masked,
+        reason: user === undefined ? 'no_such_account' : user.status !== 'active' ? 'disabled' : 'wrong_password'
+      }, 'sign-in failed');
       // Only recorded when the account exists. An unknown email has no tenant to record it
       // against, and inventing one would leak into some org's log that a stranger typed an
       // address it has never heard of.

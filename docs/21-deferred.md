@@ -2311,6 +2311,8 @@ field does; the field accepts digits only and asks phones for the numeric keypad
 
 ✅ **Built 2026-10-20 (PR #73):** a country list next to a digits-only phone box, defaulted from the browser language and changeable; typing `+91…` or `+63…` switches the country. Code: `apps/web/lib/dial-codes.ts`.
 
+**Update 2026-10-20 (PR for the second alpha-test round):** Add a number now asks for a **name only**, and its QR opens straight away; the number is saved when the QR is scanned. The country list and digits-only box moved to the **Type a code** linking method, where WhatsApp needs the number up front (`apps/web/app/link/phone-field.tsx`). Sign-in also got a Show/Hide button.
+
 ---
 
 ## D-75 · Number assignment: who each WhatsApp number belongs to — pinned (Kushal, 2026-10-20): not building it now

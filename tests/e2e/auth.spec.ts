@@ -8,6 +8,18 @@ import { signIn, EMAIL, CREDS_MISSING } from './helpers';
 test.describe('authentication', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
 
+  test('the password can be shown and hidden while typing', async ({ page }) => {
+    await page.goto('/login');
+    const box = page.getByLabel('Password', { exact: true });
+    await box.fill('typed-by-hand-1');
+    await expect(box).toHaveAttribute('type', 'password');
+    await page.getByRole('button', { name: 'Show password' }).click();
+    await expect(box).toHaveAttribute('type', 'text');
+    await expect(box).toHaveValue('typed-by-hand-1');
+    await page.getByRole('button', { name: 'Hide password' }).click();
+    await expect(box).toHaveAttribute('type', 'password');
+  });
+
   test('refuses a wrong password', async ({ page }) => {
     await page.goto('/login');
     await page.locator('input[type="email"]').fill(EMAIL);

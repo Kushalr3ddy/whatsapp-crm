@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { signIn, type SignInResult } from './actions';
+import { PasswordInput } from '../password-input';
 
 /** The sign-in form. A server action does the work, so no credential touches client code. */
 export function LoginForm() {
@@ -18,18 +19,14 @@ export function LoginForm() {
           required
           className="field"
         />
+        <span className="text-xs text-muted">Use your email address, not your name.</span>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Password</span>
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          className="field"
-        />
-      </label>
+      {/* Not wrapped in the label: the Show button sits inside the box and would become part of the label's name. */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="login-password" className="text-sm font-medium">Password</label>
+        <PasswordInput id="login-password" name="password" autoComplete="current-password" required />
+      </div>
 
       {state.error !== '' && <p role="alert" className="notice notice-danger">{state.error}</p>}
 

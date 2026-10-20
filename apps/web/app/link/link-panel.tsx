@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { beginLink, pollLink, unlinkNumber } from '@/app/actions';
 import type { LinkStatus } from '@/app/actions';
 import type { LinkMode } from '@/lib/crm';
+import { PhoneField } from './phone-field';
 
 /** How often the panel asks whether a challenge or a connection has appeared. */
 const POLL_MS = 2000;
@@ -25,7 +26,7 @@ function countdown(seconds: number): string {
  * stops at that point: continuing would be asking the API about an attempt that cannot succeed.
  */
 export function LinkPanel(
-  { senderId, alreadyOpen, linked }: { senderId: string; alreadyOpen: boolean; linked: boolean }
+  { senderId, alreadyOpen, linked, autoStart = false }: { senderId: string; alreadyOpen: boolean; linked: boolean; autoStart?: boolean }
 ) {
   const router = useRouter();
   const [mode, setMode] = useState<LinkMode>('qr');
@@ -74,6 +75,14 @@ export function LinkPanel(
     if (!result.ok) { setError(result.error ?? 'Could not start linking.'); return; }
     setActive(true);
   }, [senderId, mode, phone]);
+
+  // A number that was just added opens with its QR already showing: start once, without a click.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStarted.current || linked || alreadyOpen) return;
+    autoStarted.current = true;
+    void start();
+  }, [autoStart, linked, alreadyOpen, start]);
 
   // Poll for the challenge, then for the connection.
   useEffect(() => {
@@ -154,13 +163,7 @@ export function LinkPanel(
 
           {mode === 'pairing_code' && (
             <div>
-              <input
-                value={phone}
-                onChange={(e) => { setPhone(e.target.value); }}
-                placeholder="+919876543210"
-                inputMode="tel"
-                className="w-56 field field-sm"
-              />
+              <PhoneField id={`pair-phone-${senderId}`} onChange={setPhone} />
               <p className="mt-1 text-[11px] text-muted">
                 The number being linked. WhatsApp shows the code on <em>that</em> phone, so this
                 works for a number nobody here is holding.

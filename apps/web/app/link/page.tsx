@@ -16,7 +16,11 @@ export const dynamic = 'force-dynamic';
  * **gateway** is what actually opens the socket and produces the QR. If the gateway is down the
  * card says so and the Link button reports it, rather than spinning forever.
  */
-export default async function LinkPage() {
+export default async function LinkPage(
+  { searchParams }: { searchParams: Promise<{ start?: string }> }
+) {
+  // A number that was just added: its QR starts by itself.
+  const { start } = await searchParams;
   let senders: Sender[] = [];
   const events = new Map<string, HealthEvent[]>();
   let isAdmin = false;
@@ -63,7 +67,7 @@ export default async function LinkPage() {
       )}
 
       <ul className="grid items-start gap-4 lg:grid-cols-2">
-        {active.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} events={events.get(s.id) ?? []} />)}
+        {active.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} events={events.get(s.id) ?? []} autoStart={s.id === start} />)}
       </ul>
 
       {previouslyLinked.length > 0 && (
@@ -83,7 +87,7 @@ export default async function LinkPage() {
 }
 
 /** One number's card: its label and live state, the health panel, and the link/unlink panel. */
-function SenderCard({ sender, isAdmin, events }: { sender: Sender; isAdmin: boolean; events: HealthEvent[] }) {
+function SenderCard({ sender, isAdmin, events, autoStart = false }: { sender: Sender; isAdmin: boolean; events: HealthEvent[]; autoStart?: boolean }) {
   return (
     <li className="card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -120,6 +124,7 @@ function SenderCard({ sender, isAdmin, events }: { sender: Sender; isAdmin: bool
           senderId={sender.id}
           alreadyOpen={sender.connectionState === 'open'}
           linked={sender.linked}
+          autoStart={autoStart}
         />
       )}
     </li>

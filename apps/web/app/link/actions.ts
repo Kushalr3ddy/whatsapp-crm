@@ -23,26 +23,23 @@ export async function setEnforcementAction(formData: FormData): Promise<void> {
 }
 
 /** What the Add-a-number form gets back: done, or a plain reason it was not. */
-export interface AddNumberResult { ok: boolean; error?: string }
+export interface AddNumberResult { ok: boolean; error?: string; id?: string }
 
 /**
- * Creates a number so it can be linked from the Numbers page. The name is what people see in the
- * list; the phone number is optional because WhatsApp reports the real one once the number is linked.
+ * Creates a number so it can be linked from the Numbers page. The name is what people see in the list. No phone
+ * number is asked for: WhatsApp reports the real one once the number is linked, and the gateway saves it then.
  */
-export async function addNumberAction(label: string, phone: string): Promise<AddNumberResult> {
+export async function addNumberAction(label: string): Promise<AddNumberResult> {
   const name = label.trim();
   if (name === '') return { ok: false, error: 'Give the number a name, for example "Sales line".' };
-  const cleaned = phone.replace(/[\s()-]/g, '');
-  if (cleaned !== '' && !/^\+[1-9]\d{6,14}$/.test(cleaned)) {
-    return { ok: false, error: 'That number does not look right for the country chosen. Check the country and the digits, or leave the number empty.' };
-  }
+  let id: string;
   try {
-    await createSender(name, cleaned);
+    id = (await createSender(name)).id;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/link');
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     throw error;
   }
   revalidatePath('/link');
-  return { ok: true };
+  return { ok: true, id };
 }
