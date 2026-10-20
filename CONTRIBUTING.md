@@ -53,3 +53,9 @@ how good the rest is.
 `docs/12-testing.md`. Coverage floors: ≥80% on core, **100% on `antiban` and the dispatcher**.
 Coverage is a floor, not a goal — a PR that raises the number while testing nothing meaningful
 is a review failure.
+
+## Where the checks run (as of 2026-10-20)
+
+- **While the repository is public, GitHub Actions runs the checks on every pull request for free**: typecheck, lint, the unit and integration tests, the browser suite and the secrets scan. That is the gate; read the result on the pull request.
+- **If the repository goes private again** and the free minutes run out, GitHub stops starting the jobs (they fail in about 2 seconds with "recent account payments have failed or your spending limit needs to be increased"; that is billing, not the code). Then the same checks must be run **locally**, in this order, one at a time and at low priority:
+  `npm run typecheck`, `npm run typecheck:web`, `npm run lint`, `nice -n 15 npx vitest run` (migrate the test database first with `npm run db:migrate:test`), then the browser suite with `nice -n 15 npx playwright test` (it starts its own stack, so stop any other dev stack first). Log memory and load before, during and after in `verify-footprint.log`.
