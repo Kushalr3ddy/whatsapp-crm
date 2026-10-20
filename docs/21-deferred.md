@@ -2166,6 +2166,14 @@ check that first (does the gateway ever learn the number for a lid, and is it st
 
 **2026-10-20:** the only research item that is priority is **why the `@lid` mapping is not working** (findings above). The rest of this pin (ignoring newsletters, the unknown-number alert, the add-a-number action) follows from it.
 
+**Results of the live investigation (2026-10-20, one real linked number, shapes only; supersedes findings 1-4 above where they differ).** A diagnostics switch logged what arrived, never a number, name or text:
+- **The `@lid` mapping works when WhatsApp sends the number.** 13 of 13 real incoming messages from `@lid` addresses carried the sender's phone number (`senderPn`) and the sender's own chosen name (`pushName`). The database confirms it: that person is one contact holding **both a phone identity and the `@lid` identity**, with all 15 of their messages in one conversation. No failure reproduced in this sample.
+- **The contacts events do not help**, contrary to the earlier guess: 14 `contacts.update` events arrived, all with a name the person chose (`notify`), **none with a `@lid`/number pair**. No `phoneNumberShare` event arrived at all. So the only working source today is `senderPn`; if WhatsApp omits it for some chat (privacy settings, first contact), the mapping has nothing to use. That is the remaining gap, and it was not seen this time.
+- **Newsletters leak in.** Two incoming messages came from a `@newsletter` address (a channel the number follows), and the database now holds a **contact and a conversation named with the raw newsletter address** (29 characters, no phone). This is the confirmed bug behind "ignore `@newsletter` chats". Groups and the status list were already skipped (one group message arrived and created nothing).
+- **Noise to ignore:** 361 of the 377 logged messages were `fromMe` echoes or empty stubs (our own sends and history sync) with no content; they are already skipped.
+- **`pushName` is present on every real incoming message and is not stored.** Saving it would give each contact the name they chose for themselves instead of just their number.
+- **Fix list now:** (1) skip `@newsletter`, other broadcast lists and communities in `#emitInbound` (`packages/channels/baileys/src/index.ts`), with a test in `mapping.test.ts`; (2) store `pushName` as the contact's name when the contact has none; (3) the unknown-number alert on first contact; (4) the add-a-number action for a `@lid` chat that arrives **without** `senderPn`. The diagnostics commit stays on the local branch `diag/lid-events`, unpushed.
+
 ---
 
 ## D-68 · Campaign with no tagged people: tell the user to tag them first — ✅ built in PR #56 (Kushal, 2026-10-17)
