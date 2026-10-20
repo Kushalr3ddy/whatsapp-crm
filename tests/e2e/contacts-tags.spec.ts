@@ -49,6 +49,6 @@ test.describe('contacts: tags', () => {
     await openDetails(page, 'Tag many at once');
     await page.getByLabel('Tag to apply').selectOption({ label: 'No tag' });
     await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByRole('alert')).toContainText('No tag');
+    await expect(page.getByText(/You chose “No tag”/)).toBeVisible();
   });
 });
