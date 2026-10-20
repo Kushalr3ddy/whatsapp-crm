@@ -35,6 +35,8 @@ export function LinkPanel(
   const [active, setActive] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [unlinking, setUnlinking] = useState(false);
+  // True from the moment a scan succeeds until the page's own data catches up (see `connected` below).
+  const [justLinked, setJustLinked] = useState(false);
 
   /**
    * Unlinks the number. The gateway clears the stored credentials asynchronously, so this does
@@ -49,6 +51,7 @@ export function LinkPanel(
     if (!result.ok) { setUnlinking(false); setError(result.error ?? 'Could not unlink.'); return; }
     setActive(false);
     setStatus(null);
+    setJustLinked(false);
     router.refresh();
     setTimeout(() => { router.refresh(); setUnlinking(false); }, 1500);
   }, [senderId, router]);
@@ -81,13 +84,18 @@ export function LinkPanel(
       const next = await pollLink(senderId);
       if (cancelled) return;
       setStatus(next);
-      if (next.state === 'connected') { setActive(false); setRemaining(null); }
+      if (next.state === 'connected') {
+        setActive(false); setRemaining(null); setJustLinked(true);
+        // The card around this panel (badge, health, "Linked" line) is server-rendered, so re-read it now
+        // instead of leaving it saying "Not linked" until someone reloads the page.
+        router.refresh();
+      }
     };
 
     void tick();
     const timer = setInterval(() => { void tick(); }, POLL_MS);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [active, senderId]);
+  }, [active, senderId, router]);
 
   // Drive the countdown off the challenge's own expiry, ticking once a second.
   useEffect(() => {
@@ -110,16 +118,18 @@ export function LinkPanel(
   // session. A number with no stored credentials (`linked` false) is never connected, so the
   // panel shows the link controls; `linked` comes straight from the database, so it is right
   // after a refresh rather than relying on session state.
-  const connected = linked && ((alreadyOpen && status === null) || status?.state === 'connected');
+  // `justLinked` covers the moment between the scan and the page's data catching up, when `linked` is still the old value.
+  const isLinked = linked || justLinked;
+  const connected = isLinked && ((alreadyOpen && status === null) || status?.state === 'connected' || justLinked);
   const showChallenge = active && !expired && status?.state === 'challenge_ready';
 
   return (
     <div className="mt-3">
       {connected && status === null && (
-        <p className="text-xs text-success">Connected. If it stops receiving, use Unlink below to reset it.</p>
+        <p className="text-xs text-success">Linked. If it stops receiving, use Unlink below to reset it.</p>
       )}
 
-      {!active && !connected && (
+      {!active && (
         <div className="flex flex-col gap-2">
           <div className="flex gap-1.5">
             {(['qr', 'pairing_code'] as const).map((m) => (
@@ -127,7 +137,9 @@ export function LinkPanel(
                 key={m}
                 type="button"
                 onClick={() => { setMode(m); setError(null); }}
+                disabled={connected}
                 className={[
+                  'disabled:cursor-not-allowed disabled:opacity-50',
                   'rounded-md border px-2.5 py-1 text-[11px]',
                   mode === m
                     ? 'border-accent bg-accent-soft text-ink'
@@ -159,11 +171,14 @@ export function LinkPanel(
             <button
               type="button"
               onClick={() => { void start(); }}
-              disabled={starting}
-              className="btn btn-primary"
+              disabled={starting || connected}
+              className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {starting ? 'Starting…' : expired ? 'Try again' : 'Link this number'}
             </button>
+            {connected && (
+              <p className="mt-1.5 text-[11px] text-muted">This number is linked. To link it again, unlink it first.</p>
+            )}
           </div>
         </div>
       )}
@@ -173,13 +188,13 @@ export function LinkPanel(
           <button
             type="button"
             onClick={() => { void unlink(); }}
-            disabled={!linked || unlinking}
+            disabled={!isLinked || unlinking}
             className="btn btn-sm btn-danger"
           >
-            {!linked ? 'Already unlinked' : unlinking ? 'Unlinking…' : 'Unlink / reset this number'}
+            {!isLinked ? 'Already unlinked' : unlinking ? 'Unlinking…' : 'Unlink / reset this number'}
           </button>
           <p className="mt-1.5 text-[11px] text-muted">
-            {linked
+            {isLinked
               ? 'Use this if the number looks linked but is not receiving — it logs out and clears the stored credentials so linking again shows a fresh QR.'
               : 'No stored credentials — nothing to unlink. Its conversations stay in the inbox; link it again above to reconnect.'}
           </p>

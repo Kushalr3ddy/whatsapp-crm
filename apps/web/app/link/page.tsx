@@ -99,7 +99,7 @@ function SenderCard({ sender, isAdmin, events }: { sender: Sender; isAdmin: bool
           </div>
         </div>
         <span className={`badge ${sender.connectionState === 'open' ? 'badge-success' : 'badge-warning'}`}>
-          {sender.connectionState === 'open' ? 'Connected' : sender.connectionState === 'connecting' ? 'Connecting' : 'Not connected'}
+          {sender.connectionState === 'open' ? 'Linked' : sender.connectionState === 'connecting' ? 'Linking…' : 'Not linked'}
         </span>
       </div>
       <BanSuspicionBanner sender={sender} events={events} />

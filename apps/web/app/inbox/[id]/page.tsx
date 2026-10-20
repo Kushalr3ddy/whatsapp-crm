@@ -230,8 +230,8 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
   });
   const connected = senderStatus?.canSend === true;
   const statusLabel = senderStatus === null ? null
-    : connected ? 'Connected'
-    : senderStatus.reason === 'quarantined' ? 'Quarantined' : 'Not connected';
+    : connected ? 'Linked'
+    : senderStatus.reason === 'quarantined' ? 'Quarantined' : 'Not linked';
 
   return (
     <div className="flex min-h-0 flex-1">

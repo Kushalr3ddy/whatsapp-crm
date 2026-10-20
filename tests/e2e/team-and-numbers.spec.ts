@@ -30,7 +30,7 @@ test.describe('add a number and manage the team, in the browser', () => {
     await expect(card.getByRole('button', { name: 'Link this number' })).toBeVisible();
   });
 
-  test('a number needs a name, and a phone must carry its country code', async ({ page }) => {
+  test('a number needs a name, and the phone must fit the chosen country', async ({ page }) => {
     await signIn(page);
     await page.goto('/link');
     const open = page.getByRole('button', { name: 'Add a number', exact: true });
@@ -38,9 +38,24 @@ test.describe('add a number and manage the team, in the browser', () => {
     await expect(open.or(form)).toBeVisible();
     if (await open.isVisible()) await open.click();
     await form.getByLabel('Name').fill(`e2e-bad-${String(Date.now())}`);
-    await form.getByLabel('Phone number (optional)').fill('98765');
+    await form.getByLabel('Phone number (optional)').fill('12');
     await form.getByRole('button', { name: 'Add number' }).click();
-    await expect(form.getByRole('alert')).toContainText('country code');
+    await expect(form.getByRole('alert')).toContainText('country');
+  });
+
+  test('the phone box takes digits only and follows a typed +code', async ({ page }) => {
+    await signIn(page);
+    await page.goto('/link');
+    const open = page.getByRole('button', { name: 'Add a number', exact: true });
+    const form = page.getByRole('form', { name: 'Add a number' });
+    await expect(open.or(form)).toBeVisible();
+    if (await open.isVisible()) await open.click();
+    const phone = form.getByLabel('Phone number (optional)');
+    await phone.fill('98a-76 b5');
+    await expect(phone).toHaveValue('98765');
+    await phone.fill('+63 917 123 4567');
+    await expect(form.getByLabel('Country code')).toHaveValue('PH');
+    await expect(phone).toHaveValue('9171234567');
   });
 
   test('an admin adds a person, sees the sign-in details once, then disables and re-enables them', async ({ page }) => {

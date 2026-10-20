@@ -14,9 +14,9 @@ export const dynamic = 'force-dynamic';
 /** How a number is doing, in one badge. The socket decides "can it send"; status decides "is it healthy". */
 function numberBadge(s: Sender): { label: string; cls: string } {
   if (s.status === 'quarantined') return { label: 'Quarantined', cls: 'badge-danger' };
-  if (s.connectionState !== 'open') return { label: 'Not connected', cls: 'badge-warning' };
+  if (s.connectionState !== 'open') return { label: 'Not linked', cls: 'badge-warning' };
   if (s.status === 'degraded') return { label: 'Degraded', cls: 'badge-warning' };
-  return { label: 'Connected', cls: 'badge-success' };
+  return { label: 'Linked', cls: 'badge-success' };
 }
 
 /** "Good morning/afternoon/evening" for the install's time zone (the one sending hours use), or a plain "Welcome" if it is not valid. */
