@@ -214,6 +214,8 @@ is what keeps this cheap.
 
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-1 ([#64](https://github.com/Kushalr3ddy/whatsapp-crm/issues/64)): "what to do next" links after each step. The ideal flow he describes: log in, link a number, import a sheet, open the tagged sheet, send messages.
 
+✅ **"What next" after linking a number built 2026-10-20 (issue #64):** once a scan works, the card suggests "Import your contacts" and "Open campaigns" (suggestions only). The rest of the guided flow and the first-run wizard are still open.
+
 ---
 
 ## D-9 · Generating `.env`, and a secrets driver
