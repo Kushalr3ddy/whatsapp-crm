@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signIn, openDetails, CREDS_MISSING } from './helpers';
 
 /**
- * Contacts tag handling from the alpha-testing feedback: a tag chip filters and says where to go next, "No tag"
+ * Contacts tag handling from the alpha-testing feedback: a tag chip (a small rounded label with the tag's name) filters and says where to go next, "No tag"
  * explains itself, and removing a tag asks first. Numbers are in the +1 202 555 02xx range reserved for fiction.
  */
 test.describe('contacts: tags', () => {

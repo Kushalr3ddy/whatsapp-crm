@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 /**
- * A tag chip on a contact whose "×" asks first.
+ * A tag chip (a small rounded label showing a tag's name) on a contact, whose "×" asks first.
  *
  * Tags are the only way to group people, so one stray click removing one is costly: the contact may have to be
  * searched for and tagged all over again. The first click turns the chip into a short question; only "Yes, remove"

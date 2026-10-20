@@ -416,7 +416,7 @@ function CampaignFromSelection(
   );
 }
 
-/** One row: the contact, their details, their tag chips (each removable), and an add-tag picker. */
+/** One row: the contact, their details, their tag chips (small rounded labels, each removable), and an add-tag picker. */
 function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: Tag[]; fields: CustomField[] }) {
   const phone = contact.identities.find((i) => i.kind === 'phone')?.value;
   const email = contact.identities.find((i) => i.kind === 'email')?.value;

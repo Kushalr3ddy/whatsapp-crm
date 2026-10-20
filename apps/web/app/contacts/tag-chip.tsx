@@ -10,7 +10,7 @@ function Pending() {
 }
 
 /**
- * One chip in the tag filter row. The page behind it is rendered on the server, so a click can take a moment
+ * One chip (a small rounded label) in the tag filter row. The page behind it is rendered on the server, so a click can take a moment
  * with nothing on screen to show it; the mark appears the instant the click lands. The active chip says so to
  * screen readers (`aria-current`).
  */

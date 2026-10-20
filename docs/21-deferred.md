@@ -2139,7 +2139,7 @@ selector and preview on Import, was filed under **D-21** instead):
    Custom fields are built (D-40, PR #56 for imports).
 3. **Better formatting.** Today each row crams the name, numbers, tags, fields editor and actions together ("a
    clusterfuck of information"). Needs a calmer layout: a table with the chosen columns, details tucked into a side
-   panel or an expandable row, tags as small chips, consistent spacing. Copy the contact lists in the research apps
+   panel or an expandable row, tags as small chips (small rounded labels on the screen, like the tag name on a contact), consistent spacing. Copy the contact lists in the research apps
    (`docs/03-competitive-analysis.md`).
 4. **Sort and search by the date a contact was added or imported**, and sort by any chosen column.
 5. **Do the sorting and searching in the browser** with SQLite on the end user's side, to keep load off the server. Open
@@ -2151,7 +2151,7 @@ Pinned to come back to; not started.
 
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-3 ([#66](https://github.com/Kushalr3ddy/whatsapp-crm/issues/66)): the "Tag many at once" dropdown stretches out of its box; a UI fix. Issue-4 ([#67](https://github.com/Kushalr3ddy/whatsapp-crm/issues/67)): add a **"No tag"** option at the bottom of the tag list; choosing it warns that without a tag those contacts will have to be found and tagged again later; "choose a tag…" stays visible but greyed out. Issue-5 ([#68](https://github.com/Kushalr3ddy/whatsapp-crm/issues/68)): clicking a tag chip must filter (the tag ID in the address bar does not matter to users); once contacts are tagged or selected, suggest starting a campaign with them; if they are only selected and untagged, tag them first; if a campaign already exists that contains them as a subset, ask whether to use this tagged group or create a new one (see D-68, D-73). Issue-6 ([#69](https://github.com/Kushalr3ddy/whatsapp-crm/issues/69)): removing a tag with the × asks "Are you sure?" and says the contact may have to be searched for and tagged again.
 
-✅ **Alpha-feedback issues 3-6 built 2026-10-20 (this PR, issues #66-#69):** the Tag many at once selects fit their box; a "No tag" option explains what it means; a tag chip shows it is loading and is marked current; with a tag filter on, the page suggests starting a campaign and names any campaign already using the tag (`GET /campaigns?tagId=`); removing a tag asks "Are you sure?" first. The rest of D-70 (refresh, admin-chosen columns, layout, date sort and search) is still open.
+✅ **Alpha-feedback issues 3-6 built 2026-10-20 (this PR, issues #66-#69). A "chip" here means a small rounded label on the screen, such as a tag name on a contact or in the Tag filter row:** the Tag many at once selects fit their box; a "No tag" option explains what it means; a tag chip shows it is loading and is marked current; with a tag filter on, the page suggests starting a campaign and names any campaign already using the tag (`GET /campaigns?tagId=`); removing a tag asks "Are you sure?" first. The rest of D-70 (refresh, admin-chosen columns, layout, date sort and search) is still open.
 
 ---
 
