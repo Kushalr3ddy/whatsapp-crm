@@ -184,7 +184,7 @@ horizontally, at which point `pg-boss` stops being appropriate and BullMQ on Red
 
 ---
 
-## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling
+## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling — **PRIORITY (Kushal, 2026-10-20)**
 
 **What:** a first-run wizard that provisions an org and its first admin in the browser, a guided
 walkthrough for someone new, and the branding layer that makes the product not visibly one
@@ -195,6 +195,11 @@ the in-house beta, where the two developers can provision by hand. It is also mo
 anticipated** elsewhere: P12's exit criterion is *"a stranger self-hosts it in under 10 minutes
 from the README alone"*, and F11's Branding section already specifies product name, logo,
 colours, favicon and sender display name as configuration rather than code.
+
+**Raised to priority 2026-10-20 (Kushal)**, after starting over from a wiped machine and finding the manual setup
+(secrets in `.env`, `db:setup`, a command-line `admin org`, then `dev:all`) slow and easy to get wrong. First slice: a **first-run
+wizard** in the browser, shown when the database has no organisation, that creates the org and first admin (through the
+existing `createOrgWithAdmin()` service) and shows the password once. Branding and the guided walkthrough come after.
 
 **What brings it back:**
 1. **A second deployment that neither developer runs** — the recruiter, another team, or a
