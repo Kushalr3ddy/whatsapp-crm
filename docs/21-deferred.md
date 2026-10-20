@@ -2166,3 +2166,18 @@ tier). Questions for later: a responsive web app only, or an installable one (a 
 notifications for new messages); what to test on (real phones, and Playwright's mobile viewport, which D-49 also wants).
 
 Pinned to come back to; not started.
+
+---
+
+## D-73 · "Message these people" right after an import — pinned (Kushal, 2026-10-20)
+
+After an import finishes, offer a quick way to send one message to everyone who was just imported: a **Message these people**
+button on the result box that opens a new campaign with the audience already set to that import (and with a short, quick form
+rather than the full campaign page). Most of the machinery exists: a campaign can already target "An import" as its audience
+(`fromImportRunId`), the import is tagged with the file name by default, and sending goes through the same pacing and
+do-not-contact rules as any campaign, so this is mostly a shortcut and not a new way to send. Things to settle: whether it is a
+real campaign underneath (recommended, so it is paced, listed and auditable) with the page simplified, or something lighter; a
+confirmation showing how many people it reaches and that some may be skipped (do-not-contact, recently messaged); and that a
+big import cannot be blasted by accident. Related: D-68 (tag people first), D-57 (import as a background job), D-52.
+
+Pinned to come back to; not started.
