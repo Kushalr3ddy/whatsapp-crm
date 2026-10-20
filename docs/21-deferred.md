@@ -14,6 +14,91 @@ is not re-proposed.
 
 ---
 
+## Status at a glance (updated 2026-10-20)
+
+✅ done · ◐ partly built · ▶ working on it · 🔺 priority · ⏸ parked (not working on it for now) · 📌 pinned (not started)
+
+| Pin | What | Status |
+|---|---|---|
+| D-1 | A lightweight database browser (Drizzle Studio or similar) | 📌 pinned |
+| D-1b | Drizzle's query builder (as opposed to Drizzle itself) | 📌 pinned |
+| D-3 | Licence | 📌 pinned |
+| D-4 | The AI agent (F12) | 📌 pinned |
+| D-5 | Baileys 7.x | 📌 pinned |
+| D-6 | UUIDv7 primary keys | 📌 pinned |
+| D-7 | Turborepo, and splitting the queue driver | 📌 pinned |
+| D-8 | Self-serve setup wizard, guided walkthrough, whitelabelling | ◐ partly built (what-next buttons) · ⏸ parked |
+| D-9 | Generating `.env`, and a secrets driver | 📌 pinned |
+| D-10 | What belongs in the inbox — broadcast output, and unknown senders | 📌 pinned |
+| D-11 | Media at rest — encryption, retention, scanning, compliance | ◐ partly built (serving; rest parked) |
+| D-13 | Access auditing — who *read* what | ✅ done |
+| D-14 | The linked number receives nothing — `Bad MAC` on every inbound | ✅ done |
+| D-15 | A documentation site | 📌 pinned |
+| D-17 | Presence, typing indicators and collision detection (F3 realtime) | ✅ done |
+| D-18 | Inbox niceties: snooze, the Meta 24-hour window UI, ~~keyboard shortcu | 📌 pinned |
+| D-19 | Rich message templates — user-managed, Meta-aligned, with media and im | 📌 pinned |
+| D-20 | SQLite support for single-machine deployments | 📌 pinned |
+| D-21 | The full import mapping wizard | ▶ working on it · ◐ partly built (columns step, several phones, joined names; PR #83) |
+| D-22 | Row-level de-duplication with a diff-style review | 📌 pinned |
+| D-23 | Inbox search (F3 AC-7) | 📌 pinned |
+| D-24 | Typing simulation (P6 anti-ban layer 3) | ✅ done |
+| D-25 | Outbound media (sending files) | ✅ done |
+| D-26 | Campaign body variation (spintax + per-recipient) | ✅ done |
+| D-27 | Opt-out keyword handling (STOP / unsubscribe) | 📌 pinned |
+| D-28 | Dynamic audience segments ("segregation") | ◐ partly built (minimal slice) |
+| D-29 | An anti-ban "advisory mode" — warn but do not enforce | ✅ done |
+| D-30 | Media that fails to store is invisible to the operator | ◐ partly built (reasons recorded; manual retry missing) |
+| D-31 | Per-org encryption keys (the DEK/KEK design), and key rotation | ◐ partly built (key rotation) |
+| D-32 | Encrypting contact identifiers (phone numbers and emails) | 📌 pinned |
+| D-33 | P1 close-out and deployment | 📌 pinned |
+| D-34 | The Meta Cloud API adapter (P8) and the real-number pilot | 📌 pinned |
+| D-35 | Contact export to Excel (.xlsx) | ◐ partly built (CSV and vCard; no .xlsx) |
+| D-36 | Contact import from a vCard (.vcf) | 📌 pinned |
+| D-37 | Meta tier and quality tracking, feeding the health engine | 📌 pinned |
+| D-38 | Meta template submission, approval status, and the template-only windo | 📌 pinned |
+| D-39 | Per-transport pacing policy and the Meta inbound/status webhooks | 📌 pinned |
+| D-40 | Custom fields in imports, segments, and exports | ◐ partly built (import into fields) |
+| D-41 | The gateway runs outside row-level security | ✅ done |
+| D-42 | Human takeover from an AI agent, inside a conversation | 📌 pinned |
+| D-43 | Extra restriction-alert channels (webhook, email, canary self-test) | 📌 pinned |
+| D-44 | Baileys 7 upgrade | 📌 pinned |
+| D-45 | Link a `@lid` address to its phone number | ✅ done |
+| D-46 | UI responsiveness — the app feels laggy when used fast | 📌 pinned |
+| D-47 | Signup page, billing gate and beta-tester override | ⏸ parked |
+| D-48 | Security test suite (OWASP) | 📌 pinned |
+| D-49 | Revamp the browser (e2e) suite to industry standard, covering every UI | 📌 pinned |
+| D-50 | Test the frontend and backend independently (modularity check) | 📌 pinned |
+| D-51 | Deleted-message tracking | 📌 pinned |
+| D-52 | Deleting previous campaigns | ⏸ parked |
+| D-53 | Assignment model and message authorship | ✅ done |
+| D-54 | Typing indicator and the "just replied, send anyway?" warning | ✅ done |
+| D-55 | Licence enforcement ("DRM"): usage is blocked when an org has not paid | 📌 pinned |
+| D-56 | Telemetry: metrics, tracing and error tracking beyond logs | 📌 pinned |
+| D-57 | Run the import commit as a background job | 📌 pinned |
+| D-58 | Public site and launch-readiness checklist | 📌 pinned |
+| D-59 | File support in chat (Kushal, 2026-10-16) | ◐ partly built (rounds 1 and 2) |
+| D-60 | Number fallback: message the first number that has a WhatsApp account | ✅ done |
+| D-61 | Lighter web tier: plain React with refresh buttons instead of Next eve | 📌 pinned |
+| D-62 | Ship as a single executable, if possible | 📌 pinned |
+| D-63 | Centralised file store: S3-compatible storage alongside local | ◐ partly built (S3 driver) · 📌 pinned |
+| D-64 | Database portability: move the database-side logic into the app so oth | 📌 pinned |
+| D-65 | Bugs found running the alpha container on a VM (2026-10-17), not fixed | ◐ partly fixed (1 of 8) · ⏸ parked |
+| D-66 | Motion on most pages, not just the sign-in screen | ◐ partly built (sign-in and Overview motion) |
+| D-67 | Save a number or name onto a `@lid` chat, like "add contact" in WhatsA | 🔺 priority · ◐ partly built (channels ignored; mapping investigated) |
+| D-68 | Campaign with no tagged people: tell the user to tag them first | ✅ done |
+| D-69 | Chats available inside the job portal (and any other web app) | 📌 pinned |
+| D-70 | Contacts page: refresh, admin-chosen columns, tidier layout, sort and  | ▶ working on it · ◐ partly built (tag fixes) |
+| D-71 | A big background picture for each tab | 📌 pinned |
+| D-72 | Mobile-friendly UI | 📌 pinned |
+| D-73 | "Message these people" right after an import | ◐ partly built (buttons) · ⏸ parked |
+| D-74 | Add-number form: country-code dropdown and a numbers-only phone field | ✅ done |
+| D-75 | Number assignment: who each WhatsApp number belongs to | 📌 pinned |
+| D-76 | Notifications tab, number requests and approvals | 📌 pinned |
+| D-77 | Admin controls: user scopes and number limits | 📌 pinned |
+| D-78 | Email: invitations to join an organisation, via SMTP or an email API ( | 📌 pinned |
+
+---
+
 ## D-1 · A lightweight database browser (Drizzle Studio or similar)
 
 **What:** a web UI for running SQL against the live database from any device — a phone, a
@@ -881,6 +966,8 @@ fields is built (PR #56); the size and layout of this step are what is left.
 **2026-10-20: work on this now.** Built: upload on choosing a file, the clearer columns step and the trimmed preview. Still to do: several phone columns, joining first and last name, and dropping personal-data columns.
 
 **Added 2026-10-20 (Kushal):** make the **column selector and the preview wider and bigger, with a slightly bigger font** on the Import screen. **Do not do it if it breaks the mobile layout later** (D-72): check phone width first, and prefer a layout that is roomy on a desktop and still scrolls cleanly on a phone.
+
+**2026-10-20:** Kushal wants to see a **preview (mockup) of the remaining changes before any building**: several phone columns, joining first and last name, dropping personal-data columns, and the wider selector. Preview first, then go ahead.
 
 ✅ **Built 2026-10-21 (the previewed design):** the Match columns step is now divided into sections (file, phone columns, name and email, columns to store, preview, tag and import). **Several phone columns** can be ticked and are tried in order (a person with two numbers keeps both); a **first-name column plus a last-name column** are joined as written, never shortened (`Anita Sharma`; a one-letter first name becomes `a.sharma`); **personal-looking columns** (date of birth, pay, address, government ids) are marked and cannot be ticked while "never store columns marked personal" is on; the columns box scrolls; text is slightly bigger. Still open from this pin: dropping personal-data columns by an admin-set list, saved mappings, per-column transforms.
 
@@ -1993,7 +2080,7 @@ needs.
 
 **What brings it back:** D-61 landing, or a target that cannot run Docker.
 
-## D-63 · Centralised file store: S3-compatible storage alongside local — **PRIORITY** · ✅ driver built 2026-10-16, default stays local (Kushal, 2026-10-16)
+## D-63 · Centralised file store: S3-compatible storage alongside local — ✅ driver built 2026-10-16, default stays local (Kushal, 2026-10-16)
 
 **What:** one shared place for files that the API, the gateway and any future second host can all reach, and that
 survives the machine being replaced. Local disk is fine while everything runs in one container; it stops working
@@ -2049,6 +2136,8 @@ move to a split deployment (D-33).
 | **Hybrid** | Recent files with us, older ones moved to the customer's storage | Controls our cost | More moving parts |
 
 For any customer-owned cloud the design is the same: files are **served through us** (no raw links, so the access check and the audit log still apply), the tokens are encrypted, a failed upload is visible (D-30) and retried, and a per-org setting chooses the driver. **Questions for Kushal:** which customers actually ask for this; managed storage as a paid add-on or included; and whether the first extra driver is "bring your own S3-compatible bucket" (cheapest to build) or Microsoft 365 (most requested by small offices). Sources: [Microsoft Graph app folder](https://learn.microsoft.com/en-us/graph/onedrive-sharepoint-appfolder). The Google Drive details were not found in this research and must be read from Google's documentation. (Raised under the label D-23; it is about files, so it lives here and in D-59.)
+
+**2026-10-20:** back to **pinned** (Kushal). The S3-compatible driver stays built and the default stays local; the storage-options write-up above is the starting point when this returns.
 
 ---
 
