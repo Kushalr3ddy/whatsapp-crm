@@ -212,6 +212,8 @@ created by hand, and that single row caused two separate misdiagnoses before any
 where it came from. Keeping provisioning behind one `createOrgWithAdmin()` service, as decided,
 is what keeps this cheap.
 
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-1: the same "what to do next" links after each step, for the guided flow. The ideal flow he describes: log in, link a number, import a sheet, open the tagged sheet, send messages.
+
 ---
 
 ## D-9 · Generating `.env`, and a secrets driver
@@ -863,6 +865,8 @@ map more than one phone column, and map a column onto a custom field.**
 **Added 2026-10-17 (Kushal):** make the **column selector and the preview bigger** on the Import screen (the pickers, the
 "keep these columns" box and the sample table are small for a sheet with ~80 columns). Picking columns to keep as custom
 fields is built (PR #56); the size and layout of this step are what is left.
+
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md): issue-2 (show how many rows are in the file, ideally right after choosing it) and issue-10 (the Match columns step is confusing: nobody knows what the dropdowns and the "keep these columns" tick boxes do; add plain-words labels and helper text).
 
 ---
 
@@ -1555,6 +1559,8 @@ smoke / full split so PRs stay fast. The live walkthrough (`tests/live/`) stays 
 
 **What brings it back:** the UI stops moving, or a regression the current specs miss.
 
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-7: GitHub Actions minutes were at 90% (1,802 of 2,000, resets 1 Nov 2026). The e2e browser job was turned back on the day before. This pin's "smoke / full split" is the fix: run a short smoke suite on pull requests and the full one less often, or set a $0 budget so nothing is billed.
+
 ---
 
 ## D-50 · Test the frontend and backend independently (modularity check)
@@ -2057,6 +2063,8 @@ multi-email cells (#46, #47). **Still open:**
 10. **Alpha container connects to Postgres as a superuser**, so row-level security is not enforced (log warning); fine
     single-tenant, not for several orgs.
 
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-9: after scanning the QR the Linked numbers card still says "Not connected" until the page is reloaded, while a green line says "Linked. This number can send now." Also unclear what the difference between "linked" and "connected" is; use one word.
+
 ---
 
 ## D-66 · Motion on most pages, not just the sign-in screen — pinned (Kushal, 2026-10-17)
@@ -2140,6 +2148,8 @@ selector and preview on Import, was filed under **D-21** instead):
 
 Pinned to come back to; not started.
 
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md): issue-3 (the "Tag many at once" dropdown stretches out of its box), issue-4 (the "choose a tag…" option looks dim; highlight it or use a clear "No tag"), issue-5 (clicking a tag chip does not filter, only opening it in a new tab works, and the raw tag ID shows in the address bar), issue-6 (removing a tag with the × is too easy; add "Are you sure?").
+
 ---
 
 ## D-71 · A big background picture for each tab — pinned (Kushal, 2026-10-19)
@@ -2181,3 +2191,5 @@ confirmation showing how many people it reaches and that some may be skipped (do
 big import cannot be blasted by accident. Related: D-68 (tag people first), D-57 (import as a background job), D-52.
 
 Pinned to come back to; not started.
+
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-1: after an import finishes the page just ends ("looks sus"); he wants buttons that take the person to the tagged contacts and to send messages to them. Suggest, never force; the same for linking a number (then suggest Import or Campaigns).
