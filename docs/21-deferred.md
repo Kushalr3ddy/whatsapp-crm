@@ -2287,3 +2287,38 @@ if they start typing `+91`, `+63` and so on, switch the dropdown to that country
 field does; the field accepts digits only and asks phones for the numeric keypad (`inputmode="tel"`). Related: D-72 (mobile).
 
 ✅ **Built 2026-10-20 (PR #73):** a country list next to a digits-only phone box, defaulted from the browser language and changeable; typing `+91…` or `+63…` switches the country. Code: `apps/web/lib/dial-codes.ts`.
+
+---
+
+## D-75 · Number assignment: who each WhatsApp number belongs to — **WORK ON NOW (Kushal, 2026-10-20)**
+
+Nothing assigns a WhatsApp number to a person today; every teammate sees every linked number. Decided (Kushal, 2026-10-20): **for now nobody is
+restricted**. Agents can still see all numbers and **who each is assigned to**; assignment is shown, not enforced. Admins assign numbers to
+people from the **Team tab** (a checklist per person) and the **Numbers tab** ("Assigned to: …" on every card, checkboxes for admins); the
+**Inbox** shows which number a chat is on and who it belongs to. **Agents can add their own numbers** (not admin-only), and a number someone
+adds is assigned to them automatically. **Warnings:** a member with no number assigned, or whose number is unlinked ("link it again or link a
+new number"), is flagged to the member (a banner) and to admins (a chip on the Team row). Data: a `sender_member` table. Raised by the other dev's
+alpha test and Kushal's own (the Team tab had no way to give a teammate a number). Related: D-53 (conversation owners and participants).
+
+---
+
+## D-76 · Notifications tab, number requests and approvals — pinned (Kushal, 2026-10-20)
+
+An in-app **Notifications** tab for each user: when a number is assigned, reassigned or removed, when a request for a number is sent, approved or
+declined, and (later) when a number becomes unlinked. Admins see who requested a number, or a specific number, with Approve and Decline right
+there. Not now: for the moment people ask the admin in person. Design notes so it is not re-derived: a per-user `notification` table (kind,
+title, body, link, created, read), a `sender_access_request` table (user, number or "any", note, pending/approved/declined, decided by), events
+written in the same transaction as the change, an unread count in the nav computed like the existing number alerts, and polling refresh like
+`inbox/auto-refresh.tsx` (there is no push). Related: D-43 (other alert channels), D-75, D-77.
+
+---
+
+## D-77 · Admin controls: user scopes and number limits — pinned (Kushal, 2026-10-20)
+
+Later, the admin decides who can see and do what. **Several user scopes** beyond admin and agent (for example sub-admin, manager, assistant
+manager), each with its own powers. **Who sees which numbers:** agents (or a scope) limited to the numbers assigned to them, with a wrong number
+answering 404 and not 403; the API paths that would need that check are already mapped (conversation list, one conversation, mark read, patch,
+presence and typing, notes, sender status, thread messages, attachments, sending with a conversation or with a "to" number, media and its preview,
+the senders list and link status, and campaign create, list, start, get, preview and recipients). **How many numbers each person may link**, or a
+**predefined list of numbers the admin types or uploads** that may be linked to the CRM. **Who may add, link or unlink numbers** per scope (today
+any signed-in person can). Related: D-75, D-76, D-53, D-47 (limits per organisation).
