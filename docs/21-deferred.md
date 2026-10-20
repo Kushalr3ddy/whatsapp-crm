@@ -2313,7 +2313,7 @@ field does; the field accepts digits only and asks phones for the numeric keypad
 
 ---
 
-## D-75 · Number assignment: who each WhatsApp number belongs to — **WORK ON NOW (Kushal, 2026-10-20)**
+## D-75 · Number assignment: who each WhatsApp number belongs to — pinned (Kushal, 2026-10-20): not building it now
 
 Nothing assigns a WhatsApp number to a person today; every teammate sees every linked number. Decided (Kushal, 2026-10-20): **for now nobody is
 restricted**. Agents can still see all numbers and **who each is assigned to**; assignment is shown, not enforced. Admins assign numbers to
@@ -2322,6 +2322,8 @@ people from the **Team tab** (a checklist per person) and the **Numbers tab** ("
 adds is assigned to them automatically. **Warnings:** a member with no number assigned, or whose number is unlinked ("link it again or link a
 new number"), is flagged to the member (a banner) and to admins (a chip on the Team row). Data: a `sender_member` table. Raised by the other dev's
 alpha test and Kushal's own (the Team tab had no way to give a teammate a number). Related: D-53 (conversation owners and participants).
+
+**2026-10-20:** pinned, not building it now. The plan is ready to pick up: a `sender_member` table, a numbers checklist per person on the Team tab, "Assigned to" on every Numbers card, the Inbox number chips and the no-number / unlinked warnings. Agents keep seeing all numbers meanwhile. Related: D-76, D-77.
 
 ---
 
