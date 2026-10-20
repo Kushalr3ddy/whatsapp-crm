@@ -382,9 +382,13 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
 
   /** Lists campaigns, newest first. */
   router.get('/', requireScope('conversations:read'), async (req: Request, res: Response) => {
+    // `?tagId=` narrows to campaigns aimed at that tag, so a screen can say "a campaign already uses this tag".
+    const tagId = typeof req.query.tagId === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.tagId) ? req.query.tagId : null;
     const rows = await req.tenant!((tx) => tx.execute(sql`
-      SELECT id, name, status, started_at AS "startedAt", created_at AS "createdAt"
+      SELECT id, name, status, started_at AS "startedAt", created_at AS "createdAt",
+             from_tag_id AS "fromTagId"
       FROM campaign WHERE org_id = ${req.crm!.orgId}
+        AND (${tagId}::uuid IS NULL OR from_tag_id = ${tagId}::uuid)
       ORDER BY created_at DESC LIMIT 100`));
     res.json({ data: rows });
   });

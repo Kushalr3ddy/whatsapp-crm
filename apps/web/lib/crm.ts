@@ -249,6 +249,8 @@ export interface Campaign {
   status: string;
   startedAt: string | null;
   createdAt: string;
+  /** The tag this campaign was aimed at, when it was built from a tag. */
+  fromTagId?: string | null;
 }
 
 /** How many recipients sit in each state. Mirrors the `progress` on `GET /api/v1/campaigns/:id`. */
@@ -1000,8 +1002,8 @@ export async function unlinkSender(senderId: string): Promise<{ senderId: string
 }
 
 /** Lists the org's campaigns, newest first. */
-export async function listCampaigns(): Promise<Campaign[]> {
-  return request<Campaign[]>('/campaigns');
+export async function listCampaigns(tagId?: string): Promise<Campaign[]> {
+  return request<Campaign[]>(tagId === undefined ? '/campaigns' : `/campaigns?tagId=${encodeURIComponent(tagId)}`);
 }
 
 /** Fetches one campaign with its live progress and forecast. */

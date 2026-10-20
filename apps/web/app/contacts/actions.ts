@@ -145,6 +145,8 @@ export async function bulkTagPreviewAction(formData: FormData): Promise<void> {
   const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
   const bulkScope = formData.get('bulkScope') === 'all' ? 'all' : 'matching';
   if (bulkTag === '') redirect(backTo(q, tag, { bulkError: 'pick_tag' }));
+  // "No tag" was chosen on purpose: nothing is written, and the person is told what that means.
+  if (bulkTag === 'none') redirect(backTo(q, tag, { bulkError: 'no_tag' }));
 
   let matched: number;
   try {
@@ -190,6 +192,7 @@ export async function bulkTagCheckedAction(formData: FormData): Promise<void> {
   const bulkTag = String(formData.get('bulkTag') ?? '');
   const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
   if (ids.length === 0 || bulkTag === '') redirect('/contacts?bulkError=pick_people');
+  if (bulkTag === 'none') redirect('/contacts?bulkError=no_tag');
   let changed: number;
   try {
     changed = (await bulkTagContacts(bulkTag, {
