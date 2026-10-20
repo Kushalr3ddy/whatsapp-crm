@@ -184,7 +184,7 @@ horizontally, at which point `pg-boss` stops being appropriate and BullMQ on Red
 
 ---
 
-## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling — **PRIORITY (Kushal, 2026-10-20)**
+## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
 **What:** a first-run wizard that provisions an org and its first admin in the browser, a guided
 walkthrough for someone new, and the branding layer that makes the product not visibly one
@@ -217,6 +217,8 @@ is what keeps this cheap.
 ✅ **"What next" after linking a number built 2026-10-20 (issue #64):** once a scan works, the card suggests "Import your contacts" and "Open campaigns" (suggestions only). The rest of the guided flow and the first-run wizard are still open.
 
 **Plan written 2026-10-20:** see [`32 · Setup, signup, teams and billing`](32-onboarding-and-billing.md). The first-run wizard is phase 1 and the signup page is the same form behind an invite code (phase 2). **Documents only; no implementation until the alpha test is complete.**
+
+**2026-10-20:** parked again; the plan in [`32`](32-onboarding-and-billing.md) stays as the reference. Not working on it for now.
 
 ---
 
@@ -731,7 +733,7 @@ helpers that already wrap it (`setTenant`, the gateway command channel), not spr
 
 ---
 
-## D-21 · The full import mapping wizard — **PRIORITY (Kushal, 2026-10-10)**
+## D-21 · The full import mapping wizard — **WORK ON NOW (Kushal, 2026-10-20)**
 
 > **Priority:** raised on 2026-10-10 while building the live walkthrough: production imports come from a Naukri
 > Excel export, and its real layout is not in hand yet. Build this once that file (or a real sample of it) is
@@ -874,6 +876,8 @@ fields is built (PR #56); the size and layout of this step are what is left.
 
 ✅ **Alpha-feedback issues 2 and 10 built 2026-10-20 (issues #65, #72):** choosing or dropping a file uploads it at once (no Upload button) with the row count and file name shown, and a file with no people is explained; the columns step has a plain "Which column is which?" and a big "Select the columns to be stored" line, and the preview shows only the chosen columns under "Preview of all the columns you have selected from <file>". The rest of the wizard is still open.
 
+**2026-10-20: work on this now.** Built: upload on choosing a file, the clearer columns step and the trimmed preview. Still to do: several phone columns, joining first and last name, and dropping personal-data columns.
+
 ---
 
 ## D-22 · Row-level de-duplication with a diff-style review
@@ -901,7 +905,7 @@ M9) is a safe default; this replaces "safe default" with "user's explicit choice
 
 ---
 
-## D-23 · Inbox search (F3 AC-7) — **PRIORITY**
+## D-23 · Inbox search (F3 AC-7) — **PINNED, research later (Kushal, 2026-10-20)**
 
 > **Priority (2026-09-29):** in the near-term build queue. One thing to settle first: the
 > blind-index vs. trigram decision on encrypted message bodies (below) — contact-field search can
@@ -969,6 +973,10 @@ that scrolling is the bottleneck. Kushal asked to keep it as a reminder (2026-09
 
 **Cost of deferring:** none — additive, and contact-field search can land first without touching
 the encrypted-body question.
+
+**2026-10-20: more research and planning needed before building.** Design is decided but six decisions are open (see above).
+
+**2026-10-20:** back to pinned; the research and planning wait. (A question about where files could be stored, raised under this number, was written up under D-63.)
 
 ---
 
@@ -1515,7 +1523,7 @@ auth forwarding (the UI forwards the user's session) and every server action.
 
 ---
 
-## D-47 · Signup page, billing gate and beta-tester override — **PRIORITY (Kushal, 2026-10-20)**
+## D-47 · Signup page, billing gate and beta-tester override — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
 > **2026-10-17:** a **front-end-only** sign-up page exists at `/signup` (PR #53): it checks the fields in the browser and says nothing
 > was created. The open decisions below still gate connecting it to a backend.
@@ -1536,6 +1544,8 @@ email verification (email is an optional driver, so a non-email path is needed);
 **What brings it back:** Kushal choosing the payment provider and the signup-creates-org question.
 
 **Plan written 2026-10-20 (priority):** invite-only beta first, teammates added by an org admin (reset password, revoke access, never delete), payments after reading [`33 · Payment providers`](33-payment-providers.md); the design is in [`32 · Setup, signup, teams and billing`](32-onboarding-and-billing.md). **Documents only; no implementation until the alpha test is complete.**
+
+**2026-10-20:** parked again (it had been raised to priority with the billing plan). Not working on it for now; docs [`32`](32-onboarding-and-billing.md) and [`33`](33-payment-providers.md) are the reference.
 
 ---
 
@@ -1606,7 +1616,7 @@ hide it as WhatsApp does for the recipient. Edited messages are the sibling case
 
 ---
 
-## D-52 · Deleting previous campaigns — **PRIORITY (Kushal, 2026-10-17)**
+## D-52 · Deleting previous campaigns — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
 **What:** campaigns can be cancelled but not deleted, so old drafts, cancelled runs and test campaigns pile up
 in the Broadcast list (the dev database holds dozens). Pinned (Kushal, 2026-10-10): an operator needs to
@@ -1622,6 +1632,8 @@ would also clean up test runs.
 **Why parked:** pinned, not scheduled.
 
 **What brings it back:** Kushal's go-ahead.
+
+**2026-10-20:** parked again. Not working on it for now.
 
 ---
 
@@ -1688,7 +1700,7 @@ wrong. The reply lock stays the hard rule; this stays a soft warning.
 
 ---
 
-## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end") — **PRIORITY (Kushal, 2026-10-20)**
+## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end") — **PINNED, research later (Kushal, 2026-10-20)**
 
 **What:** if an org (or a self-hosted install) has not paid, the product should stop being usable, not just show a
 billing page. Companion to [D-47](#d-47) (signup, billing gate, beta override): D-47 decides who gets in and
@@ -1714,6 +1726,12 @@ hosted-versus-self-hosted call before any design is honest.
 **What brings it back:** Kushal's go-ahead with D-47, and the hosted/self-hosted answer.
 
 **Plan written 2026-10-20 (priority):** limits for seats and numbers in one place, read-only when payment lapses, the operator override as the "paid" switch; see [`32`](32-onboarding-and-billing.md) section 5 and [`33`](33-payment-providers.md). **Documents only; no implementation until the alpha test is complete.**
+
+**2026-10-20: more research and planning needed.** Research how projects whose **source code is available** enforce payment and licences, and what actually works against copying: study open-source and source-available products that sell licences (for example OpenVPN, Proxmox, Grafana, and others with open core or enterprise keys) and write down how each does it: signed licence files, phone-home checks, feature flags for paid tiers, enterprise-only code, and the licence terms that carry the real weight when the code can be read. Decide what is realistic for a product whose code is visible, then plan.
+
+**Research written 2026-10-20:** see [`34 · Licensing and enforcement`](34-licensing-and-drm.md). Kushal's requirement: only the developers authorise who may use the software, and use is highly restricted outside the organisation. That rules out open-source and the public source-available licences; the fit is a **proprietary, all-rights-reserved licence with a private repository and a signed agreement per customer**, ideally **hosted by us**, plus an offline-checked signed licence token for limits (seats, numbers, expiry) with soft-then-read-only lapse. The "what other products do" table there is from memory and marked verify; more examples (and the actual licence pages of Proxmox, Grafana, OpenVPN, GitLab) still need reading.
+
+**2026-10-20:** back to pinned; the research in [`34`](34-licensing-and-drm.md) stays as the starting point, and more examples wait.
 
 ---
 
@@ -1791,7 +1809,7 @@ with D-16, which was struck out as not this repository's to ship; they come back
 
 **What brings it back:** a public landing or signup page (D-47), or the hosted offering (D-33).
 
-## D-59 · File support in chat — **PRIORITY** (Kushal, 2026-10-16)
+## D-59 · File support in chat (Kushal, 2026-10-16) — **PINNED, research later (Kushal, 2026-10-20)**
 
 **What:** sending and receiving files in a conversation, taken as one feature: what works today, what is
 rough, and what is missing. Raised as a priority on 2026-10-16.
@@ -1858,6 +1876,12 @@ a year); an inbound size cap and a per-org quota (inbound is uncapped, D-30); vi
 RAM); which of the gaps in the table above to build first.
 
 **What brings it back:** now, as a priority; the choices above come first.
+
+**2026-10-20: more research and planning needed before round 3.** Rounds 1 and 2 are merged (file types, failed-download reasons, image previews). Round 3 is multi-file, drag-and-drop, paste, bigger uploads, voice notes, the Files tab, manual Retry, and images and GIFs in campaigns. Plan it properly before building.
+
+**2026-10-20:** where files can be stored (Microsoft 365, Google, bring-your-own bucket, managed by us for a monthly fee) is written up under D-63.
+
+**2026-10-20:** back to pinned; round 3 and the research wait.
 
 ---
 
@@ -2005,6 +2029,21 @@ are already org-prefixed) or one per org; whether to also keep a local copy duri
 **Why a priority:** raised together with file support in chat (D-59); the alpha's local disk will not survive a
 move to a split deployment (D-33).
 
+**Other places to keep files (2026-10-20, Kushal asked: what if a customer has Microsoft 365 Premium with 5 TB, or Google premium storage, or should we charge monthly for managed storage?).** Everything goes behind the existing storage driver (`packages/providers/storage`, built for local disk and S3-compatible); a new place is a new driver, not a rewrite.
+
+| Option | What it is | Good | Watch out for |
+|---|---|---|---|
+| **Local disk** (today's default) | Files on the server | Simple, free | One machine; backups are yours |
+| **Any S3-compatible bucket** (built) | AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Hetzner, MinIO | Cheap, standard; R2 has no egress fee; customer can bring their own bucket | A consumer with only Microsoft 365 or Google storage usually has no bucket |
+| **Customer's OneDrive / SharePoint (Microsoft 365)** | Microsoft Graph API; an app-folder permission (`Files.ReadWrite.AppFolder`) keeps the app inside `Apps/<app name>`; or a SharePoint document library for a company | Uses storage they already pay for (a 5 TB plan) | OAuth tokens that expire and must be protected; throttling; chunked upload for big files; the folder stays **visible** to the user; a personal account ties files to one person (if they leave, files go), so prefer a company SharePoint site; Microsoft's docs disagree on which account types the app-folder scope covers, so verify |
+| **Customer's Google Drive / Workspace** | Drive API with a narrow scope (`drive.file`) or the hidden app-data folder | Same: their storage | Same OAuth and quota issues; Google's app-data folder is hidden from the user (a plus and a minus); quotas not verified here |
+| **Dropbox / Box** | Their APIs | Some customers live there | More drivers to maintain |
+| **WebDAV / SFTP** | Nextcloud, many NAS boxes, some SharePoint setups | One driver reaches many self-hosted options | Speed and reliability vary |
+| **Managed by us** | We keep their files in our bucket and **bill monthly** by storage used (for example per 50 GB) | Nothing for the customer to set up; we control backups and encryption | We carry the cost and the risk: egress fees, a per-org quota, retention, backups, and **encryption at rest first** (D-11); price it with a margin |
+| **Hybrid** | Recent files with us, older ones moved to the customer's storage | Controls our cost | More moving parts |
+
+For any customer-owned cloud the design is the same: files are **served through us** (no raw links, so the access check and the audit log still apply), the tokens are encrypted, a failed upload is visible (D-30) and retried, and a per-org setting chooses the driver. **Questions for Kushal:** which customers actually ask for this; managed storage as a paid add-on or included; and whether the first extra driver is "bring your own S3-compatible bucket" (cheapest to build) or Microsoft 365 (most requested by small offices). Sources: [Microsoft Graph app folder](https://learn.microsoft.com/en-us/graph/onedrive-sharepoint-appfolder). The Google Drive details were not found in this research and must be read from Google's documentation. (Raised under the label D-23; it is about files, so it lives here and in D-59.)
+
 ---
 
 ## D-64 · Database portability: move the database-side logic into the app so other databases can work — pinned (Kushal, 2026-10-16)
@@ -2050,7 +2089,7 @@ helpers that already wrap it (`setTenant`, the gateway command channel) rather t
 
 ---
 
-## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed — **PRIORITY (Kushal, 2026-10-20)**
+## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
 Found by using the app for real (sign in, link a number, import, Team, Numbers) on a throwaway VM. Fixed and merged
 the same day: the missing phone after linking, the terminal-only Numbers/Security/sign-in text, Import-before-Preview,
@@ -2078,6 +2117,8 @@ multi-email cells (#46, #47). **Still open:**
 
 ✅ **Issue-9 built 2026-10-20 (PR #73):** the Linked numbers card refreshes itself the moment a scan succeeds; "Link this number", "Scan a QR" and "Type a code" are greyed out once linked; the word is "Linked" everywhere (Linked / Not linked / Linking…). The other bugs listed in this pin are still open.
 
+**2026-10-20:** parked. These will be retested on a **new VM later, with Claude having full access over SSH**, so the fixes are done against a real deployment. Still open: the false "possible ban" alarm, the QR below the fold, tab titles, import count wording, a bad email failing a whole row, raw `@lid` ids in Contacts, the stale "Degraded" score. Only the stale "Not connected" card is fixed.
+
 ---
 
 ## D-66 · Motion on most pages, not just the sign-in screen — pinned (Kushal, 2026-10-17)
@@ -2097,13 +2138,33 @@ a disabled button, so nobody thinks it froze. D-57 (import as a background job) 
 
 ---
 
-## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **PRIORITY (Kushal, 2026-10-17)**
+## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **PRIORITY (Kushal, 2026-10-20): the @lid mapping**
 
 Some chats arrive from WhatsApp with a hidden `…@lid` id instead of a phone number, so they show as a raw id in the
 inbox and Contacts (see D-65). Kushal wants, at the top of such a chat, an **Add number / contact** action that works like
 saving a new contact in WhatsApp: type the phone number and a name, and the chat is joined to that person (merged with an
 existing contact if the number is already known). He also suspects the automatic lid-to-number mapping is not working;
 check that first (does the gateway ever learn the number for a lid, and is it stored?). Pinned to come back to; not started.
+
+**2026-10-20: more research and planning needed.** First find out why the automatic `@lid` mapping is not working. Research questions to answer before any build:
+- **Which chats should never become contacts?** `@newsletter` addresses (channels), communities, groups and WhatsApp broadcast lists. Groups and `status@broadcast` are already skipped on the way in; check newsletters and communities too, and decide whether broadcasts should be ignored everywhere.
+- **Unknown numbers.** What happens when a stranger who is not a contact messages in: spam, promotions, random people? Does it create a contact and a conversation? Options to weigh: a separate "unknown senders" inbox (see D-10), a block or mute action, rate-limiting or auto-archiving, and keeping spam out of campaign audiences.
+- **The `@lid` mapping itself:** does the gateway ever learn the real number, and is it stored?
+
+**Decisions (2026-10-20, Kushal):**
+- **Ignore `@newsletter` chats and similar** (channels, communities, WhatsApp broadcast lists). Today only groups (`@g.us`) and `status@broadcast` are skipped on the way in (`packages/channels/baileys/src/index.ts` ~503); nothing skips newsletters or other broadcast addresses, so they would create contacts and conversations.
+- **Alert the user on a message from an unknown number** (someone who is not a saved contact): a clear notice on the thread or in the inbox saying "message from an unknown number", with the pushed name if there is one, so spam and promotions are recognised and not mistaken for a customer. Related: D-10 (unknown senders).
+- **Find out why the automatic `@lid` mapping is not working.**
+
+**Findings from reading the code and the Baileys build (2026-10-20; not run, so unconfirmed in practice):**
+1. The mapping has only two sources today. (a) `key.senderPn` / `participantPn`, which Baileys copies from the stanza's `sender_pn` / `participant_pn` attribute, **present only when WhatsApp includes it, which it often does not for privacy addresses**. (b) The `chats.phoneNumberShare` event (`index.ts` ~378), which fires only when the other person shares their number.
+2. **Not used at all:** Baileys' `contacts.upsert` and `contacts.update` events. A `Contact` there carries **both `lid` and `jid`**, which is exactly a lid-to-number pair, plus `notify` (the name the person set for themselves) and `name` (the name saved on the linked phone). Nothing in the repo listens to them, so every pair WhatsApp already sends is thrown away. The history sync is another source.
+3. **Baileys can give the person's own chosen name.** Every inbound message carries `pushName` (the display name the sender set for themselves; the same as `notify`), which the gateway does not store. A profile picture (`profilePictureUrl`), an about text (`fetchStatus`) and a business name (`verifiedName`, `getBusinessProfile`) can also be fetched. The phone number cannot be read from a name; only from the pairs in (1) and (2).
+4. So the likely reasons the mapping seems broken: WhatsApp does not send `sender_pn` for these chats, we ignore the contact events that do carry the pair, and the display name is never saved, so a lid chat shows as a raw id.
+
+**Next steps (research, then plan):** confirm on a real linked number which events arrive for a lid chat (log, do not store); decide to store `pushName` on the contact; add listeners for contacts events; write the ignore list; design the unknown-sender notice; then the "add a number to this chat" action.
+
+**2026-10-20:** the only research item that is priority is **why the `@lid` mapping is not working** (findings above). The rest of this pin (ignoring newsletters, the unknown-number alert, the add-a-number action) follows from it.
 
 ---
 
@@ -2139,7 +2200,7 @@ Pinned to come back to; not started.
 
 ---
 
-## D-70 · Contacts page: refresh, admin-chosen columns, tidier layout, sort and search by date — **PRIORITY (Kushal, 2026-10-17)**
+## D-70 · Contacts page: refresh, admin-chosen columns, tidier layout, sort and search by date — **WORK ON NOW (Kushal, 2026-10-20)**
 
 Five wishes about the Contacts page, from testing the import with a real Naukri file (the first wish, a bigger column
 selector and preview on Import, was filed under **D-21** instead):
@@ -2164,6 +2225,8 @@ Pinned to come back to; not started.
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-3 ([#66](https://github.com/Kushalr3ddy/whatsapp-crm/issues/66)): the "Tag many at once" dropdown stretches out of its box; a UI fix. Issue-4 ([#67](https://github.com/Kushalr3ddy/whatsapp-crm/issues/67)): add a **"No tag"** option at the bottom of the tag list; choosing it warns that without a tag those contacts will have to be found and tagged again later; "choose a tag…" stays visible but greyed out. Issue-5 ([#68](https://github.com/Kushalr3ddy/whatsapp-crm/issues/68)): clicking a tag chip must filter (the tag ID in the address bar does not matter to users); once contacts are tagged or selected, suggest starting a campaign with them; if they are only selected and untagged, tag them first; if a campaign already exists that contains them as a subset, ask whether to use this tagged group or create a new one (see D-68, D-73). Issue-6 ([#69](https://github.com/Kushalr3ddy/whatsapp-crm/issues/69)): removing a tag with the × asks "Are you sure?" and says the contact may have to be searched for and tagged again.
 
 ✅ **Alpha-feedback issues 3-6 built 2026-10-20 (this PR, issues #66-#69). A "chip" here means a small rounded label on the screen, such as a tag name on a contact or in the Tag filter row:** the Tag many at once selects fit their box; a "No tag" option explains what it means; a tag chip shows it is loading and is marked current; with a tag filter on, the page suggests starting a campaign and names any campaign already using the tag (`GET /campaigns?tagId=`); removing a tag asks "Are you sure?" first. The rest of D-70 (refresh, admin-chosen columns, layout, date sort and search) is still open.
+
+**2026-10-20: work on this now.** Built: the tag fixes. Still to do: a refresh button, admin-chosen columns, a tidier layout, and sort and search by date added or imported.
 
 ---
 
@@ -2194,7 +2257,7 @@ Pinned to come back to; not started.
 
 ---
 
-## D-73 · "Message these people" right after an import — pinned (Kushal, 2026-10-20) — **PRIORITY (Kushal, 2026-10-20)**
+## D-73 · "Message these people" right after an import — pinned (Kushal, 2026-10-20) — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
 After an import finishes, offer a quick way to send one message to everyone who was just imported: a **Message these people**
 button on the result box that opens a new campaign with the audience already set to that import (and with a short, quick form
@@ -2210,6 +2273,8 @@ Pinned to come back to; not started.
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-1 ([#64](https://github.com/Kushalr3ddy/whatsapp-crm/issues/64)): after an import finishes the page just ends ("looks sus"). Show suggestions, never force: after linking a number, suggest Import or Campaigns; after an import, buttons to see the tagged contacts and to send them a message. Kushal: this may mean starting on the import wizard (D-21) too.
 
 ✅ **First slice built 2026-10-20 (issue #64):** a finished import shows "View the N imported contacts" and "Message these people" (opens a new campaign on that import). The faster one-step quick message is still open.
+
+**2026-10-20:** parked again. The buttons after an import are built; the quick one-step message is the part that waits. Not working on it for now.
 
 ---
 
