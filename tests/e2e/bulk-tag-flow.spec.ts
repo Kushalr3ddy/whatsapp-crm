@@ -44,7 +44,6 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: `contacts-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(unique)
     });
-    await page.getByRole('button', { name: 'Upload' }).click();
     await expect(page.getByText(/rows ·/)).toBeVisible();
     await page.getByLabel('Tag everyone in this file').fill(importTag);
     await page.getByRole('button', { name: 'Preview' }).click();

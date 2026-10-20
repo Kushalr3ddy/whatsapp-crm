@@ -9,6 +9,8 @@ interface Props {
   tags: Array<{ id: string; name: string; contactCount?: number }>;
   imports: Array<{ id: string; label: string }>;
   segments: Array<{ id: string; name: string; contactCount: number }>;
+  /** An import to start on (the Import screen sends people here with `?import=`). */
+  defaultImportId?: string | undefined;
 }
 
 /** The four ways to choose who a campaign goes to. */
@@ -20,8 +22,9 @@ type Mode = 'tag' | 'import' | 'segment' | 'filter';
  * of who it reaches (the old standalone Segments screen, folded in). Only the chosen way's field is
  * rendered, so the form posts exactly one audience.
  */
-export function AudiencePicker({ tags, imports, segments }: Props) {
-  const first: Mode = tags.length > 0 ? 'tag' : imports.length > 0 ? 'import'
+export function AudiencePicker({ tags, imports, segments, defaultImportId }: Props) {
+  const startOnImport = defaultImportId !== undefined && imports.some((r) => r.id === defaultImportId);
+  const first: Mode = startOnImport ? 'import' : tags.length > 0 ? 'tag' : imports.length > 0 ? 'import'
     : segments.length > 0 ? 'segment' : 'filter';
   const [mode, setMode] = useState<Mode>(first);
   // No tag has anyone in it (or there are no tags): say so, and point to where people get tagged.
@@ -88,7 +91,7 @@ export function AudiencePicker({ tags, imports, segments }: Props) {
       {mode === 'import' && (
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Everyone from an import</span>
-          <select name="fromImportRunId" defaultValue="" className="field">
+          <select name="fromImportRunId" defaultValue={startOnImport ? defaultImportId : ''} className="field">
             <option value="">— choose an import —</option>
             {imports.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>

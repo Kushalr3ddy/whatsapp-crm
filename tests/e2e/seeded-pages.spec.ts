@@ -80,7 +80,6 @@ test.describe('seeded pages', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: 'import-contacts.csv', mimeType: 'text/csv', buffer: Buffer.from(csv + unique)
     });
-    await page.getByRole('button', { name: 'Upload' }).click();
 
     // The phone column is guessed from "Mobile"; the preview reports without committing.
     await expect(page.getByText(/columns/)).toBeVisible();

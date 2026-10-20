@@ -16,13 +16,11 @@ test.describe('import: the same file again', () => {
     await signIn(page);
     await page.goto('/import');
     await page.locator('input[type="file"]').setInputFiles(file);
-    await page.getByRole('button', { name: 'Upload', exact: true }).click();
     await expect(page.getByText(/rows ·/)).toBeVisible();
 
     // Back to the picker, then the very same bytes again.
     await page.getByRole('button', { name: 'Start over' }).click();
     await page.locator('input[type="file"]').setInputFiles(file);
-    await page.getByRole('button', { name: 'Upload', exact: true }).click();
     await expect(page.getByText(/already uploaded/)).toBeVisible();
 
     await page.getByRole('button', { name: 'Upload anyway' }).click();

@@ -25,7 +25,6 @@ test.describe('import: column suggestion and rows to fix', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: `problems-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv)
     });
-    await page.getByRole('button', { name: 'Upload' }).click();
     await expect(page.getByText(/rows ·/)).toBeVisible();
 
     // Chosen by what is in the column, and said so.
@@ -55,7 +54,6 @@ test.describe('import: column suggestion and rows to fix', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: `warn-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv)
     });
-    await page.getByRole('button', { name: 'Upload' }).click();
     await expect(page.getByText(/rows ·/)).toBeVisible();
     await page.locator('select').first().selectOption('Remarks');
     await expect(page.getByRole('alert').filter({ hasText: /Is this the right column/ })).toBeVisible();

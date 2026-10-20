@@ -29,9 +29,9 @@ function errorMessage(code: string): string {
  * Whole-import and hand-picked audiences exist in the API and are a later addition here.
  */
 export default async function NewCampaignPage(
-  { searchParams }: { searchParams: Promise<{ error?: string }> }
+  { searchParams }: { searchParams: Promise<{ error?: string; import?: string }> }
 ) {
-  const { error } = await searchParams;
+  const { error, import: importId } = await searchParams;
 
   let senders: Sender[] = [];
   let tags: Tag[] = [];
@@ -111,6 +111,7 @@ export default async function NewCampaignPage(
             {step(2, 'Choose who gets it', 'Pick one. The audience is frozen when you start, so later changes will not alter the run.')}
             <AudiencePicker
               tags={tags}
+              defaultImportId={importId}
               imports={imports.map((r) => ({
                 id: r.id,
                 label: `${r.filename ?? 'import'} · ${String(r.contactCount)} contacts · ${new Date(r.createdAt).toLocaleDateString()}`

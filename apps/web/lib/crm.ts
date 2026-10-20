@@ -766,6 +766,8 @@ export interface ImportSummary {
   dryRun: boolean;
   /** People tagged by this run, when a tag was asked for on a commit. */
   tagged?: number;
+  /** The tag those people got, so a screen can link to them. */
+  tagId?: string;
 }
 
 /**
