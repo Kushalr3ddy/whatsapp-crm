@@ -22,10 +22,11 @@ export function LoginForm() {
         <span className="text-xs text-muted">Use your email address, not your name.</span>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Password</span>
-        <PasswordInput name="password" autoComplete="current-password" required />
-      </label>
+      {/* Not wrapped in the label: the Show button sits inside the box and would become part of the label's name. */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="login-password" className="text-sm font-medium">Password</label>
+        <PasswordInput id="login-password" name="password" autoComplete="current-password" required />
+      </div>
 
       {state.error !== '' && <p role="alert" className="notice notice-danger">{state.error}</p>}
 
