@@ -212,7 +212,7 @@ created by hand, and that single row caused two separate misdiagnoses before any
 where it came from. Keeping provisioning behind one `createOrgWithAdmin()` service, as decided,
 is what keeps this cheap.
 
-**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-1: the same "what to do next" links after each step, for the guided flow. The ideal flow he describes: log in, link a number, import a sheet, open the tagged sheet, send messages.
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-1 ([#64](https://github.com/Kushalr3ddy/whatsapp-crm/issues/64)): "what to do next" links after each step. The ideal flow he describes: log in, link a number, import a sheet, open the tagged sheet, send messages.
 
 ---
 
@@ -866,7 +866,7 @@ map more than one phone column, and map a column onto a custom field.**
 "keep these columns" box and the sample table are small for a sheet with ~80 columns). Picking columns to keep as custom
 fields is built (PR #56); the size and layout of this step are what is left.
 
-**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md): issue-2 (show how many rows are in the file, ideally right after choosing it) and issue-10 (the Match columns step is confusing: nobody knows what the dropdowns and the "keep these columns" tick boxes do; add plain-words labels and helper text).
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-2 ([#65](https://github.com/Kushalr3ddy/whatsapp-crm/issues/65)): show how many rows the file has. **Kushal's decision:** drop the Upload button; choosing or dropping a file uploads it straight away, and an invalid file or one without enough rows shows an error. Issue-10 ([#72](https://github.com/Kushalr3ddy/whatsapp-crm/issues/72)): the Match columns step is confusing. **Decisions:** add a big line after phone, name and email are chosen saying to select the columns to be stored (today only a small "Keep these columns on each contact" label), and a line above the preview: "Preview of all the columns you have selected from the excel/csv: <file name>".
 
 ---
 
@@ -1559,7 +1559,6 @@ smoke / full split so PRs stay fast. The live walkthrough (`tests/live/`) stays 
 
 **What brings it back:** the UI stops moving, or a regression the current specs miss.
 
-**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-7: GitHub Actions minutes were at 90% (1,802 of 2,000, resets 1 Nov 2026). The e2e browser job was turned back on the day before. This pin's "smoke / full split" is the fix: run a short smoke suite on pull requests and the full one less often, or set a $0 budget so nothing is billed.
 
 ---
 
@@ -2039,7 +2038,7 @@ helpers that already wrap it (`setTenant`, the gateway command channel) rather t
 
 ---
 
-## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed
+## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed — **PRIORITY (Kushal, 2026-10-20)**
 
 Found by using the app for real (sign in, link a number, import, Team, Numbers) on a throwaway VM. Fixed and merged
 the same day: the missing phone after linking, the terminal-only Numbers/Security/sign-in text, Import-before-Preview,
@@ -2063,7 +2062,7 @@ multi-email cells (#46, #47). **Still open:**
 10. **Alpha container connects to Postgres as a superuser**, so row-level security is not enforced (log warning); fine
     single-tenant, not for several orgs.
 
-**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-9: after scanning the QR the Linked numbers card still says "Not connected" until the page is reloaded, while a green line says "Linked. This number can send now." Also unclear what the difference between "linked" and "connected" is; use one word.
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-9 ([#71](https://github.com/Kushalr3ddy/whatsapp-crm/issues/71)): after scanning the QR the Linked numbers card still says "Not connected" until the page is reloaded. **Decisions:** auto-refresh when the link succeeds; once linked, grey out "Link this number", "Scan a QR" and "Type a code"; "linked" and "connected" mean the same, so use only "Linked".
 
 ---
 
@@ -2148,7 +2147,7 @@ selector and preview on Import, was filed under **D-21** instead):
 
 Pinned to come back to; not started.
 
-**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md): issue-3 (the "Tag many at once" dropdown stretches out of its box), issue-4 (the "choose a tag…" option looks dim; highlight it or use a clear "No tag"), issue-5 (clicking a tag chip does not filter, only opening it in a new tab works, and the raw tag ID shows in the address bar), issue-6 (removing a tag with the × is too easy; add "Are you sure?").
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-3 ([#66](https://github.com/Kushalr3ddy/whatsapp-crm/issues/66)): the "Tag many at once" dropdown stretches out of its box; a UI fix. Issue-4 ([#67](https://github.com/Kushalr3ddy/whatsapp-crm/issues/67)): add a **"No tag"** option at the bottom of the tag list; choosing it warns that without a tag those contacts will have to be found and tagged again later; "choose a tag…" stays visible but greyed out. Issue-5 ([#68](https://github.com/Kushalr3ddy/whatsapp-crm/issues/68)): clicking a tag chip must filter (the tag ID in the address bar does not matter to users); once contacts are tagged or selected, suggest starting a campaign with them; if they are only selected and untagged, tag them first; if a campaign already exists that contains them as a subset, ask whether to use this tagged group or create a new one (see D-68, D-73). Issue-6 ([#69](https://github.com/Kushalr3ddy/whatsapp-crm/issues/69)): removing a tag with the × asks "Are you sure?" and says the contact may have to be searched for and tagged again.
 
 ---
 
@@ -2179,7 +2178,7 @@ Pinned to come back to; not started.
 
 ---
 
-## D-73 · "Message these people" right after an import — pinned (Kushal, 2026-10-20)
+## D-73 · "Message these people" right after an import — pinned (Kushal, 2026-10-20) — **PRIORITY (Kushal, 2026-10-20)**
 
 After an import finishes, offer a quick way to send one message to everyone who was just imported: a **Message these people**
 button on the result box that opens a new campaign with the audience already set to that import (and with a short, quick form
@@ -2192,4 +2191,14 @@ big import cannot be blasted by accident. Related: D-68 (tag people first), D-57
 
 Pinned to come back to; not started.
 
-**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). Screenshots and his words are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-1: after an import finishes the page just ends ("looks sus"); he wants buttons that take the person to the tagged contacts and to send messages to them. Suggest, never force; the same for linking a number (then suggest Import or Campaigns).
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md). Issue-1 ([#64](https://github.com/Kushalr3ddy/whatsapp-crm/issues/64)): after an import finishes the page just ends ("looks sus"). Show suggestions, never force: after linking a number, suggest Import or Campaigns; after an import, buttons to see the tagged contacts and to send them a message. Kushal: this may mean starting on the import wizard (D-21) too.
+
+---
+
+## D-74 · Add-number form: country-code dropdown and a numbers-only phone field — **PRIORITY (Kushal, 2026-10-20)**
+
+**Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-8 ([#70](https://github.com/Kushalr3ddy/whatsapp-crm/issues/70)). The optional phone field on Add a number makes people type the country code themselves, and
+typing `9964122631` fails with "Write the number with its country code…". **Decisions:** a country-code dropdown next to the
+field, defaulted from the person's location (browser locale or time zone is enough, no precise location needed), changeable;
+if they start typing `+91`, `+63` and so on, switch the dropdown to that country and let them carry on, as Google's phone
+field does; the field accepts digits only and asks phones for the numeric keypad (`inputmode="tel"`). Related: D-72 (mobile).
