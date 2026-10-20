@@ -905,7 +905,7 @@ M9) is a safe default; this replaces "safe default" with "user's explicit choice
 
 ---
 
-## D-23 · Inbox search (F3 AC-7) — **RESEARCH AND PLANNING FIRST (Kushal, 2026-10-20)**
+## D-23 · Inbox search (F3 AC-7) — **PINNED, research later (Kushal, 2026-10-20)**
 
 > **Priority (2026-09-29):** in the near-term build queue. One thing to settle first: the
 > blind-index vs. trigram decision on encrypted message bodies (below) — contact-field search can
@@ -975,6 +975,8 @@ that scrolling is the bottleneck. Kushal asked to keep it as a reminder (2026-09
 the encrypted-body question.
 
 **2026-10-20: more research and planning needed before building.** Design is decided but six decisions are open (see above).
+
+**2026-10-20:** back to pinned; the research and planning wait. (A question about where files could be stored, raised under this number, was written up under D-63.)
 
 ---
 
@@ -1698,7 +1700,7 @@ wrong. The reply lock stays the hard rule; this stays a soft warning.
 
 ---
 
-## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end") — **RESEARCH AND PLANNING FIRST (Kushal, 2026-10-20)**
+## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end") — **PINNED, research later (Kushal, 2026-10-20)**
 
 **What:** if an org (or a self-hosted install) has not paid, the product should stop being usable, not just show a
 billing page. Companion to [D-47](#d-47) (signup, billing gate, beta override): D-47 decides who gets in and
@@ -1728,6 +1730,8 @@ hosted-versus-self-hosted call before any design is honest.
 **2026-10-20: more research and planning needed.** Research how projects whose **source code is available** enforce payment and licences, and what actually works against copying: study open-source and source-available products that sell licences (for example OpenVPN, Proxmox, Grafana, and others with open core or enterprise keys) and write down how each does it: signed licence files, phone-home checks, feature flags for paid tiers, enterprise-only code, and the licence terms that carry the real weight when the code can be read. Decide what is realistic for a product whose code is visible, then plan.
 
 **Research written 2026-10-20:** see [`34 · Licensing and enforcement`](34-licensing-and-drm.md). Kushal's requirement: only the developers authorise who may use the software, and use is highly restricted outside the organisation. That rules out open-source and the public source-available licences; the fit is a **proprietary, all-rights-reserved licence with a private repository and a signed agreement per customer**, ideally **hosted by us**, plus an offline-checked signed licence token for limits (seats, numbers, expiry) with soft-then-read-only lapse. The "what other products do" table there is from memory and marked verify; more examples (and the actual licence pages of Proxmox, Grafana, OpenVPN, GitLab) still need reading.
+
+**2026-10-20:** back to pinned; the research in [`34`](34-licensing-and-drm.md) stays as the starting point, and more examples wait.
 
 ---
 
@@ -1805,7 +1809,7 @@ with D-16, which was struck out as not this repository's to ship; they come back
 
 **What brings it back:** a public landing or signup page (D-47), or the hosted offering (D-33).
 
-## D-59 · File support in chat (Kushal, 2026-10-16) — **RESEARCH AND PLANNING FIRST (Kushal, 2026-10-20)**
+## D-59 · File support in chat (Kushal, 2026-10-16) — **PINNED, research later (Kushal, 2026-10-20)**
 
 **What:** sending and receiving files in a conversation, taken as one feature: what works today, what is
 rough, and what is missing. Raised as a priority on 2026-10-16.
@@ -1876,6 +1880,8 @@ RAM); which of the gaps in the table above to build first.
 **2026-10-20: more research and planning needed before round 3.** Rounds 1 and 2 are merged (file types, failed-download reasons, image previews). Round 3 is multi-file, drag-and-drop, paste, bigger uploads, voice notes, the Files tab, manual Retry, and images and GIFs in campaigns. Plan it properly before building.
 
 **2026-10-20:** where files can be stored (Microsoft 365, Google, bring-your-own bucket, managed by us for a monthly fee) is written up under D-63.
+
+**2026-10-20:** back to pinned; round 3 and the research wait.
 
 ---
 
@@ -2132,7 +2138,7 @@ a disabled button, so nobody thinks it froze. D-57 (import as a background job) 
 
 ---
 
-## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **RESEARCH AND PLANNING FIRST (Kushal, 2026-10-20)**
+## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **PRIORITY (Kushal, 2026-10-20): the @lid mapping**
 
 Some chats arrive from WhatsApp with a hidden `…@lid` id instead of a phone number, so they show as a raw id in the
 inbox and Contacts (see D-65). Kushal wants, at the top of such a chat, an **Add number / contact** action that works like
@@ -2157,6 +2163,8 @@ check that first (does the gateway ever learn the number for a lid, and is it st
 4. So the likely reasons the mapping seems broken: WhatsApp does not send `sender_pn` for these chats, we ignore the contact events that do carry the pair, and the display name is never saved, so a lid chat shows as a raw id.
 
 **Next steps (research, then plan):** confirm on a real linked number which events arrive for a lid chat (log, do not store); decide to store `pushName` on the contact; add listeners for contacts events; write the ignore list; design the unknown-sender notice; then the "add a number to this chat" action.
+
+**2026-10-20:** the only research item that is priority is **why the `@lid` mapping is not working** (findings above). The rest of this pin (ignoring newsletters, the unknown-number alert, the add-a-number action) follows from it.
 
 ---
 
