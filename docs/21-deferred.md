@@ -2189,6 +2189,8 @@ check that first (does the gateway ever learn the number for a lid, and is it st
 - **Why a `@lid` chat can show a raw id while WhatsApp Web and the phone show the number.** The phone and WhatsApp Web know the person from your address book and from WhatsApp's own servers. A linked device through Baileys is handed only the privacy address (`@lid`) for some chats, plus the real number **only when WhatsApp chooses to include it** (it did for 13 of 13 messages in the test). When it does not, our code has nothing to map. This is partly a **Baileys 6.7.24 limitation**: newer Baileys (7.x) keeps its own lid-to-number table and can look a number up, which is part of why D-44 (Baileys 7 upgrade) matters here. So "add a number to a `@lid` chat that arrives without one" is a real gap, and the better answer may be the upgrade, with the manual add-a-number action as the fallback. Revisit after D-44 is looked at.
 - Still to do from the fix list: skip newsletters, broadcast lists and communities; the unknown-number alert.
 
+✅ **Built 2026-10-20: channels, broadcast lists and communities are ignored** (`isNotAPerson` in `packages/channels/baileys/src/index.ts`: `@g.us`, `@newsletter`, any `@broadcast`). A message from one no longer creates a contact or a conversation. A newsletter contact created earlier on a dev database is not removed by this and can be deleted by hand.
+
 ---
 
 ## D-68 · Campaign with no tagged people: tell the user to tag them first — ✅ built in PR #56 (Kushal, 2026-10-17)

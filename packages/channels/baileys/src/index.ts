@@ -499,8 +499,9 @@ export class BaileysChannelProvider implements ChannelProvider {
     if (m.key?.fromMe === true || !m.key?.id || !m.key.remoteJid || !m.message) return;
 
     const jid = m.key.remoteJid;
-    // Group traffic is out of scope for now, and a group jid is not a person.
-    if (jid.endsWith('@g.us') || jid === 'status@broadcast') return;
+    // Not a person: groups (and the groups inside communities), channels (`@newsletter`), and broadcast lists
+    // and the status feed (`@broadcast`). A message from one must never create a contact or a conversation.
+    if (isNotAPerson(jid)) return;
 
     const { body, contentType } = extractBody(m.message);
     // Baileys cannot fetch an attachment from an id — it re-downloads from the message
@@ -595,6 +596,15 @@ export function mapStatus(code: number): NormalisedStatusEvent['status'] | null 
     case 5: return 'read';       // played, for voice notes
     default: return null;
   }
+}
+
+/**
+ * True for addresses that are not a person: a group (`@g.us`, which also covers the groups inside a community),
+ * a channel (`@newsletter`), and a broadcast list or the status feed (`@broadcast`). Such messages are ignored
+ * on the way in, so they never become a contact named with a raw address.
+ */
+export function isNotAPerson(jid: string): boolean {
+  return jid.endsWith('@g.us') || jid.endsWith('@newsletter') || jid.endsWith('@broadcast');
 }
 
 /** Wrappers WhatsApp puts around a message (disappearing chats, view-once, a document with a caption). */
