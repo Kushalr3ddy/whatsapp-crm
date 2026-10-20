@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  extractBody, extractStatusCode, mapDisconnectReason, mapStatus, phoneFromJid, toDate
+  extractBody, extractStatusCode, isNotAPerson, mapDisconnectReason, mapStatus, phoneFromJid, toDate
 } from './index.js';
 
 describe('mapDisconnectReason', () => {
@@ -136,5 +136,20 @@ describe('extractBody: kinds that used to vanish', () => {
       .toEqual({ body: 'cv', contentType: 'image' });
     expect(extractBody({ documentWithCaptionMessage: { message: { documentMessage: { caption: 'resume', fileName: 'r.pdf' } } } }))
       .toEqual({ body: 'resume', contentType: 'document' });
+  });
+});
+
+describe('isNotAPerson', () => {
+  it('ignores groups, channels, broadcast lists and the status feed', () => {
+    expect(isNotAPerson('120363025@g.us')).toBe(true);
+    expect(isNotAPerson('120363402111@newsletter')).toBe(true);
+    expect(isNotAPerson('status@broadcast')).toBe(true);
+    expect(isNotAPerson('1700000000@broadcast')).toBe(true);
+  });
+
+  it('keeps people: a phone address, with or without a device suffix, and a privacy address', () => {
+    expect(isNotAPerson('919876543210@s.whatsapp.net')).toBe(false);
+    expect(isNotAPerson('919876543210:12@s.whatsapp.net')).toBe(false);
+    expect(isNotAPerson('44887374303340@lid')).toBe(false);
   });
 });
