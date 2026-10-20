@@ -88,9 +88,6 @@ jobs:
   # several minutes and has its own trigger rules, so it neither slows this job nor hides in it.
 
   e2e:
-    # Suspended on purpose (Kushal, 2026-10-19): the browser suite is not run on pull requests for now.
-    # Remove this line to turn it back on. A skipped job counts as passing for branch protection.
-    if: ${{ false }}
     runs-on: ubuntu-latest
 
     services:
