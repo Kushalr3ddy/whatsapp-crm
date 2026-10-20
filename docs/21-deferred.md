@@ -2055,6 +2055,10 @@ sign-in. Decided with it (2026-10-17): **one sans-serif font throughout**, a sma
 Direction (clean light, brand sidebar, soft and friendly, or a mix) is chosen from the mockups in `mockups/` (git-ignored)
 before any page is restyled. Direction A and Inter were chosen; the sign-in screen, Overview and shared styles carry the motion in PR #53. Most other pages still to do.
 
+**Added 2026-10-19 (Kushal): loading animations for the few tasks that take a long time** (an import commit, a campaign
+starting, a number linking, a big search). A visible animation with a plain-words label ("Importing 160 contacts…"), not just
+a disabled button, so nobody thinks it froze. D-57 (import as a background job) is the same wish for imports.
+
 
 ---
 
@@ -2119,5 +2123,18 @@ selector and preview on Import, was filed under **D-21** instead):
    question: this means shipping the contact list to the browser (size, privacy, staleness, and what an agent with limited
    access is allowed to hold locally), so it needs a decision before a build. Not the same as D-20 (SQLite as the
    server's database). The server-side alternative is a date filter and a sort parameter on `GET /contacts`.
+
+Pinned to come back to; not started.
+
+---
+
+## D-71 · A big background picture for each tab — pinned (Kushal, 2026-10-19)
+
+Each main page gets a **huge, faint illustration (an SVG) behind its content** that shows what the page is about: a contact
+book on Contacts, a phone being linked (a phone and a QR code) on Linked numbers, speech bubbles on Inbox, a funnel or
+megaphone on Campaigns, a file and arrow on Import, and so on. It sits at low contrast in the corner or centre so text stays
+readable, works in light and dark, is drawn in the app's own style (the hand-drawn SVG set and green accent from D-66, no
+illustration library), and does not move for anyone who asked for reduced motion. Related: D-66 (life across the pages).
+Questions for later: one illustration per page or a shared set, and whether the empty states reuse them.
 
 Pinned to come back to; not started.
