@@ -13,6 +13,15 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-21 (night) — AI templates, campaign pictures and GIFs, contacts page, database docs
+- **Merged #83, #84, #99, #100, #101** (`main` at `b7e5706`). **#84** Contacts: Refresh, rows that open, date added/imported range and order. **#99 AI templates part 1** (D-85): describe in plain words, the model
+  writes bullet instructions without summarising, locked review, save, saved list, page 2 with "Message a group" (editable auto-named tag), always-on rules added to every reply (migrations 0034, 0035).
+  **#100/#101 campaign pictures and GIFs** (D-59 first slice, migration 0036): one picture or GIF per campaign, 5 MB, MP4 refused for now, GIF converted with ffmpeg and sent with GIF playback, the AI can attach an uploaded picture. (#100 first merged into the old base branch; #101 brought it to `main`.)
+- **Docs:** `docs/35-database-and-queries.md`, `docs/36-workflows.md`, `docs/generated/database-reference.md` (from the live database, `npm run db:docs`); pins D-80, D-85, D-86, D-87.
+- **Tested:** vitest 859 passed; browser suite 38 of 39 (one flake under load, passes alone); long-paste 50 of 50 facts kept; hostile prompts 0 of 10 leaked.
+- **Not done / next:** live send of a picture and a GIF on the real number; Send a test to myself and the replies section; replies following a campaign's template; the template gallery and edit warning; enforce D-87.
+
+
 ### 2026-10-21 (afternoon and evening) — The "AI speedrun": an AI assistant that runs chats and campaigns; tutorial PDF; a WhatsApp session breakage
 - **Merged #84 to #93** (all AI PRs are titled `ai-speedrun:` so they can be searched; Kushal's rule): contacts page (#84), import page notice,
   finished imports clear, wider wizard (#85), the model layer **`@crm/llm`** (#86), AI settings, consent and a bot user (#87, migration 0031),

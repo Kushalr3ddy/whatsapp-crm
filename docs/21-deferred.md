@@ -76,7 +76,7 @@ is not re-proposed.
 | D-56 | Telemetry: metrics, tracing and error tracking beyond logs | 📌 pinned |
 | D-57 | Run the import commit as a background job | 📌 pinned |
 | D-58 | Public site and launch-readiness checklist | 📌 pinned |
-| D-59 | File support in chat (Kushal, 2026-10-16) | 🔺 priority again 2026-10-21: **files in campaigns first** · ◐ partly built (rounds 1 and 2) |
+| D-59 | File support in chat (Kushal, 2026-10-16) | ◐ partly built: rounds 1 and 2, and **files in campaigns first slice built 2026-10-21** (one picture or GIF, 5 MB, no MP4 yet) |
 | D-60 | Number fallback: message the first number that has a WhatsApp account | ✅ done |
 | D-61 | Lighter web tier: plain React with refresh buttons instead of Next eve | 📌 pinned |
 | D-62 | Ship as a single executable, if possible | 📌 pinned |
@@ -102,8 +102,8 @@ is not re-proposed.
 | D-82 | A gateway restart can break the WhatsApp session (decrypt failures, nothing received) | 📌 pinned · hit 2026-10-21 |
 | D-83 | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
 | D-84 | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
-| D-85 | AI templates: pick a template, fill its blanks, get the script; per chat, per campaign, org default | 🔺 priority 2026-10-21 · mockup first |
-| D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE |
+| D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
+| D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
 
 ---

@@ -74,7 +74,66 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
-## ▶ Latest session (2026-10-21 afternoon and evening, the "AI speedrun"): read this first
+## ▶ Latest session (2026-10-21 night): AI templates, campaign pictures and GIFs, database docs: read this first
+
+*(The "AI speedrun" section below is the session before this one; its "State" is out of date.)*
+
+### State in one paragraph
+`main` is at **`b7e5706`** and has everything through **#101**: #83 (import wizard), #84 (Contacts: Refresh, rows that open, date range and order),
+#99 (**AI templates part 1**), and #100/#101 (**campaign pictures and GIFs**). CI on the merge commits was still running when this was written; check
+`gh run list --branch main`. The dev stack was left **running with a fake WhatsApp channel** (web 3001, API 3000, gateway), so nothing touches the real
+session; stop it with `fuser -k 3000/tcp 3001/tcp` and kill the gateway's `tsx` process by pid (never `pkill -f` with a pattern that also matches your own shell).
+The `e2e-test` org (`e2e@test.local`, password in `.env` as `TEST_PASSWORD`) exists in the dev database for the browser specs. Hosting: Kushal is deploying on **Linode**
+himself (not our concern); the container image `whatsapp-crm:alpha-p1` built cleanly, and a rebuild with ffmpeg was in progress.
+
+### What was built (all PRs titled `ai-speedrun:`)
+- **AI templates, part 1 (D-85, PR #99):** `/ai` page 1 = describe in plain words (8,000 characters), the model writes bullet instructions **without summarising**,
+  review (instructions locked until "Edit by hand", AI warning, regenerate-over-edits confirmation, Save off while the description changed), save as a template
+  (`ai_template`, migration 0034), saved list (Open, Next steps, Use for all chats, Delete), limits and the one-off orders box at the bottom. **Page 2 `/ai/t/<id>`**:
+  What next? with **Let it answer all chats** and **Message a group with this** (audience = an existing tag, or a search whose people get a new **editable** tag named
+  `<template>-N (date, time)`, counted first; the draft campaign keeps `ai_template_id`, migration 0035). **Always-on rules** (`AI_ALWAYS_ON_RULES`) are added to every reply
+  in `systemText`, shown locked on the page, and cannot be edited. Admin-only API `/ai/templates*`, `/ai/always-on-rules`; 5 generations per org per minute.
+- **Campaign pictures and GIFs (D-59 first slice, #100/#101, migration 0036):** one picture or GIF per campaign, 5 MB, JPG/PNG/WebP/GIF, **MP4 refused for now**; upload and
+  "use one I uploaded before" on the new-campaign form; the campaign page shows it; the dispatcher sends it with the message as caption; a **GIF is converted at upload with ffmpeg**
+  to a looping clip and sent as a video with GIF playback; the AI's `create_campaign` takes `pictureName`. ffmpeg is in the Dockerfile.
+- **Contacts (D-70 part 1, #84):** Refresh, rows as columns that open, date added/imported range and order (server side). Admin-chosen columns pinned as **D-79**.
+- **Docs:** new [`35-database-and-queries.md`](docs/35-database-and-queries.md) (the 32 tables by group, how tenancy works, the optimisations that exist, the main queries, the known gaps),
+  [`36-workflows.md`](docs/36-workflows.md) (seven diagrams), and `docs/generated/database-reference.md` (generated from the live database by `npm run db:docs`, which also writes `schema.html`).
+  Pins this session: D-80 (contact page, unknown senders), D-85 (templates, per chat and per campaign, gallery, "Draft with AI"), D-86 (orders box), D-87 (**every mass message goes to a tag**, rule),
+  notes on D-57, D-20, D-63 (SMB), D-67 (back to pinned).
+
+### Decisions he made (do not re-ask)
+- Priority order: the AI assistant for chats, **file support in campaigns** (done as the first slice), then templates. D-67 and D-21 stay pinned until the alpha tests finish.
+- Templates: the template fills the instructions box; **three levels, chat over campaign over "all the chats by default"**; chats follow template edits with a warning to the admin that names how many chats and
+  campaigns change; admins add templates, the team uses them; starters are **generic** (leads, notices and events, customer care, hiring, general), not recruitment-only.
+- A plain-words description is the front door; the instruction text is **locked until "Edit by hand"**; saving needs the instructions rewritten after a description change; the always-on rules are shown and uneditable.
+- Every contact messaged in bulk is tagged; the tag name defaults to `<name>-N (date, time)` and is editable. "Send a test to myself" goes only to **saved contacts** (a dropdown), and counts against the number's limits like any send.
+- Pictures: images and GIFs only for now (no MP4), 5 MB cap, template images next round, replies section shows the **5 most recent chats** and a click opens the Inbox.
+- Run things at full speed on his machine when he says so (he said not to nice the test runs); the stack and the real number stay his to start.
+
+### New gotchas (paid for)
+- **A PR stacked on another PR merges into the old base if the first is merged first.** #100 went into `feat/ai-templates-p1` after #99 reached `main`; it needed #101 to reach `main`. Merge the bottom PR last-in-line or retarget before merging.
+- **`pkill -f "<pattern>"` also kills the shell running it** when the pattern is in the command line (exit 144). Kill by port (`fuser -k`) or pid.
+- **`tsx watch` restarts the API the moment a migration file appears, before it is applied**, and the API then stays down (`SchemaMismatchError`). Apply migrations (`npm run db:migrate:all`), then start the API again.
+- A new table needs a note in `packages/db/src/table-notes.ts` or `table-notes.test.ts` fails (CI `check`).
+- The e2e specs that need a model skip when none is set (CI has none): see `ai-templates.spec.ts`.
+- `@next/next/no-img-element` is not a rule here; a disable comment for it is an error. Do not write one.
+- Parallel template generations can hit the provider's own limit (Groq 429); the page says "busy, try again in a minute". A description that tells the model to ignore the output format is refused safely ("did not answer in a usable form").
+- `mockups/` is git-ignored scratch (served by a tiny local server on 3099 when needed); eslint ignores it.
+
+### Tested this session (all at full speed on his machine)
+Full vitest 859 passed, the browser suite 38 of 39 on the first full run (the one failure, `import-notice-and-reset`, passes alone and failed under load), 50 of 50 facts kept from a long description in 4 s, 0 of 10 hostile prompts leaked
+the rules on the real model, both AI pages have no sideways scroll at 390 px. **Not yet tested: a live send of a picture and a GIF on his real number.**
+
+### Ask him first (next session)
+1. Live test a picture and a GIF on the real number (to one of his own saved contacts first)? Advisory mode is still on for `kushal_test`; turn it back to enforcing when testing ends.
+2. Build next: **Send a test to myself** and the **replies section** (5 recent chats), then replies following a campaign's template (P4), the template gallery window and the edit warning with counts (P2)?
+3. Enforce **D-87** (a campaign must have a tag audience) in the API and the AI tool?
+4. Delete branches older than the last three (list them first)? Commit `dev-feedback-issues.md` and its images, or git-ignore them?
+
+---
+
+## ▶ Latest session (2026-10-21 afternoon and evening, the "AI speedrun"): superseded by the section above
 
 *(The section below, "2026-10-19 to 2026-10-21", is older and its "state" is out of date: #83 to #95 are merged.)*
 
