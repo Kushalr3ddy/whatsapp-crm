@@ -71,6 +71,55 @@ const runs = async () => await db.execute(sql`SELECT kind, outcome, reason, mode
 /** Outbound messages the assistant queued. */
 const queued = async () => await db.execute(sql`SELECT status, sent_by, sent_by_user_id, body_enc FROM message WHERE conversation_id = ${conv} AND direction = 'outbound'`) as unknown as Array<{ status: string; sent_by: string; sent_by_user_id: string; body_enc: Uint8Array }>;
 
+/** A photo (or voice note or file) from the contact: a message with a type but no text. */
+async function addNonText(contentType = 'image'): Promise<string> {
+  const rows = await db.execute(sql`
+    INSERT INTO message (org_id, conversation_id, direction, status, content_type, provider_message_id)
+    VALUES (${orgId}, ${conv}, 'inbound', 'received', ${contentType}, ${`wa-${randomBytes(6).toString('hex')}`})
+    RETURNING id`) as unknown as Array<{ id: string }>;
+  return rows[0]!.id;
+}
+
+describe('AI auto-reply to photos, voice notes and files', () => {
+  it('asks for text instead of going quiet, without asking the model', async () => {
+    const photo = await addNonText('image');
+    const r = await run(photo);
+    expect(r.outcome).toBe('sent');
+    expect(llm.calls).toHaveLength(0);
+    const out = await queued();
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ status: 'queued', sent_by: 'agent', sent_by_user_id: botId });
+    expect(new TextDecoder().decode(kms.decrypt(out[0]!.body_enc))).toMatch(/can only read text/);
+    expect((await runs())[0]).toMatchObject({ outcome: 'sent', reason: 'not_text_replied', model: null });
+  });
+
+  it('says it once for a run of photos, not once each', async () => {
+    const first = await addNonText('image');
+    expect((await run(first)).outcome).toBe('sent');
+    // A second photo a little later: the request for text is already out, so it is not repeated.
+    const second = await addNonText('audio');
+    expect(await run(second)).toMatchObject({ outcome: 'skipped', reason: 'not_text' });
+    expect(await queued()).toHaveLength(1);
+  });
+
+  it('still never messages a do-not-contact contact, and still respects the daily limit', async () => {
+    await db.execute(sql`UPDATE contact SET do_not_contact = true WHERE id = ${contact}`);
+    expect(await run(await addNonText())).toMatchObject({ outcome: 'blocked', reason: 'do_not_contact' });
+    await db.execute(sql`UPDATE contact SET do_not_contact = false WHERE id = ${contact}`);
+    await saveAiSettings(db, orgId, { dailyMessageCap: 1 }, { type: 'user', id: adminId });
+    await db.execute(sql`INSERT INTO ai_run (org_id, kind, outcome) VALUES (${orgId}, 'reply', 'sent')`);
+    expect(await run(await addNonText())).toMatchObject({ outcome: 'blocked', reason: 'daily_cap' });
+    expect(await queued()).toHaveLength(0);
+  });
+
+  it('leaves a photo that a text message follows to the text reply', async () => {
+    const photo = await addNonText();
+    await addMessage('inbound', 'sorry, here is the question: are you hiring?');
+    expect(await run(photo)).toMatchObject({ outcome: 'skipped', reason: 'superseded' });
+    expect(await queued()).toHaveLength(0);
+  });
+});
+
 describe('AI auto-reply', () => {
   it('queues a reply as the assistant user and records the run with its cost', async () => {
     const r = await run();

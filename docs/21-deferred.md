@@ -76,7 +76,7 @@ is not re-proposed.
 | D-56 | Telemetry: metrics, tracing and error tracking beyond logs | 📌 pinned |
 | D-57 | Run the import commit as a background job | 📌 pinned |
 | D-58 | Public site and launch-readiness checklist | 📌 pinned |
-| D-59 | File support in chat (Kushal, 2026-10-16) | ◐ partly built (rounds 1 and 2) |
+| D-59 | File support in chat (Kushal, 2026-10-16) | 🔺 priority again 2026-10-21: **files in campaigns first** · ◐ partly built (rounds 1 and 2) |
 | D-60 | Number fallback: message the first number that has a WhatsApp account | ✅ done |
 | D-61 | Lighter web tier: plain React with refresh buttons instead of Next eve | 📌 pinned |
 | D-62 | Ship as a single executable, if possible | 📌 pinned |
@@ -1916,7 +1916,13 @@ with D-16, which was struck out as not this repository's to ship; they come back
 
 **What brings it back:** a public landing or signup page (D-47), or the hosted offering (D-33).
 
-## D-59 · File support in chat (Kushal, 2026-10-16) — **PINNED, research later (Kushal, 2026-10-20)**
+## D-59 · File support in chat (Kushal, 2026-10-16) — 🔺 **PRIORITY AGAIN (Kushal, 2026-10-21): files in campaigns first** (was pinned, research later, 2026-10-20)
+
+> **2026-10-21 (Kushal): "bring file support to campaigns back to priority."** First slice: a campaign can carry one image or GIF (the message
+> text becomes its caption), chosen on the new-campaign form and sent to every recipient through the same pacing as text; the AI assistant's
+> `create_campaign` tool should be able to attach a file that already exists. This needs the campaign to point at a stored file (a `media_asset`),
+> the dispatcher to send media with a caption, and a preview on the campaign page. The rest of this entry (multiple files, drag-and-drop, paste,
+> bigger uploads, voice notes, a Files tab, manual Retry) stays pinned behind it.
 
 **What:** sending and receiving files in a conversation, taken as one feature: what works today, what is
 rough, and what is missing. Raised as a priority on 2026-10-16.
@@ -2511,6 +2517,11 @@ Deleting one contact's sessions fixed sending to them but not receiving. **Unlin
 before its last writes land. **To do:** flush the auth state on SIGTERM; refuse to start a second gateway on the same number; detect a burst of
 "No matching sessions" and say so on the Linked numbers page with a "Reset" button (relink), instead of showing "Linked". **Until then:** do not
 restart the gateway while testing; `bash infra/scripts/dev-up.sh --no-gateway` restarts only the API and web. Runbook entry: `docs/14-runbooks.md`.
+
+**Also found (2026-10-21), same root:** the health scorer read our own decrypt failures and undelivered messages as a suspected soft ban and put the number in quarantine with a
+**48-hour pause** (risk 100), holding every send; it only cleared because Kushal turned **Advisory mode** on for that number (anti-ban enforcement off; turn it back after testing).
+The scorer should ignore decrypt failures for `fromMe` messages and for a burst right after a restart, and a message the recipient could not read should not count as undelivered.
+**Done in #96:** the gateway now answers a recipient's resend request for text (`resendText` / Baileys `getMessage`), so "Waiting for this message" can clear.
 
 ---
 

@@ -19,7 +19,7 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   **auto-reply** on chats assigned to the assistant (#88), anti-ban warnings in the thread with an admin do-not-contact override (#89),
   **campaign tools** and Write with AI (#90, migration 0032), click feedback and a faster layout (#91), `send_message` (#92), and the **AI request
   queue** with its panel, spinner and Cancel, `npm run dev:fast` and the **tutorial PDF** (#93, a `[checkpoint]`, migration 0033).
-- **Open #94:** `npm run llm:check`, a script that compares models for speed, steadiness and tool calling. This docs and prompt PR is the next.
+- **Merged #94** (`npm run llm:check`: compares models for speed, steadiness and tool calling) and **#95** (the lead-the-conversation prompt and the docs below). **Open: #96.**
 - **The assistant now runs on Groq** (`openai/gpt-oss-20b`, 0.5 to 0.9 s a call) instead of Gemini (8 to 30 s, one 503): `LLM_DRIVER=compatible` with
   `LLM_BASE_URL=https://api.groq.com/openai/v1`. The Gemini key is kept in `.env` as `GEMINI_API_KEY`; both keys live only in the git-ignored `.env`.
 - **Proven live on his real linked number** (`kushal_test`, to the other dev's number): the assistant opened a chat, answered the replies within
@@ -37,6 +37,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   screens stale after an action (6 browser specs fail there, all pass on `next dev`).
 - **Tests:** unit `packages/providers/llm` 13, config +3; integration `ai-settings` 6, `ai-auto-reply` 10, `ai-notices` 7, `ai-commands` 17,
   `ai-queue` 9; browser `ai-assistant`, `ai-notice`, `import-notice-and-reset`. The whole browser suite passed on `next dev` (CI), six specs fail on `dev:fast`.
+- **Next PR (retry fix and non-text reply):** the other dev's phone showed "Waiting for this message" on two of the assistant's replies. Cause: the gateway had no
+  `getMessage` for Baileys, so when his phone asked us to resend, the log said `recv retry request, but message not available` and it never cleared. Fixed:
+  `sentMessageText` (core) gives back the text of a message we sent, the Baileys provider passes it to Baileys, the gateway wires it up (text only; media is not
+  resent). And a photo, voice note or file no longer gets silence: the assistant says once "I can only read text messages here, could you type that out?"
+  (no model call; not repeated within 10 minutes; do-not-contact and the daily limit still apply). **Priority (Kushal): D-59, file support in campaigns first.**
+- **Found after the restart for that fix:** the health scorer put `kushal_test` into **quarantine with a 48-hour soft-ban pause** (risk 100: a decrypt-failure burst after the restart, and
+  delivery 5 of 11 because messages his phone could not decrypt count as undelivered). False signals from our own session trouble (D-82), but the pause held every send. **Kushal turned Advisory
+  mode on for the number at 17:47** (anti-ban enforcement off for that number); after it, sends go out (`advisory mode: sending past an anti-ban hold`). **It is still on: switch it back when testing ends.**
+- **Live bug found on Groq:** told "message Test Phone Two", `gpt-oss-20b` passed the number's id as the contact, so nothing was sent. Fixed in the tool text and instructions ("a NAME, never an id") with a test;
+  re-run live, the message went out and was delivered (#96).
+- **End of session:** the tutorial PDF was rebuilt (the assistant now asks for text on a photo, leads the conversation, and has no fact-checking yet). The dev stack was brought down; the handoff has the exact bring-up and live-test steps.
 - **Mistakes to learn from:** I wrote the stack's output into `.dev-logs/`, which the stack's own script tails: a feedback loop made two logs
   1.1 GB and 345 MB and slowed his whole machine (moved the output elsewhere, deleted them); I appended a line to `.env` without a trailing newline
   and it glued onto the API key (fixed at once; always end the file's last line first); I restarted the gateway too often (D-82).
@@ -1125,7 +1136,8 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining (2026-10-21). *Pinned* items are deliberately held:
 
-0. **AI (2026-10-21):** merge **#94** and this PR; then Kushal's order: **D-81** guardrails (facts, STOP words, approval mode) and **D-84** (goal field,
+00. **PRIORITY (Kushal, 2026-10-21): D-59, file support in campaigns first** (one image or GIF per campaign, the message as its caption; the assistant's `create_campaign` can attach an existing file).
+0. **AI (2026-10-21):** merge **#96**; then Kushal's order: **D-81** guardrails (facts, STOP words, approval mode) and **D-84** (goal field,
    auto-assign new chats, follow-ups); **D-82** (flush the auth state on shutdown, detect the decrypt burst); **D-83** (stale screens on `dev:fast`). The
    assistant's chat with the other dev's number is still assigned to it on his dev stack; model choice (Groq vs Gemini vs another) is for a meeting.
 1. ~~**#83** (D-21)~~ merged; the browser run and phone-width look for it were not done.

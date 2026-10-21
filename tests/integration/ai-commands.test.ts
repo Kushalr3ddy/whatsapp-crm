@@ -179,6 +179,9 @@ describe('instructing the assistant', () => {
     expect(system).toContain(senderId);
     expect(system).not.toContain('P0');
     expect(system).not.toContain('+9198765');
+    // send_message takes a name, not an id: a smaller model once passed the number's id as the contact (seen live on Groq).
+    expect(system).toMatch(/never an id/);
+    expect(JSON.stringify(llm.calls[0]!.tools)).toMatch(/Never an id/);
     const audit = await db.execute(sql`SELECT after FROM audit_log WHERE action = 'ai.command'`) as unknown as Array<{ after: unknown }>;
     expect(JSON.stringify(audit)).not.toContain('SECRET-WORD');
   });

@@ -225,6 +225,13 @@ session looks diverged`; it keeps logging `sent retry receipt`. The number's hea
    device). This always works: after it, zero decrypt failures and messages arrived at once. Conversations and contacts stay; messages that arrived
    while it was broken are not recovered into the CRM.
 
+**Related, the false quarantine:** the burst of decrypt failures after a restart (and messages the recipient's phone could not read counting as undelivered) can make the health scorer put the number in
+*quarantined* with a 48-hour soft-ban pause, which holds every send. For a test number an admin can turn **Advisory mode** on (Linked numbers → the number → *Advisory mode…*, with a reason; the audit log records it);
+sends then go out and the gateway logs `advisory mode: sending past an anti-ban hold`. Turn it back to enforcing afterwards. Never do this on a number you cannot afford to lose.
+
+**"Waiting for this message" on the other phone:** the recipient could not decrypt something we sent and asks for it again. The gateway answers that for text (`resending a message the recipient could not decrypt`). Before the resend hook the log
+said `recv retry request, but message not available` and the placeholder never cleared.
+
 **Prevent:** do not restart the gateway while testing (under `tsx watch` every saved edit to a file it imports restarts it). Restart only the API
 and web with `bash infra/scripts/dev-up.sh --no-gateway`. Never run two gateways on one number. Tracked as D-82 (flush auth state on shutdown; detect the burst and say so on the page).
 

@@ -164,3 +164,24 @@ export async function applyDeliveryStatus(
       AND CASE status WHEN 'queued' THEN 0 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2
                       WHEN 'read' THEN 3 ELSE 0 END < ${rank[status]}`);
 }
+
+/**
+ * The text of a message we sent, by WhatsApp's own id, for when a recipient's phone could not decrypt it and asks us to send it again.
+ *
+ * Baileys needs the original message to re-encrypt it; without it the request fails ("message not available") and their phone shows
+ * "Waiting for this message" for ever. Only text we sent from this number can be given back: media, anything we received, and another
+ * number's messages return `undefined`, as does a body that no longer decrypts (a retired key).
+ */
+export async function sentMessageText(
+  db: Database, kms: KmsDriver, senderIdentityId: string, providerMessageId: string
+): Promise<string | undefined> {
+  const rows = await db.execute(sql`
+    SELECT m.body_enc AS "bodyEnc"
+    FROM message m JOIN conversation v ON v.id = m.conversation_id
+    WHERE v.sender_identity_id = ${senderIdentityId} AND m.provider_message_id = ${providerMessageId}
+      AND m.direction = 'outbound' AND m.content_type = 'text' AND m.body_enc IS NOT NULL
+    LIMIT 1`) as unknown as Array<{ bodyEnc: Uint8Array }>;
+  const body = rows[0]?.bodyEnc;
+  if (body === undefined) return undefined;
+  try { return new TextDecoder().decode(kms.decrypt(body)); } catch { return undefined; }
+}

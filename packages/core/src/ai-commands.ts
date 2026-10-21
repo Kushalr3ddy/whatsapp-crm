@@ -52,7 +52,7 @@ const TOOLS: readonly LlmTool[] = [
     parameters: {
       type: 'object',
       properties: {
-        to: { type: 'string', description: 'The contact\'s name exactly as the person wrote it, or their phone number with country code.' },
+        to: { type: 'string', description: 'The person to message: their NAME copied exactly as written in the instruction (for example "Test Phone Two"), or their phone number with country code. Never an id.' },
         text: { type: 'string', description: 'The final message, ready to send: short, polite, no placeholders like {{name}}.' }
       },
       required: ['to', 'text']
@@ -116,7 +116,7 @@ export async function runAiCommand(
   const system = [
     'You are the AI assistant of a WhatsApp CRM. A team member is asking you to run campaigns (bulk messages) or to message one contact.',
     'Do exactly what was asked, with the tools. Use only ids from the context below; never invent one. If the audience, number or campaign is unclear or missing, do not guess: reply in words asking what is needed.',
-    'To message one person use send_message with their name or number as written; write the whole message yourself.',
+    'To message one person use send_message: `to` is the person\'s name copied from the instruction (or their phone number), never an id; write the whole message yourself. Ids in the context belong only to numbers, tags, segments and campaigns.',
     'Never claim a campaign or message was sent unless a tool did it. Keep your reply to one or two sentences. Plain text.',
     'Write campaign text that is short, polite and varied: use {{name}} for the contact\'s name, and {option one|option two} for wording that can differ between people.',
     settings.instructions.trim() === '' ? '' : `The organisation's own instructions:\n${settings.instructions.trim()}`,

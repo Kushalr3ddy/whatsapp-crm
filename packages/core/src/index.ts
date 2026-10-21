@@ -1,6 +1,6 @@
 /** Domain logic. Depends on ports and the database, never on a concrete adapter. */
 export {
-  storeInboundMessage, markMessageSent, markMessageFailed, applyDeliveryStatus,
+  storeInboundMessage, markMessageSent, markMessageFailed, applyDeliveryStatus, sentMessageText,
   type InboundMessage, type StoredInbound
 } from './messages.js';
 

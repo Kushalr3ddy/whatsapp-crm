@@ -76,18 +76,21 @@ Then say in the final message which PRs are open and what the next session shoul
 
 ## ▶ Latest session (2026-10-21 afternoon and evening, the "AI speedrun"): read this first
 
-*(The section below, "2026-10-19 to 2026-10-21", is older and its "state" is out of date: #83 and #84 are merged and the stack is running.)*
+*(The section below, "2026-10-19 to 2026-10-21", is older and its "state" is out of date: #83 to #95 are merged.)*
 
 ### State in one paragraph
-`main` has everything through **#93** (the AI assistant, its queue, click feedback, the tutorial PDF, `dev:fast`). **#94** (`npm run llm:check`) is open
-and this docs and prompt PR follows it. The dev stack **is running** on his machine (API :3000, web :3001 in `next dev`, gateway) with
-`LLM_DRIVER=compatible` on **Groq** (`openai/gpt-oss-20b`; keys only in the git-ignored `.env`: `LLM_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`;
-`LLM_TIMEOUT_MS=90000`). His real number `kushal_test` was **relinked at 17:03 IST** and works. In his `hiring-studios` org the AI is **on**, consent
-accepted, and the chat with the other dev's number ("Test Phone Two") is **assigned to the assistant**, which has a recruiter script as its instructions.
+`main` has everything through **#95** (the AI assistant, queue, tutorial PDF, `dev:fast`, `llm:check`, the "lead the conversation" prompt, docs). **#96 is open** (branch
+`feat/ai-retry-and-non-text`): the **resend fix** for "Waiting for this message", the assistant's **reply to photos and voice notes**, the **`send_message` name-not-id fix**, and
+D-59 (file support in campaigns) raised to priority; it carries this handoff. The dev stack is **STOPPED** (brought down at the end of the session; Postgres is left running).
+Config: `LLM_DRIVER=compatible` on **Groq** (`openai/gpt-oss-20b`; keys only in the git-ignored `.env`: `LLM_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`; `LLM_TIMEOUT_MS=90000`).
+His real number `kushal_test` was relinked at 17:03 IST and works, and **advisory mode is ON for it** (he turned it on at 17:47: anti-ban enforcement is **off** for that number, so it sends past
+its quarantine and 48-hour soft-ban pause). In `hiring-studios` the AI is **on**, consent accepted, the chat with the other dev's number ("Test Phone Two") is **assigned to the assistant**,
+and the assistant's instructions are a recruiter script (confirm interest in a driver role, then name, city, years driving, licence, start date; hand over with a summary).
 
 ### What was built (all PRs titled `ai-speedrun:`; search git history for it)
 `@crm/llm` (any OpenAI-format endpoint plus Anthropic); AI settings and consent; a bot user; auto-reply on chats assigned to it; anti-ban warnings; campaign
-tools; `send_message`; Write with AI; the request queue (`ai_job`); `llm:check`. Migrations **0031, 0032, 0033** (run `npm run db:migrate`; the dev script does it
+tools; `send_message` (takes a **name, never an id**: Groq's small model once passed the number's id); Write with AI; the request queue (`ai_job`); `llm:check`; the **lead-the-conversation** prompt; a
+resend hook so a recipient's "Waiting for this message" clears (#96); one "please type that" reply to photos and voice notes (#96). Migrations **0031, 0032, 0033** (run `npm run db:migrate`; the dev script does it
 on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/CRM-user-tutorial.pdf`. Pins: D-4 (built), D-42 (partly), **D-81 to D-84**.
 
 ### Decisions he made this session (do not re-ask)
@@ -98,11 +101,40 @@ on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/C
 - The other dev's number (+91 99641 22631) is fine to message for tests. Provider-neutral model layer; the model is **not decided** (a meeting); Groq is the working default now.
 - Every commit and PR for this work starts `ai-speedrun:`. He merges PRs himself; once he explicitly said "merge it" and I merged #93 after green checks.
 - Docs: a tutorial **PDF with screenshots** of the whole platform (not markdown, not AI-only).
+- **File support in campaigns is back at priority** (D-59, first slice: one image or GIF with the message as its caption). Do this after the AI fixes in flight.
 
-### The dev environment right now
-- Stack **running**, started with `npm run dev:all` (output in a scratchpad file, **not** in `.dev-logs/`: see the gotcha). Web is in `next dev`; `npm run dev:fast`
-  serves a production build (fast, but see D-83). A demo org **"Demo Co"** (`demo-tutorial`, `demo@example.test`) holds invented data for screenshots; its password is the default in `scripts/tutorial-shots.mjs` (local database only).
-- The test database needs `npm run db:migrate:test` after pulling (0031 to 0033). Playwright reuses a running stack on :3001; it can leave servers running afterwards.
+### Bring the stack up and test again (do this first in the next chat)
+The stack is **down**. Postgres (container `whatsapp-crm-dev-data`, port 5434) is still up. A demo org **"Demo Co"** (`demo-tutorial`, `demo@example.test`; password is the default in
+`scripts/tutorial-shots.mjs`, local only) holds invented data for screenshots. His real org is `hiring-studios`, admin `developer@hiringstudios.com` (his own password: he signs in himself).
+
+```bash
+cd ~/everything/whatsapp-crm
+git checkout main && git pull          # once #96 is merged; until then: git checkout feat/ai-retry-and-non-text
+nohup npm run dev:all > /tmp/stack.out 2>&1 &    # API :3000, gateway, web :3001; migrates first. NEVER send the output into .dev-logs/
+```
+Then check, before anything else:
+```bash
+curl -s -o /dev/null -w "web %{http_code}\n" localhost:3001/login          # 200
+curl -s -o /dev/null -w "api %{http_code}\n" localhost:3000/health         # 200
+psql "$(grep ^DATABASE_URL= .env | cut -d= -f2-)" -At -c "select si.status, si.enforcement, cs.connection_state from sender_identity si join channel_session cs on cs.sender_identity_id=si.id where si.label='kushal_test'"
+# want: <active or quarantined>|advisory|open
+```
+**The live test (needs the other dev, +91 99641 22631, to message the `kushal_test` number):**
+1. Sign in at http://localhost:3001 as the hiring-studios admin → Inbox → "Test Phone Two": the Assignee must say **AI assistant** (set it if not). AI assistant page: on, consent ticked.
+2. He sends a text: the assistant should answer within seconds and **ask the next recruiter question** (name, then city, years driving, licence, start date). He answers; it carries on. After the last answer it hands over:
+   the chat becomes Unassigned with a note summarising his answers.
+3. He sends a **photo or voice note**: one reply, "I can only read text messages here, so could you type that out for me?", and not again within 10 minutes.
+4. Ask him whether any message shows **"Waiting for this message"** on his phone. If it does, `grep -a "resending a message" .dev-logs/gateway.log` should show the gateway answering his retry request
+   (before #96 it said `recv retry request, but message not available`).
+5. On the AI assistant page, type *"Message Test Phone Two: ask which city he lives in"* and watch the queue (spinner, then done); the message should name him, not an id.
+6. See what happened: `select direction, sent_by, status, created_at from message where conversation_id='fa838cd9-4f8a-4a44-887e-0c93e090a676' order by created_at desc limit 8;` and `select kind, outcome, reason from ai_run order by created_at desc limit 8;`.
+
+**If nothing he sends arrives** (number shows Linked, `grep -c 'failed to decrypt' .dev-logs/gateway.log` high, "No matching sessions"): that is RB-13 / D-82. Fix: Linked numbers → **Unlink / reset this number** → **Scan a QR** on the phone
+(WhatsApp → Settings → Linked Devices → Link a device). **Do not restart the gateway to "try again"**: that is what broke it. To change code, take the stack **down**, edit, bring it **up**; or edit knowing every save to `packages/core`,
+`packages/channels` or `apps/gateway` restarts the gateway under `tsx watch`.
+**Bring it down:** Ctrl-C in its terminal, or `kill -TERM $(pgrep -f "bash infra/scripts/dev-up.sh")` (its trap stops the API, gateway and web; do not `kill -9`). Then `ss -ltn | grep -E ':3000|:3001'` should be empty.
+**When testing is over:** Linked numbers → `kushal_test` → **Advisory mode… → Back to enforcing** (it is a real number; enforcement is off now).
+Tests: `npm run db:migrate:test` after pulling (0031 to 0033); Playwright reuses a running stack on :3001 and may leave servers running; the two models: `npm run llm:check` (switch back to Gemini with the lines in `docs/18-providers.md`).
 
 ### New gotchas (paid for the hard way)
 - **Never restart the gateway while testing** (D-82, RB-13). Under `tsx watch` every saved edit to a file the gateway imports (including `packages/core`) restarts it; many restarts
@@ -113,14 +145,23 @@ on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/C
 - A model that answers text may not call tools; check with `npm run llm:check` before choosing one. Models misreport themselves (`gpt-oss-20b` called itself "ChatGPT").
 - `gh pr edit` can fail on GitHub's Projects (classic) deprecation: use `gh api -X PATCH repos/<owner>/<repo>/pulls/<n>`.
 - The seeded browser specs leave state behind when a run fails midway (e.g. the seeded "Asha Rao" chat left *closed*); reset it before blaming code.
+- **The health scorer can stamp a 48-hour soft-ban pause from false signals.** After the gateway restarts, the burst of decrypt failures and messages his phone could not read (they count
+  as undelivered) took `kushal_test` to *quarantined* with `recovery_until` two days ahead, and every send is held. The clean ways out: an admin turns **Advisory mode** on for that number
+  (Linked numbers, with a reason; audited), or the pause is cleared in the database the way `scripts/local-seed.ts` does for the fake number (`recovery_incident`, `recovery_started_at`,
+  `recovery_until` to NULL, `status='active'`), or wait. Ask him first; it is a real number.
+- **"Waiting for this message" on the other phone** means it could not decrypt what we sent and asked for a resend; the gateway now answers those for text (`resendText`). The log line to look
+  for is `recv retry request, but message not available` (should now be `resending a message the recipient could not decrypt`).
+- **Advisory mode is ON for `kushal_test`** (his reason in the audit log: "THE END USERS WANT AI IMPLEMENTED FAST ASF"). The gateway logs `advisory mode: sending past an anti-ban hold (quarantined)` for each send. Turn it back to enforcing when testing is over.
+- **A small model can confuse ids with names.** `gpt-oss-20b` passed the number's id as the contact in `send_message`; Gemini did not. The tool text now says "NAME, never an id"; keep `llm:check` (and a live check) in the loop when switching models.
+- **The assistant skipped photos silently** until #96; it now asks for text once. A photo followed by a text message is answered by the text reply, not the canned one.
 - The assistant's replies are paced by the gateway (a human-like delay), so a reply can take about 20 s to leave although it was written in 1 s.
 
 ### Ask him first (next session)
-1. Merge **#94** and this PR? Delete old branches (keep the last three; list them first, per the handoff rule)?
-2. Model: keep Groq, or try `gemini-3.5-flash-lite`, or Groq's 120b? (`npm run llm:check -- --groq-model openai/gpt-oss-120b`.)
-3. Guardrails now that the other dev has tested (D-81), and **auto-assign new chats to the assistant** (D-84)?
-4. Pin or fix **D-82** (restart-safe WhatsApp sessions) before more testing? And D-83 (`dev:fast` stale screens)?
-5. Keep the "Demo Co" org in his dev database, or remove it? The uncommitted notes in `docs/21-deferred.md` (D-80 and others, from earlier sessions) are still uncommitted: commit them?
+1. Merge **#96**? (Green CI first.) Delete old branches, keeping the last three? (List them first; none is deleted without his yes.)
+2. Did the other dev still see "Waiting for this message" after #96? Did the assistant lead the conversation through all five questions and hand over with a summary?
+3. **File support in campaigns (D-59) is the priority piece** (one image or GIF per campaign, the message as its caption; the assistant's `create_campaign` can attach an existing file): start it? Mockup first, as he asked for D-21?
+4. Guardrails (D-81) and auto-assigning new chats to the assistant (D-84) after the other dev's feedback? Fix **D-82** (restart-safe WhatsApp session, no false quarantine) before more testing?
+5. Model: stay on Groq `gpt-oss-20b`, try `gpt-oss-120b`, or Gemini? Keep the "Demo Co" org? Commit his earlier uncommitted notes in `docs/21-deferred.md`?
 
 ## ▶ Latest session (2026-10-19 to 2026-10-21): older; superseded by the section above
 
