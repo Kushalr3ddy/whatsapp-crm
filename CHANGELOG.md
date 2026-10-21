@@ -19,7 +19,7 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   **auto-reply** on chats assigned to the assistant (#88), anti-ban warnings in the thread with an admin do-not-contact override (#89),
   **campaign tools** and Write with AI (#90, migration 0032), click feedback and a faster layout (#91), `send_message` (#92), and the **AI request
   queue** with its panel, spinner and Cancel, `npm run dev:fast` and the **tutorial PDF** (#93, a `[checkpoint]`, migration 0033).
-- **Merged #94** (`npm run llm:check`: compares models for speed, steadiness and tool calling) and **#95** (the lead-the-conversation prompt and the docs below). **Open: #96.**
+- **Merged #94** (`npm run llm:check`: compares models for speed, steadiness and tool calling) and **#95** (the lead-the-conversation prompt and the docs below). **#96 merged too** (resend hook, non-text reply, `send_message` name fix, D-59 priority, handoff).
 - **The assistant now runs on Groq** (`openai/gpt-oss-20b`, 0.5 to 0.9 s a call) instead of Gemini (8 to 30 s, one 503): `LLM_DRIVER=compatible` with
   `LLM_BASE_URL=https://api.groq.com/openai/v1`. The Gemini key is kept in `.env` as `GEMINI_API_KEY`; both keys live only in the git-ignored `.env`.
 - **Proven live on his real linked number** (`kushal_test`, to the other dev's number): the assistant opened a chat, answered the replies within
@@ -1137,7 +1137,7 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 In the order Kushal set, remaining (2026-10-21). *Pinned* items are deliberately held:
 
 00. **PRIORITY (Kushal, 2026-10-21): D-59, file support in campaigns first** (one image or GIF per campaign, the message as its caption; the assistant's `create_campaign` can attach an existing file).
-0. **AI (2026-10-21):** merge **#96**; then Kushal's order: **D-81** guardrails (facts, STOP words, approval mode) and **D-84** (goal field,
+0. **AI (2026-10-21):** (#96 is merged) Kushal's order: **D-81** guardrails (facts, STOP words, approval mode) and **D-84** (goal field,
    auto-assign new chats, follow-ups); **D-82** (flush the auth state on shutdown, detect the decrypt burst); **D-83** (stale screens on `dev:fast`). The
    assistant's chat with the other dev's number is still assigned to it on his dev stack; model choice (Groq vs Gemini vs another) is for a meeting.
 1. ~~**#83** (D-21)~~ merged; the browser run and phone-width look for it were not done.
