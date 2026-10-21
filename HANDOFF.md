@@ -74,7 +74,55 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
-## ▶ Latest session (2026-10-19 to 2026-10-21): read this first
+## ▶ Latest session (2026-10-21 afternoon and evening, the "AI speedrun"): read this first
+
+*(The section below, "2026-10-19 to 2026-10-21", is older and its "state" is out of date: #83 and #84 are merged and the stack is running.)*
+
+### State in one paragraph
+`main` has everything through **#93** (the AI assistant, its queue, click feedback, the tutorial PDF, `dev:fast`). **#94** (`npm run llm:check`) is open
+and this docs and prompt PR follows it. The dev stack **is running** on his machine (API :3000, web :3001 in `next dev`, gateway) with
+`LLM_DRIVER=compatible` on **Groq** (`openai/gpt-oss-20b`; keys only in the git-ignored `.env`: `LLM_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`;
+`LLM_TIMEOUT_MS=90000`). His real number `kushal_test` was **relinked at 17:03 IST** and works. In his `hiring-studios` org the AI is **on**, consent
+accepted, and the chat with the other dev's number ("Test Phone Two") is **assigned to the assistant**, which has a recruiter script as its instructions.
+
+### What was built (all PRs titled `ai-speedrun:`; search git history for it)
+`@crm/llm` (any OpenAI-format endpoint plus Anthropic); AI settings and consent; a bot user; auto-reply on chats assigned to it; anti-ban warnings; campaign
+tools; `send_message`; Write with AI; the request queue (`ai_job`); `llm:check`. Migrations **0031, 0032, 0033** (run `npm run db:migrate`; the dev script does it
+on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/CRM-user-tutorial.pdf`. Pins: D-4 (built), D-42 (partly), **D-81 to D-84**.
+
+### Decisions he made this session (do not re-ask)
+- "It needs to **just work for now, guardrails later**." No fact-checking, no hand-over-when-unsure, no STOP words yet (D-81). The assistant should **take over the
+  whole conversation** and lead it (D-84).
+- The assistant **creates, pauses, resumes and edits campaigns** and may start them only if an org switch (off by default) allows it; it answers **only chats assigned to it**;
+  per-message/per-campaign overrides only for the admin's do-not-contact; the hard anti-ban limits have no override.
+- The other dev's number (+91 99641 22631) is fine to message for tests. Provider-neutral model layer; the model is **not decided** (a meeting); Groq is the working default now.
+- Every commit and PR for this work starts `ai-speedrun:`. He merges PRs himself; once he explicitly said "merge it" and I merged #93 after green checks.
+- Docs: a tutorial **PDF with screenshots** of the whole platform (not markdown, not AI-only).
+
+### The dev environment right now
+- Stack **running**, started with `npm run dev:all` (output in a scratchpad file, **not** in `.dev-logs/`: see the gotcha). Web is in `next dev`; `npm run dev:fast`
+  serves a production build (fast, but see D-83). A demo org **"Demo Co"** (`demo-tutorial`, `demo@example.test`) holds invented data for screenshots; its password is the default in `scripts/tutorial-shots.mjs` (local database only).
+- The test database needs `npm run db:migrate:test` after pulling (0031 to 0033). Playwright reuses a running stack on :3001; it can leave servers running afterwards.
+
+### New gotchas (paid for the hard way)
+- **Never restart the gateway while testing** (D-82, RB-13). Under `tsx watch` every saved edit to a file the gateway imports (including `packages/core`) restarts it; many restarts
+  diverged the saved WhatsApp encryption sessions and nothing was received for 1 h 45 m. Fix: unlink and relink. Use `bash infra/scripts/dev-up.sh --no-gateway` to restart only API and web.
+- **Never redirect the stack's output into `.dev-logs/`**: `dev-up.sh` tails that folder, so it reads its own output in a loop (two logs reached 1.1 GB and 345 MB, load average 8).
+- **Appending to `.env`: end the last line first** (`[ -n "$(tail -c1 .env)" ] && printf '\n' >> .env`), or the new line glues onto the last value (it glued onto the API key once).
+- `Next` refuses a production build with the `.env`'s `NODE_ENV=development`; the `web:prod` script sets `NODE_ENV=production` for the build and the start only.
+- A model that answers text may not call tools; check with `npm run llm:check` before choosing one. Models misreport themselves (`gpt-oss-20b` called itself "ChatGPT").
+- `gh pr edit` can fail on GitHub's Projects (classic) deprecation: use `gh api -X PATCH repos/<owner>/<repo>/pulls/<n>`.
+- The seeded browser specs leave state behind when a run fails midway (e.g. the seeded "Asha Rao" chat left *closed*); reset it before blaming code.
+- The assistant's replies are paced by the gateway (a human-like delay), so a reply can take about 20 s to leave although it was written in 1 s.
+
+### Ask him first (next session)
+1. Merge **#94** and this PR? Delete old branches (keep the last three; list them first, per the handoff rule)?
+2. Model: keep Groq, or try `gemini-3.5-flash-lite`, or Groq's 120b? (`npm run llm:check -- --groq-model openai/gpt-oss-120b`.)
+3. Guardrails now that the other dev has tested (D-81), and **auto-assign new chats to the assistant** (D-84)?
+4. Pin or fix **D-82** (restart-safe WhatsApp sessions) before more testing? And D-83 (`dev:fast` stale screens)?
+5. Keep the "Demo Co" org in his dev database, or remove it? The uncommitted notes in `docs/21-deferred.md` (D-80 and others, from earlier sessions) are still uncommitted: commit them?
+
+## ▶ Latest session (2026-10-19 to 2026-10-21): older; superseded by the section above
 
 ### State in one paragraph
 `main` has everything through **#82**. **#83 is the only open PR** (import wizard, see below) and carries this handoff.

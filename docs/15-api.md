@@ -225,6 +225,16 @@ qualifies). Errors use the problem shape above.
 | `GET /senders/:id/health-events` | `senders:read` | The number's health timeline (restrictions raised/cleared, possible bans), newest first |
 | `GET /senders` | `senders:read` | Now includes `enforcement`, `advisory*`, `restrictionState`, `restrictionSince` |
 | `POST /segments` | `contacts:write` | Now takes `saved` (default `true`); `false` makes a one-off inline audience that is not listed |
+| `PATCH /campaigns/:id` | `messages:send` | `{ name?, body? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise) |
+| `GET/PUT /ai/settings` | admin (session) | The AI assistant's switch, instructions, daily message limit, `mayStartCampaigns`, consent. `PUT` refuses to switch on until `acceptConsent` has been sent once (`422 AI_RULE`); creates the assistant's user the first time |
+| `GET /ai/status` | `conversations:read` | `{ enabled }`, so screens know whether to offer the helpers |
+| `POST /ai/jobs` | `messages:send` (`command` = admin session or API key) | `{ kind: command\|draft, input }` puts a request in the AI queue; `202 { id }`. `429 QUEUE_FULL` at 20 waiting |
+| `GET /ai/jobs` | `messages:send` | The queue: waiting (with `position`), running, and the last 24 h. Admins and API keys see everyone's; anyone else only their own |
+| `POST /ai/jobs/:id/cancel` | `messages:send` | Cancels a **queued** request (`409 NOT_QUEUED` once started) |
+| `POST /ai/commands` | admin session or `messages:send` key | The same instruction run inline (waits for the model): `{ instruction }` returns `{ message, actions[] }`. Tools: create/pause/resume/edit campaign, `send_message`. Never lifts a gate; starts a campaign only if the org allows it |
+| `POST /ai/draft-campaign-text` | `messages:send` | `{ goal }` returns `{ body }`: wording for the campaign form. Creates and sends nothing |
+| `GET /ai/conversations/:id/notice` | `conversations:read` | Why the assistant is stuck on a chat (`held`, `do_not_contact`, `daily_cap`, `model_error`), or `null` |
+| `POST /ai/conversations/:id/allow-reply` | admin (session) | `{ reason }` (10+ chars): lets the assistant answer the contact's latest message although they are do-not-contact. One reply; audited |
 
 ---
 

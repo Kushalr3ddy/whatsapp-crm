@@ -23,7 +23,7 @@ is not re-proposed.
 | D-1 | A lightweight database browser (Drizzle Studio or similar) | 📌 pinned |
 | D-1b | Drizzle's query builder (as opposed to Drizzle itself) | 📌 pinned |
 | D-3 | Licence | 📌 pinned |
-| D-4 | The AI agent (F12) | 📌 pinned |
+| D-4 | The AI agent (F12) | ✅ built 2026-10-21 (settings, auto-reply, campaign tools, queue); its guardrails are D-81 |
 | D-5 | Baileys 7.x | 📌 pinned |
 | D-6 | UUIDv7 primary keys | 📌 pinned |
 | D-7 | Turborepo, and splitting the queue driver | 📌 pinned |
@@ -59,7 +59,7 @@ is not re-proposed.
 | D-39 | Per-transport pacing policy and the Meta inbound/status webhooks | 📌 pinned |
 | D-40 | Custom fields in imports, segments, and exports | ◐ partly built (import into fields) |
 | D-41 | The gateway runs outside row-level security | ✅ done |
-| D-42 | Human takeover from an AI agent, inside a conversation | 📌 pinned |
+| D-42 | Human takeover from an AI agent, inside a conversation | ◐ partly built: assigning the chat to a person is the takeover; no pause state |
 | D-43 | Extra restriction-alert channels (webhook, email, canary self-test) | 📌 pinned |
 | D-44 | Baileys 7 upgrade | 📌 pinned |
 | D-45 | Link a `@lid` address to its phone number | ✅ done |
@@ -200,7 +200,16 @@ licence then needs every contributor's agreement. Decide before, not after.
 
 ---
 
-## D-4 · The AI agent (F12)
+## D-4 · The AI agent (F12) — ✅ built 2026-10-21 (Kushal's "AI speedrun"; guardrails left for D-81)
+
+**Built (PRs #86 to #93, all titled `ai-speedrun:`):** a provider-neutral model layer (`@crm/llm`: an OpenAI-format driver that covers
+Gemini, Groq, OpenAI, OpenRouter and Ollama, plus native Anthropic; `none` stays the default); settings with a consent box; a bot user
+that can own chats but cannot sign in; **auto-reply** on open chats assigned to it, with a hand-over tool; **campaign tools** (create,
+pause, resume, edit; start only if the org allows it) and a one-contact `send_message`; "Write with AI" on the campaign form; the
+**request queue** (one at a time per org, cancel while waiting); anti-ban warnings in the thread with an admin-only do-not-contact
+override. User guide: `docs/CRM-user-tutorial.pdf`. Design and the list of what exists: `docs/06-features/F12-ai-agent.md`.
+
+**Original reasons it was parked (kept for the record):**
 
 **Why parked:** the heaviest dependency, the least certain value, and an unresolved privacy
 question. A self-hosted model needs 5–7 GB of RAM; a hosted one sends contact data to a third
@@ -1525,7 +1534,11 @@ the moment unrelated customers share one. Pinned as priority by Kushal.
 
 ---
 
-## D-42 · Human takeover from an AI agent, inside a conversation
+## D-42 · Human takeover from an AI agent, inside a conversation — ◐ partly built 2026-10-21
+
+> **2026-10-21:** the working version is simpler than the design below. A chat belongs to whoever is its assignee, and the assistant only
+> answers an **open chat assigned to it**, so assigning the chat to a person (or resolving it) is the takeover, and a reply it was
+> still writing is dropped. Not built: the `automation_state` column, hand-back notes for the AI to read, and a "Take over" button.
 
 **What:** when an AI agent is talking with a contact (a candidate, say), a person can stop it and continue the chat
 from there, and optionally hand it back. Requested by an end user, 2026-10-09.
@@ -2464,5 +2477,58 @@ Split out of D-70 (wish 2). An admin picks once which fields show as columns on 
 added, and any custom field such as city or experience), instead of the fixed columns D-70 ships with. Needs a per-organisation
 setting (list of column keys and their order), an admin-only screen or panel to change it, and the list reading it. Custom fields
 already exist (D-40, PR #56); sorting by a chosen column is the follow-on from D-70. Related: D-70, D-72 (columns on a phone).
+
+Pinned to come back to; not started.
+
+---
+
+## D-81 · AI assistant guardrails — pinned (Kushal, 2026-10-21: "it needs to just work for now, we can set up guardrails later")
+
+**What:** today the assistant has only the safety that every send already has (do-not-contact, pacing, the anti-ban gates, the daily
+message limit, a consent box, customer text kept out of its instructions). Nothing limits what it says. **Seen on 2026-10-21:** asked how
+much experience was needed, it answered "2 to 5 years", which no one had told it; it also listed interview documents nobody had told it.
+
+**To build, when it comes back:**
+- *Facts:* answer only from what the organisation wrote (a knowledge field or uploaded notes); otherwise say a colleague will confirm. The
+  first draft of this rule was written and removed on 2026-10-21 because it made the assistant hand chats over instead of carrying on.
+- *Opt-out words:* "STOP", "unsubscribe" and the local-language packs mark the contact do-not-contact (F9 is where it was planned) before any reply.
+- *Approval mode:* a switch where the assistant drafts and a person approves, per organisation or per chat.
+- *Limits:* topics it may not discuss, a spend cap in money not only messages, a quiet-hours rule, a reply-length cap.
+- *Tests:* a set of nasty prompts (injection, pay, legal, abuse) that must be refused or handed over.
+
+**Cost of deferring:** a real customer can be told something false in the organisation's name. Keep it to test chats until this lands.
+
+---
+
+## D-82 · A gateway restart can break the WhatsApp session — pinned (found 2026-10-21)
+
+**What happened:** after many restarts of the gateway in one afternoon (each saved edit restarts it under `tsx watch`), the saved encryption
+sessions for the linked number stopped matching WhatsApp's. 213 decrypt failures ("No matching sessions found", "Key used already",
+"Message counter error"); the number showed linked but nothing arrived from 15:17 to 17:03; the messages in between are not in the CRM.
+Deleting one contact's sessions fixed sending to them but not receiving. **Unlink and relink (a new QR) fixed it.**
+
+**Probable cause (not proven):** the stored session state is behind what was already acknowledged to WhatsApp because the process is killed
+before its last writes land. **To do:** flush the auth state on SIGTERM; refuse to start a second gateway on the same number; detect a burst of
+"No matching sessions" and say so on the Linked numbers page with a "Reset" button (relink), instead of showing "Linked". **Until then:** do not
+restart the gateway while testing; `bash infra/scripts/dev-up.sh --no-gateway` restarts only the API and web. Runbook entry: `docs/14-runbooks.md`.
+
+---
+
+## D-83 · `npm run dev:fast` leaves some screens stale after an action — pinned (found 2026-10-21)
+
+**What:** against the production build (`next start`) six browser specs fail that pass against `next dev` and in CI: `broadcast-flow`,
+`bulk-tag-flow`, `contacts-dates`, `contacts-tags`, `fields-and-status`, `seeded-pages`. The pattern is "do something, the page does not
+refresh": a removed custom field or tag stays on screen until a reload. Probably the client router cache. Not investigated. **Until fixed,
+use `dev:fast` to look at pages and demo, and `dev:all` to test flows.**
+
+---
+
+## D-84 · The AI runs whole conversations — pinned (Kushal, 2026-10-21: it "should take over the entire conversation")
+
+**Done so far:** the system text tells the assistant to lead (answer, then ask one question toward the goal in the organisation's
+instructions, never repeat a question already answered) and to hand over with a summary only when asked or when the goal is done.
+**Not built:** a *Goal* field in the AI settings (today the goal lives in the free-text instructions); **auto-assigning new chats** to the
+assistant (today a person assigns each chat); **follow-ups** when the customer goes quiet; stopping rules (a maximum number of messages before a
+person looks); a summary note at hand-over that is a real field, not text in the reason.
 
 Pinned to come back to; not started.
