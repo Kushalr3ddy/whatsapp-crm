@@ -63,3 +63,19 @@ describe('STORAGE_DRIVER and the S3 settings', () => {
     expect(loadConfig({ ...minio, S3_ENDPOINT: 'http://localhost:9000' }).STORAGE_DRIVER).toBe('minio');
   });
 });
+
+describe('LLM_DRIVER and the model settings', () => {
+  it('defaults to none and needs nothing else', () => {
+    expect(loadConfig(base).LLM_DRIVER).toBe('none');
+  });
+
+  it('names the missing model and key at boot', () => {
+    expect(() => loadConfig({ ...base, LLM_DRIVER: 'gemini' })).toThrow(/LLM_MODEL/);
+    expect(() => loadConfig({ ...base, LLM_DRIVER: 'gemini', LLM_MODEL: 'm' })).toThrow(/LLM_API_KEY/);
+    expect(loadConfig({ ...base, LLM_DRIVER: 'ollama', LLM_MODEL: 'm' }).LLM_DRIVER).toBe('ollama');
+  });
+
+  it('needs a base URL for compatible', () => {
+    expect(() => loadConfig({ ...base, LLM_DRIVER: 'compatible', LLM_MODEL: 'm', LLM_API_KEY: 'k' })).toThrow(/LLM_BASE_URL/);
+  });
+});
