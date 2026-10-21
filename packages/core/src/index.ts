@@ -25,6 +25,11 @@ export {
 } from './team.js';
 
 export {
+  getAiSettings, saveAiSettings, AiSettingsRuleError,
+  type AiSettings, type AiSettingsChange
+} from './ai-settings.js';
+
+export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
   type AuditActor, type AuditEntry, type ActorType
 } from './audit.js';

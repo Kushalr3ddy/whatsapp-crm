@@ -12,6 +12,8 @@ export interface Member {
   readonly role: 'admin' | 'agent';
   readonly status: 'active' | 'disabled';
   readonly lastLoginAt: string | null;
+  /** True for the org's AI assistant: listed so it can be seen, but it has no password and cannot be edited here. */
+  readonly isBot: boolean;
 }
 
 /** The person is not in this org (or does not exist). Never says which, so ids cannot be probed. */
@@ -32,7 +34,7 @@ export async function listMembers(db: Database, orgId: string): Promise<Member[]
     await setTenant(tx, orgId);
     const rows = await tx.execute(sql`
       SELECT u.id AS "userId", u.email, u.display_name AS "displayName", m.role, u.status,
-             u.last_login_at AS "lastLoginAt"
+             u.last_login_at AS "lastLoginAt", u.is_bot AS "isBot"
       FROM org_membership m
       JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${orgId}
@@ -56,10 +58,12 @@ export async function changeMember(
   return db.transaction(async (tx) => {
     await setTenant(tx, orgId);
     const found = await tx.execute(sql`
-      SELECT m.role, u.status, u.email FROM org_membership m JOIN app_user u ON u.id = m.user_id
+      SELECT m.role, u.status, u.email, u.is_bot AS "isBot" FROM org_membership m JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${orgId} AND m.user_id = ${userId} FOR UPDATE OF m`);
-    const current = (found as unknown as Array<{ role: 'admin' | 'agent'; status: 'active' | 'disabled'; email: string }>)[0];
+    const current = (found as unknown as Array<{ role: 'admin' | 'agent'; status: 'active' | 'disabled'; email: string; isBot: boolean }>)[0];
     if (current === undefined) throw new MemberNotFoundError();
+    // The assistant is switched on and off in its own settings, and is never an admin.
+    if (current.isBot) throw new MemberRuleError('The AI assistant is managed in the AI assistant settings, not here.');
 
     const newRole = change.role ?? current.role;
     const newStatus = change.status ?? current.status;
@@ -100,7 +104,7 @@ export async function changeMember(
 
     const row = await tx.execute(sql`
       SELECT u.id AS "userId", u.email, u.display_name AS "displayName", m.role, u.status,
-             u.last_login_at AS "lastLoginAt"
+             u.last_login_at AS "lastLoginAt", u.is_bot AS "isBot"
       FROM org_membership m JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${orgId} AND m.user_id = ${userId}`);
     return (row as unknown as Member[])[0]!;
@@ -118,9 +122,13 @@ export async function resetMemberPassword(
   const email = await db.transaction(async (tx) => {
     await setTenant(tx, orgId);
     const rows = await tx.execute(sql`
-      SELECT u.email FROM org_membership m JOIN app_user u ON u.id = m.user_id
+      SELECT u.email, u.is_bot AS "isBot" FROM org_membership m JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${orgId} AND m.user_id = ${userId}`);
-    return (rows as unknown as Array<{ email: string }>)[0]?.email;
+    return (rows as unknown as Array<{ email: string; isBot: boolean }>)[0];
+  }).then((r) => {
+    // A password on the assistant would let someone sign in as it.
+    if (r?.isBot === true) throw new MemberRuleError('The AI assistant has no password and cannot sign in.');
+    return r?.email;
   });
   if (email === undefined) throw new MemberNotFoundError();
   const result = await setPassword(db, hasher, email, newPassword, actor);

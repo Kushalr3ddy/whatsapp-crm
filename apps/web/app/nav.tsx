@@ -58,6 +58,10 @@ const TABS: Tab[] = [
     icon: <Icon><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M17 8v6M14 11h6" /></Icon>
   },
   {
+    href: '/ai', label: 'AI assistant', adminOnly: true,
+    icon: <Icon><rect x="4" y="8" width="16" height="11" rx="3" /><path d="M12 8V4.5M9 13.5h.01M15 13.5h.01M9.5 16.5h5" /></Icon>
+  },
+  {
     href: '/security', label: 'Security',
     icon: <Icon><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Icon>
   },

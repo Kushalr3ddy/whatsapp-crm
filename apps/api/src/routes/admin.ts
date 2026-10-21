@@ -214,6 +214,10 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such person in this organisation.'));
         return;
       }
+      if (error instanceof MemberRuleError) {
+        res.status(409).json(problem(req, 409, 'TEAM_RULE', error.reason));
+        return;
+      }
       throw error;
     }
   });

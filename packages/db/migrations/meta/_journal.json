@@ -218,6 +218,13 @@
       "when": 1792430062895,
       "tag": "0030_message_media_error",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792568166397,
+      "tag": "0031_ai_assistant",
+      "breakpoints": true
     }
   ]
 }

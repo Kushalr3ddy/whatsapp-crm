@@ -89,6 +89,14 @@ export const TABLE_NOTES: Record<string, TableNote> = {
     group: 'Inbox',
     purpose: 'Who has a chat open right now, refreshed by a heartbeat every few seconds. Throwaway rows, never history.'
   },
+  ai_setting: {
+    group: 'Campaigns',
+    purpose: 'The AI assistant’s switch for an org: on or off, its instructions, a daily message limit, and who accepted the data-sharing note. Off until an admin accepts.'
+  },
+  ai_run: {
+    group: 'Audit and health',
+    purpose: 'One row each time the AI assistant sends, tries, or is held back (and why), with the model and token counts, so its work and cost can be checked.'
+  },
   campaign: {
     group: 'Campaigns',
     purpose: 'A bulk send: the message, the number it goes from, its audience, its state (draft, running, paused…) and pacing results.'
