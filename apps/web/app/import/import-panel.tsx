@@ -133,7 +133,7 @@ export function ImportPanel() {
     setUpload(draft.upload); setPhones(draft.phones ?? (draft.phone === '' ? [] : [draft.phone])); setName(draft.name);
     setFirst(draft.first ?? ''); setLast(draft.last ?? ''); setSkipPersonal(draft.skipPersonal ?? true); setEmail(draft.email);
     setTagName(draft.tagName); setKeep(draft.keep ?? []); setFileName(draft.fileName ?? ''); setSummary(draft.summary);
-    if (draft.committing && draft.summary?.committed !== true) setResumed(true);
+    if (draft.committing) setResumed(true);
     // The rows-to-fix box is not remembered, it is asked for again.
     const sm = draft.summary?.result;
     if (sm !== undefined && (sm.errors > 0 || (sm.warnings ?? 0) > 0)) {
