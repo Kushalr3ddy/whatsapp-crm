@@ -14,6 +14,9 @@ const createTag = z.object({
   colour: z.string().trim().max(20).optional()
 });
 
+/** A calendar day, `YYYY-MM-DD`. */
+const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 /**
  * Body for tagging or untagging many contacts at once. The audience is a `target` resolved on the
  * server. It is a dry run unless `dryRun: false` is sent, like an import; `expectedCount` (the number a
@@ -23,7 +26,10 @@ const bulkBody = z.object({
   action: z.enum(['add', 'remove']),
   target: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('all') }),
-    z.object({ kind: z.literal('search'), q: z.string().trim().max(100).optional(), tagId: z.string().uuid().optional() }),
+    z.object({
+      kind: z.literal('search'), q: z.string().trim().max(100).optional(), tagId: z.string().uuid().optional(),
+      from: dayString.optional(), to: dayString.optional(), dateBy: z.enum(['added', 'imported']).optional()
+    }),
     z.object({ kind: z.literal('segment'), segmentId: z.string().uuid() }),
     z.object({ kind: z.literal('ids'), ids: z.array(z.string().uuid()).min(1).max(5000) })
   ]),

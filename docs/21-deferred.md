@@ -87,7 +87,7 @@ is not re-proposed.
 | D-67 | Save a number or name onto a `@lid` chat, like "add contact" in WhatsA | 🔺 priority · ◐ partly built (channels ignored; mapping investigated) |
 | D-68 | Campaign with no tagged people: tell the user to tag them first | ✅ done |
 | D-69 | Chats available inside the job portal (and any other web app) | 📌 pinned |
-| D-70 | Contacts page: refresh, admin-chosen columns, tidier layout, sort and  | ▶ working on it · ◐ partly built (tag fixes) |
+| D-70 | Contacts page: refresh, admin-chosen columns, tidier layout, sort and  | ▶ working on it · ◐ built: tag fixes, Refresh, expandable rows, date range and order · ⏳ columns chosen by an admin is D-79 |
 | D-71 | A big background picture for each tab | 📌 pinned |
 | D-72 | Mobile-friendly UI | 📌 pinned |
 | D-73 | "Message these people" right after an import | ◐ partly built (buttons) · ⏸ parked |
@@ -96,6 +96,7 @@ is not re-proposed.
 | D-76 | Notifications tab, number requests and approvals | 📌 pinned |
 | D-77 | Admin controls: user scopes and number limits | 📌 pinned |
 | D-78 | Email: invitations to join an organisation, via SMTP or an email API ( | 📌 pinned |
+| D-79 | Contacts: columns chosen by an admin for the whole team | 📌 pinned |
 
 ---
 
@@ -2342,7 +2343,9 @@ Pinned to come back to; not started.
 
 ✅ **Alpha-feedback issues 3-6 built 2026-10-20 (this PR, issues #66-#69). A "chip" here means a small rounded label on the screen, such as a tag name on a contact or in the Tag filter row:** the Tag many at once selects fit their box; a "No tag" option explains what it means; a tag chip shows it is loading and is marked current; with a tag filter on, the page suggests starting a campaign and names any campaign already using the tag (`GET /campaigns?tagId=`); removing a tag asks "Are you sure?" first. The rest of D-70 (refresh, admin-chosen columns, layout, date sort and search) is still open.
 
-**2026-10-20: work on this now.** Built: the tag fixes. Still to do: a refresh button, admin-chosen columns, a tidier layout, and sort and search by date added or imported.
+**2026-10-20: work on this now.** Built: the tag fixes.
+
+✅ **Built 2026-10-21 (PR 1 of D-70, Kushal's decisions):** a **Refresh** button; the list is a line of columns (name, phone/email, tags, added) where each row **opens** to show the rest (adding a tag, do-not-contact, last imported, custom fields); a **Dates and order** box to limit by the day *added* or *last imported* (from / to, both included) and to order by newest, oldest, last imported or name. **Sorting and searching stay on the server** (the browser-side SQLite idea, wish 5, was set aside by Kushal): `GET /contacts` takes `from`, `to`, `dateBy` and `sort`, and returns `lastImportedAt`. The date range is part of the one shared rule (`searchPredicate`), so "tag everyone matching the current filter" tags exactly the people listed. Limits: paging by cursor only follows "newest added first" (other orders show the first 50); days are read in the database's time zone (UTC); ordering by last imported adds up every import row, which is fine at alpha size and wants an index on `import_row(contact_id)` for a big book. **Admin-chosen columns** were moved to D-79.
 
 ---
 
@@ -2452,3 +2455,14 @@ any signed-in person can). Related: D-75, D-76, D-53, D-47 (limits per organisat
 ## D-78 · Email: invitations to join an organisation, via SMTP or an email API (decide later) — pinned (Kushal, 2026-10-20)
 
 Email is **optional** and the choice is **not made yet**: either plain **SMTP** (any mail server the operator already has) or an **email API** (a hosted sending service). What it would unlock: an **invite sent from the Team tab** (today an admin creates the account and hands over the password), a self-service password reset, and email verification at signup. Until a choice is made the product works without email, and the admin-created-account flow stays. Today there is no email code at all (`packages/providers/email` is empty, no email settings in `packages/shared/src/config.ts`). To decide: SMTP vs an API provider, who pays for sending, and what an invite looks like (a single-use link). Related: D-8, D-33 (the unbuilt email driver), D-43 (email alerts), D-47, and docs [`32`](32-onboarding-and-billing.md).
+
+---
+
+## D-79 · Contacts: columns chosen by an admin for the whole team — pinned (Kushal, 2026-10-21)
+
+Split out of D-70 (wish 2). An admin picks once which fields show as columns on the Contacts list for everyone (name, phone, tags,
+added, and any custom field such as city or experience), instead of the fixed columns D-70 ships with. Needs a per-organisation
+setting (list of column keys and their order), an admin-only screen or panel to change it, and the list reading it. Custom fields
+already exist (D-40, PR #56); sorting by a chosen column is the follow-on from D-70. Related: D-70, D-72 (columns on a phone).
+
+Pinned to come back to; not started.

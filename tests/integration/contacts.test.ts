@@ -125,6 +125,59 @@ const list = (q?: string, key = keyA) =>
     .get(`/api/v1/contacts${q !== undefined ? `?q=${encodeURIComponent(q)}` : ''}`)
     .set('Authorization', `Bearer ${key}`);
 
+const listBy = (qs: string, key = keyA) =>
+  request(app).get(`/api/v1/contacts?${qs}`).set('Authorization', `Bearer ${key}`);
+
+describe('ordering and date ranges', () => {
+  let priya: string;
+  let rahul: string;
+  beforeEach(async () => {
+    priya = (await post({ displayName: 'Priya Sharma', phone: '+919876500100' })).body.data.id;
+    rahul = (await post({ displayName: 'Anil Verma', phone: '+919876500200' })).body.data.id;
+    await db.execute(sql`UPDATE contact SET created_at = '2026-01-10T12:00:00Z' WHERE id = ${priya}`);
+    await db.execute(sql`UPDATE contact SET created_at = '2026-03-05T12:00:00Z' WHERE id = ${rahul}`);
+  });
+
+  const names = (r: { body: { data: Array<{ displayName: string }> } }) => r.body.data.map((c) => c.displayName);
+
+  it('orders newest first by default, oldest first, or by name', async () => {
+    expect(names(await listBy(''))).toEqual(['Anil Verma', 'Priya Sharma']);
+    expect(names(await listBy('sort=added_asc'))).toEqual(['Priya Sharma', 'Anil Verma']);
+    expect(names(await listBy('sort=name_asc'))).toEqual(['Anil Verma', 'Priya Sharma']);
+  });
+
+  it('limits by the day added, both ends included', async () => {
+    expect(names(await listBy('from=2026-03-05'))).toEqual(['Anil Verma']);
+    expect(names(await listBy('to=2026-01-10'))).toEqual(['Priya Sharma']);
+    expect(names(await listBy('from=2026-01-10&to=2026-03-05'))).toHaveLength(2);
+    expect(names(await listBy('from=2026-02-01&to=2026-02-28'))).toEqual([]);
+  });
+
+  it('refuses a date that is not a day', async () => {
+    expect((await listBy('from=yesterday')).status).toBe(422);
+  });
+
+  it('limits and orders by the day last imported, and shows it', async () => {
+    const run = (await db.execute(sql`
+      INSERT INTO import_run(org_id, byte_size, sha256, storage_key, created_at)
+      VALUES (${orgA}, 1, 'a', 'k', '2026-04-20T09:00:00Z') RETURNING id`)) as unknown as Array<{ id: string }>;
+    await db.execute(sql`
+      INSERT INTO import_row(import_run_id, org_id, row_number, outcome, contact_id)
+      VALUES (${run[0]!.id}, ${orgA}, 1, 'created', ${priya})`);
+    const inRange = await listBy('dateBy=imported&from=2026-04-01&to=2026-04-30');
+    expect(names(inRange)).toEqual(['Priya Sharma']);
+    expect(inRange.body.data[0].lastImportedAt).toContain('2026-04-20');
+    expect(names(await listBy('dateBy=imported&from=2026-05-01'))).toEqual([]);
+    expect(names(await listBy('sort=imported_desc'))).toEqual(['Priya Sharma', 'Anil Verma']);
+  });
+
+  it('counts the same people the list shows', async () => {
+    const c = await request(app).get('/api/v1/contacts/count?from=2026-03-01')
+      .set('Authorization', `Bearer ${keyA}`);
+    expect(c.body.data.total).toBe(1);
+  });
+});
+
 describe('listing and searching contacts', () => {
   beforeEach(async () => {
     await post({ displayName: 'Priya Sharma', phone: '+919876500100', email: 'priya@example.com' });

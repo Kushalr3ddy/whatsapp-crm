@@ -125,11 +125,33 @@ export async function setDncAction(formData: FormData): Promise<void> {
   await run(() => setDoNotContact(contactId, value, reason === '' ? undefined : reason));
 }
 
-/** Builds the `/contacts` URL to return to, keeping the current search and tag filter. */
-function backTo(q: string, tag: string, extra: Record<string, string>): string {
+/** The filter the person was looking at: search, tag and date range (sort is only an order, so it is not carried). */
+interface View { q: string; tag: string; from: string; to: string; dateBy: string }
+
+/** Reads the current view from the hidden inputs every bulk form carries. */
+function viewOf(formData: FormData): View {
+  const get = (k: string): string => String(formData.get(k) ?? '');
+  return { q: get('q'), tag: get('tag'), from: get('from'), to: get('to'), dateBy: get('dateBy') };
+}
+
+/** The bulk-tag target for "everyone matching the current view": the same rule the list uses. */
+function matchingTarget(v: View) {
+  return {
+    kind: 'search' as const,
+    ...(v.q !== '' ? { q: v.q } : {}), ...(v.tag !== '' ? { tagId: v.tag } : {}),
+    ...(v.from !== '' ? { from: v.from } : {}), ...(v.to !== '' ? { to: v.to } : {}),
+    ...((v.from !== '' || v.to !== '') && v.dateBy === 'imported' ? { dateBy: 'imported' as const } : {})
+  };
+}
+
+/** Builds the `/contacts` URL to return to, keeping the current search, tag and date filter. */
+function backTo(v: View, extra: Record<string, string>): string {
   const p = new URLSearchParams();
-  if (q !== '') p.set('q', q);
-  if (tag !== '') p.set('tag', tag);
+  if (v.q !== '') p.set('q', v.q);
+  if (v.tag !== '') p.set('tag', v.tag);
+  if (v.from !== '') p.set('from', v.from);
+  if (v.to !== '') p.set('to', v.to);
+  if ((v.from !== '' || v.to !== '') && v.dateBy === 'imported') p.set('dateBy', 'imported');
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   return `/contacts?${p.toString()}`;
 }
@@ -139,32 +161,30 @@ function backTo(q: string, tag: string, extra: Record<string, string>): string {
  * written: it redirects back with the count so the person confirms the real number before it happens.
  */
 export async function bulkTagPreviewAction(formData: FormData): Promise<void> {
-  const q = String(formData.get('q') ?? '');
-  const tag = String(formData.get('tag') ?? '');
+  const view = viewOf(formData);
   const bulkTag = String(formData.get('bulkTag') ?? '');
   const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
   const bulkScope = formData.get('bulkScope') === 'all' ? 'all' : 'matching';
-  if (bulkTag === '') redirect(backTo(q, tag, { bulkError: 'pick_tag' }));
+  if (bulkTag === '') redirect(backTo(view, { bulkError: 'pick_tag' }));
   // "No tag" was chosen on purpose: nothing is written, and the person is told what that means.
-  if (bulkTag === 'none') redirect(backTo(q, tag, { bulkError: 'no_tag' }));
+  if (bulkTag === 'none') redirect(backTo(view, { bulkError: 'no_tag' }));
 
   let matched: number;
   try {
     const target = bulkScope === 'all'
       ? { kind: 'all' as const }
-      : { kind: 'search' as const, ...(q !== '' ? { q } : {}), ...(tag !== '' ? { tagId: tag } : {}) };
+      : matchingTarget(view);
     matched = (await bulkTagContacts(bulkTag, { action: bulkAction, target, dryRun: true })).matched;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
-    redirect(backTo(q, tag, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
+    redirect(backTo(view, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
   }
-  redirect(backTo(q, tag, { bulkTag, bulkAction, bulkScope, bulkCount: String(matched) }));
+  redirect(backTo(view, { bulkTag, bulkAction, bulkScope, bulkCount: String(matched) }));
 }
 
 /** Applies the previewed bulk tag, refusing if the audience changed since the preview. */
 export async function bulkTagConfirmAction(formData: FormData): Promise<void> {
-  const q = String(formData.get('q') ?? '');
-  const tag = String(formData.get('tag') ?? '');
+  const view = viewOf(formData);
   const bulkTag = String(formData.get('bulkTag') ?? '');
   const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
   const bulkScope = formData.get('bulkScope') === 'all' ? 'all' : 'matching';
@@ -174,16 +194,16 @@ export async function bulkTagConfirmAction(formData: FormData): Promise<void> {
   try {
     const target = bulkScope === 'all'
       ? { kind: 'all' as const }
-      : { kind: 'search' as const, ...(q !== '' ? { q } : {}), ...(tag !== '' ? { tagId: tag } : {}) };
+      : matchingTarget(view);
     changed = (await bulkTagContacts(bulkTag, {
       action: bulkAction, target, dryRun: false, expectedCount: expected
     })).changed;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
-    redirect(backTo(q, tag, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
+    redirect(backTo(view, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
   }
   revalidatePath('/contacts');
-  redirect(backTo(q, tag, { bulkDone: String(changed), bulkAction }));
+  redirect(backTo(view, { bulkDone: String(changed), bulkAction }));
 }
 
 /** Tags (or untags) exactly the people ticked on the page, at once. */

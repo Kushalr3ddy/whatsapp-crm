@@ -11,6 +11,42 @@ import { PageHeader, EmptyState, initialsOf } from '../ui';
 import { TagChip } from './tag-chip';
 import { RemoveTag } from './remove-tag';
 
+/** What the person is looking at: search, tag, date range and order. Every link and form on the page carries it. */
+interface View {
+  q: string; tag: string; from: string; to: string;
+  dateBy: 'added' | 'imported';
+  sort: 'added_desc' | 'added_asc' | 'name_asc' | 'imported_desc';
+}
+
+const SORTS: ReadonlyArray<{ value: View['sort']; label: string }> = [
+  { value: 'added_desc', label: 'Newest added first' },
+  { value: 'added_asc', label: 'Oldest added first' },
+  { value: 'imported_desc', label: 'Most recently imported first' },
+  { value: 'name_asc', label: 'Name A to Z' }
+];
+
+/** The `/contacts` address for a view, changing only what `over` names; empty parts are left out. */
+function viewHref(v: View, over: Partial<View> = {}): string {
+  const n = { ...v, ...over };
+  const p = new URLSearchParams();
+  if (n.q !== '') p.set('q', n.q);
+  if (n.tag !== '') p.set('tag', n.tag);
+  if (n.from !== '') p.set('from', n.from);
+  if (n.to !== '') p.set('to', n.to);
+  if ((n.from !== '' || n.to !== '') && n.dateBy === 'imported') p.set('dateBy', 'imported');
+  if (n.sort !== 'added_desc') p.set('sort', n.sort);
+  const qs = p.toString();
+  return `/contacts${qs === '' ? '' : `?${qs}`}`;
+}
+
+/** A day like "21 Oct 2026", or a dash when there is none. */
+function day(iso: string | null): string {
+  if (iso === null) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
 /** Rendered per request — the search term and tag filter come from the query string. */
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +60,7 @@ export const dynamic = 'force-dynamic';
 export default async function ContactsPage(
   { searchParams }: {
     searchParams: Promise<{
-      q?: string; tag?: string; campaignError?: string;
+      q?: string; tag?: string; from?: string; to?: string; dateBy?: string; sort?: string; campaignError?: string;
       bulkTag?: string; bulkAction?: string; bulkScope?: string; bulkCount?: string;
       bulkDone?: string; bulkError?: string;
     }>;
@@ -34,6 +70,14 @@ export default async function ContactsPage(
   const { q, tag, campaignError } = sp;
   const query = typeof q === 'string' ? q : '';
   const activeTag = typeof tag === 'string' ? tag : '';
+  const view: View = {
+    q: query, tag: activeTag,
+    from: isDay(sp.from) ? sp.from : '', to: isDay(sp.to) ? sp.to : '',
+    dateBy: sp.dateBy === 'imported' ? 'imported' : 'added',
+    sort: SORTS.find((o) => o.value === sp.sort)?.value ?? 'added_desc'
+  };
+  const hasDates = view.from !== '' || view.to !== '';
+  const filtered = query !== '' || activeTag !== '' || hasDates;
 
   let contacts: Contact[] = [];
   let tags: Tag[] = [];
@@ -43,7 +87,7 @@ export default async function ContactsPage(
   let expired = false;
   try {
     [contacts, tags, senders, fields] = await Promise.all([
-      listContacts({ q: query, tag: activeTag }),
+      listContacts({ ...view }),
       listTags(),
       listSenders(),
       listCustomFields()
@@ -72,11 +116,12 @@ export default async function ContactsPage(
         title="Contacts"
         description={
           failure === null
-            ? `${String(contacts.length)}${contacts.length >= 50 ? '+' : ''} ${contacts.length === 1 ? 'person' : 'people'}${query !== '' || activeTag !== '' ? ' match' : ''}.`
+            ? `${String(contacts.length)}${contacts.length >= 50 ? '+' : ''} ${contacts.length === 1 ? 'person' : 'people'}${filtered ? ' match' : ''}.`
             : undefined
         }
         actions={
           <>
+            <a href={viewHref(view)} className="btn btn-sm" title="Load the list again">Refresh</a>
             <a href="/contacts/export?format=csv" className="btn btn-sm" title="Admins only">Export CSV</a>
             <a href="/contacts/export?format=vcf" className="btn btn-sm" title="Admins only">Export vCard</a>
             <Link href="/import" className="btn btn-primary">Import contacts</Link>
@@ -85,18 +130,48 @@ export default async function ContactsPage(
       />
 
       <div className="card mb-4 p-3">
-        <form className="flex flex-wrap gap-2">
+        <form className="flex flex-wrap items-end gap-2">
           {activeTag !== '' && <input type="hidden" name="tag" value={activeTag} />}
           <input
             name="q" defaultValue={query} aria-label="Search contacts"
             placeholder="Search by name, phone or email…" className="field min-w-56 flex-1"
           />
           <button type="submit" className="btn">Search</button>
-          {(query !== '' || activeTag !== '') && <Link href="/contacts" className="btn btn-ghost">Clear</Link>}
+          <details className="w-full text-sm" open={hasDates || view.sort !== 'added_desc'}>
+            <summary className="cursor-pointer text-muted hover:text-ink">Dates and order</summary>
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-0.5 text-xs text-muted">Date
+                <select name="dateBy" defaultValue={view.dateBy} aria-label="Which date" className="field field-sm">
+                  <option value="added">Added</option>
+                  <option value="imported">Last imported</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-0.5 text-xs text-muted">From
+                <input type="date" name="from" defaultValue={view.from} aria-label="From date" className="field field-sm" />
+              </label>
+              <label className="flex flex-col gap-0.5 text-xs text-muted">To
+                <input type="date" name="to" defaultValue={view.to} aria-label="To date" className="field field-sm" />
+              </label>
+              <label className="flex flex-col gap-0.5 text-xs text-muted">Order
+                <select name="sort" defaultValue={view.sort} aria-label="Order" className="field field-sm">
+                  {SORTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <button type="submit" className="btn btn-sm">Apply</button>
+            </div>
+          </details>
+          {(filtered || view.sort !== 'added_desc') && <Link href="/contacts" className="btn btn-ghost">Clear</Link>}
         </form>
-        <TagFilterBar tags={tags} activeTag={activeTag} query={query} />
+        <TagFilterBar tags={tags} view={view} />
         {activeTagName !== undefined && (
           <p className="mt-2 text-sm text-muted">Showing people tagged <strong className="text-ink">{activeTagName}</strong>.</p>
+        )}
+        {hasDates && (
+          <p className="mt-2 text-sm text-muted">
+            Showing people {view.dateBy === 'imported' ? 'last imported' : 'added'}
+            {view.from !== '' && <> from <strong className="text-ink">{day(view.from)}</strong></>}
+            {view.to !== '' && <> to <strong className="text-ink">{day(view.to)}</strong></>}.
+          </p>
         )}
       </div>
 
@@ -113,7 +188,7 @@ export default async function ContactsPage(
           <summary className="cursor-pointer text-sm font-medium">Tag many at once</summary>
           <div className="mt-3">
             <BulkTagBar
-              tags={tags} q={query} activeTag={activeTag}
+              tags={tags} view={view}
               preview={sp.bulkTag !== undefined && sp.bulkCount !== undefined ? {
                 tagId: sp.bulkTag, action: sp.bulkAction === 'remove' ? 'remove' : 'add',
                 scope: sp.bulkScope === 'all' ? 'all' : 'matching', count: Number(sp.bulkCount)
@@ -134,11 +209,11 @@ export default async function ContactsPage(
 
       {failure === null && contacts.length === 0 && (
         <EmptyState
-          title={query === '' && activeTag === '' ? 'No contacts yet' : 'No one matches'}
-          body={query === '' && activeTag === ''
+          title={!filtered ? 'No contacts yet' : 'No one matches'}
+          body={!filtered
             ? 'Import a spreadsheet to bring people in, or add them over the API.'
-            : 'Try a different search or clear the tag filter.'}
-          action={query === '' && activeTag === ''
+            : 'Try a different search or clear the filters.'}
+          action={!filtered
             ? <Link href="/import" className="btn btn-primary btn-sm">Import contacts</Link> : undefined}
         />
       )}
@@ -149,6 +224,9 @@ export default async function ContactsPage(
 
       {contacts.length > 0 && (
         <ul className="card list overflow-hidden">
+          <li className="hidden gap-x-4 px-4 py-2 text-xs font-medium text-muted md:grid md:grid-cols-[1.25rem_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_6.5rem_1rem]" aria-hidden>
+            <span /><span>Name</span><span>Phone / email</span><span>Tags</span><span>Added</span><span />
+          </li>
           {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} fields={fields} />)}
         </ul>
       )}
@@ -156,7 +234,7 @@ export default async function ContactsPage(
       {contacts.length > 0 && (
         <p className="mt-3 text-sm text-muted">
           Showing {contacts.length} contact{contacts.length === 1 ? '' : 's'}
-          {contacts.length >= 50 ? ' (the first page)' : ''}. Tick people to build a campaign or tag them.
+          {contacts.length >= 50 ? ' (the first page)' : ''}. Open a row for its details. Tick people to build a campaign or tag them.
         </p>
       )}
       <datalist id="all-tags">
@@ -182,14 +260,25 @@ const BULK_ERROR: Record<string, string> = {
  * the list below, with the same tag picker.
  */
 function BulkTagBar(
-  { tags, q, activeTag, preview, done, error }: {
-    tags: Tag[]; q: string; activeTag: string;
+  { tags, view, preview, done, error }: {
+    tags: Tag[]; view: View;
     preview: { tagId: string; action: 'add' | 'remove'; scope: 'matching' | 'all'; count: number } | null;
     done: { count: number; action: string } | null;
     error: string | null;
   }
 ) {
   if (tags.length === 0) return null;
+  const { q, tag: activeTag } = view;
+  const narrowed = q !== '' || activeTag !== '' || view.from !== '' || view.to !== '';
+  const carry = (
+    <>
+      <input type="hidden" name="q" value={q} />
+      <input type="hidden" name="tag" value={activeTag} />
+      <input type="hidden" name="from" value={view.from} />
+      <input type="hidden" name="to" value={view.to} />
+      <input type="hidden" name="dateBy" value={view.dateBy} />
+    </>
+  );
   const tagName = (id: string): string => tags.find((t) => t.id === id)?.name ?? 'this tag';
   return (
     <section aria-label="Tag many people at once" className="text-sm">
@@ -201,8 +290,7 @@ function BulkTagBar(
       )}
       {preview !== null ? (
         <form action={bulkTagConfirmAction} className="mt-2 flex flex-wrap items-center gap-2">
-          <input type="hidden" name="q" value={q} />
-          <input type="hidden" name="tag" value={activeTag} />
+ {carry}
           <input type="hidden" name="bulkTag" value={preview.tagId} />
           <input type="hidden" name="bulkAction" value={preview.action} />
           <input type="hidden" name="bulkScope" value={preview.scope} />
@@ -211,7 +299,7 @@ function BulkTagBar(
             {preview.action === 'add' ? 'Add' : 'Remove'} tag <strong>{tagName(preview.tagId)}</strong>{' '}
             {preview.action === 'add' ? 'to' : 'from'} <strong>{preview.count}</strong>{' '}
             {preview.count === 1 ? 'person' : 'people'}
-            {preview.scope === 'all' ? ' (everyone)' : q !== '' || activeTag !== '' ? ' (matching the current filter)' : ' (everyone listed)'}?
+            {preview.scope === 'all' ? ' (everyone)' : narrowed ? ' (matching the current filter)' : ' (everyone listed)'}?
           </span>
           <button type="submit" className="btn btn-sm btn-primary">
             Confirm
@@ -220,8 +308,7 @@ function BulkTagBar(
         </form>
       ) : (
         <form action={bulkTagPreviewAction} className="mt-2 flex flex-col items-stretch gap-2">
-          <input type="hidden" name="q" value={q} />
-          <input type="hidden" name="tag" value={activeTag} />
+          {carry}
           <select name="bulkAction" aria-label="Add or remove" className="field field-sm w-full min-w-0">
             <option value="add">Add tag</option>
             <option value="remove">Remove tag</option>
@@ -277,15 +364,10 @@ function CampaignSuggestion(
 }
 
 /** The row of tags you can filter by. "All" clears the filter; the active tag is highlighted. */
-function TagFilterBar({ tags, activeTag, query }: { tags: Tag[]; activeTag: string; query: string }) {
+function TagFilterBar({ tags, view }: { tags: Tag[]; view: View }) {
   if (tags.length === 0) return null;
-  const href = (t: string): string => {
-    const p = new URLSearchParams();
-    if (query !== '') p.set('q', query);
-    if (t !== '') p.set('tag', t);
-    const qs = p.toString();
-    return `/contacts${qs === '' ? '' : `?${qs}`}`;
-  };
+  const activeTag = view.tag;
+  const href = (t: string): string => viewHref(view, { tag: t });
   const chip = (active: boolean): string =>
     `badge shrink-0 ${active ? 'badge-accent !border-accent/40 font-semibold' : 'text-muted hover:bg-accent-soft'}`;
 
@@ -416,7 +498,11 @@ function CampaignFromSelection(
   );
 }
 
-/** One row: the contact, their details, their tag chips (small rounded labels, each removable), and an add-tag picker. */
+/**
+ * One row, as a line of columns that opens to show the rest. The line holds what is looked at most: who, how to
+ * reach them, their tags (small rounded labels, each removable) and when they were added. Opening it shows the
+ * less-used controls: adding a tag, do-not-contact, when they were last imported and the custom fields.
+ */
 function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: Tag[]; fields: CustomField[] }) {
   const phone = contact.identities.find((i) => i.kind === 'phone')?.value;
   const email = contact.identities.find((i) => i.kind === 'email')?.value;
@@ -426,72 +512,82 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
   const pickable = !contact.doNotContact;
 
   return (
-    <li className="px-4 py-3.5">
-      <div className="grid items-start gap-x-4 gap-y-2 md:grid-cols-[minmax(0,18rem)_1fr_auto]">
-        <div className="flex min-w-0 items-center gap-3">
+    <li>
+      <details className="group">
+        <summary className="grid cursor-pointer list-none items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-accent-soft md:grid-cols-[1.25rem_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_6.5rem_1rem]">
           {/* Belongs to the campaign form by its `form` id, so no nested-form is needed. */}
           <input
             type="checkbox" name="contactId" value={contact.id} form="pick-campaign"
             disabled={!pickable} aria-label={`Select ${contact.displayName ?? 'contact'}`}
             className="size-4 shrink-0 accent-accent disabled:opacity-30"
           />
-          <span className="avatar size-10 text-sm" aria-hidden>{initialsOf(name)}</span>
-          <div className="min-w-0">
-            <p className="truncate font-medium">{name}</p>
-            <p className="truncate text-sm text-muted">
-              {[phone, email].filter((v) => v !== undefined).join(' · ') || 'no contact details'}
-            </p>
-            {contact.source !== null && <p className="truncate text-xs text-muted">from {contact.source}</p>}
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="avatar size-9 text-sm" aria-hidden>{initialsOf(name)}</span>
+            <div className="min-w-0">
+              <p className="truncate font-medium">{name}</p>
+              {contact.doNotContact && <span className="badge badge-danger">do not contact</span>}
+            </div>
           </div>
-        </div>
+          <p className="truncate text-sm text-muted">
+            {[phone, email].filter((v) => v !== undefined).join(' · ') || 'no contact details'}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {contact.tags.slice(0, 3).map((t) => (
+              <RemoveTag key={t.id} contactId={contact.id} tagId={t.id} tagName={t.name} action={detachTagAction} />
+            ))}
+            {contact.tags.length > 3 && <span className="badge text-muted">+{contact.tags.length - 3} more</span>}
+          </div>
+          <p className="text-sm text-muted">{day(contact.createdAt)}</p>
+          <span aria-hidden className="hidden text-muted transition-transform group-open:rotate-90 md:inline">›</span>
+        </summary>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {contact.tags.slice(0, 5).map((t) => (
-            <RemoveTag key={t.id} contactId={contact.id} tagId={t.id} tagName={t.name} action={detachTagAction} />
-          ))}
-          {contact.tags.length > 5 && (
-            <details className="inline-flex flex-wrap items-center gap-1.5">
-              <summary className="badge cursor-pointer text-muted">+{contact.tags.length - 5} more</summary>
-              {contact.tags.slice(5).map((t) => (
-            <RemoveTag key={t.id} contactId={contact.id} tagId={t.id} tagName={t.name} action={detachTagAction} />
+        <div className="grid gap-4 border-t border-border px-4 py-3 md:pl-[3.75rem]">
+          <dl className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
+            <div><dt className="inline text-muted">Added </dt><dd className="inline">{day(contact.createdAt)}</dd></div>
+            <div><dt className="inline text-muted">Last imported </dt><dd className="inline">{day(contact.lastImportedAt)}</dd></div>
+            {contact.source !== null && <div><dt className="inline text-muted">From </dt><dd className="inline">{contact.source}</dd></div>}
+          </dl>
+
+          {contact.tags.length > 3 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted">All tags:</span>
+              {contact.tags.slice(3).map((t) => (
+                <RemoveTag key={t.id} contactId={contact.id} tagId={t.id} tagName={t.name} action={detachTagAction} />
               ))}
-            </details>
+            </div>
           )}
-          {/* One shared <datalist id="all-tags"> serves every row's input; per-row <select>s of
-              every tag made the page grow as people x tags (5.7 MB at 50 people and 129 tags). */}
-          {allTags.length > attached.size && (
-            <form action={attachTagAction} className="inline-flex items-center gap-1">
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* One shared <datalist id="all-tags"> serves every row's input; per-row <select>s of
+                every tag made the page grow as people x tags (5.7 MB at 50 people and 129 tags). */}
+            {allTags.length > attached.size && (
+              <form action={attachTagAction} className="inline-flex items-center gap-1">
+                <input type="hidden" name="contactId" value={contact.id} />
+                <input
+                  name="tagName" list="all-tags" aria-label="Add a tag" placeholder="+ tag…"
+                  autoComplete="off" className="field field-sm"
+                />
+                <button type="submit" className="btn btn-sm">Add</button>
+              </form>
+            )}
+            <form action={setDncAction}>
               <input type="hidden" name="contactId" value={contact.id} />
-              <input
-                name="tagName" list="all-tags" aria-label="Add a tag" placeholder="+ tag…"
-                autoComplete="off" className="field field-sm"
-              />
-              <button type="submit" className="btn btn-sm">Add</button>
+              <input type="hidden" name="value" value={contact.doNotContact ? 'false' : 'true'} />
+              <button
+                type="submit"
+                title={contact.doNotContact
+                  ? 'Allow messaging this person again'
+                  : 'Never message this person (an admin can still override)'}
+                className="btn btn-sm"
+              >
+                {contact.doNotContact ? 'Allow contact' : 'Do not contact'}
+              </button>
             </form>
-          )}
-        </div>
+          </div>
 
-        <div className="flex items-center gap-2 md:justify-end">
-          {contact.doNotContact && <span className="badge badge-danger">do not contact</span>}
-          <form action={setDncAction}>
-            <input type="hidden" name="contactId" value={contact.id} />
-            <input type="hidden" name="value" value={contact.doNotContact ? 'false' : 'true'} />
-            <button
-              type="submit"
-              title={contact.doNotContact
-                ? 'Allow messaging this person again'
-                : 'Never message this person (an admin can still override)'}
-              className="btn btn-sm"
-            >
-              {contact.doNotContact ? 'Allow contact' : 'Do not contact'}
-            </button>
-          </form>
+          {fields.length > 0 && <ContactFields contact={contact} fields={fields} />}
         </div>
-      </div>
-
-      {fields.length > 0 && (
-        <div className="mt-2 md:pl-[4.75rem]"><ContactFields contact={contact} fields={fields} /></div>
-      )}
+      </details>
     </li>
   );
 }

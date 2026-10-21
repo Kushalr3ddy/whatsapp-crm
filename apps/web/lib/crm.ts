@@ -226,6 +226,8 @@ export interface Contact {
   /** Un-messageable gate — shown so an operator does not try to include them in a send. */
   doNotContact: boolean;
   createdAt: string;
+  /** When an import last touched this person (created or updated them); null if none has. */
+  lastImportedAt: string | null;
   identities: ContactIdentity[];
   /** The tags this contact carries. */
   tags: Tag[];
@@ -461,25 +463,42 @@ export async function getMe(): Promise<Me> {
   return request<Me>('/auth/me');
 }
 
-/**
- * Lists / searches contacts, newest first. `q` is a case-insensitive substring matched against
- * the display name and any identity (phone/email). Returns the first page; paging is a follow-up.
- */
-export async function listContacts(opts: { q?: string; tag?: string } = {}): Promise<Contact[]> {
-  const params = new URLSearchParams();
-  if (opts.q !== undefined && opts.q.trim() !== '') params.set('q', opts.q.trim());
-  if (opts.tag !== undefined && opts.tag !== '') params.set('tag', opts.tag);
-  const qs = params.toString();
-  return request<Contact[]>(`/contacts${qs === '' ? '' : `?${qs}`}`);
+/** What the contacts list can be narrowed and ordered by. */
+export interface ContactView {
+  q?: string;
+  tag?: string;
+  /** First and last day (`YYYY-MM-DD`, both included) of a date range, on `dateBy`. */
+  from?: string;
+  to?: string;
+  dateBy?: 'added' | 'imported';
+  sort?: 'added_desc' | 'added_asc' | 'name_asc' | 'imported_desc';
 }
 
-/** How many contacts match a search / tag filter (all of them with no filter). */
-export async function countContacts(opts: { q?: string; tag?: string } = {}): Promise<number> {
+/** The query string for a view; empty values are left out so the address stays short. */
+function viewParams(opts: ContactView, withSort: boolean): string {
   const p = new URLSearchParams();
-  if (opts.q) p.set('q', opts.q);
+  if (opts.q !== undefined && opts.q.trim() !== '') p.set('q', opts.q.trim());
   if (opts.tag) p.set('tag', opts.tag);
+  if (opts.from) p.set('from', opts.from);
+  if (opts.to) p.set('to', opts.to);
+  if ((opts.from || opts.to) && opts.dateBy) p.set('dateBy', opts.dateBy);
+  if (withSort && opts.sort && opts.sort !== 'added_desc') p.set('sort', opts.sort);
   const qs = p.toString();
-  return (await request<{ total: number }>(`/contacts/count${qs === '' ? '' : `?${qs}`}`)).total;
+  return qs === '' ? '' : `?${qs}`;
+}
+
+/**
+ * Lists / searches contacts. `q` is a case-insensitive substring matched against the display name, custom
+ * fields and any identity (phone/email); `from` / `to` limit by the day added or last imported. Newest added
+ * first unless `sort` says otherwise. Returns the first page; paging is a follow-up.
+ */
+export async function listContacts(opts: ContactView = {}): Promise<Contact[]> {
+  return request<Contact[]>(`/contacts${viewParams(opts, true)}`);
+}
+
+/** How many contacts match a search / tag / date filter (all of them with no filter). */
+export async function countContacts(opts: ContactView = {}): Promise<number> {
+  return (await request<{ total: number }>(`/contacts/count${viewParams(opts, false)}`)).total;
 }
 
 /** Lists the org's tags with contact counts — for the filter bar and the tag picker. */
@@ -820,7 +839,7 @@ export interface BulkTagResult {
 /** Who a bulk tag action applies to. */
 export type BulkTarget =
   | { kind: 'all' }
-  | { kind: 'search'; q?: string; tagId?: string }
+  | { kind: 'search'; q?: string; tagId?: string; from?: string; to?: string; dateBy?: 'added' | 'imported' }
   | { kind: 'ids'; ids: string[] };
 
 /** Previews (default) or applies adding/removing one tag across many contacts. */
