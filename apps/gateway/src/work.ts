@@ -37,6 +37,7 @@ interface QueuedSend {
   /** The attachment this message carries (D-25), or null for plain text. */
   readonly mediaStorageKey: string | null;
   readonly mediaContentType: string | null;
+  readonly mediaGifPlayback: boolean | null;
   readonly mediaFilename: string | null;
   /** Pacing inputs, read with the job so the gate costs no extra round trip. */
   readonly warmupStartedAt: string | null;
@@ -548,7 +549,7 @@ async function withSenderLock(senderId: string, work: () => Promise<void>): Prom
 async function handleSendOnce(ctx: WorkContext, messageId: string): Promise<void> {
   const rows = await ctx.db.execute(sql`
     SELECT m.id AS "messageId", m.org_id AS "orgId", m.body_enc AS "bodyEnc",
-           ma.storage_key AS "mediaStorageKey", ma.content_type AS "mediaContentType",
+           ma.storage_key AS "mediaStorageKey", ma.content_type AS "mediaContentType", ma.gif_playback AS "mediaGifPlayback",
            ma.filename AS "mediaFilename",
            si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
            si.status AS "senderStatus", si.enforcement AS "enforcement",
@@ -791,13 +792,14 @@ async function handleSendOnce(ctx: WorkContext, messageId: string): Promise<void
     // An attachment (D-25): read the file back from storage so the adapter can upload it. Done
     // before the pacing pause is spent on a message that cannot go. A file that cannot be read
     // fails this one message with a clear code — the inbox shows it, nothing else is affected.
-    let media: { bytes: Uint8Array; contentType: string; filename: string | null } | undefined;
+    let media: { bytes: Uint8Array; contentType: string; filename: string | null; gifPlayback?: boolean } | undefined;
     if (job.mediaStorageKey !== null) {
       if (!ctx.storage) throw new Error('media_storage_unavailable');
       media = {
         bytes: await ctx.storage.get(job.mediaStorageKey),
         contentType: job.mediaContentType ?? 'application/octet-stream',
-        filename: job.mediaFilename
+        filename: job.mediaFilename,
+        ...(job.mediaGifPlayback === true ? { gifPlayback: true } : {})
       };
     }
 

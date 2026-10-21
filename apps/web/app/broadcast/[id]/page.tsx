@@ -137,6 +137,17 @@ export default async function CampaignPage(
             </div>
 
             <aside className="lg:sticky lg:top-6">
+              {campaign.mediaAssetId !== null && (
+                <section className="card mb-4 p-4" aria-label="Picture">
+                  <h2 className="text-sm font-semibold">Picture</h2>
+                  {/* A safe re-encoded preview from our own server (the original is never shown inline). */}
+                  <img src={`/media/${campaign.mediaAssetId}/thumb`} alt="The picture sent with this campaign" className="mt-2 max-h-52 rounded-lg border border-border" />
+                  <p className="mt-2 text-xs text-muted">
+                    {campaign.mediaFilename ?? 'picture'}{campaign.mediaSizeBytes !== null ? ` · ${(campaign.mediaSizeBytes / 1048576).toFixed(2)} MB` : ''}
+                    {campaign.mediaContentType === 'image/gif' ? ' · GIF, sent as a looping clip' : ''}. Sent to everyone with the message below as its caption.
+                  </p>
+                </section>
+              )}
               <MessageBody body={campaign.body} />
             </aside>
           </div>

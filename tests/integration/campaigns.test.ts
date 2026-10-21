@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import request from 'supertest';
+import { spawnSync } from 'node:child_process';
 import { sql } from 'drizzle-orm';
 import {
   createDatabase, inspectDatabaseSecurity, resolveTenantRole, type Database
@@ -11,7 +12,7 @@ import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { issueApiKey } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
-import { dispatchCampaigns, type WorkContext } from '../../apps/gateway/src/work.js';
+import { dispatchCampaigns, handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
 import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 
 /**
@@ -593,5 +594,96 @@ describe('the identical-body guard (D-26 backstop)', () => {
       WHERE id = ${varied.body.data.id}`);
     await request(app).post(`/api/v1/campaigns/${varied.body.data.id}/start`).set(...auth());
     expect(await dispatchCampaigns(capped)).toBe(8);
+  });
+});
+
+/** A real small picture: a PNG, a GIF with two frames, and a JPEG, made on the spot. */
+async function pic(kind: 'png' | 'gif' | 'jpeg'): Promise<Buffer> {
+  const sharp = (await import('sharp')).default;
+  const base = sharp({ create: { width: 32, height: 24, channels: 3, background: '#d03030' } });
+  return kind === 'png' ? base.png().toBuffer() : kind === 'jpeg' ? base.jpeg().toBuffer() : base.gif().toBuffer();
+}
+const upload = (bytes: Buffer, filename = 'offer.png') =>
+  request(app).post(`/api/v1/campaigns/media?filename=${encodeURIComponent(filename)}`).set(...auth()).set('Content-Type', 'application/octet-stream').send(bytes);
+const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
+
+describe('a campaign with a picture', () => {
+  it('stores a picture, lists it, and refuses video, documents, empty and oversized files with the reason', async () => {
+    const ok = await upload(await pic('png'));
+    expect(ok.status).toBe(201);
+    expect(ok.body.data).toMatchObject({ contentType: 'image/png', gif: false, uses: 0, filename: 'offer.png' });
+    const list = await request(app).get('/api/v1/campaigns/media').set(...auth());
+    expect(list.body.data.map((p: { id: string }) => p.id)).toEqual([ok.body.data.id]);
+
+    const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(40)]);
+    const video = await upload(mp4, 'clip.mp4');
+    expect(video.status).toBe(415);
+    expect(video.body.detail).toContain('MP4 videos are not supported yet');
+    expect((await upload(Buffer.from('%PDF-1.4 hello'), 'a.pdf')).status).toBe(415);
+    const big = await upload(Buffer.concat([await pic('jpeg'), Buffer.alloc(5 * 1024 * 1024)]), 'big.jpg');
+    expect(big.status).toBe(413);
+    expect(big.body.detail).toContain('The most is 5 MB');
+  });
+
+  it('sends the picture to everyone with the message as the caption', async () => {
+    const stored = (await upload(await pic('jpeg'), 'diwali.jpg')).body.data;
+    const created = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'with picture', body: 'Hi {{name}}, offer!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 3), mediaAssetId: stored.id });
+    expect(created.status).toBe(201);
+    const detail = await request(app).get(`/api/v1/campaigns/${created.body.data.id}`).set(...auth());
+    expect(detail.body.data).toMatchObject({ mediaAssetId: stored.id, mediaFilename: 'diwali.jpg', mediaContentType: 'image/jpeg' });
+
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+    expect(await dispatchCampaigns(gatewayCtx())).toBe(3);
+    const rows = await db.execute(sql`SELECT id, content_type AS "contentType", media_id AS "mediaId" FROM message WHERE campaign_id = ${created.body.data.id}`) as unknown as Array<{ id: string; contentType: string; mediaId: string }>;
+    expect(rows).toHaveLength(3);
+    for (const r of rows) { expect(r.contentType).toBe('image'); expect(r.mediaId).toBe(stored.id); }
+
+    // The gateway then sends it as a photo with the caption.
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+919000000001' });
+    await handleSend({ ...gatewayCtx(), provider, storage: media.storage, sleep: async () => {} }, rows[0]!.id);
+    const sent = provider.sent[0]!.content;
+    expect(sent.kind === 'freeform' && sent.media?.contentType).toBe('image/jpeg');
+    expect(sent.kind === 'freeform' && sent.body).toContain('offer!');
+  });
+
+  it('refuses a picture that is not this organisation\'s', async () => {
+    const made = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'x', body: 'Hi', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 1), mediaAssetId: '00000000-0000-4000-8000-000000000000' });
+    expect(made.status).toBe(404);
+  });
+
+  it('is unchanged for a text-only campaign', async () => {
+    const created = await create(contactIds.slice(0, 2));
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+    await dispatchCampaigns(gatewayCtx());
+    const rows = await db.execute(sql`SELECT content_type AS "contentType", media_id AS "mediaId" FROM message WHERE campaign_id = ${created.body.data.id}`) as unknown as Array<{ contentType: string; mediaId: string | null }>;
+    expect(rows.every((r) => r.contentType === 'text' && r.mediaId === null)).toBe(true);
+  });
+
+  it.skipIf(!hasFfmpeg)('turns a GIF into a looping clip and sends that as a video with GIF playback', async () => {
+    const stored = (await upload(await pic('gif'), 'welcome.gif')).body.data;
+    expect(stored).toMatchObject({ contentType: 'image/gif', gif: true });
+    const created = await request(app).post('/api/v1/campaigns').set(...auth())
+      .send({ name: 'gif', body: 'Welcome!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 1), mediaAssetId: stored.id });
+    await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+    await dispatchCampaigns(gatewayCtx());
+    const row = (await db.execute(sql`
+      SELECT m.id, m.content_type AS "contentType", ma.content_type AS "mediaType", ma.gif_playback AS "gif", ma.source_asset_id AS "source"
+      FROM message m JOIN media_asset ma ON ma.id = m.media_id WHERE m.campaign_id = ${created.body.data.id}`) as unknown as Array<{ id: string; contentType: string; mediaType: string; gif: boolean; source: string }>)[0]!;
+    expect(row).toMatchObject({ contentType: 'video', mediaType: 'video/mp4', gif: true, source: stored.id });
+    const provider = new FakeChannelProvider();
+    await provider.connect({ id: senderId, phoneE164: '+919000000001' });
+    await handleSend({ ...gatewayCtx(), provider, storage: media.storage, sleep: async () => {} }, row.id);
+    const sent = provider.sent[0]!.content;
+    expect(sent.kind === 'freeform' && sent.media?.gifPlayback).toBe(true);
+  });
+
+  it('shows a safe preview of a picture that belongs to no message', async () => {
+    const stored = (await upload(await pic('png'))).body.data;
+    const thumb = await request(app).get(`/api/v1/media/${stored.id}/thumb`).set(...auth());
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers['content-type']).toBe('image/webp');
   });
 });

@@ -3,10 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  createCampaign, startCampaign, pauseCampaign, cancelCampaign, createSegment, previewSegmentCount,
+  createCampaign, startCampaign, pauseCampaign, cancelCampaign, createSegment, previewSegmentCount, uploadCampaignPicture,
   CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { CampaignTarget, SegmentDefinition } from '@/lib/crm';
+import type { CampaignPicture, CampaignTarget, SegmentDefinition } from '@/lib/crm';
 
 /** Builds a segment filter from the inline audience builder, including only criteria that were set. */
 function filterFromForm(get: (name: string) => string): SegmentDefinition {
@@ -18,6 +18,22 @@ function filterFromForm(get: (name: string) => string): SegmentDefinition {
   const days = Number(get('filterDays'));
   if (Number.isInteger(days) && days > 0) def.lastContactedWithinDays = days;
   return def;
+}
+
+/**
+ * Uploads the picture or GIF chosen on the new-campaign form. The server decides everything (type from the bytes, 5 MB, GIF
+ * conversion) and the answer is either the stored picture or the reason in words; the form shows it as it is.
+ */
+export async function uploadPictureAction(formData: FormData): Promise<{ ok: boolean; picture?: CampaignPicture; error?: string }> {
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Choose a file first.' };
+  try {
+    return { ok: true, picture: await uploadCampaignPicture(await file.arrayBuffer(), file.name) };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
 }
 
 /**
@@ -67,6 +83,7 @@ export async function createCampaignAction(formData: FormData): Promise<void> {
   const fromTagId = String(formData.get('fromTagId') ?? '');
   const fromImportRunId = String(formData.get('fromImportRunId') ?? '');
   const fromSegmentId = String(formData.get('fromSegmentId') ?? '');
+  const mediaAssetId = String(formData.get('mediaAssetId') ?? '');
 
   // Inline audience: a filter built right in the form. It becomes a segment (so it is resolved and
   // frozen at launch like any other audience); `keepAudience` decides whether it is listed for reuse.
@@ -105,7 +122,7 @@ export async function createCampaignAction(formData: FormData): Promise<void> {
 
   let id: string;
   try {
-    const created = await createCampaign({ name, body, senderIdentityId, ...chosen[0]! });
+    const created = await createCampaign({ name, body, senderIdentityId, ...(mediaAssetId !== '' ? { mediaAssetId } : {}), ...chosen[0]! });
     id = created.id;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');

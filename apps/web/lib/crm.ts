@@ -292,6 +292,11 @@ export interface CampaignDetail {
   gateOverrideReason: string | null;
   /** Set when the system, not a person, paused it (`restriction_likely` or `ban_suspected`). */
   pauseReason: string | null;
+  /** The picture or GIF sent with every message (the body is its caption), or null for a text-only campaign. */
+  mediaAssetId: string | null;
+  mediaFilename: string | null;
+  mediaContentType: string | null;
+  mediaSizeBytes: number | null;
 }
 
 /** The prospective audience of a draft — a dry run's counts. Mirrors the `preview` route. */
@@ -1202,6 +1207,38 @@ export async function listCampaignRecipients(
   );
 }
 
+/** A picture or GIF stored for campaigns. Mirrors `GET /api/v1/campaigns/media`. */
+export interface CampaignPicture {
+  id: string;
+  filename: string | null;
+  contentType: string;
+  sizeBytes: number;
+  gif: boolean;
+  createdAt: string;
+  /** How many campaigns use it. */
+  uses: number;
+}
+
+/** The organisation's campaign pictures, newest first. */
+export async function listCampaignPictures(): Promise<CampaignPicture[]> {
+  return request<CampaignPicture[]>('/campaigns/media');
+}
+
+/** Uploads one picture or GIF for campaigns (raw bytes). Throws `CrmApiError` with the reason when it is refused. */
+export async function uploadCampaignPicture(bytes: ArrayBuffer, filename: string): Promise<CampaignPicture> {
+  const auth = await forwardedAuth();
+  const response = await fetch(`${baseUrl()}/api/v1/campaigns/media?${new URLSearchParams({ filename }).toString()}`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/octet-stream', ...auth }, body: new Uint8Array(bytes)
+  });
+  if (response.status === 401) throw new NotAuthenticatedError();
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = payload as Partial<ApiProblem> | null;
+    throw new CrmApiError({ code: problem?.code ?? 'UNKNOWN', detail: problem?.detail ?? `The API returned ${String(response.status)}.`, status: response.status });
+  }
+  return (payload as { data: CampaignPicture }).data;
+}
+
 /** How a campaign's audience is chosen. Exactly one field is set — never "everyone" implicitly. */
 export type CampaignTarget =
   | { fromTagId: string }
@@ -1214,7 +1251,7 @@ export type CampaignTarget =
  * Throws `CrmApiError` (`NOT_FOUND`) if the sender or the tag does not belong to the org.
  */
 export async function createCampaign(
-  input: { name: string; body: string; senderIdentityId: string; aiTemplateId?: string } & CampaignTarget
+  input: { name: string; body: string; senderIdentityId: string; aiTemplateId?: string; mediaAssetId?: string } & CampaignTarget
 ): Promise<{ id: string; status: string }> {
   return request<{ id: string; status: string }>('/campaigns', {
     method: 'POST', body: JSON.stringify(input)

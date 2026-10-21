@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { pipeline } from 'node:stream/promises';
-import { resolveMedia, writeAudit, AUDIT } from '@crm/core';
+import { resolveMedia, resolveCampaignPicture, writeAudit, AUDIT } from '@crm/core';
 import { ObjectNotFoundError, type StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
 import { makeThumbnail, THUMBNAIL_TYPES } from '../thumbnail.js';
@@ -113,7 +113,8 @@ export function mediaRouter(storage: StorageDriver): Router {
   router.get('/:id/thumb', requireUuidParam('id'), requireScope('conversations:read'),
     async (req: Request, res: Response) => {
       const orgId = req.crm!.orgId;
-      const media = await req.tenant!((tx) => resolveMedia(tx, orgId, String(req.params.id)));
+      // A file in a chat, or one of the organisation's own campaign pictures (which belong to no message).
+      const media = await req.tenant!(async (tx) => (await resolveMedia(tx, orgId, String(req.params.id))) ?? resolveCampaignPicture(tx, orgId, String(req.params.id)));
       if (media === null) {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such attachment.'));
         return;

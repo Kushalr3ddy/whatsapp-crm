@@ -42,6 +42,8 @@ export interface OutboundMedia {
   /** Detected from the bytes at upload, never from a filename or a client's claim. */
   readonly contentType: string;
   readonly filename: string | null;
+  /** True for a clip made from a GIF: sent as a video with GIF playback, so WhatsApp loops it silently like a GIF. */
+  readonly gifPlayback?: boolean;
 }
 
 /** Who to send to, in whatever form this channel addresses people by. */
