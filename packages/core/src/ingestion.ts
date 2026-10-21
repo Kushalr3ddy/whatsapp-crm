@@ -29,6 +29,8 @@ export interface IdentityMapping extends FieldMapping {
 export interface ImportMapping {
   readonly version: 1;
   readonly displayName?: FieldMapping;
+  /** Build the name from two columns, a first and a last name, instead of reading one name column (see `joinName`). */
+  readonly nameParts?: { readonly first: string; readonly last: string };
   /**
    * Ordered. **First rule that matches wins** — deliberately not "email OR phone", which
    * cannot express which one is authoritative when they disagree (docs/07-ingestion.md).
@@ -99,6 +101,22 @@ export function keptFieldsFor(mapping: ImportMapping): KeptField[] {
 function fieldValue(row: Record<string, string>, from: string): string | null {
   const v = (row[from] ?? '').trim();
   return v === '' || isBlankMarker(v) ? null : v.slice(0, MAX_FIELD_VALUE);
+}
+
+/**
+ * Joins a first and a last name without changing either.
+ *
+ * Names are never shortened or reformatted: `Anita` + `Sharma` is `Anita Sharma`, with the sheet's own spelling and
+ * case. Only when the first name is already a single letter (already an initial) is it joined with a dot and no
+ * space: `a` + `sharma` is `a.sharma`. If only one of the two is filled in, that one is the name.
+ */
+export function joinName(first: string, last: string): string {
+  const f = isBlankMarker(first.trim()) ? '' : first.trim();
+  const l = isBlankMarker(last.trim()) ? '' : last.trim();
+  if (f === '') return l;
+  if (l === '') return f;
+  const initial = f.replace(/\.$/, '');
+  return initial.length === 1 ? `${initial}.${l}` : `${f} ${l}`;
 }
 
 /** Rows committed per transaction. The spec's number, and small enough to resume from. */
@@ -279,8 +297,10 @@ async function importOneRow(
     };
   }
 
-  const rawName = mapping.displayName === undefined
-    ? '' : applyTransforms(row[mapping.displayName.from] ?? '', mapping.displayName.transform);
+  const rawName = mapping.nameParts !== undefined
+    ? joinName(row[mapping.nameParts.first] ?? '', row[mapping.nameParts.last] ?? '')
+    : mapping.displayName === undefined
+      ? '' : applyTransforms(row[mapping.displayName.from] ?? '', mapping.displayName.transform);
   const displayName = isBlankMarker(rawName) ? '' : rawName;
 
   // First rule that matches an existing contact wins, in the order the mapping declared.

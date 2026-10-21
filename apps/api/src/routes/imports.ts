@@ -20,6 +20,8 @@ const transform = z.enum(['trim', 'lower', 'upper', 'digits']);
 const mappingSchema = z.object({
   version: z.literal(1),
   displayName: z.object({ from: z.string().min(1), transform: z.array(transform).optional() }).optional(),
+  /** A name built from a first-name column and a last-name column. */
+  nameParts: z.object({ first: z.string().min(1), last: z.string().min(1) }).optional(),
   identities: z.array(z.object({
     kind: z.enum(['phone', 'email', 'external']),
     from: z.string().min(1),

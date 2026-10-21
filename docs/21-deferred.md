@@ -38,7 +38,7 @@ is not re-proposed.
 | D-18 | Inbox niceties: snooze, the Meta 24-hour window UI, ~~keyboard shortcu | 📌 pinned |
 | D-19 | Rich message templates — user-managed, Meta-aligned, with media and im | 📌 pinned |
 | D-20 | SQLite support for single-machine deployments | 📌 pinned |
-| D-21 | The full import mapping wizard | ▶ working on it · ◐ partly built |
+| D-21 | The full import mapping wizard | ▶ working on it · ◐ partly built (columns step, several phones, joined names; PR #83) |
 | D-22 | Row-level de-duplication with a diff-style review | 📌 pinned |
 | D-23 | Inbox search (F3 AC-7) | 📌 pinned |
 | D-24 | Typing simulation (P6 anti-ban layer 3) | ✅ done |
@@ -968,6 +968,8 @@ fields is built (PR #56); the size and layout of this step are what is left.
 **Added 2026-10-20 (Kushal):** make the **column selector and the preview wider and bigger, with a slightly bigger font** on the Import screen. **Do not do it if it breaks the mobile layout later** (D-72): check phone width first, and prefer a layout that is roomy on a desktop and still scrolls cleanly on a phone.
 
 **2026-10-20:** Kushal wants to see a **preview (mockup) of the remaining changes before any building**: several phone columns, joining first and last name, dropping personal-data columns, and the wider selector. Preview first, then go ahead.
+
+✅ **Built 2026-10-21 (the previewed design):** the Match columns step is now divided into sections (file, phone columns, name and email, columns to store, preview, tag and import). **Several phone columns** can be ticked and are tried in order (a person with two numbers keeps both); a **first-name column plus a last-name column** are joined as written, never shortened (`Anita Sharma`; a one-letter first name becomes `a.sharma`); **personal-looking columns** (date of birth, pay, address, government ids) are marked and cannot be ticked while "never store columns marked personal" is on; the columns box scrolls; text is slightly bigger. Still open from this pin: dropping personal-data columns by an admin-set list, saved mappings, per-column transforms.
 
 ---
 
@@ -2366,6 +2368,10 @@ sideways scrolling. Some of it exists already (the sidebar has small-screen rule
 was never tested or designed phone-first. Related: D-66 (look and motion), D-70 (the Contacts layout), D-61 (lighter web
 tier). Questions for later: a responsive web app only, or an installable one (a PWA with home-screen icon and push
 notifications for new messages); what to test on (real phones, and Playwright's mobile viewport, which D-49 also wants).
+
+**Added 2026-10-21 (Kushal): mobile compatibility comes later.** Do the phone-width work as its own piece after the desktop
+work (D-21, D-70) settles; until then new screens only need to not be made worse on a phone. The Import wizard sections (#83)
+should get a phone-width look as part of it.
 
 Pinned to come back to; not started.
 

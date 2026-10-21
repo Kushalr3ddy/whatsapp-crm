@@ -13,7 +13,7 @@ test.describe('import: flow', () => {
     await signIn(page);
     await page.goto('/import');
     await page.locator('input[type="file"]').setInputFiles({
-      name: `empty-${String(Date.now())}.csv`, mimeType: 'text/csv', buffer: Buffer.from('Name,Mob\n')
+      name: `empty-${String(Date.now())}.csv`, mimeType: 'text/csv', buffer: Buffer.from(`Name,Mob,Run${String(Date.now())}\n`)
     });
     await expect(page.getByText(/no rows to import/)).toBeVisible();
   });
@@ -35,7 +35,7 @@ test.describe('import: flow', () => {
     // The columns step says what its controls are for.
     await expect(page.getByRole('heading', { name: 'Select the columns to be stored' })).toBeVisible();
     await page.getByLabel('City').check();
-    await expect(page.getByText(`Preview of all the columns you have selected from ${file}`)).toBeVisible();
+    await expect(page.getByText(`From ${file}.`)).toBeVisible();
 
     await page.getByRole('button', { name: 'Preview' }).click();
     await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
@@ -47,5 +47,38 @@ test.describe('import: flow', () => {
     await page.getByRole('link', { name: 'Message these people' }).click();
     await expect(page).toHaveURL(/\/broadcast\/new\?import=/);
     await expect(page.locator('select[name="fromImportRunId"]')).not.toHaveValue('');
+  });
+
+  test('several phone columns, a joined name and personal columns', async ({ page }) => {
+    const stamp = String(Date.now());
+    const base = 100 + (Number(stamp.slice(-3)) % 90);
+    const file = `join-${stamp}.csv`;
+    const csv =
+      'First Name,Last Name,Phone,Alt Phone,City,Date of Birth\n' +
+      `Anita,Sharma,+1202555${String(base).padStart(4, '0')},+1202555${String(base + 100).padStart(4, '0')},Pune,1990-01-01\n` +
+      `a,sharma,+1202555${String(base + 50).padStart(4, '0')},,Delhi,1991-02-02\n`;
+
+    await signIn(page);
+    await page.goto('/import');
+    await page.locator('input[type="file"]').setInputFiles({ name: file, mimeType: 'text/csv', buffer: Buffer.from(csv) });
+    await expect(page.getByText(/2 rows ·/)).toBeVisible();
+
+    // First and last name columns are found, and joined without shortening: Anita Sharma, and a.sharma for a one-letter first name.
+    await expect(page.locator('#import-name')).toHaveValue('__join__');
+    await expect(page.getByRole('cell', { name: 'Anita Sharma' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'a.sharma' })).toBeVisible();
+
+    // A second phone column can be ticked and is tried after the first.
+    await page.getByRole('checkbox', { name: /^[–\d] Alt Phone/ }).check();
+    await expect(page.getByRole('columnheader', { name: 'Phone 2' })).toBeVisible();
+
+    // A personal-looking column cannot be ticked while the protection is on, and can once it is switched off.
+    const dob = page.getByRole('checkbox', { name: /Date of Birth/ });
+    await expect(dob).toBeDisabled();
+    await page.getByLabel(/Never store columns marked personal/).uncheck();
+    await expect(dob).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Preview' }).click();
+    await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
   });
 });

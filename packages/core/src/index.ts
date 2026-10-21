@@ -88,7 +88,7 @@ export {
 
 export {
   runImport,
-  type ImportMapping, type ImportSummary, type RowOutcome, type Transform, type TenantWork
+  type ImportMapping, joinName, type ImportSummary, type RowOutcome, type Transform, type TenantWork
 } from './ingestion.js';
 
 export {
