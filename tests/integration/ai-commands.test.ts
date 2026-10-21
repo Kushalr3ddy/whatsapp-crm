@@ -305,3 +305,39 @@ describe('campaign editing and the Write-with-AI helper', () => {
     expect((await request(app).get('/api/v1/ai/status').set(agent)).body.data).toEqual({ enabled: false });
   });
 });
+
+describe('attaching a picture that already exists', () => {
+  /** A stored campaign picture, without bytes: only the lookup by name is under test. */
+  async function picture(filename: string): Promise<string> {
+    return (await db.execute(sql`
+      INSERT INTO media_asset (org_id, storage_key, storage_driver, content_type, size_bytes, sha256, filename, campaign_picture)
+      VALUES (${orgId}, ${`k-${filename}-${String(Math.random())}`}, 'fs', 'image/jpeg', 10, ${`sha-${filename}-${String(Math.random())}`}, ${filename}, true)
+      RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+  }
+  const mediaOf = async (id: string) => (await db.execute(sql`SELECT media_asset_id AS m FROM campaign WHERE id = ${id}`) as unknown as Array<{ m: string | null }>)[0]!.m;
+
+  it('finds the picture by the words in its name and makes the draft with it', async () => {
+    const pic = await picture('diwali.jpg');
+    llm.toolCalls = [create({ pictureName: 'diwali' })];
+    const [action] = (await command(admin)).body.data.actions as Array<{ ok: boolean; campaignId: string }>;
+    expect(action!.ok).toBe(true);
+    expect(await mediaOf(action!.campaignId)).toBe(pic);
+  });
+
+  it('never invents a file: nothing is created when no picture matches', async () => {
+    llm.toolCalls = [create({ pictureName: 'holi' })];
+    const [action] = (await command(admin)).body.data.actions as Array<{ ok: boolean; detail: string }>;
+    expect(action!.ok).toBe(false);
+    expect(action!.detail).toMatch(/No picture or GIF with .holi. in its name/);
+    expect(await db.execute(sql`SELECT 1 FROM campaign WHERE org_id = ${orgId}`)).toHaveLength(0);
+  });
+
+  it('asks which one when several match, and creates nothing', async () => {
+    await picture('diwali-1.jpg'); await picture('diwali-2.png');
+    llm.toolCalls = [create({ pictureName: 'diwali' })];
+    const [action] = (await command(admin)).body.data.actions as Array<{ ok: boolean; detail: string }>;
+    expect(action!.ok).toBe(false);
+    expect(action!.detail).toMatch(/2 pictures match.*diwali-1\.jpg.*diwali-2\.png|2 pictures match.*diwali-2\.png.*diwali-1\.jpg/);
+    expect(await db.execute(sql`SELECT 1 FROM campaign WHERE org_id = ${orgId}`)).toHaveLength(0);
+  });
+});

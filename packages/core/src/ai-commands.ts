@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm';
-import type { Database } from '@crm/db';
+import { setTenant, type Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver, LlmTool } from '@crm/llm';
 import { AUDIT, writeAudit, type AuditActor } from './audit.js';
+import { findCampaignPictures, type CampaignPicture } from './campaign-media.js';
 import { createCampaignDraft, startCampaign, setCampaignStatus, editCampaign, type CampaignLimits } from './campaign-actions.js';
 
 /** One thing the assistant did (or was refused) while carrying out an instruction. */
@@ -41,6 +42,7 @@ const TOOLS: readonly LlmTool[] = [
         senderId: { type: 'string', description: 'Id of the number to send from, from the context. Optional when there is only one.' },
         tagId: { type: 'string', description: 'Id of the tag whose contacts are the audience. Give this or segmentId, never both.' },
         segmentId: { type: 'string', description: 'Id of the segment that is the audience.' },
+        pictureName: { type: 'string', description: 'Only if the instruction mentions a picture or GIF: words from the file name of one already uploaded for campaigns (for example "diwali"). The message becomes its caption. Never invent a file.' },
         start: { type: 'boolean', description: 'True only if the instruction says to send it now.' }
       },
       required: ['name', 'body']
@@ -132,6 +134,8 @@ export async function runAiCommand(
 
   const actions: CommandAction[] = [];
   const known = (list: Array<{ id: string }>, id: string | undefined): id is string => id !== undefined && list.some((x) => x.id === id);
+  /** Campaign pictures whose file name contains the words the model gave; the assistant never makes up a file. */
+  const findPictures = (words: string): Promise<CampaignPicture[]> => db.transaction(async (tx) => { await setTenant(tx, orgId); return findCampaignPictures(tx, orgId, words); });
 
   for (const call of answer.toolCalls.slice(0, MAX_ACTIONS)) {
     const a = call.arguments;
@@ -147,11 +151,22 @@ export async function runAiCommand(
         else if (tagId !== undefined && !known(tags, tagId)) action = { tool: call.name, ok: false, detail: 'That tag does not exist.' };
         else if (segmentId !== undefined && !known(segments, segmentId)) action = { tool: call.name, ok: false, detail: 'That segment does not exist.' };
         else if (!known(senders, senderId)) action = { tool: call.name, ok: false, detail: 'Say which number to send from.' };
+        else if (str(a.pictureName) !== undefined && (await findPictures(str(a.pictureName)!)).length !== 1) {
+          const found = await findPictures(str(a.pictureName)!);
+          action = {
+            tool: call.name, ok: false,
+            detail: found.length === 0
+              ? `No picture or GIF with “${str(a.pictureName)!}” in its name has been uploaded for campaigns. Upload it on the new campaign form first; nothing was created.`
+              : `${String(found.length)} pictures match “${str(a.pictureName)!}”: ${found.map((p) => p.filename ?? 'unnamed').join(', ')}. Say which one; nothing was created.`
+          };
+        }
         else {
+          const picture = str(a.pictureName) === undefined ? undefined : (await findPictures(str(a.pictureName)!))[0];
           const created = await db.transaction((tx) => createCampaignDraft(tx, orgId, { actor: bot }, {
-            name: name.slice(0, 200), body: body.slice(0, 4096), senderIdentityId: senderId, fromTagId: tagId, fromSegmentId: segmentId
+            name: name.slice(0, 200), body: body.slice(0, 4096), senderIdentityId: senderId, fromTagId: tagId, fromSegmentId: segmentId,
+            mediaAssetId: picture?.id
           }));
-          if ('error' in created) action = { tool: call.name, ok: false, detail: 'Could not create it: the number, tag or segment was not found.' };
+          if ('error' in created) action = { tool: call.name, ok: false, detail: 'Could not create it: the number, tag, segment or picture was not found.' };
           else if (a.start === true && settings.mayStart) {
             const started = await db.transaction((tx) => startCampaign(tx, orgId, { actor: bot }, created.id, deps.limits));
             action = 'error' in started

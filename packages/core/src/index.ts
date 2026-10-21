@@ -30,6 +30,12 @@ export {
 } from './ai-settings.js';
 
 export {
+  storeCampaignPicture, listCampaignPictures, getCampaignPicture, findCampaignPictures, resolveSendAsset, resolveCampaignPicture,
+  CampaignPictureError, CAMPAIGN_PICTURE_MAX_BYTES, type CampaignPicture, type SendAsset
+} from './campaign-media.js';
+export { gifToMp4, GifConversionError } from './media-convert.js';
+
+export {
   generateTemplate, parseGenerated, listTemplates, getTemplate, saveTemplate, useTemplate, deleteTemplate,
   AiTemplateError, AI_ALWAYS_ON_RULES, AI_TEMPLATE_MAX_DESCRIPTION,
   type AiTemplate, type AiTemplateInput, type GeneratedTemplate

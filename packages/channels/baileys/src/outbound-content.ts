@@ -22,6 +22,9 @@ export function toBaileysContent(content: Extract<OutboundContent, { kind: 'free
   if (['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(type)) {
     return { image: buffer, ...(caption ? { caption } : {}) };
   }
+  if (media.gifPlayback === true && type.startsWith('video/')) {
+    return { video: buffer, mimetype: type, gifPlayback: true, ...(caption ? { caption } : {}) };
+  }
   if (type.startsWith('video/')) return { video: buffer, mimetype: type, ...(caption ? { caption } : {}) };
   if (type.startsWith('audio/')) return { audio: buffer, mimetype: type };
   return {

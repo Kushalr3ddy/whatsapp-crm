@@ -1,3 +1,4 @@
+import { resolveSendAsset } from './campaign-media.js';
 import { sql } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
@@ -255,6 +256,13 @@ export async function dispatchCampaign(
   if (input.limit <= 0) return 0;
 
   return tenant(async (tx) => {
+    // A campaign with a picture or GIF sends it to everyone, the message being its caption; a GIF goes as its converted looping clip.
+    const withPicture = (await tx.execute(sql`
+      SELECT media_asset_id AS "pictureId" FROM campaign WHERE id = ${input.campaignId} AND org_id = ${input.orgId}`
+    ) as unknown as Array<{ pictureId: string | null }>)[0]?.pictureId ?? null;
+    const asset = withPicture === null ? null : await resolveSendAsset(tx, input.orgId, withPicture);
+    if (withPicture !== null && asset === null) throw new Error('campaign_picture_unavailable');
+
     const rows = await tx.execute(sql`
       SELECT cr.id, cr.contact_id AS "contactId", c.display_name AS "contactName",
              c.custom_fields AS "customFields"
@@ -325,11 +333,11 @@ export async function dispatchCampaign(
 
       const created = await tx.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                             body_enc, body_hmac, sent_by, campaign_id, dnc_override)
-        VALUES (${input.orgId}, ${conversationId}, 'outbound', 'queued', 'text',
+                             body_enc, body_hmac, sent_by, campaign_id, dnc_override, media_id)
+        VALUES (${input.orgId}, ${conversationId}, 'outbound', 'queued', ${asset?.contentType ?? 'text'},
                 ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
                 ${hmac}, 'system', ${input.campaignId},
-                ${(input.gateOverrides ?? []).includes('dnc')})
+                ${(input.gateOverrides ?? []).includes('dnc')}, ${asset?.mediaId ?? null})
         RETURNING id`);
       const messageId = (created as unknown as Array<{ id: string }>)[0]!.id;
 

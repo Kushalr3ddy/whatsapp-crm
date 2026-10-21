@@ -661,6 +661,13 @@ export const mediaAsset = pgTable('media_asset', {
 
   // When an antivirus pass last ran. Null means never scanned; no scanner exists yet (D-11).
   scannedAt: timestamp('scanned_at', { withTimezone: true }),
+
+  /** True for a picture or GIF uploaded for campaigns: it can be picked again and previewed without belonging to a message. */
+  campaignPicture: boolean('campaign_picture').notNull().default(false),
+  /** True for the MP4 a GIF was converted into: WhatsApp shows a GIF as a looping silent clip, so it is sent as a video with GIF playback. */
+  gifPlayback: boolean('gif_playback').notNull().default(false),
+  /** For a converted clip, the GIF it came from (kept for the preview). */
+  sourceAssetId: uuid('source_asset_id').references((): AnyPgColumn => mediaAsset.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
   uniqueIndex('media_asset_key_uidx').on(t.storageKey),
@@ -772,6 +779,9 @@ export const campaign = pgTable('campaign', {
 
   /** The AI template replies to this campaign follow (D-85), or none. Set when the campaign is made from a template. */
   aiTemplateId: uuid('ai_template_id').references((): AnyPgColumn => aiTemplate.id, { onDelete: 'set null' }),
+
+  /** One picture or GIF sent with every message of this campaign, the message text being its caption; or none (text only). */
+  mediaAssetId: uuid('media_asset_id').references((): AnyPgColumn => mediaAsset.id, { onDelete: 'set null' }),
 
   /**
    * What to send. Plain text for now — `message_template` and its approval flow do not exist

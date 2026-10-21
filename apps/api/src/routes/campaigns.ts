@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import {
   campaignProgress, previewAudience, forecast, POLICY_GATES,
-  createCampaignDraft, startCampaign as startCampaignRun, setCampaignStatus, editCampaign, type ActionContext
+  createCampaignDraft, startCampaign as startCampaignRun, setCampaignStatus, editCampaign, type ActionContext,
+  storeCampaignPicture, listCampaignPictures, CampaignPictureError, GifConversionError
 } from '@crm/core';
+import type { StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
@@ -18,7 +20,9 @@ const createCampaign = z.object({
   explicitContactIds: z.array(z.string().uuid()).min(1).max(50_000).optional(),
   fromTagId: z.string().uuid().optional(),
   fromSegmentId: z.string().uuid().optional(),
-  aiTemplateId: z.string().uuid().optional()
+  aiTemplateId: z.string().uuid().optional(),
+  /** One stored campaign picture or GIF sent with every message, the message being its caption. */
+  mediaAssetId: z.string().uuid().optional()
 }).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId, v.fromSegmentId]
   .filter((x) => x !== undefined).length === 1, {
   message: 'state the audience exactly once: fromImportRunId, explicitContactIds, fromTagId, or fromSegmentId'
@@ -61,8 +65,44 @@ const listRecipientsQuery = z.object({
  * audience, and the gateway converts recipients into messages at whatever rate the anti-ban
  * ceiling allows. Nothing in this router can make a message go out faster (M12).
  */
-export function campaignsRouter(limits: { perMinute: number; perDay: number }): Router {
+export function campaignsRouter(limits: { perMinute: number; perDay: number }, storage: StorageDriver): Router {
   const router = Router();
+
+  /**
+   * Stores one picture or GIF for campaigns: the raw file as the body. JPG, PNG, WebP or GIF up to 5 MB, decided from the
+   * bytes; MP4 and other video are refused for now. A GIF is also turned into the looping clip WhatsApp plays. Sends nothing.
+   * (Declared before the `/:id` routes so "media" is not read as a campaign id.)
+   */
+  router.post('/media', requireScope('messages:send'), async (req: Request, res: Response) => {
+    const bytes = req.body as unknown;
+    if (!Buffer.isBuffer(bytes) || bytes.byteLength === 0) {
+      res.status(415).json(problem(req, 415, 'UNSUPPORTED_MEDIA_TYPE', 'POST the file itself as the request body.'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    const filename = typeof req.query.filename === 'string' ? req.query.filename : null;
+    try {
+      const picture = await req.tenant!((tx) => storeCampaignPicture(tx, storage, { orgId, bytes, filename }));
+      res.status(201).json({ data: picture });
+    } catch (error) {
+      if (error instanceof CampaignPictureError) {
+        const status = error.code === 'too_large' ? 413 : 415;
+        res.status(status).json(problem(req, status, error.code === 'too_large' ? 'FILE_TOO_LARGE' : 'UNSUPPORTED_FILE_TYPE', error.message));
+        return;
+      }
+      if (error instanceof GifConversionError) {
+        res.status(error.code === 'no_ffmpeg' ? 501 : 422).json(problem(req, error.code === 'no_ffmpeg' ? 501 : 422, 'GIF_CONVERSION_FAILED', error.message));
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /** The organisation's campaign pictures, newest first, for "use one I uploaded before". */
+  router.get('/media', requireScope('conversations:read'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    res.json({ data: await req.tenant!((tx) => listCampaignPictures(tx, orgId)) });
+  });
 
   /** Creates a draft. Nothing is sent and no audience is frozen until it is started. */
   router.post('/', requireScope('messages:send'), async (req: Request, res: Response) => {
@@ -74,17 +114,18 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
     }
     const orgId = req.crm!.orgId;
     const {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId
     } = parsed.data;
 
     const created = await req.tenant!((tx) => createCampaignDraft(tx, orgId, actionContext(req), {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId
     }));
 
     if ('error' in created) {
       const detail = created.error === 'no_tag' ? 'No such tag.'
         : created.error === 'no_segment' ? 'No such segment.'
         : created.error === 'no_template' ? 'No such AI template.'
+        : created.error === 'no_picture' ? 'No such picture. Upload it again.'
         : 'No such sender.';
       res.status(404).json(problem(req, 404, 'NOT_FOUND', detail));
       return;
@@ -181,11 +222,14 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
                  c.started_at AS "startedAt", c.completed_at AS "completedAt",
                  c.created_at AS "createdAt", c.gate_overrides AS "gateOverrides",
                  c.gate_override_reason AS "gateOverrideReason", c.pause_reason AS "pauseReason",
+                 c.media_asset_id AS "mediaAssetId", ma.filename AS "mediaFilename",
+                 ma.content_type AS "mediaContentType", ma.size_bytes AS "mediaSizeBytes",
                  si.warmup_started_at AS "warmupStartedAt",
                  si.daily_cap_override AS "dailyCapOverride",
                  si.last_inbound_at AS "lastInboundAt"
           FROM campaign c
           JOIN sender_identity si ON si.id = c.sender_identity_id
+          LEFT JOIN media_asset ma ON ma.id = c.media_asset_id AND ma.org_id = c.org_id
           WHERE c.id = ${id} AND c.org_id = ${orgId}`);
         const campaign = (rows as unknown as Array<Record<string, unknown>>)[0];
         if (!campaign) return null;

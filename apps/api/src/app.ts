@@ -108,6 +108,8 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
   app.post('/api/v1/conversations/:id/attachments', express.raw({
     type: () => true, limit: ATTACHMENT_LIMIT
   }));
+  // Campaign pictures and GIFs: raw bytes, capped a little above the 5 MB rule so the handler can answer with the exact size.
+  app.post('/api/v1/campaigns/media', express.raw({ type: () => true, limit: 6 * 1024 * 1024 }));
   app.use('/api/v1/imports', express.raw({
     type: [
       'text/csv', 'text/plain',
@@ -192,7 +194,7 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
   api.use('/segments', segmentsRouter());
   api.use('/campaigns', campaignsRouter({
     perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY
-  }));
+  }, deps.storage));
   api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY, deps.storage, ATTACHMENT_LIMIT_BYTES));
   app.use('/api/v1', api);
 
