@@ -24,6 +24,7 @@
     "web:build": "NEXT_TELEMETRY_DISABLED=1 npm --workspace @crm/web run build",
     "start": "node apps/api/dist/server.js",
     "docs:pdf": "node scripts/docs-pdf.mjs",
+    "llm:check": "tsx --env-file-if-exists=.env scripts/llm-check.ts",
     "tutorial:shots": "node scripts/tutorial-shots.mjs",
     "tutorial:pdf": "node scripts/build-tutorial.mjs",
     "db:docs": "tsx --env-file-if-exists=.env scripts/db-docs.ts",
