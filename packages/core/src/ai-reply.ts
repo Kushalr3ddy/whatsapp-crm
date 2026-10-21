@@ -3,6 +3,7 @@ import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver, LlmMessage, LlmResponse } from '@crm/llm';
 import { AUDIT, writeAudit } from './audit.js';
+import { fillInstructions, instructionVars } from './ai-instructions.js';
 
 /** What happened to one inbound message the assistant looked at. */
 export interface AutoReplyResult {
@@ -61,10 +62,12 @@ export async function autoReply(
   const botUserId = settings.botUserId;
 
   const conv = (await db.execute(sql`
-    SELECT v.assignee_user_id AS "assignee", v.status, c.do_not_contact AS "dnc", o.name AS "orgName"
+    SELECT v.assignee_user_id AS "assignee", v.status, c.do_not_contact AS "dnc", o.name AS "orgName",
+           c.display_name AS "contactName", c.custom_fields AS "customFields"
     FROM conversation v JOIN contact c ON c.id = v.contact_id JOIN org o ON o.id = v.org_id
     WHERE v.id = ${conversationId} AND v.org_id = ${orgId}`) as unknown as Array<{
     assignee: string | null; status: string; dnc: boolean; orgName: string;
+    contactName: string | null; customFields: Record<string, unknown> | null;
   }>)[0];
   if (conv === undefined || conv.assignee !== botUserId || conv.status !== 'open') return { outcome: 'skipped', reason: 'not_assigned' };
 
@@ -116,7 +119,8 @@ export async function autoReply(
   } else {
     try {
       answer = await llm.complete({
-        system: systemText(conv.orgName, settings.instructions),
+        // {{name}}, {{city}}… in the instructions are filled from this chat's contact (cleaned to one short line each).
+        system: systemText(conv.orgName, fillInstructions(settings.instructions, instructionVars({ name: conv.contactName, customFields: conv.customFields }, conv.orgName))),
         messages: history, tools: [HAND_OVER_TOOL], maxTokens: MAX_REPLY_TOKENS
       });
     } catch (error) {
@@ -203,7 +207,7 @@ async function loadHistory(db: Database, kms: KmsDriver, orgId: string, conversa
   return turns;
 }
 
-/** The system text: fixed safety rules plus the org's own instructions. Never contains customer text. */
+/** The system text: fixed safety rules plus the org's own instructions. Never contains customer messages; placeholder values are cleaned contact fields. */
 function systemText(orgName: string, instructions: string): string {
   return [
     `You are the WhatsApp assistant for ${orgName}. You are having an ongoing chat with a customer, and you run the whole conversation yourself.`,

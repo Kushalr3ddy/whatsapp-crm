@@ -13,6 +13,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-21 (late) — Placeholders in the AI assistant's instructions
+- **Built:** the instructions on the AI assistant page may use `{{name}}`, `{{org}}` and any custom field (`{{city}}`); each chat reply fills
+  them from that chat's contact (`packages/core/src/ai-instructions.ts`). Values are cleaned to one line, no braces, 100 characters at most, so
+  a spreadsheet cell cannot add instructions; a missing value reads `(not known)` (Mikhil's choice) so the model asks for it. Campaign writing
+  and instructions leave them unfilled. The page lists the org's placeholders under the box.
+- **Tests:** unit `ai-instructions.test.ts` 6; integration `ai-auto-reply` +1. Not run locally (no dependencies on this machine): CI runs them.
+- **Still untested live:** whether "Waiting for this message" clears after #96 (HANDOFF live test, step 4).
+
 ### 2026-10-21 (afternoon and evening) — The "AI speedrun": an AI assistant that runs chats and campaigns; tutorial PDF; a WhatsApp session breakage
 - **Merged #84 to #93** (all AI PRs are titled `ai-speedrun:` so they can be searched; Kushal's rule): contacts page (#84), import page notice,
   finished imports clear, wider wizard (#85), the model layer **`@crm/llm`** (#86), AI settings, consent and a bot user (#87, migration 0031),

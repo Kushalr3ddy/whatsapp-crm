@@ -78,6 +78,11 @@ Then say in the final message which PRs are open and what the next session shoul
 
 *(The section below, "2026-10-19 to 2026-10-21", is older and its "state" is out of date: #83 to #95 are merged.)*
 
+**Later the same day (Mikhil, from a new account; the first one ran out of tokens and its unpushed work was lost):** placeholders in the
+assistant's instructions (`{{name}}`, `{{org}}`, any custom field; cleaned values; `(not known)` when missing), in the PR titled
+`ai-speedrun: placeholders in the AI assistant's instructions`. Details in `CHANGELOG.md` and F12. The live test below (step 4,
+"Waiting for this message") is still not done.
+
 ### State in one paragraph
 `main` has everything through **#96** (the AI assistant, queue, tutorial PDF, `dev:fast`, `llm:check`, the "lead the conversation" prompt, the resend fix for "Waiting for this message",
 the assistant's reply to photos and voice notes, the `send_message` name-not-id fix, D-59 raised to priority, and the docs below). **No feature PR is open**; the only open PR is the small docs-only one that corrected this paragraph. The dev stack is **STOPPED** (brought down at the end of the session; Postgres is left running).

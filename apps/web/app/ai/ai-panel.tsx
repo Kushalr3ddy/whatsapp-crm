@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import type { AiSettings } from '@/lib/crm';
+import type { AiSettings, CustomField } from '@/lib/crm';
 import { saveAiAction } from './actions';
 
 /** The settings form: consent, the on/off switch, the instructions and the daily limit. */
-export function AiPanel({ settings }: { settings: AiSettings }) {
+export function AiPanel({ settings, fields }: { settings: AiSettings; fields: CustomField[] }) {
   const consented = settings.consentAcceptedAt !== null;
   const [consent, setConsent] = useState(consented);
   const [enabled, setEnabled] = useState(settings.enabled);
@@ -69,6 +69,11 @@ export function AiPanel({ settings }: { settings: AiSettings }) {
             className="field font-normal"
           />
         </label>
+        <p className="mt-1 text-xs text-muted">
+          Placeholders are filled in from each chat&apos;s contact: {['name', 'org', ...fields.map((f) => f.key)].map((k, i) => (
+            <span key={k}>{i > 0 && ', '}<code>{`{{${k}}}`}</code></span>
+          ))}. One the contact has no value for reads “(not known)”, so the assistant can ask for it.
+        </p>
 
         <label className="mt-4 flex max-w-xs flex-col gap-1 text-sm font-medium">
           Most messages it may send in a day

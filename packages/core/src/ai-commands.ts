@@ -119,7 +119,7 @@ export async function runAiCommand(
     'To message one person use send_message: `to` is the person\'s name copied from the instruction (or their phone number), never an id; write the whole message yourself. Ids in the context belong only to numbers, tags, segments and campaigns.',
     'Never claim a campaign or message was sent unless a tool did it. Keep your reply to one or two sentences. Plain text.',
     'Write campaign text that is short, polite and varied: use {{name}} for the contact\'s name, and {option one|option two} for wording that can differ between people.',
-    settings.instructions.trim() === '' ? '' : `The organisation's own instructions:\n${settings.instructions.trim()}`,
+    settings.instructions.trim() === '' ? '' : `The organisation's own instructions (placeholders such as {{name}} in them are filled in for each chat, not here):\n${settings.instructions.trim()}`,
     `Context (JSON): ${JSON.stringify({ numbers: senders, tags, segments, recentCampaigns: campaigns })}`
   ].filter((l) => l !== '').join('\n');
 
@@ -228,7 +228,7 @@ export async function draftCampaignText(deps: { db: Database; llm: LlmDriver }, 
       system: [
         'You write WhatsApp campaign messages for a business. Reply with only the message text: plain text, no quotes, no markdown, under 600 characters.',
         'Be warm and specific, and make clear what the reader should do. Use {{name}} where the contact\'s name fits, and {option one|option two} for a few words that can vary between people.',
-        settings.instructions.trim() === '' ? '' : `The organisation's own instructions:\n${settings.instructions.trim()}`
+        settings.instructions.trim() === '' ? '' : `The organisation's own instructions (placeholders such as {{name}} in them are filled in for each chat, not here):\n${settings.instructions.trim()}`
       ].filter((l) => l !== '').join('\n'),
       messages: [{ role: 'user', content: goal }], maxTokens: 400
     });

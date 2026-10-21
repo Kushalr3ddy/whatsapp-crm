@@ -44,6 +44,7 @@ export {
 } from './ai-commands.js';
 
 export { autoReply, getAiNotice, type AutoReplyResult, type AiNotice } from './ai-reply.js';
+export { fillInstructions, instructionVars, cleanInstructionValue, NOT_KNOWN } from './ai-instructions.js';
 
 export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
