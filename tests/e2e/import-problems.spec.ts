@@ -28,7 +28,7 @@ test.describe('import: column suggestion and rows to fix', () => {
     await expect(page.getByText(/rows ·/)).toBeVisible();
 
     // Chosen by what is in the column, and said so.
-    await expect(page.getByRole('checkbox', { name: /^Mob/ })).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: /Mob/ })).toBeChecked();
     await expect(page.getByText(/of the values look like phone numbers/).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Preview' }).click();
@@ -56,7 +56,7 @@ test.describe('import: column suggestion and rows to fix', () => {
     });
     await expect(page.getByText(/rows ·/)).toBeVisible();
     // Swap the suggested column for one that is not phone numbers: the note says so.
-    await page.getByRole('checkbox', { name: /^Mob/ }).uncheck();
+    await page.getByRole('checkbox', { name: /Mob/ }).uncheck();
     await page.getByLabel('Add another column that holds phone numbers').selectOption('Remarks');
     await expect(page.getByText(/only \d+% look like phone numbers/)).toBeVisible();
   });

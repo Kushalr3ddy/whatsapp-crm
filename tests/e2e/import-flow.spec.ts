@@ -13,7 +13,7 @@ test.describe('import: flow', () => {
     await signIn(page);
     await page.goto('/import');
     await page.locator('input[type="file"]').setInputFiles({
-      name: `empty-${String(Date.now())}.csv`, mimeType: 'text/csv', buffer: Buffer.from('Name,Mob\n')
+      name: `empty-${String(Date.now())}.csv`, mimeType: 'text/csv', buffer: Buffer.from(`Name,Mob,Run${String(Date.now())}\n`)
     });
     await expect(page.getByText(/no rows to import/)).toBeVisible();
   });
@@ -35,7 +35,7 @@ test.describe('import: flow', () => {
     // The columns step says what its controls are for.
     await expect(page.getByRole('heading', { name: 'Select the columns to be stored' })).toBeVisible();
     await page.getByLabel('City').check();
-    await expect(page.getByText(`Preview of all the columns you have selected from ${file}`)).toBeVisible();
+    await expect(page.getByText(`From ${file}.`)).toBeVisible();
 
     await page.getByRole('button', { name: 'Preview' }).click();
     await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
@@ -69,7 +69,7 @@ test.describe('import: flow', () => {
     await expect(page.getByRole('cell', { name: 'a.sharma' })).toBeVisible();
 
     // A second phone column can be ticked and is tried after the first.
-    await page.getByRole('checkbox', { name: /^Alt Phone/ }).check();
+    await page.getByRole('checkbox', { name: /^[–\d] Alt Phone/ }).check();
     await expect(page.getByRole('columnheader', { name: 'Phone 2' })).toBeVisible();
 
     // A personal-looking column cannot be ticked while the protection is on, and can once it is switched off.

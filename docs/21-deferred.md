@@ -2369,6 +2369,10 @@ was never tested or designed phone-first. Related: D-66 (look and motion), D-70 
 tier). Questions for later: a responsive web app only, or an installable one (a PWA with home-screen icon and push
 notifications for new messages); what to test on (real phones, and Playwright's mobile viewport, which D-49 also wants).
 
+**Added 2026-10-21 (Kushal): mobile compatibility comes later.** Do the phone-width work as its own piece after the desktop
+work (D-21, D-70) settles; until then new screens only need to not be made worse on a phone. The Import wizard sections (#83)
+should get a phone-width look as part of it.
+
 Pinned to come back to; not started.
 
 ---
