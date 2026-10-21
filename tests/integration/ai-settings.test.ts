@@ -100,7 +100,7 @@ describe('AI assistant settings', () => {
     expect(bots).toEqual([{ is_bot: true, password_hash: null, role: 'agent' }]);
 
     const audit = await db.execute(sql`
-      SELECT action FROM audit_log WHERE org_id = ${orgId} AND action LIKE 'ai.%' ORDER BY created_at`) as unknown as Array<{ action: string }>;
+      SELECT action FROM audit_log WHERE org_id = ${orgId} AND action LIKE 'ai.%' ORDER BY at`) as unknown as Array<{ action: string }>;
     expect(audit.map((a) => a.action)).toEqual(['ai.enabled', 'ai.settings_changed', 'ai.disabled', 'ai.enabled']);
   });
 
