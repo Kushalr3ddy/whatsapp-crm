@@ -12,9 +12,21 @@ import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
  */
 export type TagTarget =
   | { readonly kind: 'all' }
-  | { readonly kind: 'search'; readonly q?: string | undefined; readonly tagId?: string | undefined }
+  | ({ readonly kind: 'search' } & ContactFilter)
   | { readonly kind: 'segment'; readonly segmentId: string }
   | { readonly kind: 'ids'; readonly ids: readonly string[] };
+
+/**
+ * What the contact list can be narrowed by. `from` / `to` are calendar days (`YYYY-MM-DD`, both included)
+ * and apply to the day the person was added, or to the day they were last imported (`dateBy`).
+ */
+export interface ContactFilter {
+  readonly q?: string | undefined;
+  readonly tagId?: string | undefined;
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
+  readonly dateBy?: 'added' | 'imported' | undefined;
+}
 
 /** Anything that can run a query — a request's tenant transaction. */
 interface Executor { execute: (q: SQL) => Promise<unknown> }
@@ -24,11 +36,12 @@ interface Executor { execute: (q: SQL) => Promise<unknown> }
  * the contact list, its count and bulk tagging, so "the 37 people I can see" and "the 37 people it
  * will tag" can never drift apart.
  */
-export function searchPredicate(
-  orgId: string, filter: { q?: string | undefined; tagId?: string | undefined }
-): SQL {
+export function searchPredicate(orgId: string, filter: ContactFilter): SQL {
   const like = filter.q === undefined || filter.q === '' ? null : `%${filter.q}%`;
   const tagId = filter.tagId ?? null;
+  const from = filter.from === undefined || filter.from === '' ? null : filter.from;
+  const to = filter.to === undefined || filter.to === '' ? null : filter.to;
+  const imported = filter.dateBy === 'imported';
   return sql`c.org_id = ${orgId} AND c.deleted_at IS NULL
     AND (${like}::text IS NULL
          OR c.display_name ILIKE ${like}
@@ -37,7 +50,16 @@ export function searchPredicate(
                     WHERE ci2.contact_id = c.id AND ci2.value_normalized ILIKE ${like}))
     AND (${tagId}::uuid IS NULL
          OR EXISTS (SELECT 1 FROM contact_tag ct2
-                    WHERE ct2.contact_id = c.id AND ct2.tag_id = ${tagId}::uuid))`;
+                    WHERE ct2.contact_id = c.id AND ct2.tag_id = ${tagId}::uuid))
+    AND (${from}::date IS NULL AND ${to}::date IS NULL
+         OR (NOT ${imported}
+             AND (${from}::date IS NULL OR c.created_at >= ${from}::date)
+             AND (${to}::date IS NULL OR c.created_at < ${to}::date + 1))
+         OR (${imported} AND EXISTS (
+               SELECT 1 FROM import_row ir JOIN import_run r ON r.id = ir.import_run_id
+               WHERE ir.contact_id = c.id
+                 AND (${from}::date IS NULL OR r.created_at >= ${from}::date)
+                 AND (${to}::date IS NULL OR r.created_at < ${to}::date + 1))))`;
 }
 
 /** Turns a target into a predicate over `c`, or null when it names a segment that does not exist. */

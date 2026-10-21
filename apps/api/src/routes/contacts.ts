@@ -34,6 +34,13 @@ const listContactsQuery = z.object({
   q: z.string().trim().min(1).max(100).optional(),
   /** Narrow to contacts carrying this tag — the "select people by label" path. */
   tag: z.string().uuid().optional(),
+  /** First and last day (`YYYY-MM-DD`, both included) of the date range, on `dateBy`. */
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Which date `from` / `to` apply to: when the person was added, or when they were last imported. */
+  dateBy: z.enum(['added', 'imported']).optional(),
+  /** Newest added first (default), oldest first, name A to Z, or most recently imported first. */
+  sort: z.enum(['added_desc', 'added_asc', 'name_asc', 'imported_desc']).default('added_desc'),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().datetime().optional()
 });
@@ -203,7 +210,7 @@ export function contactsRouter(defaultCountry: string): Router {
 
   /** How many contacts match a search / tag filter — the number a bulk action would affect. */
   router.get('/count', requireScope('contacts:read'), async (req: Request, res: Response) => {
-    const parsed = listContactsQuery.pick({ q: true, tag: true }).safeParse(req.query);
+    const parsed = listContactsQuery.pick({ q: true, tag: true, from: true, to: true, dateBy: true }).safeParse(req.query);
     if (!parsed.success) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Invalid filter.'));
       return;
@@ -211,7 +218,9 @@ export function contactsRouter(defaultCountry: string): Router {
     const orgId = req.crm!.orgId;
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT count(*)::int AS n FROM contact c
-      WHERE ${searchPredicate(orgId, { q: parsed.data.q, tagId: parsed.data.tag })}`));
+      WHERE ${searchPredicate(orgId, {
+        q: parsed.data.q, tagId: parsed.data.tag, from: parsed.data.from, to: parsed.data.to, dateBy: parsed.data.dateBy
+      })}`));
     res.json({ data: { total: (rows as unknown as Array<{ n: number }>)[0]!.n } });
   });
 
@@ -230,16 +239,26 @@ export function contactsRouter(defaultCountry: string): Router {
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
-    const { q, tag, limit, cursor } = parsed.data;
+    const { q, tag, from, to, dateBy, sort, limit, cursor } = parsed.data;
     const orgId = req.crm!.orgId;
-    const before = cursor ?? null;
-    // The same search / tag rule bulk tagging resolves, so what is listed is what gets tagged.
-    const filter = searchPredicate(orgId, { q, tagId: tag });
+    // Paging by cursor follows the added date, newest first; other orders return the first page only.
+    const before = sort === 'added_desc' ? cursor ?? null : null;
+    // The same search / tag / date rule bulk tagging resolves, so what is listed is what gets tagged.
+    const filter = searchPredicate(orgId, { q, tagId: tag, from, to, dateBy });
+    const importedAt = sql`(SELECT max(r.created_at) FROM import_row ir JOIN import_run r ON r.id = ir.import_run_id
+                            WHERE ir.contact_id = c.id)`;
+    const order = {
+      added_desc: sql`c.created_at DESC`,
+      added_asc: sql`c.created_at ASC`,
+      name_asc: sql`lower(c.display_name) ASC NULLS LAST, c.created_at DESC`,
+      imported_desc: sql`${importedAt} DESC NULLS LAST, c.created_at DESC`
+    }[sort];
 
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT c.id, c.display_name AS "displayName", c.source,
              c.do_not_contact AS "doNotContact", c.created_at AS "createdAt",
              c.custom_fields AS "customFields",
+             ${importedAt} AS "lastImportedAt",
              coalesce((
                SELECT json_agg(json_build_object('kind', ci.kind, 'value', ci.value_normalized)
                                ORDER BY ci.is_primary DESC)
@@ -255,12 +274,12 @@ export function contactsRouter(defaultCountry: string): Router {
       FROM contact c
       WHERE ${filter}
         AND (${before}::timestamptz IS NULL OR c.created_at < ${before}::timestamptz)
-      ORDER BY c.created_at DESC
+      ORDER BY ${order}
       LIMIT ${limit}`));
 
     const data = rows as unknown as Array<{ createdAt: string }>;
     // A full page means there may be more; hand back the last row's timestamp as the next cursor.
-    const nextCursor = data.length === limit ? data[data.length - 1]!.createdAt : null;
+    const nextCursor = sort === 'added_desc' && data.length === limit ? data[data.length - 1]!.createdAt : null;
     res.json({ data, nextCursor });
   });
 

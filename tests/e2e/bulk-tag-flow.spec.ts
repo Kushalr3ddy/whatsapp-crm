@@ -73,6 +73,7 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     await page.goto('/contacts');
     const rowWithTagPicker = () => page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first();
     const firstRow = rowWithTagPicker();
+    await firstRow.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });   // the add-a-tag box is inside the opened row
     await firstRow.getByLabel('Add a tag').fill(handTag);
     await firstRow.getByRole('button', { name: 'Add', exact: true }).click();
     // Whichever row now carries the chip. The list is not in a stable order (tagging touches the
