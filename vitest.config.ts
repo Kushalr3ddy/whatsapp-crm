@@ -32,6 +32,7 @@ export default defineConfig({
       '@crm/channel-fake': fileURLToPath(new URL('./packages/channels/fake/src/index.ts', import.meta.url)),
       '@crm/kms-local': fileURLToPath(new URL('./packages/providers/kms/local/src/index.ts', import.meta.url)),
       '@crm/auth-builtin': fileURLToPath(new URL('./packages/providers/auth/builtin/src/index.ts', import.meta.url)),
+      '@crm/llm': fileURLToPath(new URL('./packages/providers/llm/src/index.ts', import.meta.url)),
       '@crm/storage': fileURLToPath(new URL('./packages/providers/storage/src/index.ts', import.meta.url)),
       '@crm/storage-filesystem': fileURLToPath(new URL('./packages/providers/storage/filesystem/src/index.ts', import.meta.url)),
       '@crm/storage-s3': fileURLToPath(new URL('./packages/providers/storage/s3/src/index.ts', import.meta.url)),

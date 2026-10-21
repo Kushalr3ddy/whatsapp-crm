@@ -75,7 +75,14 @@ const configSchema = z.object({
     .transform((v) => v === undefined ? undefined : v === 'true'),
   QUEUE_DRIVER: z.enum(['pgboss', 'bullmq']).default('pgboss'),
   TELEMETRY_DRIVER: z.enum(['none', 'prometheus', 'otlp']).default('none'),
-  LLM_DRIVER: z.enum(['none', 'ollama', 'openai', 'anthropic', 'gemini']).default('none'),
+  LLM_DRIVER: z.enum(['none', 'ollama', 'openai', 'anthropic', 'gemini', 'compatible']).default('none'),
+  // The language model (docs/06-features/F12-ai-agent.md). Only read when LLM_DRIVER is not `none`; the model
+  // name, and for hosted providers the key, are checked at boot (below). An empty value counts as unset.
+  LLM_MODEL: z.preprocess((v) => v === '' ? undefined : v, z.string().optional()),
+  LLM_API_KEY: z.preprocess((v) => v === '' ? undefined : v, z.string().optional()),
+  /** Unset = the provider's own address. Required for `compatible` (OpenRouter, Groq, vLLM...). */
+  LLM_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
+  LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(20000),
   SMS_DRIVER: z.enum(['none', 'twilio', 'msg91']).default('none'),
 
   // ---- messaging safety (docs/08-antiban.md) ---------------------------------------
@@ -124,6 +131,13 @@ const configSchema = z.object({
 }).refine((c) => !(c.GATEWAY_CHANNEL === 'fake' && c.NODE_ENV === 'production'), {
   path: ['GATEWAY_CHANNEL'],
   message: 'the fake channel sends nothing real and must never run with NODE_ENV=production'
+}).superRefine((c, ctx) => {
+  // A chosen model with no name or key would only fail on the first customer message, so say so at boot.
+  if (c.LLM_DRIVER !== 'none') {
+    if (c.LLM_MODEL === undefined) ctx.addIssue({ code: 'custom', path: ['LLM_MODEL'], message: `required when LLM_DRIVER=${c.LLM_DRIVER}` });
+    if (c.LLM_DRIVER !== 'ollama' && c.LLM_API_KEY === undefined) ctx.addIssue({ code: 'custom', path: ['LLM_API_KEY'], message: `required when LLM_DRIVER=${c.LLM_DRIVER}` });
+    if (c.LLM_DRIVER === 'compatible' && c.LLM_BASE_URL === undefined) ctx.addIssue({ code: 'custom', path: ['LLM_BASE_URL'], message: 'required when LLM_DRIVER=compatible' });
+  }
 }).superRefine((c, ctx) => {
   // A deployment that asked for S3 storage and quietly got a local directory would look fine until a
   // second process could not see the first one's files, so the missing pieces are named at boot.
