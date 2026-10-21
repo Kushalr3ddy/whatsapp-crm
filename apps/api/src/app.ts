@@ -24,6 +24,7 @@ import { encryptionRouter } from './routes/encryption.js';
 import { segmentsRouter } from './routes/segments.js';
 import { campaignsRouter } from './routes/campaigns.js';
 import { aiRouter } from './routes/ai.js';
+import { createLlm, type LlmDriver } from '@crm/llm';
 
 /**
  * How large a file may be uploaded to `/imports`.
@@ -54,6 +55,11 @@ export interface AppDependencies {
    * whether the connecting role bypasses row-level security (`apps/api/src/tenant.ts`).
    */
   readonly tenantRole: string | null;
+  /**
+   * The language model the AI assistant uses when an admin lets it answer a blocked chat. Optional: left out, it is
+   * built from `LLM_*` config on first use, so a server with no model configured still boots.
+   */
+  readonly llm?: LlmDriver;
 }
 
 /**
@@ -167,7 +173,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(requireAuthenticated);
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
-  api.use('/ai', aiRouter(deps.db));
+  api.use('/ai', aiRouter(deps.db, deps.kms, () => deps.llm ?? createLlm(deps.config), deps.tenantRole));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));

@@ -671,6 +671,26 @@ export async function getSenderStatus(conversationId: string): Promise<SenderSta
   return request<SenderStatus>(`/conversations/${encodeURIComponent(conversationId)}/sender-status`);
 }
 
+/** Why the AI assistant is stuck on a conversation. Mirrors `GET /api/v1/ai/conversations/:id/notice`. */
+export interface AiNotice {
+  code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error';
+  antiBan: boolean;
+  reason: string;
+  canOverride: boolean;
+}
+
+/** The warning for a conversation the assistant owns, or null when nothing is wrong. */
+export async function getAiNotice(conversationId: string): Promise<AiNotice | null> {
+  return request<AiNotice | null>(`/ai/conversations/${encodeURIComponent(conversationId)}/notice`);
+}
+
+/** An admin lets the assistant answer a do-not-contact contact's latest message, with a reason. */
+export async function allowAiReply(conversationId: string, reason: string): Promise<{ outcome: string; reason?: string }> {
+  return request<{ outcome: string; reason?: string }>(
+    `/ai/conversations/${encodeURIComponent(conversationId)}/allow-reply`, { method: 'POST', body: JSON.stringify({ reason }) }
+  );
+}
+
 /** One entry on a number's health timeline. Mirrors `GET /senders/:id/health-events`. */
 export interface HealthEvent {
   id: string;

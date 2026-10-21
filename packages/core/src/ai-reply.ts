@@ -45,7 +45,8 @@ const HAND_OVER_TOOL = {
  */
 export async function autoReply(
   deps: { db: Database; kms: KmsDriver; llm: LlmDriver },
-  orgId: string, conversationId: string, inboundMessageId: string
+  orgId: string, conversationId: string, inboundMessageId: string,
+  options: { dncOverride?: { reason: string; adminUserId: string } } = {}
 ): Promise<AutoReplyResult> {
   const { db, kms, llm } = deps;
   const settings = (await db.execute(sql`
@@ -81,7 +82,10 @@ export async function autoReply(
   if (inbound === undefined) return { outcome: 'skipped', reason: 'no_such_message' };
   if (inbound.contentType !== 'text') { await record('skipped', 'not_text'); return { outcome: 'skipped', reason: 'not_text' }; }
 
-  if (conv.dnc) { await record('blocked', 'do_not_contact'); return { outcome: 'blocked', reason: 'do_not_contact' }; }
+  // Only an admin's explicit, reasoned override (passed in by the API, never by the model) lets the assistant
+  // answer someone flagged do-not-contact, and then only this one message, audited like a person's override.
+  const dncOverride = conv.dnc ? options.dncOverride : undefined;
+  if (conv.dnc && dncOverride === undefined) { await record('blocked', 'do_not_contact'); return { outcome: 'blocked', reason: 'do_not_contact' }; }
 
   const today = (await db.execute(sql`
     SELECT count(*)::int AS n FROM ai_run
@@ -119,10 +123,18 @@ export async function autoReply(
   let messageId: string | undefined;
   if (text !== '') {
     messageId = ((await db.execute(sql`
-      INSERT INTO message (org_id, conversation_id, direction, status, content_type, body_enc, body_hmac, sent_by, sent_by_user_id)
+      INSERT INTO message (org_id, conversation_id, direction, status, content_type, body_enc, body_hmac, sent_by, sent_by_user_id,
+                           dnc_override, dnc_override_reason)
       VALUES (${orgId}, ${conversationId}, 'outbound', 'queued', 'text',
-              ${Buffer.from(kms.encrypt(new TextEncoder().encode(text)))}, ${kms.blindIndex(text)}, 'agent', ${botUserId})
+              ${Buffer.from(kms.encrypt(new TextEncoder().encode(text)))}, ${kms.blindIndex(text)}, 'agent', ${botUserId},
+              ${dncOverride !== undefined}, ${dncOverride?.reason ?? null})
       RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
+    if (dncOverride !== undefined) {
+      await writeAudit(db, {
+        orgId, actor: { type: 'user', id: dncOverride.adminUserId }, action: AUDIT.messageDncOverridden,
+        targetType: 'conversation', targetId: conversationId, after: { reason: dncOverride.reason, by: 'ai_assistant' }
+      });
+    }
   }
 
   const handOver = answer.toolCalls.find((c) => c.name === HAND_OVER_TOOL.name);
@@ -184,4 +196,54 @@ function systemText(orgName: string, instructions: string): string {
     'Only discuss what the instructions below cover. If you are unsure, cannot help, or the customer wants a person, call hand_over_to_human.',
     instructions.trim() === '' ? 'No further instructions were given: keep to simple greetings and hand over anything else.' : `Instructions from ${orgName}:\n${instructions.trim()}`
   ].join('\n');
+}
+
+/** Why the assistant has not answered (or its answer has not gone out), for the thread to show. */
+export interface AiNotice {
+  /** `held` = queued but waiting on the number; the rest are why the assistant did not write or send. */
+  readonly code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error';
+  /** True when the anti-ban engine is what is holding it back (so the warning names the ban risk). */
+  readonly antiBan: boolean;
+  /** The hold or failure reason as recorded (e.g. `paced:per_minute`). */
+  readonly reason: string;
+  /** True when an admin can let it through for this one message, at the risk of the number being banned or reported. */
+  readonly canOverride: boolean;
+}
+
+/**
+ * The reason the AI assistant is stuck on a conversation, or null when it is not.
+ *
+ * Only for a conversation assigned to the assistant. A reply it queued that the gateway is holding comes first
+ * (spacing, a quarantined number, ...); otherwise the last thing it tried was blocked or failed and nothing has
+ * been sent in the thread since. The anti-ban limits (pacing, caps, warmup) have no override: they clear on their own.
+ * Only the do-not-contact block can be lifted, by an admin, per message.
+ */
+export async function getAiNotice(db: Database, orgId: string, conversationId: string): Promise<AiNotice | null> {
+  const bot = (await db.execute(sql`
+    SELECT s.bot_user_id AS "botUserId", v.assignee_user_id AS "assignee"
+    FROM conversation v LEFT JOIN ai_setting s ON s.org_id = v.org_id AND s.enabled
+    WHERE v.id = ${conversationId} AND v.org_id = ${orgId}`) as unknown as Array<{ botUserId: string | null; assignee: string | null }>)[0];
+  if (bot === undefined || bot.botUserId === null || bot.assignee !== bot.botUserId) return null;
+
+  const held = (await db.execute(sql`
+    SELECT hold_reason AS "reason" FROM message
+    WHERE org_id = ${orgId} AND conversation_id = ${conversationId} AND direction = 'outbound' AND sent_by = 'agent'
+      AND status = 'queued' AND hold_reason IS NOT NULL
+    ORDER BY created_at DESC LIMIT 1`) as unknown as Array<{ reason: string }>)[0];
+  if (held !== undefined) {
+    // Not connected is the number's own state, not the anti-ban engine; everything else here is.
+    return { code: 'held', antiBan: held.reason !== 'sender_not_connected', reason: held.reason, canOverride: false };
+  }
+
+  const last = (await db.execute(sql`
+    SELECT r.outcome, r.reason FROM ai_run r
+    WHERE r.org_id = ${orgId} AND r.conversation_id = ${conversationId} AND r.kind = 'reply'
+      AND NOT EXISTS (SELECT 1 FROM message m WHERE m.org_id = ${orgId} AND m.conversation_id = ${conversationId}
+                      AND m.direction = 'outbound' AND m.created_at > r.created_at)
+    ORDER BY r.created_at DESC LIMIT 1`) as unknown as Array<{ outcome: string; reason: string | null }>)[0];
+  if (last === undefined) return null;
+  if (last.outcome === 'blocked' && last.reason === 'do_not_contact') return { code: 'do_not_contact', antiBan: true, reason: last.reason, canOverride: true };
+  if (last.outcome === 'blocked' && last.reason === 'daily_cap') return { code: 'daily_cap', antiBan: false, reason: last.reason, canOverride: false };
+  if (last.outcome === 'failed') return { code: 'model_error', antiBan: false, reason: last.reason ?? 'model_error', canOverride: false };
+  return null;
 }

@@ -5,6 +5,7 @@ export {
   inspectDatabaseSecurity, setTenant, assumeRole, resolveTenantRole, TENANT_ROLE,
   type DatabaseSecurityReport
 } from './security-check.js';
+export { tenantDatabase } from './tenant-database.js';
 export { verifySchema, type SchemaCheckResult } from './schema-check.js';
 export * as schema from './schema.js';
 export { TABLE_NOTES, type TableNote } from './table-notes.js';
