@@ -225,6 +225,13 @@
       "when": 1792568166397,
       "tag": "0031_ai_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792570482485,
+      "tag": "0032_ai_may_start_campaigns",
+      "breakpoints": true
     }
   ]
 }

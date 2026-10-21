@@ -173,7 +173,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(requireAuthenticated);
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
-  api.use('/ai', aiRouter(deps.db, deps.kms, () => deps.llm ?? createLlm(deps.config), deps.tenantRole));
+  api.use('/ai', aiRouter(deps.db, deps.kms, () => deps.llm ?? createLlm(deps.config), deps.tenantRole, { perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY }));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));

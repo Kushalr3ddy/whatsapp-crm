@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import {
-  campaignProgress, previewAudience, forecast, snapshotAudience, writeAudit, AUDIT, POLICY_GATES
+  campaignProgress, previewAudience, forecast, POLICY_GATES,
+  createCampaignDraft, startCampaign as startCampaignRun, setCampaignStatus, editCampaign, type ActionContext
 } from '@crm/core';
 import { auditActor, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
@@ -32,6 +33,12 @@ const startCampaign = z.object({
 }).refine((v) => (v.overrideGates ?? []).length === 0 || v.reason !== undefined, {
   message: 'a reason of at least 10 characters is required to override a gate', path: ['reason']
 });
+
+/** Body for editing a draft or paused campaign: a new name, new wording, or both. */
+const editBody = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  body: z.string().min(1).max(4096).optional()
+}).refine((v) => v.name !== undefined || v.body !== undefined, 'give a name or a body');
 
 /**
  * Query for listing a campaign's recipients. `status` narrows to one terminal/pending state, `q`
@@ -69,42 +76,9 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
       name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId
     } = parsed.data;
 
-    const created = await req.tenant!(async (tx) => {
-      const sender = await tx.execute(sql`
-        SELECT id FROM sender_identity WHERE id = ${senderIdentityId} AND org_id = ${orgId}`);
-      if ((sender as unknown as unknown[]).length === 0) return { error: 'no_sender' as const };
-
-      // A tag audience must name a tag that exists in this org — a clean 404 rather than a
-      // foreign-key 500, and it stops a campaign being created against a tag from another org.
-      if (fromTagId !== undefined) {
-        const t = await tx.execute(sql`
-          SELECT id FROM tag WHERE id = ${fromTagId} AND org_id = ${orgId}`);
-        if ((t as unknown as unknown[]).length === 0) return { error: 'no_tag' as const };
-      }
-
-      // Same for a segment audience.
-      if (fromSegmentId !== undefined) {
-        const s = await tx.execute(sql`
-          SELECT id FROM segment WHERE id = ${fromSegmentId} AND org_id = ${orgId}`);
-        if ((s as unknown as unknown[]).length === 0) return { error: 'no_segment' as const };
-      }
-
-      const rows = await tx.execute(sql`
-        INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                              explicit_contact_ids, from_tag_id, from_segment_id, status)
-        VALUES (${orgId}, ${name}, ${body}, ${senderIdentityId}, ${fromImportRunId ?? null},
-                ${explicitContactIds === undefined
-                  ? null : JSON.stringify(explicitContactIds)}::jsonb,
-                ${fromTagId ?? null}, ${fromSegmentId ?? null}, 'draft')
-        RETURNING id`);
-      const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
-      await writeAudit(tx, {
-        orgId, actor: auditActor(req), action: AUDIT.campaignCreated,
-        targetType: 'campaign', targetId: id, after: { name, senderIdentityId },
-        ip: req.ip ?? null, requestId: String(req.id)
-      });
-      return { id };
-    });
+    const created = await req.tenant!((tx) => createCampaignDraft(tx, orgId, actionContext(req), {
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId
+    }));
 
     if ('error' in created) {
       const detail = created.error === 'no_tag' ? 'No such tag.'
@@ -141,64 +115,10 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
         return;
       }
 
-      const result = await req.tenant!(async (tx) => {
-        const rows = await tx.execute(sql`
-          SELECT status, sender_identity_id AS "senderIdentityId" FROM campaign
-          WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`);
-        const campaign = (rows as unknown as Array<{
-          status: string; senderIdentityId: string;
-        }>)[0];
-        if (!campaign) return { error: 'not_found' as const };
-        if (campaign.status === 'running') return { error: 'already_running' as const };
-        if (campaign.status === 'completed' || campaign.status === 'cancelled') {
-          return { error: 'finished' as const };
-        }
-
-        // Only on the first start. Resuming a paused campaign must not re-snapshot, or
-        // contacts added since would silently join an audience somebody already approved.
-        if (campaign.status === 'draft') await snapshotAudience(tx, orgId, id);
-
-        await tx.execute(sql`
-          UPDATE campaign SET status = 'running', started_at = coalesce(started_at, now()),
-                              pause_reason = NULL, updated_at = now()
-          WHERE id = ${id} AND org_id = ${orgId}`);
-
-        if (overrideGates.length > 0) {
-          await tx.execute(sql`
-            UPDATE campaign SET gate_overrides = ${sql`ARRAY[${sql.join(overrideGates.map((g) => sql`${g}`), sql`, `)}]::text[]`},
-                                gate_override_reason = ${startBody.data.reason ?? null}
-            WHERE id = ${id} AND org_id = ${orgId}`);
-          await writeAudit(tx, {
-            orgId, actor: auditActor(req), action: AUDIT.campaignGatesOverridden,
-            targetType: 'campaign', targetId: id,
-            after: { gates: overrideGates, reason: startBody.data.reason },
-            ip: req.ip ?? null, requestId: String(req.id)
-          });
-        }
-
-        const progress = await campaignProgress(tx, orgId, id);
-        const senderLimits = await tx.execute(sql`
-          SELECT warmup_started_at AS "warmupStartedAt", daily_cap_override AS "dailyCapOverride",
-                 last_inbound_at AS "lastInboundAt"
-          FROM sender_identity WHERE id = ${campaign.senderIdentityId} AND org_id = ${orgId}`);
-        const s = (senderLimits as unknown as Array<{
-          warmupStartedAt: string | null; dailyCapOverride: number | null; lastInboundAt: string | null;
-        }>)[0]!;
-
-        const outlook = await forecast(tx, campaign.senderIdentityId, progress.pending, {
-          perMinute: limits.perMinute, perDay: limits.perDay,
-          dailyCapOverride: s.dailyCapOverride,
-          warmupStartedAt: s.warmupStartedAt === null ? null : new Date(s.warmupStartedAt),
-          lastInboundAt: s.lastInboundAt === null ? null : new Date(s.lastInboundAt)
-        });
-
-        await writeAudit(tx, {
-          orgId, actor: auditActor(req), action: AUDIT.campaignStarted,
-          targetType: 'campaign', targetId: id, after: { ...progress, ...outlook },
-          ip: req.ip ?? null, requestId: String(req.id)
-        });
-        return { progress, outlook };
-      });
+      const result = await req.tenant!((tx) => startCampaignRun(
+        tx, orgId, actionContext(req), id, limits,
+        overrideGates.length > 0 ? { gates: overrideGates, reason: startBody.data.reason! } : undefined
+      ));
 
       if ('error' in result) {
         const map = {
@@ -215,7 +135,7 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
 
   /** Pauses a running campaign. Instant, because pending recipients are simply not dispatched. */
   router.post('/:id/pause', requireUuidParam('id'), requireScope('messages:send'),
-    (req: Request, res: Response) => { void transition(req, res, 'paused', AUDIT.campaignPaused); });
+    (req: Request, res: Response) => { void transition(req, res, 'paused'); });
 
   /**
    * Cancels a campaign permanently.
@@ -225,13 +145,27 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
    * sending and pulling them back would be a different, racier operation.
    */
   router.post('/:id/cancel', requireUuidParam('id'), requireScope('messages:send'),
-    (req: Request, res: Response) => {
-      void transition(req, res, 'cancelled', AUDIT.campaignCancelled, async (tx, orgId, id) => {
-        await tx.execute(sql`
-          UPDATE campaign_recipient SET status = 'skipped', skip_reason = 'cancelled'
-          WHERE campaign_id = ${id} AND org_id = ${orgId} AND status = 'pending'`);
-      });
-    });
+    (req: Request, res: Response) => { void transition(req, res, 'cancelled'); });
+
+  /**
+   * Changes a campaign's name or wording, while it is a draft or paused. A running campaign must be paused first, so one
+   * audience never sees two different messages.
+   */
+  router.patch('/:id', requireUuidParam('id'), requireScope('messages:send'), async (req: Request, res: Response) => {
+    const parsed = editBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map((i) => i.message).join('; ')));
+      return;
+    }
+    const id = String(req.params.id);
+    const outcome = await req.tenant!((tx) => editCampaign(tx, req.crm!.orgId, actionContext(req), id, parsed.data));
+    if (outcome === 'not_found') { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such campaign.')); return; }
+    if (outcome === 'not_editable') {
+      res.status(409).json(problem(req, 409, 'NOT_EDITABLE', 'Only a draft or paused campaign can be edited. Pause it first.'));
+      return;
+    }
+    res.json({ data: { id, ...parsed.data } });
+  });
 
   /** The campaign, its progress, and how much longer it has. */
   router.get('/:id', requireUuidParam('id'), requireScope('conversations:read'),
@@ -396,34 +330,17 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
   return router;
 }
 
-/** Shared status change, so pause and cancel cannot drift apart. */
-async function transition(
-  req: Request, res: Response, to: string, action: string,
-  extra?: (tx: Parameters<Parameters<NonNullable<Request['tenant']>>[0]>[0],
-           orgId: string, id: string) => Promise<void>
-): Promise<void> {
-  const orgId = req.crm!.orgId;
+/** Who is acting and from where, for the audit row. */
+function actionContext(req: Request): ActionContext {
+  return { actor: auditActor(req), ip: req.ip ?? null, requestId: String(req.id) };
+}
+
+/** Shared status change for pause and cancel. */
+async function transition(req: Request, res: Response, to: 'paused' | 'cancelled'): Promise<void> {
   const id = String(req.params.id);
-
-  const changed = await req.tenant!(async (tx) => {
-    const rows = await tx.execute(sql`
-      UPDATE campaign SET status = ${to}, updated_at = now(),
-                          completed_at = CASE WHEN ${to} = 'cancelled' THEN now()
-                                              ELSE completed_at END
-      WHERE id = ${id} AND org_id = ${orgId} AND status IN ('running', 'paused', 'draft')
-      RETURNING id`);
-    if ((rows as unknown as unknown[]).length === 0) return false;
-    if (extra) await extra(tx, orgId, id);
-    await writeAudit(tx, {
-      orgId, actor: auditActor(req), action, targetType: 'campaign', targetId: id,
-      after: { status: to }, ip: req.ip ?? null, requestId: String(req.id)
-    });
-    return true;
-  });
-
+  const changed = await req.tenant!((tx) => setCampaignStatus(tx, req.crm!.orgId, actionContext(req), id, to));
   if (!changed) {
-    res.status(404).json(problem(req, 404, 'NOT_FOUND',
-      'No such campaign, or it has already finished.'));
+    res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such campaign, or it has already finished.'));
     return;
   }
   res.json({ data: { id, status: to } });

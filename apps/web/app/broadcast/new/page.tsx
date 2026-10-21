@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
-  listSenders, listTags, listImportRuns, listSegments, CrmApiError, NotAuthenticatedError
+  listSenders, listTags, listImportRuns, listSegments, getAiStatus, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
 import type { Sender, Tag, ImportRun, Segment } from '@/lib/crm';
 import { createCampaignAction } from '../actions';
 import { AudiencePicker } from './audience-picker';
+import { WriteWithAi } from './write-with-ai';
 
 /** Rendered per request — the sender and tag pickers reflect live data. */
 export const dynamic = 'force-dynamic';
@@ -37,11 +38,14 @@ export default async function NewCampaignPage(
   let tags: Tag[] = [];
   let imports: ImportRun[] = [];
   let segments: Segment[] = [];
+  let aiOn = false;
   let failure: string | null = null;
   let expired = false;
   try {
-    [senders, tags, imports, segments] = await Promise.all([
-      listSenders(), listTags(), listImportRuns(), listSegments()
+    [senders, tags, imports, segments, aiOn] = await Promise.all([
+      listSenders(), listTags(), listImportRuns(), listSegments(),
+      // Only whether to offer the helper: if it cannot be read, it is simply not offered.
+      getAiStatus().then((s) => s.enabled).catch(() => false)
     ]);
   } catch (e) {
     if (e instanceof NotAuthenticatedError) expired = true;
@@ -89,6 +93,7 @@ export default async function NewCampaignPage(
         <form action={createCampaignAction} className="flex flex-col gap-5">
           <section className="card p-5">
             {step(1, 'Write the message')}
+            {aiOn && <WriteWithAi />}
             <label className="mb-3 flex flex-col gap-1.5">
               <span className="text-sm font-medium">Name</span>
               <input name="name" required maxLength={200} placeholder="e.g. October Pune outreach" className="field" />

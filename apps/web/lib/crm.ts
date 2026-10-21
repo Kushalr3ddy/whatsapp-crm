@@ -679,6 +679,27 @@ export interface AiNotice {
   canOverride: boolean;
 }
 
+/** Whether the AI assistant is switched on, so screens can offer its helpers. */
+export async function getAiStatus(): Promise<{ enabled: boolean }> {
+  return request<{ enabled: boolean }>('/ai/status');
+}
+
+/** What the assistant did about an instruction. Mirrors `POST /api/v1/ai/commands`. */
+export interface AiCommandResult {
+  message: string;
+  actions: Array<{ tool: string; ok: boolean; detail: string; campaignId?: string }>;
+}
+
+/** Tells the assistant to run campaigns, in plain language. */
+export async function sendAiCommand(instruction: string): Promise<AiCommandResult> {
+  return request<AiCommandResult>('/ai/commands', { method: 'POST', body: JSON.stringify({ instruction }) });
+}
+
+/** Asks the assistant to write campaign wording from a goal. Nothing is created or sent. */
+export async function draftCampaignBody(goal: string): Promise<{ body: string }> {
+  return request<{ body: string }>('/ai/draft-campaign-text', { method: 'POST', body: JSON.stringify({ goal }) });
+}
+
 /** The warning for a conversation the assistant owns, or null when nothing is wrong. */
 export async function getAiNotice(conversationId: string): Promise<AiNotice | null> {
   return request<AiNotice | null>(`/ai/conversations/${encodeURIComponent(conversationId)}/notice`);
@@ -743,6 +764,7 @@ export interface AiSettings {
   enabled: boolean;
   instructions: string;
   dailyMessageCap: number;
+  mayStartCampaigns: boolean;
   consentAcceptedAt: string | null;
   botUserId: string | null;
 }
@@ -754,7 +776,7 @@ export async function getAiSettings(): Promise<AiSettings> {
 
 /** Changes the AI assistant's settings; `acceptConsent` is needed the first time it is switched on. */
 export async function saveAiSettings(
-  change: { enabled?: boolean; instructions?: string; dailyMessageCap?: number; acceptConsent?: boolean }
+  change: { enabled?: boolean; instructions?: string; dailyMessageCap?: number; mayStartCampaigns?: boolean; acceptConsent?: boolean }
 ): Promise<AiSettings> {
   return request<AiSettings>('/ai/settings', { method: 'PUT', body: JSON.stringify(change) });
 }

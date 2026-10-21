@@ -29,6 +29,15 @@ export {
   type AiSettings, type AiSettingsChange
 } from './ai-settings.js';
 
+export {
+  createCampaignDraft, startCampaign, setCampaignStatus, editCampaign,
+  type ActionContext, type CampaignAudience, type NewCampaign, type CampaignLimits, type StartedCampaign
+} from './campaign-actions.js';
+
+export {
+  runAiCommand, draftCampaignText, AiCommandError, type CommandAction, type CommandResult
+} from './ai-commands.js';
+
 export { autoReply, getAiNotice, type AutoReplyResult, type AiNotice } from './ai-reply.js';
 
 export {

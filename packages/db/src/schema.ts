@@ -858,6 +858,8 @@ export const aiSetting = pgTable('ai_setting', {
   instructions: text('instructions').notNull().default(''),
   /** The most messages the assistant may queue in a day for this org; a cost and safety ceiling. */
   dailyMessageCap: integer('daily_message_cap').notNull().default(200),
+  /** Off by default: the assistant may prepare a campaign, but an admin presses Start. On = it may start (and resume) one itself. */
+  mayStartCampaigns: boolean('may_start_campaigns').notNull().default(false),
   consentAcceptedAt: timestamp('consent_accepted_at', { withTimezone: true }),
   consentAcceptedBy: uuid('consent_accepted_by').references(() => appUser.id, { onDelete: 'set null' }),
   /** The assistant's own user, created the first time it is enabled. */
