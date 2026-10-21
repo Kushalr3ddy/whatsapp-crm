@@ -246,6 +246,13 @@
       "when": 1792594385309,
       "tag": "0034_ai_template",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792595032037,
+      "tag": "0035_campaign_ai_template",
+      "breakpoints": true
     }
   ]
 }

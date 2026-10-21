@@ -1214,7 +1214,7 @@ export type CampaignTarget =
  * Throws `CrmApiError` (`NOT_FOUND`) if the sender or the tag does not belong to the org.
  */
 export async function createCampaign(
-  input: { name: string; body: string; senderIdentityId: string } & CampaignTarget
+  input: { name: string; body: string; senderIdentityId: string; aiTemplateId?: string } & CampaignTarget
 ): Promise<{ id: string; status: string }> {
   return request<{ id: string; status: string }>('/campaigns', {
     method: 'POST', body: JSON.stringify(input)

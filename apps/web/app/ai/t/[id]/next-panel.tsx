@@ -2,14 +2,16 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import type { AiTemplate } from '@/lib/crm';
+import type { AiTemplate, Sender, Tag } from '@/lib/crm';
 import { useTemplateAction } from '../../actions';
+import { GroupSection } from './group-section';
 
 /**
  * The choices after saving a template. Only what is built is offered as a button; the rest are named so the plan is visible
  * (messaging a group with an auto-named tag, a test to yourself, and the replies section come in the next pieces).
  */
-export function NextPanel({ template }: { template: AiTemplate }) {
+export function NextPanel({ template, tags, senders }: { template: AiTemplate; tags: Tag[]; senders: Sender[] }) {
+  const [section, setSection] = useState<'group' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -30,14 +32,16 @@ export function NextPanel({ template }: { template: AiTemplate }) {
         <h2 className="text-base font-semibold">What next?</h2>
         <p className="mt-1 text-sm text-muted">Nothing is forced. Pick one, or come back later.</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" className="btn btn-primary" disabled={pending} onClick={answerAll}>Let it answer all chats</button>
-          <button type="button" className="btn" disabled title="Coming next: opens the campaign form with this template, its first message and an automatic tag">Message a group with this (coming next)</button>
+          <button type="button" className="btn" disabled={pending} onClick={answerAll}>Let it answer all chats</button>
+          <button type="button" className="btn btn-primary" onClick={() => { setSection('group'); }}>Message a group with this</button>
           <button type="button" className="btn" disabled title="Coming next: sends the first message to one saved contact">Send a test to myself (coming next)</button>
           <Link href="/ai" className="btn">Done for now</Link>
         </div>
         {notice !== null && <p role="status" className="notice notice-success mt-3">{notice}</p>}
         {error !== null && <p role="alert" className="notice notice-danger mt-3">{error}</p>}
       </section>
+
+      {section === 'group' && <GroupSection template={template} tags={tags} senders={senders} />}
 
       <section className="card p-5" aria-label="The template">
         <h2 className="text-base font-semibold">{template.name}</h2>

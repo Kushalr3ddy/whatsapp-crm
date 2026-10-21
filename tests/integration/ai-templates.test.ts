@@ -170,3 +170,39 @@ describe('saving and picking a template again', () => {
     expect(r.body.data.join(' ')).toContain('untrusted');
   });
 });
+
+describe('a campaign made from a template', () => {
+  /** A sender and a tag to aim a campaign at. */
+  async function sendAndTag(): Promise<{ senderId: string; tagId: string }> {
+    const senderId = (await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+      VALUES (${orgId}, 'fake', 'tpl', '+919000000777', 'active') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    const tagId = (await db.execute(sql`INSERT INTO tag (org_id, name) VALUES (${orgId}, 'car-wanters') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    return { senderId, tagId };
+  }
+  const save = async () => (await request(app).post('/api/v1/ai/templates').set(admin).send({
+    name: 'T', description: 'd', instructions: '- a', audience: '', firstMessage: 'Hi'
+  })).body.data.id as string;
+
+  it('keeps the link to the template, and leaves it empty when the template is deleted', async () => {
+    const { senderId, tagId } = await sendAndTag();
+    const templateId = await save();
+    const made = await request(app).post('/api/v1/campaigns').set(admin).send({
+      name: 'Launch', body: 'Hi {{name}}', senderIdentityId: senderId, fromTagId: tagId, aiTemplateId: templateId
+    });
+    expect(made.status).toBe(201);
+    const linked = (await db.execute(sql`SELECT ai_template_id AS id FROM campaign WHERE id = ${made.body.data.id}`) as unknown as Array<{ id: string | null }>)[0]!.id;
+    expect(linked).toBe(templateId);
+    await request(app).delete(`/api/v1/ai/templates/${templateId}`).set(admin);
+    const after = (await db.execute(sql`SELECT ai_template_id AS id FROM campaign WHERE id = ${made.body.data.id}`) as unknown as Array<{ id: string | null }>)[0]!.id;
+    expect(after).toBeNull();
+  });
+
+  it('refuses a template that is not this organisation\'s', async () => {
+    const { senderId, tagId } = await sendAndTag();
+    const made = await request(app).post('/api/v1/campaigns').set(admin).send({
+      name: 'Launch', body: 'Hi', senderIdentityId: senderId, fromTagId: tagId, aiTemplateId: '00000000-0000-4000-8000-000000000000'
+    });
+    expect(made.status).toBe(404);
+  });
+});

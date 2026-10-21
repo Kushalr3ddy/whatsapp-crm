@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
-  boolean, customType, index, integer, jsonb, pgTable, primaryKey,
+  type AnyPgColumn, boolean, customType, index, integer, jsonb, pgTable, primaryKey,
   text, timestamp, uniqueIndex, uuid
 } from 'drizzle-orm/pg-core';
 
@@ -769,6 +769,9 @@ export const campaign = pgTable('campaign', {
 
   /** `draft` → `running` ⇄ `paused` → `completed`, or `cancelled`. */
   status: text('status').notNull().default('draft'),
+
+  /** The AI template replies to this campaign follow (D-85), or none. Set when the campaign is made from a template. */
+  aiTemplateId: uuid('ai_template_id').references((): AnyPgColumn => aiTemplate.id, { onDelete: 'set null' }),
 
   /**
    * What to send. Plain text for now — `message_template` and its approval flow do not exist

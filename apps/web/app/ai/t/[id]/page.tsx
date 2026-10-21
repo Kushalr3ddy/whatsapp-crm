@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getAiTemplate, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { AiTemplate } from '@/lib/crm';
+import { getAiTemplate, getMe, listTags, listSenders, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { AiTemplate, Sender, Tag } from '@/lib/crm';
 import { PageHeader } from '../../../ui';
 import { NextPanel } from './next-panel';
 
@@ -15,12 +15,14 @@ export const dynamic = 'force-dynamic';
 export default async function TemplateNextPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let template: AiTemplate | null = null;
+  let tags: Tag[] = [];
+  let senders: Sender[] = [];
   let isAdmin = false;
   let failure: string | null = null;
   let expired = false;
   try {
     isAdmin = (await getMe()).role === 'admin';
-    if (isAdmin) template = await getAiTemplate(id);
+    if (isAdmin) [template, tags, senders] = await Promise.all([getAiTemplate(id), listTags(), listSenders()]);
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
     else if (error instanceof CrmApiError && error.status === 404) notFound();
@@ -37,7 +39,7 @@ export default async function TemplateNextPage({ params }: { params: Promise<{ i
       />
       {failure !== null && <p className="notice notice-danger">{failure}</p>}
       {failure === null && !isAdmin && <p className="notice notice-warning">Only admins can use AI templates.</p>}
-      {failure === null && template !== null && <NextPanel template={template} />}
+      {failure === null && template !== null && <NextPanel template={template} tags={tags} senders={senders} />}
     </main>
   );
 }

@@ -47,6 +47,30 @@ test.describe('ai templates', () => {
     await expect(page.getByRole('heading', { name: 'What next?' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Let it answer all chats' })).toBeVisible();
 
+    // "Message a group": the audience is a search whose people get a new, editable, auto-named tag; a draft is made, never started.
+    await page.getByRole('button', { name: 'Message a group with this' }).click();
+    const group = page.getByRole('region', { name: 'Message a group' });
+    await expect(group).toBeVisible();
+    await group.getByLabel('Campaign name').fill(`E2E group ${stamp}`);
+    await group.getByLabel('First message').fill('Hi {{name}}, fresh sourdough on Friday.');
+    await group.getByLabel('Send from').selectOption({ index: 1 });
+    await group.getByLabel('Everyone a search finds (they get a new tag)').check();
+    // The tag name is offered with the template's name, a number and the date, and can be changed.
+    const tagInput = group.getByLabel(/Tag for these people/);
+    await expect(tagInput).toHaveValue(new RegExp(`^E2E bakery ${stamp}-1 \\(`));
+    const tagName = `e2e group tag ${stamp}`;
+    await tagInput.fill(tagName);
+    await group.getByLabel('Search', { exact: true }).fill('Farhan');
+    await expect(group.getByRole('button', { name: 'Create draft' })).toBeDisabled();
+    await group.getByRole('button', { name: 'Check how many' }).click();
+    await expect(group.getByRole('status')).toBeVisible();
+    if (!(await group.getByText('No one matches.').isVisible())) {
+      await group.getByRole('button', { name: 'Create draft' }).click();
+      await expect(group.getByText(/Draft created/)).toBeVisible();
+      await group.getByRole('link', { name: 'Open it' }).click();
+      await expect(page).toHaveURL(/\/broadcast\/[0-9a-f-]{36}/);
+    }
+
     // It is in the saved list, and opening it puts both boxes back.
     await page.goto('/ai');
     const row = page.getByRole('listitem').filter({ hasText: name });
