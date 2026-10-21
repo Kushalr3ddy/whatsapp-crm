@@ -29,6 +29,8 @@ export {
   type AiSettings, type AiSettingsChange
 } from './ai-settings.js';
 
+export { autoReply, type AutoReplyResult } from './ai-reply.js';
+
 export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
   type AuditActor, type AuditEntry, type ActorType
