@@ -1,12 +1,13 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
-  listSenders, listTags, listImportRuns, listSegments, getAiStatus, CrmApiError, NotAuthenticatedError
+  listSenders, listTags, listImportRuns, listSegments, getAiStatus, listCampaignPictures, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { Sender, Tag, ImportRun, Segment } from '@/lib/crm';
+import type { Sender, Tag, ImportRun, Segment, CampaignPicture } from '@/lib/crm';
 import { createCampaignAction } from '../actions';
 import { AudiencePicker } from './audience-picker';
 import { WriteWithAi } from './write-with-ai';
+import { PictureField } from './picture-field';
 
 /** Rendered per request — the sender and tag pickers reflect live data. */
 export const dynamic = 'force-dynamic';
@@ -39,11 +40,12 @@ export default async function NewCampaignPage(
   let imports: ImportRun[] = [];
   let segments: Segment[] = [];
   let aiOn = false;
+  let pictures: CampaignPicture[] = [];
   let failure: string | null = null;
   let expired = false;
   try {
-    [senders, tags, imports, segments, aiOn] = await Promise.all([
-      listSenders(), listTags(), listImportRuns(), listSegments(),
+    [senders, tags, imports, segments, pictures, aiOn] = await Promise.all([
+      listSenders(), listTags(), listImportRuns(), listSegments(), listCampaignPictures().catch((): CampaignPicture[] => []),
       // Only whether to offer the helper: if it cannot be read, it is simply not offered.
       getAiStatus().then((s) => s.enabled).catch(() => false)
     ]);
@@ -110,6 +112,13 @@ export default async function NewCampaignPage(
                 identical sends.
               </span>
             </label>
+            <div className="mt-4">
+              <p className="mb-1.5 text-sm font-medium">Picture or GIF <span className="font-normal text-muted">(optional, one per campaign)</span></p>
+              <p className="mb-2 text-sm text-muted">
+                JPG, PNG, WebP or GIF, up to 5 MB. It goes to everyone with your message as the caption, at the number&apos;s safe pace.
+              </p>
+              <PictureField earlier={pictures} />
+            </div>
           </section>
 
           <section className="card p-5">

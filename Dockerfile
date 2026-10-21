@@ -8,6 +8,9 @@
 # Run:    see infra/compose/compose.yaml
 FROM node:22-bookworm-slim
 
+# ffmpeg turns an uploaded GIF into the short looping clip WhatsApp plays (campaign pictures); about 100 MB.
+RUN apt-get update && apt-get install -y -o Acquire::Retries=5 --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1

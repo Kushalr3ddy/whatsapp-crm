@@ -34,6 +34,8 @@ export interface NewCampaign extends CampaignAudience {
   readonly senderIdentityId: string;
   /** The AI template replies to this campaign follow (D-85); must belong to the org. */
   readonly aiTemplateId?: string | undefined;
+  /** A stored campaign picture or GIF sent with every message; must be one of the org's campaign pictures. */
+  readonly mediaAssetId?: string | undefined;
 }
 
 /** The sender's ceilings, for the forecast shown when a campaign starts. */
@@ -42,7 +44,7 @@ export interface CampaignLimits { readonly perMinute: number; readonly perDay: n
 /** Creates a draft. Nothing is sent and no audience is frozen until it is started. */
 export async function createCampaignDraft(
   tx: Transaction, orgId: string, ctx: ActionContext, input: NewCampaign
-): Promise<{ id: string } | { error: 'no_sender' | 'no_tag' | 'no_segment' | 'no_template' }> {
+): Promise<{ id: string } | { error: 'no_sender' | 'no_tag' | 'no_segment' | 'no_template' | 'no_picture' }> {
   const sender = await tx.execute(sql`SELECT id FROM sender_identity WHERE id = ${input.senderIdentityId} AND org_id = ${orgId}`);
   if ((sender as unknown as unknown[]).length === 0) return { error: 'no_sender' };
 
@@ -62,12 +64,17 @@ export async function createCampaignDraft(
     if ((tpl as unknown as unknown[]).length === 0) return { error: 'no_template' };
   }
 
+  if (input.mediaAssetId !== undefined) {
+    const pic = await tx.execute(sql`SELECT id FROM media_asset WHERE id = ${input.mediaAssetId} AND org_id = ${orgId} AND campaign_picture`);
+    if ((pic as unknown as unknown[]).length === 0) return { error: 'no_picture' };
+  }
+
   const rows = await tx.execute(sql`
     INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, status)
+                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, status)
     VALUES (${orgId}, ${input.name}, ${input.body}, ${input.senderIdentityId}, ${input.fromImportRunId ?? null},
             ${input.explicitContactIds === undefined ? null : JSON.stringify(input.explicitContactIds)}::jsonb,
-            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, 'draft')
+            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, 'draft')
     RETURNING id`);
   const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
   await writeAudit(tx, {
