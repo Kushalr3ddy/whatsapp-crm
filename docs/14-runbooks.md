@@ -202,6 +202,32 @@ RPO ≤ 24 h, RTO ≤ 1 h. If step 5 fails, the KEK is wrong or missing — the 
 not sufficient to recover.
 
 
+## RB-13 · The number shows Linked but nothing arrives (decrypt failures)
+
+**Symptom:** the Linked numbers page says *Linked*, the gateway log says `connected`, but no new inbound messages are stored, and a message you
+send to a contact stays at *sent* (no delivered or read tick). The gateway log is full of `failed to decrypt message` with
+`No matching sessions found for message`, `Key used already or never filled` or `Message counter error`, and `decrypt-failure burst: companion
+session looks diverged`; it keeps logging `sent retry receipt`. The number's health goes to *Degraded*.
+
+**Impact:** customers' messages are lost to the CRM (they stay on the phone). Sending still works for contacts whose session is fine.
+
+**Diagnose:**
+1. `grep -c 'failed to decrypt' .dev-logs/gateway.log`, and look at which `remoteJid` fail. Messages with `"fromMe": true` failing are your own phone's
+   outgoing messages and are harmless; failures for `fromMe: false` are customers and are not.
+2. Last inbound time per chat: `select max(created_at) from message where direction='inbound'`; compare to when you last saw a message arrive.
+3. `ps -eo cmd | grep '[g]ateway/src/main'`: more than one gateway on the same number makes this worse.
+
+**Fix (cheapest first):**
+1. Wait a minute or two and ask the contact to send a **new** message; a fresh message sometimes rebuilds the session.
+2. Delete only that contact's saved sessions, back them up first, restart the gateway once: `delete from channel_auth_state where key like
+   'session-<number>.%' or key like 'session-<lid>.%'` for that sender. This repaired **sending** to the contact but not receiving (2026-10-21).
+3. **Unlink and relink** (Linked numbers → *Unlink / reset this number* → *Scan a QR* on the phone: WhatsApp → Settings → Linked Devices → Link a
+   device). This always works: after it, zero decrypt failures and messages arrived at once. Conversations and contacts stay; messages that arrived
+   while it was broken are not recovered into the CRM.
+
+**Prevent:** do not restart the gateway while testing (under `tsx watch` every saved edit to a file it imports restarts it). Restart only the API
+and web with `bash infra/scripts/dev-up.sh --no-gateway`. Never run two gateways on one number. Tracked as D-82 (flush auth state on shutdown; detect the burst and say so on the page).
+
 ## A number is delayed, stuck or silently restricted
 
 See [`27-restriction-tracking.md`](27-restriction-tracking.md): how it is detected, what the system does on its own, and the steps to take.

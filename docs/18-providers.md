@@ -29,7 +29,7 @@ either the bundled Postgres or a managed one. Right instinct; this generalises i
 | **Transactional email** | `EmailDriver` | **SMTP** (any server); MailHog in dev | Resend, SES, SendGrid, Postmark, Mailgun, Brevo |
 | **SMS** (optional) | `SmsDriver` | **none** — feature off | Twilio, MSG91, Gupshup, Plivo, Vonage (India: DLT registration first) |
 | **WhatsApp** | `ChannelProvider` | **Baileys** (free, unofficial) | Meta Cloud API direct; or a BSP — Gupshup, AiSensy, 360dialog, Twilio |
-| **LLM** (optional) | `LlmDriver` | **none**; or self-hosted Ollama / vLLM / llama.cpp | OpenAI, Anthropic, Gemini/Vertex, OpenRouter, Groq, Bedrock |
+| **LLM** (optional) | `LlmDriver` (`packages/providers/llm`) | **none**; or **any OpenAI-format endpoint**: Gemini, Groq, OpenAI, OpenRouter, Ollama, vLLM (`gemini`/`openai`/`ollama`/`compatible`); or native **Anthropic**. Built and tested on Gemini and Groq (2026-10-21) | Bedrock, Vertex (not built) |
 | **Telemetry** | OTLP exporter | **none** (stdout + `/metrics`); Prometheus, Grafana, Loki, Tempo as an opt-in profile | Grafana Cloud, Datadog, New Relic, Honeycomb, Axiom, Signoz |
 | **Error tracking** | `ErrorReporter` | **stdout**; GlitchTip (Sentry-compatible) | Sentry, Bugsnag, Rollbar |
 | **Secrets** | `SecretsDriver` | **`.env` file**; Infisical or OpenBao self-hosted | AWS Secrets Manager, Doppler, 1Password Connect, GCP Secret Manager |
@@ -48,7 +48,11 @@ QUEUE_DRIVER=pgboss           # | bullmq        (bullmq requires REDIS_URL)
 AUTH_DRIVER=builtin           # | oidc | saml
 EMAIL_DRIVER=smtp             # | resend | ses | sendgrid | postmark
 TELEMETRY_DRIVER=none         # | prometheus | otlp
-LLM_DRIVER=none               # | ollama | openai | anthropic | gemini | openrouter
+LLM_DRIVER=none               # | gemini | openai | anthropic | ollama | compatible (OpenRouter, Groq, vLLM: needs LLM_BASE_URL)
+LLM_MODEL=                    # required once the driver is not none, e.g. openai/gpt-oss-20b (Groq) or gemini-3.1-flash-lite
+LLM_API_KEY=                  # required except for ollama
+LLM_BASE_URL=                 # unset = the provider's own address; required for compatible, e.g. https://api.groq.com/openai/v1
+LLM_TIMEOUT_MS=20000          # one answer; 90000 is safer on a slow or free plan
 SMS_DRIVER=none               # | twilio | msg91 | gupshup
 SCANNER_DRIVER=none           # | clamav
 KMS_DRIVER=local              # | aws-kms | gcp-kms | openbao
@@ -104,3 +108,16 @@ Two design choices make leaving cheap:
 3. Register it in the driver registry.
 4. Pass the port's contract suite. No core change is permitted; if one is needed, the port is
    wrong and should be fixed instead.
+
+### Choosing a language model (measured 2026-10-21 with `npm run llm:check`)
+
+The same two checks (a one-line answer, and a `create_campaign` tool call carrying the right tag id) on the same day:
+
+| Model | Per call | Tool calls | Note |
+|---|---|---|---|
+| Groq `openai/gpt-oss-20b` | 0.5 to 0.9 s | correct every run | what the app was switched to; Groq's account also lists `openai/gpt-oss-120b` and `qwen/qwen3.8-27b` |
+| Gemini `gemini-3.1-flash-lite` | 8 to 30 s (once 2 s) | correct every run | free tier; one `503 overloaded`; `gemini-3.5-flash-lite` answered in 1 s in a single try |
+| Gemini `gemini-3.6-flash` | about 18 s | not measured | dearer; its price doubles on 2027-01-01 |
+
+A model that answers text but cannot call tools shows as **NO TOOLS** in the script and cannot drive the assistant's campaign and messaging features.
+Models misreport themselves: asked its name, `gpt-oss-20b` said it was "ChatGPT, GPT-4". Do not rely on a model to say which model it is.

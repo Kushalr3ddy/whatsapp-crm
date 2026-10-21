@@ -13,6 +13,36 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-21 (afternoon and evening) — The "AI speedrun": an AI assistant that runs chats and campaigns; tutorial PDF; a WhatsApp session breakage
+- **Merged #84 to #93** (all AI PRs are titled `ai-speedrun:` so they can be searched; Kushal's rule): contacts page (#84), import page notice,
+  finished imports clear, wider wizard (#85), the model layer **`@crm/llm`** (#86), AI settings, consent and a bot user (#87, migration 0031),
+  **auto-reply** on chats assigned to the assistant (#88), anti-ban warnings in the thread with an admin do-not-contact override (#89),
+  **campaign tools** and Write with AI (#90, migration 0032), click feedback and a faster layout (#91), `send_message` (#92), and the **AI request
+  queue** with its panel, spinner and Cancel, `npm run dev:fast` and the **tutorial PDF** (#93, a `[checkpoint]`, migration 0033).
+- **Open #94:** `npm run llm:check`, a script that compares models for speed, steadiness and tool calling. This docs and prompt PR is the next.
+- **The assistant now runs on Groq** (`openai/gpt-oss-20b`, 0.5 to 0.9 s a call) instead of Gemini (8 to 30 s, one 503): `LLM_DRIVER=compatible` with
+  `LLM_BASE_URL=https://api.groq.com/openai/v1`. The Gemini key is kept in `.env` as `GEMINI_API_KEY`; both keys live only in the git-ignored `.env`.
+- **Proven live on his real linked number** (`kushal_test`, to the other dev's number): the assistant opened a chat, answered the replies within
+  a second, and the sent/delivered/read ticks came back. Before that the first live tries failed (below).
+- **Prompt change (this PR):** "no guardrails for now, make it just work" (Kushal). The assistant now **leads** the conversation (answer, then one
+  question toward the goal written in its instructions) and hands over only when asked or when the goal is done, with a summary. A "never invent
+  facts, hand over if unsure" rule was written and **removed** at his request. Seen: it invented "2 to 5 years of experience" and a document list.
+  Guardrails are pinned as **D-81**; leading whole conversations (goal field, auto-assign, follow-ups) as **D-84**.
+- **Docs:** `docs/CRM-user-tutorial.pdf` (31 pages, real screenshots with numbered markers; rebuild with `npm run tutorial:shots -- <dir>` then
+  `npm run tutorial:pdf -- <dir>`); F12 rewritten as built; API (`/ai/*`, `PATCH /campaigns/:id`), providers (LLM drivers and a measured comparison),
+  runbook **RB-13**, codebase map, pins D-4 and D-42 updated and D-81 to D-84 added.
+- **Found and pinned:** **D-82** a gateway restart can break the WhatsApp session. After many restarts (every saved edit restarts the gateway under
+  `tsx watch`) the saved encryption sessions diverged: 213 decrypt failures, nothing received from 15:17 to 17:03, those messages are not in the
+  CRM. Deleting one contact's sessions fixed sending only; **unlink and relink fixed it** (RB-13). **D-83** `dev:fast` (production build) leaves some
+  screens stale after an action (6 browser specs fail there, all pass on `next dev`).
+- **Tests:** unit `packages/providers/llm` 13, config +3; integration `ai-settings` 6, `ai-auto-reply` 10, `ai-notices` 7, `ai-commands` 17,
+  `ai-queue` 9; browser `ai-assistant`, `ai-notice`, `import-notice-and-reset`. The whole browser suite passed on `next dev` (CI), six specs fail on `dev:fast`.
+- **Mistakes to learn from:** I wrote the stack's output into `.dev-logs/`, which the stack's own script tails: a feedback loop made two logs
+  1.1 GB and 345 MB and slowed his whole machine (moved the output elsewhere, deleted them); I appended a line to `.env` without a trailing newline
+  and it glued onto the API key (fixed at once; always end the file's last line first); I restarted the gateway too often (D-82).
+- **Created for the screenshots:** an org **"Demo Co"** (`demo-tutorial`, admin `demo@example.test`) with invented people in his dev database;
+  `npm run local:seed -- --reset` removes the seeded rows (with `TEST_ORG_SLUG=demo-tutorial`), not the org.
+
 ### 2026-10-21 — Import wizard (D-21) built as previewed; branches tidied; handoff (#83 open)
 - **Open #83:** the Match columns step is divided into sections with several phone columns (tried in order, a person with two
   numbers keeps both), first and last name joined as written (never shortened; a one-letter first name becomes `a.sharma`),
@@ -1095,7 +1125,10 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining (2026-10-21). *Pinned* items are deliberately held:
 
-1. **#83** (D-21): his merge, after one local **browser run and a phone-width look** (ask first; the stack must be stopped).
+0. **AI (2026-10-21):** merge **#94** and this PR; then Kushal's order: **D-81** guardrails (facts, STOP words, approval mode) and **D-84** (goal field,
+   auto-assign new chats, follow-ups); **D-82** (flush the auth state on shutdown, detect the decrypt burst); **D-83** (stale screens on `dev:fast`). The
+   assistant's chat with the other dev's number is still assigned to it on his dev stack; model choice (Groq vs Gemini vs another) is for a meeting.
+1. ~~**#83** (D-21)~~ merged; the browser run and phone-width look for it were not done.
 2. **D-70 Contacts page** (working on it): a refresh button, admin-chosen columns, a tidier layout, sort and search by date added
    or imported (the browser-side SQLite idea is an open question; the server-side option is a date filter and a sort parameter).
 3. **D-21 remainder:** an admin-set list of personal columns, saved mappings, per-column transforms.

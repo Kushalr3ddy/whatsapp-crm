@@ -81,6 +81,7 @@ The API's composition root (`app.ts`, `server.ts`), middleware (auth, tenancy, r
 
 | File | What it is |
 |---|---|
+| `ai-runner.ts` | Works through the AI queue, one request at a time per org: starts on enqueue, and a 15-second sweep fails vanished jobs and restarts a waiting queue. |
 | `app.test.ts` | Tests for the app wiring: health, readiness, 404s and error shapes. |
 | `app.ts` | Builds the Express app: middleware order, the body-size limits, and every route mounted under `/api/v1`. The composition root. |
 | `auth.ts` | Works out who is calling (session cookie, per-org API key or the bootstrap key), CSRF for cookie writes, and the scope and role checks. |
@@ -97,6 +98,7 @@ One file per resource under `/api/v1`: inbox, messages, contacts, campaigns, imp
 
 | File | What it is |
 |---|---|
+| `ai.ts` | The AI assistant: settings, status, the queue (`/jobs`), inline instructions, campaign wording, the per-chat warning and the admin's do-not-contact allow-reply. |
 | `admin.ts` | Provisioning: create an org and its first admin, add users, issue and revoke API keys. |
 | `auth.ts` | Sign-in, sign-out and `me`; login throttling; the session and CSRF cookies. |
 | `campaigns.ts` | Campaigns: create a draft, preview, start, pause, resume, cancel, per-recipient results, gate overrides. |
@@ -147,6 +149,7 @@ The Next.js App Router. One folder per screen; `actions.ts` holds the server act
 
 | File | What it is |
 |---|---|
+| `nav-progress.tsx` | The bar across the top and the dimmed link that show a click was heard while the next page loads. |
 | `actions.ts` | Shared server actions: send a message or file, upload and run an import, link and unlink a number, fetch problem rows. |
 | `coming-soon.tsx` | A placeholder for a section that is in the navigation but not built. |
 | `globals.css` | Tailwind setup and the design tokens (light and dark). |
@@ -155,6 +158,17 @@ The Next.js App Router. One folder per screen; `actions.ts` holds the server act
 | `page.tsx` | The Overview screen: live counts of conversations, contacts and numbers. |
 | `theme-toggle.tsx` | Light, dark or automatic theme switch. |
 | `ui.tsx` | Small presentational pieces shared by every screen (page header, empty state, avatars). |
+
+## `apps/web/app/ai/`
+
+The AI assistant page (admins): consent, the on/off switch, instructions, limits, and the queue.
+
+| File | What it is |
+|---|---|
+| `actions.ts` | Server actions: save settings, queue / list / cancel requests, allow a do-not-contact reply. |
+| `ai-panel.tsx` | The settings form. |
+| `ai-queue.tsx` | The instruction box, the live queue list with its spinner and Cancel, and the shared spinner. |
+| `page.tsx` | The AI assistant page. |
 
 ## `apps/web/app/billing/`
 
@@ -188,6 +202,7 @@ The new-campaign form with the inline audience builder.
 
 | File | What it is |
 |---|---|
+| `write-with-ai.tsx` | "Write with AI" on the campaign form: queues a wording request, shows its place and a spinner, and fills the message box. |
 | `audience-picker.tsx` | The audience chooser: a tag, an import, hand-picked people or an inline filter with a live count. |
 | `page.tsx` | The new-campaign form. |
 
@@ -234,6 +249,7 @@ One conversation: thread, composer, notes, owner and participants.
 
 | File | What it is |
 |---|---|
+| `ai-notice.tsx` | The warning above the message box when the AI assistant is held back, with the admin's override where one exists. |
 | `composer.tsx` | The reply box: send, attach a file, saved replies, the typing signal and the send-anyway warning. |
 | `page.tsx` | One thread: messages with authors and delivery state, notes, contact panel, why a message is waiting. |
 | `presence-beat.tsx` | Tells the server this thread is open (a heartbeat). |
@@ -326,6 +342,7 @@ The design and operating documentation. Start at `docs/README.md`.
 
 | File | What it is |
 |---|---|
+| `CRM-user-tutorial.pdf` | The user tutorial: a walkthrough of the whole platform with screenshots, for the people who use it every day. |
 | `00-prior-art.md` | 00 · Prior art — what the previous system got wrong |
 | `01-vision-scope.md` | 01 · Vision & scope |
 | `02-requirements.md` | 02 · Requirements |
@@ -563,6 +580,11 @@ Pacing, contact-graph gates, health scoring, restriction detection, recovery, ca
 
 | File | What it is |
 |---|---|
+| `ai-commands.ts` | Plain-language instructions to the assistant (create, pause, resume, edit a campaign; message one contact) and the campaign-wording writer. |
+| `ai-jobs.ts` | The AI queue: enqueue, list, cancel, claim the next, finish, and tidy. |
+| `ai-reply.ts` | The assistant's auto-reply on a chat assigned to it, its hand-over, and the warning for a chat it is stuck on. |
+| `ai-settings.ts` | The assistant's settings and consent, and creating its user. |
+| `campaign-actions.ts` | Create, start/resume, pause, cancel and edit a campaign, shared by the HTTP routes and the assistant. |
 | `api-keys.ts` | Issuing, hashing and verifying per-org API keys with scopes. |
 | `audit.ts` | The append-only audit log writer, the reserved system actor, and the list of audit actions. |
 | `body-variation.ts` | Campaign body variation — P6 anti-ban / F4 (docs/08-antiban.md, docs/21-deferred.md D-26). |
@@ -813,11 +835,23 @@ The local KMS implementation and its tests.
 
 ## `packages/providers/llm/`
 
-Reserved for an LLM driver (nothing reads `LLM_DRIVER` yet).
+The language-model port and its drivers (the AI assistant's brain). Which one is used is `LLM_*` config only.
 
 | File | What it is |
 |---|---|
-| `.gitkeep` | Keeps an otherwise empty folder in git. |
+| `package.json` | Package manifest (`@crm/llm`). |
+
+## `packages/providers/llm/src/`
+
+| File | What it is |
+|---|---|
+| `anthropic.ts` | Driver for Anthropic's native Messages API. |
+| `factory.ts` | Builds the configured driver; the only place that knows which provider is in use; refuses a half-set config. |
+| `http.ts` | Posts JSON with a timeout and turns failures into `LlmError`. |
+| `index.test.ts` | Tests for the drivers and the factory, with a stubbed network. |
+| `index.ts` | The `LlmDriver` port: `complete({system, messages, tools})`, the types and `LlmError`. |
+| `none.ts` | The default driver: refuses every call. |
+| `openai-compatible.ts` | Driver for any OpenAI-format endpoint: Gemini, Groq, OpenAI, OpenRouter, Ollama, vLLM. |
 
 ## `packages/providers/queue/`
 
@@ -945,6 +979,9 @@ One-off and operator scripts run with `tsx`: admin CLI, key tool, seed data, sch
 
 | File | What it is |
 |---|---|
+| `build-tutorial.mjs` | Builds the user tutorial PDF (`docs/CRM-user-tutorial.pdf`) from its text and a folder of screenshots. |
+| `llm-check.ts` | Tries the language models (speed, steadiness, tool calling): `npm run llm:check`. |
+| `tutorial-shots.mjs` | Takes the tutorial's screenshots from a running app, signed in as a demo org, with numbered markers. |
 | `admin.ts` | Administrative commands, for setting a deployment up and for support. |
 | `db-docs.template.html` | HTML asset used by the docs tooling. |
 | `db-docs.ts` | Reads the live database and writes one self-contained HTML page that explains it: |
