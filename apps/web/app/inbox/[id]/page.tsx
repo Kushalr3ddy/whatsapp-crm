@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import {
-  getConversation, getSenderStatus, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
+  getConversation, getSenderStatus, getAiNotice, listMessages, listUsers, listNotes, listCannedReplies, getMe, CrmApiError
 } from '@/lib/crm';
-import type { SenderStatus, Message, OrgUser, Note, CannedReply, Me, Conversation } from '@/lib/crm';
+import type { AiNotice, SenderStatus, Message, OrgUser, Note, CannedReply, Me, Conversation } from '@/lib/crm';
 import { Composer } from './composer';
+import { AiNoticeBanner } from './ai-notice';
 import { initialsOf } from '../../ui';
 import { ThreadControls } from './thread-controls';
 import { PresenceBeat } from './presence-beat';
@@ -198,12 +199,13 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     failure = error instanceof CrmApiError ? `${error.code}: ${error.message}` : 'Could not reach the API.';
   }
 
-  const [conversation, users, cannedReplies, me, senderStatus] = await Promise.all([
+  const [conversation, users, cannedReplies, me, senderStatus, aiNotice] = await Promise.all([
     getConversation(id).catch((): Conversation | null => null),
     listUsers().catch((): OrgUser[] => []),
     listCannedReplies().catch((): CannedReply[] => []),
     getMe().catch((): Me | null => null),
-    getSenderStatus(id).catch((): SenderStatus | null => null)
+    getSenderStatus(id).catch((): SenderStatus | null => null),
+    getAiNotice(id).catch((): AiNotice | null => null)
   ]);
 
   // The thread lock, mirrored from the server guard in POST /messages: a thread owned by
@@ -304,6 +306,8 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
             })}
           </ol>
         </div>
+
+        {aiNotice !== null && <AiNoticeBanner conversationId={id} notice={aiNotice} isAdmin={me?.role === 'admin'} />}
 
         <Composer
           conversationId={id}

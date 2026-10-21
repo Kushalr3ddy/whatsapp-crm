@@ -29,7 +29,7 @@ export {
   type AiSettings, type AiSettingsChange
 } from './ai-settings.js';
 
-export { autoReply, type AutoReplyResult } from './ai-reply.js';
+export { autoReply, getAiNotice, type AutoReplyResult, type AiNotice } from './ai-reply.js';
 
 export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
