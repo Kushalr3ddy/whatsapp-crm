@@ -103,6 +103,7 @@ is not re-proposed.
 | D-83 | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
 | D-84 | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
 | D-85 | AI templates: pick a template, fill its blanks, get the script; per chat, per campaign, org default | 🔺 priority 2026-10-21 · mockup first |
+| D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
 
 ---
@@ -2655,6 +2656,16 @@ Pinned to come back to; not started.
 
 - **"Draft a template with AI" (Kushal, 2026-10-21).** For an admin starting from nothing: a box where they describe the job in a sentence or two ("invite Rotary members to the monthly meeting and collect yes or no and how many are coming") and the model drafts a whole template: the wording and its blanks. It is AI-written from the start, so it carries the same warning and preview as below, and it is saved only when the admin clicks **Save as a template**; it then appears in the gallery under "Your organisation's templates". The model sees only the admin's sentence, never a contact's messages.
 - **How a template becomes the script (clarified 2026-10-21):** filling the blanks into the template's wording is **plain text substitution, no model call**, the same result every time. A model is used only by the two buttons the admin presses (**Improve the wording with AI** and **Draft a template with AI**). At reply time the assistant is given the always-on rules (D-81), then the script as plain stored text, then the conversation, which it treats as untrusted.
+- **The front door is "Describe what you want" (the other dev and Kushal, 2026-10-21; a working throwaway page exists, `mockups/ai-describe.mjs` + `.html`, git-ignored).** The owner writes or pastes plain words (a showroom, a Rotary meeting, a long job description). The configured model writes the instructions; the gallery and blanks are the second route, with no AI. Decided and tried in the page:
+  - **No summarising.** The model is told to use all of the description and drop nothing; a pasted job description with nine specific details kept all nine. The instructions are bullet points under plain headings.
+  - **Both boxes are always shown and editable**: the description and the "Instructions for the AI". The instructions are **locked until the person clicks "Edit by hand"**, which warns that hand edits can make the assistant behave differently from what they described. **Writing the instructions again over hand edits asks "This replaces your changes. Continue?"**
+  - **Save only after regenerating.** If the description changed since the instructions were written, Save stays off with "Write the instructions again before saving".
+  - **A locked "always added automatically" block** (the always-on rules of D-81) is shown under the instructions, cannot be edited, and is added in front of the instructions **every time the assistant replies**, so editing or deleting text cannot switch it off.
+  - **A template stores the description and the instructions together**; picking it loads both. "Change something for this time" appends to the description and rewrites.
+  - **Length:** the description is capped at **8,000 characters** (a counter, a block over the cap, the server enforces it); also a per-organisation limit of a few generations a minute so the backend and the model's rate limits are protected. Instructions are sent with every reply, so longer means dearer.
+  - **What the reply model receives:** the app's fixed framing, the locked rules, the instructions, and the conversation (untrusted). It never receives the description, the template name, the audience or the first message.
+- **After saving: sending (to design, not drawn yet).** "Use for a campaign" asks for: the audience (a tag, see D-87), the first message (the draft the AI wrote, editable), which number sends it; it creates a **draft campaign** that follows the template for replies; an admin presses Start (the assistant never starts one itself unless the org switch allows). The picker sits on the campaign form and on assigning a chat.
+- **Where the template picker lives (to draw):** a **Choose a template** button opening the gallery window (recently used, the organisation's, starters, search, preview), on the AI page, the campaign form and the assign-a-chat step; the plain "Saved templates" list is only the fallback.
 - **AI-written text is always flagged and previewed.** Anything the model writes (the "Improve the wording with AI" result, and any future AI-drafted script) shows a warning ("Written by AI: read it before you use it, it may be wrong or off-tone"), is shown as a **preview next to the current text**, and changes nothing until the person clicks **Use this version**. **Discard** keeps what was there. The model sees only the script, never a contact's messages. Chats following an AI-improved script keep the same notice as any template.
 - **The "Tell the assistant what to do" box moves to the bottom of the page** (below the settings), because the templates and the script are what a new person needs first and one-off orders are used less. Its own further work (templated orders, such as "send the Friday reminder to everyone tagged pune", and order history) is pinned as **D-86**.
 
@@ -2682,3 +2693,16 @@ On the AI assistant page the **"Tell the assistant what to do"** box (one-off or
 Related: D-85, D-84 (the AI runs whole conversations), D-81 (guardrails).
 
 Pinned to come back to; not started.
+
+---
+
+## D-87 · Rule: every mass message goes to a tag, so no one is messaged untagged — pinned as a RULE (Kushal, 2026-10-21)
+
+**The rule:** a campaign (a message to many people, whoever starts it: a person, the AI assistant, an import's "Message these people") must have a **tag** as its audience, and everyone it reaches carries that tag. Nothing is sent to an untagged group. The reason is to keep the database and the backend simple: one way to say who got a message, one thing to look up, filter, re-send to or report on.
+- **How, without making it a chore:** if the audience is chosen another way (ticked people, a filter, an import run, a typed list), the system **creates a tag for it automatically** (named from the campaign and the date, for example "Zephyr launch 21 Oct") and tags those people **before** the campaign is created; the person can rename it. The campaign then points at the tag.
+- **Where it applies:** the campaign form, "Campaign from checked contacts", "Message these people" after an import (D-73), the AI's `create_campaign` tool, and the API. The API refuses a campaign that has no tag audience instead of guessing.
+- **Already true in part:** campaigns can target a tag and an import is tagged with its file name by default; "Campaign from checked contacts" already says to tag first. The rule makes it the only way.
+- **Open:** whether existing campaigns with other audience types are migrated (tag backfilled), and whether a tag can be shared by two campaigns (yes: reuse is the point).
+Related: D-68 (tag people first), D-73, D-85 (templates choose a tag audience).
+
+Pinned as a rule; not built.
