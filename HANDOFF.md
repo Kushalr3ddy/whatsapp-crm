@@ -79,9 +79,8 @@ Then say in the final message which PRs are open and what the next session shoul
 *(The section below, "2026-10-19 to 2026-10-21", is older and its "state" is out of date: #83 to #95 are merged.)*
 
 ### State in one paragraph
-`main` has everything through **#95** (the AI assistant, queue, tutorial PDF, `dev:fast`, `llm:check`, the "lead the conversation" prompt, docs). **#96 is open** (branch
-`feat/ai-retry-and-non-text`): the **resend fix** for "Waiting for this message", the assistant's **reply to photos and voice notes**, the **`send_message` name-not-id fix**, and
-D-59 (file support in campaigns) raised to priority; it carries this handoff. The dev stack is **STOPPED** (brought down at the end of the session; Postgres is left running).
+`main` has everything through **#96** (the AI assistant, queue, tutorial PDF, `dev:fast`, `llm:check`, the "lead the conversation" prompt, the resend fix for "Waiting for this message",
+the assistant's reply to photos and voice notes, the `send_message` name-not-id fix, D-59 raised to priority, and the docs below). **No feature PR is open**; the only open PR is the small docs-only one that corrected this paragraph. The dev stack is **STOPPED** (brought down at the end of the session; Postgres is left running).
 Config: `LLM_DRIVER=compatible` on **Groq** (`openai/gpt-oss-20b`; keys only in the git-ignored `.env`: `LLM_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`; `LLM_TIMEOUT_MS=90000`).
 His real number `kushal_test` was relinked at 17:03 IST and works, and **advisory mode is ON for it** (he turned it on at 17:47: anti-ban enforcement is **off** for that number, so it sends past
 its quarantine and 48-hour soft-ban pause). In `hiring-studios` the AI is **on**, consent accepted, the chat with the other dev's number ("Test Phone Two") is **assigned to the assistant**,
@@ -109,7 +108,7 @@ The stack is **down**. Postgres (container `whatsapp-crm-dev-data`, port 5434) i
 
 ```bash
 cd ~/everything/whatsapp-crm
-git checkout main && git pull          # once #96 is merged; until then: git checkout feat/ai-retry-and-non-text
+git checkout main && git pull          # #96 is merged
 nohup npm run dev:all > /tmp/stack.out 2>&1 &    # API :3000, gateway, web :3001; migrates first. NEVER send the output into .dev-logs/
 ```
 Then check, before anything else:
@@ -157,7 +156,7 @@ Tests: `npm run db:migrate:test` after pulling (0031 to 0033); Playwright reuses
 - The assistant's replies are paced by the gateway (a human-like delay), so a reply can take about 20 s to leave although it was written in 1 s.
 
 ### Ask him first (next session)
-1. Merge **#96**? (Green CI first.) Delete old branches, keeping the last three? (List them first; none is deleted without his yes.)
+1. Delete old branches, keeping the last three? (List them first; none is deleted without his yes. CI for #96 was still running when he merged it: check it finished green.)
 2. Did the other dev still see "Waiting for this message" after #96? Did the assistant lead the conversation through all five questions and hand over with a summary?
 3. **File support in campaigns (D-59) is the priority piece** (one image or GIF per campaign, the message as its caption; the assistant's `create_campaign` can attach an existing file): start it? Mockup first, as he asked for D-21?
 4. Guardrails (D-81) and auto-assigning new chats to the assistant (D-84) after the other dev's feedback? Fix **D-82** (restart-safe WhatsApp session, no false quarantine) before more testing?
