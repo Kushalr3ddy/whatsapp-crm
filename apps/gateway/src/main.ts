@@ -9,7 +9,7 @@ import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
   DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
-  markMessageFailedByProviderId, assertKeyRingCoversData, autoReply } from '@crm/core';
+  markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText } from '@crm/core';
 import { createLlm } from '@crm/llm';
 import { createStorage } from '@crm/storage';
 import type { ChannelProvider, NormalisedInboundEvent } from '@crm/channels';
@@ -81,6 +81,15 @@ async function main(): Promise<void> {
           .catch((err: unknown) => {
             logger.error({ err, senderId }, 'could not record decrypt-failure burst');
           });
+      },
+      // A recipient could not decrypt something we sent and asks again: give the text back so it is re-sent (their phone shows
+      // "Waiting for this message" until then).
+      resendText: async (senderId, messageId) => {
+        const org = await orgForSender(db, senderId);
+        if (org === null) return undefined;
+        const text = await sentMessageText(inOrg(org), kms, senderId, messageId);
+        if (text !== undefined) logger.info({ senderId, messageId }, 'resending a message the recipient could not decrypt');
+        return text;
       }
     });
   // Attachments land here rather than in the API, because this is the process holding the

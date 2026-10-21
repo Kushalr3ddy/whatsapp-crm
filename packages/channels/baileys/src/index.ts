@@ -38,6 +38,14 @@ export interface BaileysProviderOptions {
    * gateway turns a burst of these into a health signal (docs/08-antiban.md, Layer 5).
    */
   readonly onDecryptFailure?: (senderId: string, at: Date) => void;
+  /**
+   * Gives back the text of a message this sender sent, by WhatsApp's id, when a recipient asks for it again.
+   *
+   * A recipient whose phone could not decrypt a message shows "Waiting for this message" and asks us to resend. Baileys can only do
+   * that if it can get the original from here; without this it logs "recv retry request, but message not available" and the
+   * placeholder never clears. Text only: return `undefined` for anything else.
+   */
+  readonly resendText?: (senderId: string, messageId: string) => Promise<string | undefined>;
 }
 
 /**
@@ -342,6 +350,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     const { state, saveCreds } = await loadAuthState(this.#options.authStore, senderId);
     const { version } = await fetchLatestBaileysVersion();
     const onFail = this.#options.onDecryptFailure;
+    const resendText = this.#options.resendText;
 
     const socket = makeWASocket({
       version,
@@ -355,7 +364,15 @@ export class BaileysChannelProvider implements ChannelProvider {
       // We render the QR ourselves; printing it to stdout would put a credential in the logs.
       printQRInTerminal: false,
       markOnlineOnConnect: false,
-      syncFullHistory: false
+      syncFullHistory: false,
+      // Asked when a recipient could not decrypt something we sent: hand back the original so it can be encrypted and sent again.
+      getMessage: async (key) => {
+        if (resendText === undefined || key.id === undefined || key.id === null) return undefined;
+        try {
+          const text = await resendText(senderId, key.id);
+          return text === undefined ? undefined : { conversation: text };
+        } catch { return undefined; }
+      }
     });
 
     const conn: Connection = {

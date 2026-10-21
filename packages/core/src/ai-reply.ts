@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
-import type { LlmDriver, LlmMessage } from '@crm/llm';
+import type { LlmDriver, LlmMessage, LlmResponse } from '@crm/llm';
 import { AUDIT, writeAudit } from './audit.js';
 
 /** What happened to one inbound message the assistant looked at. */
@@ -20,6 +20,9 @@ const HISTORY_LIMIT = 20;
 const MAX_REPLY_TOKENS = 400;
 /** The longest reply that is queued, in characters. */
 const MAX_REPLY_CHARS = 1500;
+
+/** What the assistant says to a photo, voice note or file: it cannot read those, so it asks for text instead of going quiet. */
+const NON_TEXT_REPLY = 'Thanks! I can only read text messages here, so could you type that out for me?';
 
 /** The model may give the chat back to a person; this is how. */
 const HAND_OVER_TOOL = {
@@ -80,7 +83,7 @@ export async function autoReply(
     contentType: string;
   }>)[0];
   if (inbound === undefined) return { outcome: 'skipped', reason: 'no_such_message' };
-  if (inbound.contentType !== 'text') { await record('skipped', 'not_text'); return { outcome: 'skipped', reason: 'not_text' }; }
+  const nonText = inbound.contentType !== 'text';
 
   // Only an admin's explicit, reasoned override (passed in by the API, never by the model) lets the assistant
   // answer someone flagged do-not-contact, and then only this one message, audited like a person's override.
@@ -95,19 +98,32 @@ export async function autoReply(
   // Someone already answered after this message (a person, or an earlier run): nothing to add.
   if (await newerExists(db, orgId, conversationId, inboundMessageId)) return { outcome: 'skipped', reason: 'superseded' };
 
-  const history = await loadHistory(db, kms, orgId, conversationId);
-  if (history.length === 0) { await record('skipped', 'no_history'); return { outcome: 'skipped', reason: 'no_history' }; }
+  // A photo, voice note or file: the model is not asked. Say once, kindly, that text is needed, so the person is not left hanging;
+  // a run of photos gets that one answer, not one each.
+  if (nonText) {
+    const already = (await db.execute(sql`
+      SELECT 1 FROM ai_run WHERE org_id = ${orgId} AND conversation_id = ${conversationId} AND reason = 'not_text_replied'
+        AND created_at > now() - interval '10 minutes' LIMIT 1`) as unknown as unknown[]).length > 0;
+    if (already) { await record('skipped', 'not_text'); return { outcome: 'skipped', reason: 'not_text' }; }
+  }
 
-  let answer;
-  try {
-    answer = await llm.complete({
-      system: systemText(conv.orgName, settings.instructions),
-      messages: history, tools: [HAND_OVER_TOOL], maxTokens: MAX_REPLY_TOKENS
-    });
-  } catch (error) {
-    const code = error instanceof Error && 'code' in error ? String((error as { code: unknown }).code) : 'model_error';
-    await record('failed', `model_${code}`);
-    return { outcome: 'failed', reason: `model_${code}` };
+  const history = nonText ? [] : await loadHistory(db, kms, orgId, conversationId);
+  if (!nonText && history.length === 0) { await record('skipped', 'no_history'); return { outcome: 'skipped', reason: 'no_history' }; }
+
+  let answer: LlmResponse;
+  if (nonText) {
+    answer = { text: NON_TEXT_REPLY, toolCalls: [], usage: { inputTokens: 0, outputTokens: 0 }, model: 'none' };
+  } else {
+    try {
+      answer = await llm.complete({
+        system: systemText(conv.orgName, settings.instructions),
+        messages: history, tools: [HAND_OVER_TOOL], maxTokens: MAX_REPLY_TOKENS
+      });
+    } catch (error) {
+      const code = error instanceof Error && 'code' in error ? String((error as { code: unknown }).code) : 'model_error';
+      await record('failed', `model_${code}`);
+      return { outcome: 'failed', reason: `model_${code}` };
+    }
   }
   const usage = answer.usage;
 
@@ -155,7 +171,7 @@ export async function autoReply(
   }
 
   if (messageId === undefined) { await record('skipped', 'empty_answer', 'reply', answer.model, usage); return { outcome: 'skipped', reason: 'empty_answer' }; }
-  await record('sent', null, 'reply', answer.model, usage);
+  await record('sent', nonText ? 'not_text_replied' : null, 'reply', nonText ? null : answer.model, usage);
   return { outcome: 'sent', messageId };
 }
 

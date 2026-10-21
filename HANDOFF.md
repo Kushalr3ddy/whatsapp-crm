@@ -98,6 +98,7 @@ on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/C
 - The other dev's number (+91 99641 22631) is fine to message for tests. Provider-neutral model layer; the model is **not decided** (a meeting); Groq is the working default now.
 - Every commit and PR for this work starts `ai-speedrun:`. He merges PRs himself; once he explicitly said "merge it" and I merged #93 after green checks.
 - Docs: a tutorial **PDF with screenshots** of the whole platform (not markdown, not AI-only).
+- **File support in campaigns is back at priority** (D-59, first slice: one image or GIF with the message as its caption). Do this after the AI fixes in flight.
 
 ### The dev environment right now
 - Stack **running**, started with `npm run dev:all` (output in a scratchpad file, **not** in `.dev-logs/`: see the gotcha). Web is in `next dev`; `npm run dev:fast`
@@ -113,6 +114,12 @@ on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/C
 - A model that answers text may not call tools; check with `npm run llm:check` before choosing one. Models misreport themselves (`gpt-oss-20b` called itself "ChatGPT").
 - `gh pr edit` can fail on GitHub's Projects (classic) deprecation: use `gh api -X PATCH repos/<owner>/<repo>/pulls/<n>`.
 - The seeded browser specs leave state behind when a run fails midway (e.g. the seeded "Asha Rao" chat left *closed*); reset it before blaming code.
+- **The health scorer can stamp a 48-hour soft-ban pause from false signals.** After the gateway restarts, the burst of decrypt failures and messages his phone could not read (they count
+  as undelivered) took `kushal_test` to *quarantined* with `recovery_until` two days ahead, and every send is held. The clean ways out: an admin turns **Advisory mode** on for that number
+  (Linked numbers, with a reason; audited), or the pause is cleared in the database the way `scripts/local-seed.ts` does for the fake number (`recovery_incident`, `recovery_started_at`,
+  `recovery_until` to NULL, `status='active'`), or wait. Ask him first; it is a real number.
+- **"Waiting for this message" on the other phone** means it could not decrypt what we sent and asked for a resend; the gateway now answers those for text (`resendText`). The log line to look
+  for is `recv retry request, but message not available` (should now be `resending a message the recipient could not decrypt`).
 - The assistant's replies are paced by the gateway (a human-like delay), so a reply can take about 20 s to leave although it was written in 1 s.
 
 ### Ask him first (next session)

@@ -37,6 +37,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
   screens stale after an action (6 browser specs fail there, all pass on `next dev`).
 - **Tests:** unit `packages/providers/llm` 13, config +3; integration `ai-settings` 6, `ai-auto-reply` 10, `ai-notices` 7, `ai-commands` 17,
   `ai-queue` 9; browser `ai-assistant`, `ai-notice`, `import-notice-and-reset`. The whole browser suite passed on `next dev` (CI), six specs fail on `dev:fast`.
+- **Next PR (retry fix and non-text reply):** the other dev's phone showed "Waiting for this message" on two of the assistant's replies. Cause: the gateway had no
+  `getMessage` for Baileys, so when his phone asked us to resend, the log said `recv retry request, but message not available` and it never cleared. Fixed:
+  `sentMessageText` (core) gives back the text of a message we sent, the Baileys provider passes it to Baileys, the gateway wires it up (text only; media is not
+  resent). And a photo, voice note or file no longer gets silence: the assistant says once "I can only read text messages here, could you type that out?"
+  (no model call; not repeated within 10 minutes; do-not-contact and the daily limit still apply). **Priority (Kushal): D-59, file support in campaigns first.**
+- **Found after the restart for that fix:** the health scorer put `kushal_test` into **quarantine with a 48-hour soft-ban pause** (risk 100: a decrypt-failure burst
+  after the restart, and delivery 5 of 11 because messages his phone could not decrypt count as undelivered). These are false signals caused by our own session
+  trouble (D-82), but the pause holds every send, so the assistant cannot reply until it is cleared. Waiting for Kushal's choice (advisory mode, clear the pause, or wait).
 - **Mistakes to learn from:** I wrote the stack's output into `.dev-logs/`, which the stack's own script tails: a feedback loop made two logs
   1.1 GB and 345 MB and slowed his whole machine (moved the output elsewhere, deleted them); I appended a line to `.env` without a trailing newline
   and it glued onto the API key (fixed at once; always end the file's last line first); I restarted the gateway too often (D-82).
@@ -1125,6 +1133,7 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining (2026-10-21). *Pinned* items are deliberately held:
 
+00. **PRIORITY (Kushal, 2026-10-21): D-59, file support in campaigns first** (one image or GIF per campaign, the message as its caption; the assistant's `create_campaign` can attach an existing file).
 0. **AI (2026-10-21):** merge **#94** and this PR; then Kushal's order: **D-81** guardrails (facts, STOP words, approval mode) and **D-84** (goal field,
    auto-assign new chats, follow-ups); **D-82** (flush the auth state on shutdown, detect the decrypt burst); **D-83** (stale screens on `dev:fast`). The
    assistant's chat with the other dev's number is still assigned to it on his dev stack; model choice (Groq vs Gemini vs another) is for a meeting.
