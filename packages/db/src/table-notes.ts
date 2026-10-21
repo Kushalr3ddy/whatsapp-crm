@@ -97,6 +97,10 @@ export const TABLE_NOTES: Record<string, TableNote> = {
     group: 'Campaigns',
     purpose: 'The AI assistant’s waiting list: instructions and wording requests, run one at a time per org. Shows who is queued, what is running and what finished; only a queued one can be cancelled.'
   },
+  ai_template: {
+    group: 'Campaigns',
+    purpose: 'A saved AI template: what an owner described in plain words and the instructions the AI wrote from it, kept together to pick again. The locked always-on rules are not stored here; they are added on every reply.'
+  },
   ai_run: {
     group: 'Audit and health',
     purpose: 'One row each time the AI assistant sends, tries, or is held back (and why), with the model and token counts, so its work and cost can be checked.'
