@@ -84,7 +84,7 @@ is not re-proposed.
 | D-64 | Database portability: move the database-side logic into the app so oth | 📌 pinned |
 | D-65 | Bugs found running the alpha container on a VM (2026-10-17), not fixed | ◐ partly fixed (1 of 8) · ⏸ parked |
 | D-66 | Motion on most pages, not just the sign-in screen | ◐ partly built (sign-in and Overview motion) |
-| D-67 | Save a number or name onto a `@lid` chat, like "add contact" in WhatsA | 🔺 priority · ◐ partly built (channels ignored; mapping investigated) |
+| D-67 | Save a number or name onto a `@lid` chat, like "add contact" in WhatsA | 📌 pinned again 2026-10-21 (was priority) · ◐ partly built (channels ignored; mapping investigated) |
 | D-68 | Campaign with no tagged people: tell the user to tag them first | ✅ done |
 | D-69 | Chats available inside the job portal (and any other web app) | 📌 pinned |
 | D-70 | Contacts page: refresh, admin-chosen columns, tidier layout, sort and  | ▶ working on it · ◐ built: tag fixes, Refresh, expandable rows, date range and order · ⏳ columns chosen by an admin is D-79 |
@@ -97,6 +97,13 @@ is not re-proposed.
 | D-77 | Admin controls: user scopes and number limits | 📌 pinned |
 | D-78 | Email: invitations to join an organisation, via SMTP or an email API ( | 📌 pinned |
 | D-79 | Contacts: columns chosen by an admin for the whole team | 📌 pinned |
+| D-80 | Create and edit a contact page; save an unknown sender (org-neutral fields) | 📌 pinned |
+| D-81 | AI assistant guardrails (facts, opt-out words, approval mode, topics, spend) | 📌 pinned · Kushal: "later" |
+| D-82 | A gateway restart can break the WhatsApp session (decrypt failures, nothing received) | 📌 pinned · hit 2026-10-21 |
+| D-83 | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
+| D-84 | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
+| D-85 | AI templates: pick a template, fill its blanks, get the script; per chat, per campaign, org default | 🔺 priority 2026-10-21 · mockup first |
+| D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
 
 ---
 
@@ -355,6 +362,8 @@ a backup of plaintext.
 ---
 
 ## D-10 · What belongs in the inbox — broadcast output, and unknown senders
+
+> **2026-10-21:** unknown senders are defined and will be marked and offered "Save as contact" under D-67 and D-80. The separate tray below is still undecided.
 
 **What:** two related questions about the inbox's contents, both raised by using it.
 
@@ -824,6 +833,17 @@ not run Postgres). At that point this is its own track — likely a `DbDriver` p
 adapter (RLS + NOTIFY) and a SQLite adapter (app-level scoping + polling), decided deliberately
 and recorded here, since it changes the security model.
 
+**Question (Kushal, 2026-10-21): could every Postgres function, trigger and rule be written into the backend code and helper scripts, so SQLite stays consistent the way Postgres keeps itself consistent today?** In principle yes: that is the portable layer D-64 describes. Each piece has a home in code, but only the first two are straightforward:
+| Postgres does today | Code replacement | How well it holds |
+|---|---|---|
+| `notify_gateway()` and its 3 triggers (send, link, unlink wake the gateway) | an in-process event emitter when API and gateway share one process, or a short polling loop | easy; this is the part D-64 calls the easy part |
+| `envelope_key_version()` (an indexed expression) | a plain column the code fills in on every write | easy |
+| `FOR UPDATE SKIP LOCKED` (campaign dispatch claims) | a single process and one transaction, or a claim column with a compare-and-set update | fine on one machine |
+| 24 row-level-security policies (every query is tenant-scoped by the database) | **one** query wrapper that adds the organisation to every statement, a lint rule against raw database access outside it, and a cross-tenant test sweep (D-48) | the real gap: the database refuses a forgotten `WHERE org_id` today; code can only make forgetting hard, not impossible |
+| Append-only audit log (`REVOKE UPDATE, DELETE`) | a trigger SQLite does support, plus an app-level guard | workable; weaker, because the file owner can still edit the file |
+| `jsonb`, arrays, `bytea`, `ON CONFLICT`, `LATERAL`, partial indexes | JSON functions and rewritten queries (about 254 call sites in 41 files) | the bulk of the work |
+**To keep the two consistent** the way Postgres does itself: put all of this behind one `DbDriver` seam (D-64 step 1), keep Postgres as the reference behaviour, and run the **same integration suite against both drivers** so a difference fails a test instead of reaching a customer. For the single-tenant, one-machine install D-20 is about, there is no tenant isolation to re-implement, which removes the hardest row. Still pinned, not started.
+
 **Cost of deferring:** none today. It grows with every feature that reaches for a Postgres-only
 capability without a fallback in mind — so new isolation/notify logic should stay behind the
 helpers that already wrap it (`setTenant`, the gateway command channel), not spread raw.
@@ -831,6 +851,8 @@ helpers that already wrap it (`setTenant`, the gateway command channel), not spr
 ---
 
 ## D-21 · The full import mapping wizard — **WORK ON NOW (Kushal, 2026-10-20)**
+
+> **2026-10-21:** how imports treat people who already exist, and hand edits made on the contact page (D-80), is written up in D-80. Per-column "overwrite on import" belongs to this entry's saved mappings and transforms.
 
 > **Priority:** raised on 2026-10-10 while building the live walkthrough: production imports come from a Naukri
 > Excel export, and its real layout is not in hand yet. Build this once that file (or a real sample of it) is
@@ -1885,6 +1907,13 @@ that makes a killed run resumable from the last committed batch.
 
 **What brings it back:** the real-number pilot with a large export, or the first 524.
 
+**Question (Kushal, 2026-10-21): could the table be built in the browser first, and the backend parse, validate and security-check it before anything is committed?** Yes, and it is a second way to fix the same problem. The rule that makes it safe: **the browser is only a convenience; the server re-checks every row** with the same code it uses today (`packages/core/src/ingestion.ts`: phone normalisation, the personal-column rule, the field and size limits), because anything the browser sends can be faked.
+- *Shape:* the browser reads the sheet (a CSV/Excel reader library) and shows the preview instantly with no upload; on Import it sends the rows in **batches** (say 500 at a time). Each batch is a short request that the server parses, validates and commits through the existing `import_row` ledger (`UNIQUE (import_run_id, row_number)` makes a repeated batch harmless), and the page shows a progress bar. No request nears the 100-second cut-off, so D-57's 524 cannot happen.
+- *Gains:* an instant preview, a progress bar, resumable by row number, no job runner needed.
+- *Costs and risks:* the whole file sits in the browser's memory (fine to roughly a few hundred thousand rows, then it struggles, and worse on phones, D-72); closing the tab pauses the import (a server job keeps going); the original file is no longer received unless it is also uploaded, so the SHA-256 duplicate check and the audit copy (`storage_key`) need the file to be uploaded too; and there are two parsers to keep in agreement (the browser's preview must not promise what the server will refuse). The server stays the only writer, so no security check moves to the client.
+- *Versus the server job above:* the job is simpler to trust (one parser, survives a closed tab, keeps the file). Batching from the browser feels better to use and needs no background worker. They combine: upload the file once for the audit copy and the duplicate check, then either drive the batches from the page or let a server job do it.
+- *Not decided.* Recommended first step when it comes back: the server job, since it keeps one parser; add the browser-side preview only if the wait before the preview becomes a complaint.
+
 ---
 
 ## D-58 · Public site and launch-readiness checklist — pinned (Kushal, 2026-10-15)
@@ -2100,7 +2129,7 @@ needs.
 
 **What brings it back:** D-61 landing, or a target that cannot run Docker.
 
-## D-63 · Centralised file store: S3-compatible storage alongside local — ✅ driver built 2026-10-16, default stays local (Kushal, 2026-10-16)
+## D-63 · Centralised file store: S3-compatible storage alongside local (SMB pinned too) — ✅ driver built 2026-10-16, default stays local (Kushal, 2026-10-16)
 
 **What:** one shared place for files that the API, the gateway and any future second host can all reach, and that
 survives the machine being replaced. Local disk is fine while everything runs in one container; it stops working
@@ -2138,6 +2167,17 @@ on `STORAGE_DRIVER=s3` end to end (they see only the port, which the contract co
 
 **Open decisions (ask before building):** R2, B2, AWS or a self-hosted MinIO; one bucket for all orgs (the keys
 are already org-prefixed) or one per org; whether to also keep a local copy during the move.
+
+**Added 2026-10-21 (Kushal): also support SMB** (a network file share: a Windows share, a Samba server or a NAS), pinned in this spec and not built. Two ways, and they combine:
+1. **Mount it, no code (works today).** The operating system mounts the share (on Linux, a CIFS mount) at a folder, and `STORAGE_DRIVER=filesystem` points at that folder. Nothing in the app changes. Good enough for one host or several hosts that each mount the same share.
+2. **A native `smb` driver** behind the same `StorageDriver` port, chosen with `STORAGE_DRIVER=smb`, for when the app should connect to the share itself (a container with no mount privileges, or a clear error at boot when the share is unreachable). Settings would follow the S3 pattern: `SMB_HOST`, `SMB_SHARE`, `SMB_USERNAME`, `SMB_PASSWORD` (and `SMB_DOMAIN`), `SMB_BASE_PATH`; a missing one stops the app at boot naming what is missing and never falls back to local disk.
+Things to settle before building the driver:
+- **Which SMB library** (a maintained pure-JavaScript client versus shelling out to the system's tools); not chosen.
+- **Version and security:** SMB 2 or 3 only (SMB 1 is insecure and is refused), SMB 3 encryption on the wire where the server offers it, and the password kept in the environment like the S3 secrets, never in the database.
+- **Same behaviour as the other drivers:** the content type needs a place to live (the filesystem driver keeps a `.meta` sidecar file, which a share can hold too); `delete` answers truthfully; `list` treats a prefix as a directory; every method validates the key through `assertValidKey`. Windows shares are often case-insensitive and have path-length limits and reserved names, so the key rules need a check against those.
+- **Weaker guarantees than local disk:** renames and locking are not as dependable over a network, and a dropped connection mid-write must leave no half file. The write path needs write-to-temporary-then-rename, tested.
+- **Same test:** the shared contract suite (`tests/contract/storage-driver.ts`) must pass against it, using a Samba container in CI the way moto stands in for S3.
+Still in D-63's order: the same follow-ups apply (decide encryption at rest first; a copy job before switching an install that already has files).
 
 **Why a priority:** raised together with file support in chat (D-59); the alpha's local disk will not survive a
 move to a split deployment (D-33).
@@ -2259,7 +2299,7 @@ a disabled button, so nobody thinks it froze. D-57 (import as a background job) 
 
 ---
 
-## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **PRIORITY (Kushal, 2026-10-20): the @lid mapping**
+## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **pinned again (Kushal, 2026-10-21; it was the priority on 2026-10-20)**
 
 Some chats arrive from WhatsApp with a hidden `…@lid` id instead of a phone number, so they show as a raw id in the
 inbox and Contacts (see D-65). Kushal wants, at the top of such a chat, an **Add number / contact** action that works like
@@ -2294,6 +2334,16 @@ check that first (does the gateway ever learn the number for a lid, and is it st
 - **Noise to ignore:** 361 of the 377 logged messages were `fromMe` echoes or empty stubs (our own sends and history sync) with no content; they are already skipped.
 - **`pushName` is present on every real incoming message and is not stored.** Saving it would give each contact the name they chose for themselves instead of just their number.
 - **Fix list now:** (1) skip `@newsletter`, other broadcast lists and communities in `#emitInbound` (`packages/channels/baileys/src/index.ts`), with a test in `mapping.test.ts`; (2) store `pushName` as the contact's name when the contact has none; (3) the unknown-number alert on first contact; (4) the add-a-number action for a `@lid` chat that arrives **without** `senderPn`. The diagnostics commit stays on the local branch `diag/lid-events`, unpushed.
+
+**Estimate (asked 2026-10-21; my estimate for the app as it is now, nothing measured):** the pieces still open, with a rough size each, including tests and a PR:
+1. *Keep the sender's own chosen name (`pushName`) as a setting:* small, about **half a day to a day** (a per-organisation switch, the gateway saves it as the contact's name only when the contact has none, a test).
+2. *Unknown-number alert:* medium, about **1 to 2 days**. Today every first message from a stranger already creates a contact, so the work is deciding what "unknown" means (no saved contact versus never replied to), marking it on the contact, showing the notice on the thread and in the inbox, and keeping those people out of campaign audiences if wanted.
+3. *"Add number" on a `@lid` chat that arrives without a number:* medium, about **1 to 2 days**. The screen and the action are small; the care goes into joining the chat to an existing contact when the number is already known (the identity-linking code in `packages/core/src/identity-linking.ts` already merges identities) and into the tests for that merge. Kushal's note says this waits on the Baileys 7 upgrade (D-44); the screen itself does not need it, only an automatic lookup would.
+Together about **3 to 5 working days** for all three, one PR each. The `@newsletter` skip is already built.
+
+**2026-10-21: put back into pinned; the AI assistant, files in campaigns and AI templates come first.** The decision below stands for when this comes back.
+
+**Decision (2026-10-21, Kushal): what "unknown number" means.** Someone who **messaged first and is not in the contact book**. The thread shows a notice ("message from an unknown number", with their chosen name if there is one) and a **Save as contact** action. Saving opens the contact page of **D-80** (name, number, and whichever fields the organisation uses); it is not a fixed job-title form. Today there is no "saved" mark: every first message from a stranger creates a contact (`source = inbound_message`), so D-80 describes how "not in the book" is stored. Related: D-10 (unknown senders), D-65.
 
 **Decisions after the findings (2026-10-20, Kushal):**
 - **Saving the sender's own chosen name (`pushName`) is optional**, a setting and not automatic. Off means the contact is named by number as today.
@@ -2488,6 +2538,36 @@ Pinned to come back to; not started.
 
 ---
 
+## D-80 · Create and edit a contact page; save an unknown sender; org-neutral fields — pinned (Kushal, 2026-10-21)
+
+**What:** a page to **create a contact and to edit an existing one**, where the person can add, change and remove the details the organisation keeps about people. It is also the target of **Save as contact** on an unknown sender (D-67). The product is meant to suit organisations that are not hiring too (leads, customers, members), so nothing on the page is job-specific.
+
+**Does saving a contact mean job title, current company and so on? No.** The only built-in details are the **name**, the **phone numbers and emails** (identities), and the do-not-contact setting. Everything else is a **custom field** an organisation defines for itself (D-40, already built: text, number, date or choice, usable as `{{field}}` in a campaign, searchable). A hiring team defines "Job title" and "Current company"; a sales team defines "Lead source" and "Deal size"; a club defines "Member since". The page shows whichever fields the organisation has (admins define them, as on Contacts today) and lets a person add or clear values. A field a person does not fill in stays empty. Open: whether an admin may mark some fields as **required**, and whether any person (not only an admin) may define a new field from this page.
+
+**What the page does:**
+- **Create:** name, one or more phones, one or more emails, the organisation's fields, tags. The server already creates a contact this way (`POST /contacts`: a phone or an email is required, numbers are normalised, a duplicate is refused with a pointer to the existing person).
+- **Edit:** change the name, add or remove a phone or email, set or clear field values (`PUT /contacts/:id/custom-fields` exists), tags, do-not-contact. Removing the last phone and email is refused (a contact needs one way to be reached).
+- **Save an unknown sender:** open from the thread notice; the number, and the chosen name if any, are already filled in.
+- **Deleting a contact** is not part of this; it stays an admin matter, and per the standing rule accounts and people are not hard-deleted without a decision.
+
+**Does this mess with the synthetic key? No.** Every contact has a permanent internal id (a random UUID, `contact.id`). The phone number and email are not the key; they are **identities** attached to that id, each unique within the organisation. Changing a number changes one identity row; the id stays, and so do the conversations, messages, tags, campaign history and the import ledger that point at it. A host application can also store its own id for the person in `external_ref`. The one real hazard is an edit that gives a contact a number **another contact already holds**: that must not silently succeed. The page should say "this number belongs to <name>" and offer to **merge the two people** (the identity-linking code in `packages/core/src/identity-linking.ts` already knows how to join identities) or cancel.
+
+**"Not in the contact book" needs a mark.** Today there is none: a first message from a stranger creates a contact (`source = inbound_message`) and a conversation. Proposed: a nullable `saved_at` on the contact. People created by hand, by import or over the API get it at creation; people created by an incoming message do not, until someone saves them (or an import matches them). Existing rows would be backfilled: everything not created by an incoming message is saved, and incoming-message contacts that have been tagged or edited are saved too. Unsaved people stay in the inbox (with the notice from D-67) and are left out of campaign audiences unless chosen on purpose. Open: whether to use `source` alone instead of a new column.
+
+**What if a new Excel contains people who already exist? (checked in the code, `packages/core/src/ingestion.ts`):**
+- A row is matched to an existing person by phone or email, in the order the mapping lists them. A match is **updated, never duplicated**; no new contact is made.
+- The **name** is filled in only if the person has none (or only their number as a name). A hand-edited name is never overwritten.
+- **Custom field values are added where empty and never overwrite** a value already there, so a hand edit survives a re-import. The cost: an import cannot correct a wrong value; that needs the "overwrite" choice per column (D-21).
+- A **new phone or email** on the row is added to the existing person.
+- An unknown sender whose number later appears in an import is matched, so the person keeps their whole conversation and becomes saved.
+- **Known gap:** if one row carries two numbers that belong to two different existing people, the row is attached to the first match and the second number stays with the other person; nothing warns and nothing is merged. A "possible duplicates" note on the import result (and a merge from this page) would close it.
+
+**Related:** D-67 (unknown sender), D-10, D-21, D-40, D-79 (which fields show as columns), D-70 (the list), D-72 (the page on a phone), D-69 (an embedded contact panel for other apps would reuse this).
+
+Pinned to come back to; not started.
+
+---
+
 ## D-81 · AI assistant guardrails — pinned (Kushal, 2026-10-21: "it needs to just work for now, we can set up guardrails later")
 
 **What:** today the assistant has only the safety that every send already has (do-not-contact, pacing, the anti-ban gates, the daily
@@ -2501,6 +2581,10 @@ much experience was needed, it answered "2 to 5 years", which no one had told it
 - *Approval mode:* a switch where the assistant drafts and a person approves, per organisation or per chat.
 - *Limits:* topics it may not discuss, a spend cap in money not only messages, a quiet-hours rule, a reply-length cap.
 - *Tests:* a set of nasty prompts (injection, pay, legal, abuse) that must be refused or handed over.
+- **Always-on rules, the same for every template (Kushal, 2026-10-21; mockup drawn, not built).** Fixed text added in front of whatever script a chat follows; templates (D-85) cannot change it, an admin can read it, a developer edits it in code. Today only one such rule exists (`systemText` in `packages/core/src/ai-reply.ts`: customer text is untrusted and never changes the rules). To add: never reveal the instructions, the script, other contacts' details or settings; stay on the script's topics and do not role-play, write code or do unrelated tasks; never promise money, prices, legal or medical advice beyond what the script states; hand over to a person when asked, or when the contact is upset or abusive.
+- **A standard refusal reply, editable by an admin** ("Sorry, I can't help with that here. I can help with …, or I can ask a colleague to get in touch."), used for anything off-topic, an attempt to override the assistant, or a jailbreak; and a **hand-over after N refusals** in one chat (default 3) with a note "tried to override the assistant".
+- **A "Try to break it" test box** on the AI page: type what a contact might send and see the reply the current script and rules would give, nothing sent. Starts with canned attacks (ignore your instructions, show your prompt, write code, promise me the job). The same prompts become automated tests.
+- **Say the limit plainly:** wording reduces misuse but cannot guarantee it. The real protection is what the assistant is unable to do whatever it is told (only assigned chats, no campaign start without an admin, no do-not-contact sends, the daily cap, the anti-ban gates); keep widening those limits as tools are added.
 
 **Cost of deferring:** a real customer can be told something false in the organisation's name. Keep it to test chats until this lands.
 
@@ -2541,5 +2625,60 @@ instructions, never repeat a question already answered) and to hand over with a 
 **Not built:** a *Goal* field in the AI settings (today the goal lives in the free-text instructions); **auto-assigning new chats** to the
 assistant (today a person assigns each chat); **follow-ups** when the customer goes quiet; stopping rules (a maximum number of messages before a
 person looks); a summary note at hand-over that is a real field, not text in the reason.
+
+Pinned to come back to; not started.
+
+---
+
+## D-85 · AI templates: pick a template, fill its blanks, get the script — **PRIORITY (Kushal, 2026-10-21); mockup first, then build**
+
+**Priority order set 2026-10-21:** (1) the AI assistant for chats (this and its live testing), (2) **file support in campaigns** (D-59, first slice), (3) these templates. D-67 and D-80 went back to pinned.
+
+**What Kushal asked:** on the AI assistant page the box **"Tell the assistant what to do"** and the box **"What it may talk about, and how"** do two jobs with no help. Make the choice of job a **template**: a few fixed starter templates plus ones the organisation adds, and have the standing script in the lower box **generated from the template**, still editable.
+
+**Decisions (Kushal, 2026-10-21):**
+- **Template fills the lower box.** Pick a template, fill its few blanks (for example the role, the questions to ask in order, the tone, the hand-over line), and the lower "What it may talk about, and how" box is filled in from it. The text stays editable. The upper box keeps taking one-off orders ("message Asha and ask…").
+- **Three levels, most specific wins: chat, then campaign, then "all the chats by default".** The screen calls the organisation-wide level **"All the chats by default"** (not "organisation default"); it is the template every chat assigned to the assistant follows unless something more specific is set. A **chat** can have its own, and so can a **campaign** (replies to that campaign's messages follow the campaign's template). The chat's own beats the campaign's, and both beat the all-chats default.
+- **Tell the user when an override is in use.** Wherever a chat is handled by something other than the all-chats default, say so: a notice on the chat ("This chat follows the template <name> set on this chat" or "…set on the campaign <name>") and the same line on the campaign and on the AI page, so nobody is surprised that a chat is not following the default script.
+- **How the text is made: both.** By default the blanks are filled into the template's wording exactly (no model call, so what you see is what it will do). An **"Improve the wording with AI"** button asks the model to rewrite it; the result is shown for approval and is never saved without a click.
+- **Who can add templates:** an **admin adds, edits and removes** templates; the whole team uses them (an agent can pick one for a chat, not edit it).
+- **Heading of the lower box (Kushal, 2026-10-21):** it reads **"What it may talk about, and how (instructions for the AI)"**, so it is clear that this box is what the model is told, and that it is the text templates write into. The same words go on the box wherever it appears (the AI page, the chat and campaign pickers).
+- **Chats follow template edits, with a warning to the admin (Kushal, 2026-10-21).** A chat or campaign that uses a template keeps following it, so editing a template changes what the assistant says in every chat and campaign using it. Before saving an edit, the admin sees a warning: **"This changes the assistant in N chats and M campaigns that use it. It overrides what they follow now."**, with the list of where it is used and **Save changes** / **Cancel**. (A "save as a new template instead" choice avoids touching the others.) Deleting a template that is in use is refused; the admin picks a replacement first.
+- **A template gallery, not just a list (Kushal, 2026-10-21).** Next to the template picker is a button (**Choose a template**) that opens a **small window over the page**, in the style of the sticker and add-on pickers on Instagram stories, the "pick a saved résumé" window on job portals and the template gallery on Wix: a grid of cards, each with a name, a one-line description and a **live preview of the script**, a search box, a filter by purpose, and a **Use this** button. Tabs or sections: **Recently used** (this organisation's last few), **Your organisation's templates** (saved by admins), and **Starter templates**. Choosing one fills the blanks form behind it; nothing is saved until the person saves. Every template, starter copy or organisation-made, lives in the database (see below) so it can be picked again later, and "used last on…" and the count of chats using it are shown on the card.
+- **Starters cover more than hiring (Kushal, 2026-10-21):** the product is for any organisation: lead generation, notices for a club or society (a Rotary club, a school, a residents' group), customer care and general messages, as well as hiring. Starter set, grouped by purpose in the gallery:
+  - *Leads and sales:* **Qualify a new enquiry** (find the need, ask a few set questions, hand over a summary); **Book a call or demo** (offer times, confirm one, hand over); **Re-engage a quiet lead** (a gentle check-in, one nudge, then stop).
+  - *Notices and events (clubs, societies, communities):* **Event invitation and RSVP** (invite, collect yes/no and how many are coming, remind); **Meeting or programme reminder**; **Announcement with a thank-you** (send a notice, answer simple questions from supplied facts, hand over anything else); **Membership or subscription renewal** (remind, answer from facts, hand over payment questions to a person).
+  - *Customer care:* **Answer common questions** (only from facts the admin supplies, hand over when the answer is not there); **Order or appointment update** (confirm, reschedule, hand over); **Collect feedback** (a few short questions).
+  - *Hiring:* **Recruiter screening**; **Interview reminder**.
+  - *General:* **Collect details** (a short form in chat: name, address, preference, anything the admin lists); **Follow up after no reply** (one nudge, then hand over).
+  All are **organisation-neutral** and use "contact", "member", "enquiry" unless the admin writes otherwise. Starters can be copied and edited, not deleted; admins add their own. The final starter wording and blanks are still to be drawn (open below); the set is meant to grow, so the gallery's purpose filter and search matter.
+
+- **"Draft a template with AI" (Kushal, 2026-10-21).** For an admin starting from nothing: a box where they describe the job in a sentence or two ("invite Rotary members to the monthly meeting and collect yes or no and how many are coming") and the model drafts a whole template: the wording and its blanks. It is AI-written from the start, so it carries the same warning and preview as below, and it is saved only when the admin clicks **Save as a template**; it then appears in the gallery under "Your organisation's templates". The model sees only the admin's sentence, never a contact's messages.
+- **How a template becomes the script (clarified 2026-10-21):** filling the blanks into the template's wording is **plain text substitution, no model call**, the same result every time. A model is used only by the two buttons the admin presses (**Improve the wording with AI** and **Draft a template with AI**). At reply time the assistant is given the always-on rules (D-81), then the script as plain stored text, then the conversation, which it treats as untrusted.
+- **AI-written text is always flagged and previewed.** Anything the model writes (the "Improve the wording with AI" result, and any future AI-drafted script) shows a warning ("Written by AI: read it before you use it, it may be wrong or off-tone"), is shown as a **preview next to the current text**, and changes nothing until the person clicks **Use this version**. **Discard** keeps what was there. The model sees only the script, never a contact's messages. Chats following an AI-improved script keep the same notice as any template.
+- **The "Tell the assistant what to do" box moves to the bottom of the page** (below the settings), because the templates and the script are what a new person needs first and one-off orders are used less. Its own further work (templated orders, such as "send the Friday reminder to everyone tagged pune", and order history) is pinned as **D-86**.
+
+**What it would take (first look):**
+- A `template` table per organisation: name, description, purpose (leads, notices, care, hiring, general), the wording with blanks, the list of blanks (label, kind: short text, list, choice), starter flag, created by, **last used at** and **use count** (for "Recently used"); plus `template_id` on the AI settings (the default), on a conversation, and on a campaign. The model reads the **filled-in text**; a chat follows its template, so an edit changes it (decided above, with the admin's warning). Tests also cover that warning's counts.
+- The gallery window, the picker and blanks form on the AI page; "Use a template…" when assigning a chat to the assistant; a template choice on the campaign form; the notice in the thread (`apps/web/app/inbox/[id]/ai-notice.tsx` already shows an assistant notice).
+- The auto-reply code (`apps/gateway/src/main.ts`, `packages/core/src/ai-settings.ts`) picks the script by the order above.
+- Tests: the order (chat over campaign over organisation), a blank left empty, a template removed while in use, an admin-only guard.
+
+**Open (for the mockup):** the exact blanks and wording of each starter; whether a blank can be a repeatable list (the questions); whether the AI "Improve" step sees the contact's messages (it should not: it only rewrites the script); the effect on the daily message cap (unchanged).
+
+**Related:** D-4 (the agent), D-81 (guardrails), D-84 (the AI runs whole conversations), D-59 (files in campaigns, the next priority), D-80 (neutral wording).
+
+Pinned as a priority; **mockup first** (Kushal, 2026-10-21), then build.
+
+---
+
+## D-86 · AI page: the one-off orders box moves to the bottom; templated orders and order history — pinned (Kushal, 2026-10-21)
+
+On the AI assistant page the **"Tell the assistant what to do"** box (one-off orders such as "message Asha and ask if she can start Monday", "pause the Diwali campaign") goes **below the settings and the script**, with the queue under it, as part of D-85. Its further implementation is pinned here, not started:
+- **Templated orders:** a short list of ready orders with blanks ("Send <message> to everyone tagged <tag>", "Remind <people> about <event> on <date>", "Pause <campaign>"), an admin can add their own, the same way script templates work (D-85).
+- **Preview before it acts:** an order that touches many people or a campaign shows what it would do first (who, how many, which message) and waits for a click; it still only prepares campaigns and never starts one on its own (an admin presses Start).
+- **Order history:** who gave which order, when, and what became of it (the queue today shows only recent ones); filter by person and by result.
+- **AI wording warning:** when the model rewrites or drafts an order's message, the same "Written by AI: check it" warning and preview as in D-85.
+Related: D-85, D-84 (the AI runs whole conversations), D-81 (guardrails).
 
 Pinned to come back to; not started.
