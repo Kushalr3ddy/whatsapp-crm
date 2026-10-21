@@ -9,7 +9,8 @@ import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
   DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
-  markMessageFailedByProviderId, assertKeyRingCoversData } from '@crm/core';
+  markMessageFailedByProviderId, assertKeyRingCoversData, autoReply } from '@crm/core';
+import { createLlm } from '@crm/llm';
 import { createStorage } from '@crm/storage';
 import type { ChannelProvider, NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -54,6 +55,8 @@ async function main(): Promise<void> {
   const inOrg = (orgId: string): ReturnType<typeof createDatabase> => tenantDatabase(db, orgId, tenantRole);
 
   const kms = localKmsFromConfig(config);
+  // The language model for the AI assistant. `none` (the default) means it never acts; a half-set config stops boot here.
+  const llm = createLlm(config);
   // Refuse to run if the database holds data under a key this process cannot read (a retired key
   // dropped too early, D-31). Better a loud boot failure than messages that silently won't open.
   await assertKeyRingCoversData(db, kms);
@@ -182,6 +185,21 @@ async function main(): Promise<void> {
           // and fetching it again would cost a round trip to WhatsApp to produce a duplicate.
           if (event.mediaRef !== null && stored.messageId !== null) {
             await fetchAttachment(stored.messageId, org, event);
+          }
+
+          // The AI assistant answers only conversations assigned to it; autoReply checks that, and
+          // everything else, itself. Not awaited: a slow model must never hold up the inbound stream.
+          if (llm.name !== 'none' && stored.messageId !== null) {
+            const conversationId = stored.conversationId;
+            void autoReply({ db: inOrg(org), kms, llm }, org, conversationId, stored.messageId)
+              .then((r) => {
+                if (r.outcome !== 'skipped' || r.reason === 'not_text') {
+                  logger.info({ conversationId, outcome: r.outcome, reason: r.reason }, 'ai assistant looked at an inbound message');
+                }
+              })
+              .catch((error: unknown) => {
+                logger.error({ conversationId, err: error instanceof Error ? error.message : String(error) }, 'ai assistant failed');
+              });
           }
         }
       } catch (error) {

@@ -89,7 +89,7 @@ export async function saveAiSettings(
       INSERT INTO ai_setting (org_id, enabled, instructions, daily_message_cap, bot_user_id,
                               consent_accepted_at, consent_accepted_by, updated_at)
       VALUES (${orgId}, ${next.enabled}, ${next.instructions}, ${next.dailyMessageCap}, ${botUserId},
-              ${consentNow ? sql`now()` : null}, ${consentNow ? actor.id : null}, now())
+              ${consentNow ? sql`now()` : null}, ${consentNow && actor.type === 'user' ? actor.id : null}, now())
       ON CONFLICT (org_id) DO UPDATE SET
         enabled = EXCLUDED.enabled, instructions = EXCLUDED.instructions,
         daily_message_cap = EXCLUDED.daily_message_cap, bot_user_id = EXCLUDED.bot_user_id,
