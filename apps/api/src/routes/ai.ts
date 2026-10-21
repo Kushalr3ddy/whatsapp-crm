@@ -116,7 +116,7 @@ export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, 
     }
     const orgId = req.crm!.orgId;
     try {
-      const result = await runAiCommand({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm(), limits }, orgId, req.crm!.userId, parsed.data.instruction);
+      const result = await runAiCommand({ db: tenantDatabase(db, orgId, tenantRole), kms, llm: getLlm(), limits }, orgId, req.crm!.userId, parsed.data.instruction);
       res.json({ data: result });
     } catch (error) {
       if (error instanceof AiCommandError) {

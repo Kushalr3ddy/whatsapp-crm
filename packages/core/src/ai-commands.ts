@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
+import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver, LlmTool } from '@crm/llm';
 import { AUDIT, writeAudit, type AuditActor } from './audit.js';
 import { createCampaignDraft, startCampaign, setCampaignStatus, editCampaign, type CampaignLimits } from './campaign-actions.js';
@@ -46,6 +47,18 @@ const TOOLS: readonly LlmTool[] = [
     }
   },
   {
+    name: 'send_message',
+    description: 'Send one WhatsApp message to one existing contact, in the chat you already have with them. Use it for "message X", "ask X if...", "tell X that...". For many people use create_campaign instead.',
+    parameters: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'The contact\'s name exactly as the person wrote it, or their phone number with country code.' },
+        text: { type: 'string', description: 'The final message, ready to send: short, polite, no placeholders like {{name}}.' }
+      },
+      required: ['to', 'text']
+    }
+  },
+  {
     name: 'pause_campaign',
     description: 'Pause a running campaign. It can be resumed later.',
     parameters: { type: 'object', properties: { campaignId: { type: 'string' } }, required: ['campaignId'] }
@@ -81,14 +94,14 @@ function str(v: unknown): string | undefined {
  * including refusals, and logged in `ai_run`. `db` must be pinned to the org.
  */
 export async function runAiCommand(
-  deps: { db: Database; llm: LlmDriver; limits: CampaignLimits },
+  deps: { db: Database; kms: KmsDriver; llm: LlmDriver; limits: CampaignLimits },
   orgId: string, requestedBy: string | null, instruction: string
 ): Promise<CommandResult> {
   const { db, llm } = deps;
   const settings = (await db.execute(sql`
-    SELECT enabled, instructions, may_start_campaigns AS "mayStart", bot_user_id AS "botUserId"
+    SELECT enabled, instructions, may_start_campaigns AS "mayStart", bot_user_id AS "botUserId", daily_message_cap AS "cap"
     FROM ai_setting WHERE org_id = ${orgId}`) as unknown as Array<{
-    enabled: boolean; instructions: string; mayStart: boolean; botUserId: string | null;
+    enabled: boolean; instructions: string; mayStart: boolean; botUserId: string | null; cap: number;
   }>)[0];
   if (settings === undefined || !settings.enabled || settings.botUserId === null) {
     throw new AiCommandError('ai_off', 'The AI assistant is switched off for this organisation.');
@@ -101,9 +114,10 @@ export async function runAiCommand(
   const campaigns = await db.execute(sql`SELECT id, name, status FROM campaign WHERE org_id = ${orgId} ORDER BY created_at DESC LIMIT 20`) as unknown as Array<{ id: string; name: string; status: string }>;
 
   const system = [
-    'You are the AI assistant of a WhatsApp CRM. A team member is asking you to run campaigns (bulk messages).',
+    'You are the AI assistant of a WhatsApp CRM. A team member is asking you to run campaigns (bulk messages) or to message one contact.',
     'Do exactly what was asked, with the tools. Use only ids from the context below; never invent one. If the audience, number or campaign is unclear or missing, do not guess: reply in words asking what is needed.',
-    'Never claim a campaign was sent unless a tool did it. Keep your reply to one or two sentences. Plain text.',
+    'To message one person use send_message with their name or number as written; write the whole message yourself.',
+    'Never claim a campaign or message was sent unless a tool did it. Keep your reply to one or two sentences. Plain text.',
     'Write campaign text that is short, polite and varied: use {{name}} for the contact\'s name, and {option one|option two} for wording that can differ between people.',
     settings.instructions.trim() === '' ? '' : `The organisation's own instructions:\n${settings.instructions.trim()}`,
     `Context (JSON): ${JSON.stringify({ numbers: senders, tags, segments, recentCampaigns: campaigns })}`
@@ -152,6 +166,8 @@ export async function runAiCommand(
             };
           }
         }
+      } else if (call.name === 'send_message') {
+        action = await sendOne(deps, settings.cap, orgId, bot, str(a.to), str(a.text));
       } else if (call.name === 'pause_campaign') {
         action = !known(campaigns, id) ? { tool: call.name, ok: false, detail: 'No such campaign.' }
           : await db.transaction((tx) => setCampaignStatus(tx, orgId, { actor: bot }, id, 'paused'))
@@ -185,7 +201,7 @@ export async function runAiCommand(
     actions.push(action);
     await db.execute(sql`
       INSERT INTO ai_run (org_id, campaign_id, kind, outcome, reason, model, input_tokens, output_tokens)
-      VALUES (${orgId}, ${action.campaignId ?? null}, 'campaign_action', ${action.ok ? 'sent' : 'blocked'}, ${action.ok ? call.name : `${call.name}: ${action.detail}`.slice(0, 300)},
+      VALUES (${orgId}, ${action.campaignId ?? null}, ${call.name === 'send_message' ? 'message' : 'campaign_action'}, ${action.ok ? 'sent' : 'blocked'}, ${action.ok ? call.name : `${call.name}: ${action.detail}`.slice(0, 300)},
               ${answer.model}, ${actions.length === 1 ? answer.usage.inputTokens : 0}, ${actions.length === 1 ? answer.usage.outputTokens : 0})`);
   }
 
@@ -234,4 +250,64 @@ function providerFailure(error: unknown): AiCommandError {
   if (status === 429 || status === 503) return new AiCommandError('no_model', `The AI provider is busy or rate-limiting this key (${String(status)}). Try again in a minute.`);
   if (status === 401 || status === 403) return new AiCommandError('no_model', `The AI provider refused the API key (${String(status)}). Check LLM_API_KEY.`);
   return new AiCommandError('no_model', `The AI provider did not answer (${status === undefined ? code : String(status)}).`);
+}
+
+
+/**
+ * Sends one message to one existing contact as the assistant, in the chat that already exists with them.
+ *
+ * Refused, with the reason, when: the contact cannot be found or the name is ambiguous; they are do-not-contact (the
+ * assistant has no override; an admin must send it themselves); there is no chat with them yet; the chat belongs to a
+ * person (the assistant does not barge into someone else's conversation); or the org's daily AI limit is used up.
+ * Otherwise the message is queued like any other (the gateway's pacing and anti-ban gates still decide when it goes out)
+ * and the chat is assigned to the assistant, so the contact's reply is answered by it.
+ */
+async function sendOne(
+  deps: { db: Database; kms: KmsDriver }, cap: number, orgId: string, bot: AuditActor, to: string | undefined, text: string | undefined
+): Promise<CommandAction> {
+  const tool = 'send_message';
+  if (to === undefined || text === undefined) return { tool, ok: false, detail: 'It needs who to message and what to say.' };
+  const { db, kms } = deps;
+  // A number is recognised by looking like one (with its country code); anything else is a name.
+  const phone = /^\+?[\d\s().-]{7,}$/.test(to) ? `+${to.replace(/\D/g, '')}` : null;
+  const found = await db.execute(sql`
+    SELECT DISTINCT c.id, c.display_name AS "name", c.do_not_contact AS "dnc"
+    FROM contact c LEFT JOIN contact_identity ci ON ci.contact_id = c.id AND ci.kind = 'phone'
+    WHERE c.org_id = ${orgId} AND (lower(c.display_name) = lower(${to}) OR (${phone}::text IS NOT NULL AND ci.value_normalized = ${phone}))
+    LIMIT 3`) as unknown as Array<{ id: string; name: string; dnc: boolean }>;
+  if (found.length === 0) return { tool, ok: false, detail: `No contact matches "${to}". Use the name exactly as it appears, or the phone number with country code.` };
+  if (found.length > 1) return { tool, ok: false, detail: `More than one contact matches "${to}". Use the phone number instead.` };
+  const contact = found[0]!;
+  if (contact.dnc) return { tool, ok: false, detail: `${contact.name} is marked do-not-contact. The assistant cannot message them; an admin has to send it from the inbox.` };
+
+  const chat = (await db.execute(sql`
+    SELECT v.id, v.assignee_user_id AS "assignee", u.display_name AS "assigneeName", u.is_bot AS "assigneeIsBot"
+    FROM conversation v LEFT JOIN app_user u ON u.id = v.assignee_user_id
+    WHERE v.org_id = ${orgId} AND v.contact_id = ${contact.id}
+    ORDER BY v.last_inbound_at DESC NULLS LAST, v.created_at DESC LIMIT 1`) as unknown as Array<{
+    id: string; assignee: string | null; assigneeName: string | null; assigneeIsBot: boolean | null;
+  }>)[0];
+  if (chat === undefined) return { tool, ok: false, detail: `There is no chat with ${contact.name} yet. Start one from the inbox first.` };
+  if (chat.assignee !== null && chat.assigneeIsBot !== true) {
+    return { tool, ok: false, detail: `${contact.name}'s chat is assigned to ${chat.assigneeName ?? 'a team member'}, so the assistant will not message into it.` };
+  }
+
+  const today = (await db.execute(sql`
+    SELECT count(*)::int AS n FROM ai_run WHERE org_id = ${orgId} AND outcome = 'sent' AND created_at > now() - interval '24 hours'`) as unknown as Array<{ n: number }>)[0]?.n ?? 0;
+  if (today >= cap) return { tool, ok: false, detail: 'The assistant has reached its daily message limit.' };
+
+  const body = text.slice(0, 1500);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO message (org_id, conversation_id, direction, status, content_type, body_enc, body_hmac, sent_by, sent_by_user_id)
+      VALUES (${orgId}, ${chat.id}, 'outbound', 'queued', 'text', ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))}, ${kms.blindIndex(body)}, 'agent', ${bot.id})`);
+    if (chat.assignee === null) {
+      await tx.execute(sql`UPDATE conversation SET assignee_user_id = ${bot.id}, status = 'open', updated_at = now() WHERE id = ${chat.id} AND org_id = ${orgId}`);
+      await writeAudit(tx, {
+        orgId, actor: bot, action: AUDIT.conversationAssigned, targetType: 'conversation', targetId: chat.id,
+        before: { assigneeUserId: null }, after: { assigneeUserId: bot.id, reason: 'assistant started the conversation' }
+      });
+    }
+  });
+  return { tool, ok: true, detail: `Queued for ${contact.name}. It goes out at the number's safe pace, and the assistant will handle their reply.` };
 }

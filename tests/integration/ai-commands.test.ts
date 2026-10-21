@@ -199,6 +199,80 @@ describe('instructing the assistant', () => {
   });
 });
 
+describe('the assistant messaging one contact', () => {
+  /** A contact with a chat on the org's number, optionally flagged or owned by someone. */
+  async function chatWith(name: string, opts: { dnc?: boolean; assignee?: string; phone?: string } = {}): Promise<{ contact: string; conv: string }> {
+    const contact = ((await db.execute(sql`INSERT INTO contact (org_id, display_name, source, do_not_contact) VALUES (${orgId}, ${name}, 'test', ${opts.dnc === true}) RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
+    await db.execute(sql`INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary) VALUES (${orgId}, ${contact}, 'phone', ${opts.phone ?? '+919964100000'}, true)`);
+    const conv = ((await db.execute(sql`INSERT INTO conversation (org_id, contact_id, sender_identity_id, assignee_user_id) VALUES (${orgId}, ${contact}, ${senderId}, ${opts.assignee ?? null}) RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
+    return { contact, conv };
+  }
+  const send = (to: string, text = 'Hi! Are you interested in a driver role?'): LlmToolCall => ({ name: 'send_message', arguments: { to, text } });
+  const first = async () => (await command(admin)).body.data.actions[0] as { ok: boolean; detail: string };
+  const queued = async (conv: string) => await db.execute(sql`SELECT status, sent_by, sent_by_user_id, body_enc FROM message WHERE conversation_id = ${conv} AND direction = 'outbound'`) as unknown as Array<{ status: string; sent_by: string; sent_by_user_id: string; body_enc: Uint8Array }>;
+
+  it('queues the message as the assistant and takes the chat, so the reply is answered by it', async () => {
+    const { conv } = await chatWith('Test Phone Two');
+    llm.toolCalls = [send('Test Phone Two')];
+    const a = await first();
+    expect(a.ok).toBe(true);
+    const [m] = await queued(conv);
+    expect(m).toMatchObject({ status: 'queued', sent_by: 'agent', sent_by_user_id: botId });
+    expect(new TextDecoder().decode(kms.decrypt(m!.body_enc))).toBe('Hi! Are you interested in a driver role?');
+    expect((await db.execute(sql`SELECT assignee_user_id AS a FROM conversation WHERE id = ${conv}`) as unknown as Array<{ a: string }>)[0]!.a).toBe(botId);
+    expect(await db.execute(sql`SELECT 1 FROM ai_run WHERE org_id = ${orgId} AND kind = 'message' AND outcome = 'sent'`)).toHaveLength(1);
+  });
+
+  it('finds a contact by phone number too, however it is written', async () => {
+    const { conv } = await chatWith('Someone', { phone: '+919964122631' });
+    llm.toolCalls = [send('+91 99641 22631')];
+    expect((await first()).ok).toBe(true);
+    expect(await queued(conv)).toHaveLength(1);
+  });
+
+  it('refuses a do-not-contact contact (no override from the assistant), and sends nothing', async () => {
+    const { conv } = await chatWith('Asked Not To', { dnc: true });
+    llm.toolCalls = [send('Asked Not To')];
+    const a = await first();
+    expect(a.ok).toBe(false);
+    expect(a.detail).toMatch(/do-not-contact/);
+    expect(await queued(conv)).toHaveLength(0);
+  });
+
+  it('does not barge into a chat that belongs to a person', async () => {
+    const { conv } = await chatWith('Owned', { assignee: adminId });
+    llm.toolCalls = [send('Owned')];
+    const a = await first();
+    expect(a.ok).toBe(false);
+    expect(a.detail).toMatch(/assigned to Admin/);
+    expect(await queued(conv)).toHaveLength(0);
+  });
+
+  it('says so when nobody matches, when two match, and when there is no chat yet', async () => {
+    await chatWith('Twin', { phone: '+919000011111' });
+    await chatWith('Twin', { phone: '+919000022222' });
+    const loner = ((await db.execute(sql`INSERT INTO contact (org_id, display_name, source) VALUES (${orgId}, 'Loner', 'test') RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
+    expect(loner).toBeTruthy();
+    llm.toolCalls = [send('Nobody'), send('Twin'), send('Loner')];
+    const actions = (await command(admin)).body.data.actions as Array<{ ok: boolean; detail: string }>;
+    expect(actions.map((x) => x.ok)).toEqual([false, false, false]);
+    expect(actions[0]!.detail).toMatch(/No contact matches/);
+    expect(actions[1]!.detail).toMatch(/More than one/);
+    expect(actions[2]!.detail).toMatch(/no chat with Loner yet/i);
+  });
+
+  it('stops at the assistant’s daily limit', async () => {
+    const { conv } = await chatWith('Capped');
+    await saveAiSettings(db, orgId, { dailyMessageCap: 1 });
+    await db.execute(sql`INSERT INTO ai_run (org_id, kind, outcome) VALUES (${orgId}, 'reply', 'sent')`);
+    llm.toolCalls = [send('Capped')];
+    const a = await first();
+    expect(a.ok).toBe(false);
+    expect(a.detail).toMatch(/daily message limit/);
+    expect(await queued(conv)).toHaveLength(0);
+  });
+});
+
 describe('campaign editing and the Write-with-AI helper', () => {
   it('PATCH /campaigns/:id edits a draft or paused campaign and refuses a running one', async () => {
     const id = await makeCampaign('paused');
