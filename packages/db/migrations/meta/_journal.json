@@ -232,6 +232,13 @@
       "when": 1792570482485,
       "tag": "0032_ai_may_start_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792574231401,
+      "tag": "0033_ai_job_queue",
+      "breakpoints": true
     }
   ]
 }

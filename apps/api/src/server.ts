@@ -73,6 +73,8 @@ async function main(): Promise<void> {
   const app = buildApp({
     config, logger, db, kms, hasher: new BuiltinPasswordHasher(), tenantRole, storage
   });
+  // Picks up AI requests left waiting by a restart, and keeps the queue tidy.
+  app.aiRunner.start();
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info(
       { port: config.PORT, preset: config.PRESET, role: config.PROCESS_ROLE, env: config.NODE_ENV },
@@ -83,6 +85,7 @@ async function main(): Promise<void> {
   /** Drains in-flight work before exiting so a deploy never severs a request mid-flight. */
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'shutting down');
+    app.aiRunner.stop();
     server.close(() => {
       void db.$client.end({ timeout: 5 }).then(() => process.exit(0));
     });

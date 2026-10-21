@@ -35,6 +35,11 @@ export {
 } from './campaign-actions.js';
 
 export {
+  enqueueAiJob, listAiJobs, cancelAiJob, claimNextAiJob, finishAiJob, tidyAiJobs, AiJobError,
+  type AiJob, type AiJobKind, type AiJobStatus, type ClaimedJob, type QueueViewer
+} from './ai-jobs.js';
+
+export {
   runAiCommand, draftCampaignText, AiCommandError, type CommandAction, type CommandResult
 } from './ai-commands.js';
 

@@ -684,20 +684,41 @@ export async function getAiStatus(): Promise<{ enabled: boolean }> {
   return request<{ enabled: boolean }>('/ai/status');
 }
 
+/** One request in the AI queue. Mirrors `GET /api/v1/ai/jobs`. */
+export interface AiJob {
+  id: string;
+  kind: 'command' | 'draft';
+  input: string;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+  result: unknown;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  mine: boolean;
+  /** 1 = next to run; only while queued. */
+  position: number | null;
+}
+
+/** The AI queue as the signed-in person may see it. */
+export async function listAiJobs(): Promise<AiJob[]> {
+  return request<AiJob[]>('/ai/jobs');
+}
+
+/** Puts a request in the AI queue; it runs when its turn comes. */
+export async function enqueueAiJob(kind: 'command' | 'draft', input: string): Promise<{ id: string }> {
+  return request<{ id: string }>('/ai/jobs', { method: 'POST', body: JSON.stringify({ kind, input }) });
+}
+
+/** Cancels a request that is still waiting. */
+export async function cancelAiJob(id: string): Promise<void> {
+  await request<unknown>(`/ai/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+}
+
 /** What the assistant did about an instruction. Mirrors `POST /api/v1/ai/commands`. */
 export interface AiCommandResult {
   message: string;
   actions: Array<{ tool: string; ok: boolean; detail: string; campaignId?: string }>;
-}
-
-/** Tells the assistant to run campaigns, in plain language. */
-export async function sendAiCommand(instruction: string): Promise<AiCommandResult> {
-  return request<AiCommandResult>('/ai/commands', { method: 'POST', body: JSON.stringify({ instruction }) });
-}
-
-/** Asks the assistant to write campaign wording from a goal. Nothing is created or sent. */
-export async function draftCampaignBody(goal: string): Promise<{ body: string }> {
-  return request<{ body: string }>('/ai/draft-campaign-text', { method: 'POST', body: JSON.stringify({ goal }) });
 }
 
 /** The warning for a conversation the assistant owns, or null when nothing is wrong. */

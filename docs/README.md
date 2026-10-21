@@ -71,6 +71,7 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 | [33 Payment providers](33-payment-providers.md) | Razorpay, Cashfree, PayU, Stripe, Paddle, Lemon Squeezy, Polar, Dodo Payments and manual invoicing compared on fees, UPI, subscriptions, the org-admin experience, developer experience and ease of building, with a recommendation and sources to verify |
 | [34 Licensing and enforcement](34-licensing-and-drm.md) | Research for D-55: why open-source and public source-available licences do not fit, how similar products tie payment to use (unchecked, from memory), the proprietary-licence-plus-signed-key approach, and the open questions |
 | [31 Codebase map](31-codebase-map.md) | Every directory and file in the repository and what it is for, built from each file's own header comment; the first place to look when you do not know where something lives |
+| [User tutorial (PDF)](CRM-user-tutorial.pdf) | A walkthrough of the whole platform with screenshots, for the people who use it every day: signing in, linking a number, importing, contacts, the inbox, campaigns, the team, the AI assistant, the safety rules and troubleshooting. Rebuild with `npm run tutorial:shots -- <folder>` then `npm run tutorial:pdf -- <folder>` |
 | [Getting started](../GETTING_STARTED.md) | (Repo root) fresh clone → running, signed-in instance, in nine steps |
 | [Capacity calculator](capacity-calculator.html) | Interactive — toggle the stack, size the server |
 

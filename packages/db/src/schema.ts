@@ -890,3 +890,31 @@ export const aiRun = pgTable('ai_run', {
   index('ai_run_org_created_idx').on(t.orgId, t.createdAt),
   index('ai_run_conversation_idx').on(t.conversationId)
 ]);
+
+/**
+ * A request waiting for, or having had, the AI assistant's attention: an instruction typed into the command box, or a
+ * "write the campaign wording" request. They run one at a time per org, oldest first, so a slow or rate-limited model
+ * never gets several at once, and the queue can be shown: who is waiting, what is running, what finished.
+ * Only a `queued` job can be cancelled; once it is `running` it is allowed to finish. Finished jobs are pruned after a day.
+ */
+export const aiJob = pgTable('ai_job', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  /** `command` (carry out an instruction) or `draft` (write campaign wording). */
+  kind: text('kind').notNull(),
+  /** The instruction, or the goal for the wording. */
+  input: text('input').notNull(),
+  requestedBy: uuid('requested_by').references(() => appUser.id, { onDelete: 'set null' }),
+  /** `queued` -> `running` -> `done` or `failed`; or `cancelled` straight from `queued`. */
+  status: text('status').notNull().default('queued'),
+  /** What came out: the assistant's message and actions, or the written wording. Null until done. */
+  result: jsonb('result'),
+  /** Why it failed, in words a person can read. */
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  finishedAt: timestamp('finished_at', { withTimezone: true })
+}, (t) => [
+  index('ai_job_org_created_idx').on(t.orgId, t.createdAt),
+  index('ai_job_org_status_idx').on(t.orgId, t.status)
+]);
