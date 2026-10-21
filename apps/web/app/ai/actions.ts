@@ -3,9 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  saveAiSettings, allowAiReply, listAiJobs, enqueueAiJob, cancelAiJob, CrmApiError, NotAuthenticatedError
+  saveAiSettings, allowAiReply, listAiJobs, enqueueAiJob, cancelAiJob, generateAiTemplate, saveAiTemplate, useAiTemplate, deleteAiTemplate,
+  CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { AiJob } from '@/lib/crm';
+import type { AiJob, AiTemplate, GeneratedAiTemplate } from '@/lib/crm';
 
 /** What an AI settings action gives back: done, or a plain reason it was not. */
 export interface AiResult { ok: boolean; error?: string }
@@ -66,6 +67,58 @@ export async function listJobsAction(): Promise<{ ok: boolean; jobs: AiJob[] }> 
 export async function cancelJobAction(id: string): Promise<AiResult> {
   try {
     await cancelAiJob(id);
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Asks the AI to write a template from a description. Nothing is saved. */
+export async function generateTemplateAction(description: string, answers: string[]): Promise<{ ok: boolean; error?: string; template?: GeneratedAiTemplate }> {
+  try {
+    return { ok: true, template: await generateAiTemplate(description, answers) };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Saves a template (new, or replacing the one with `id`). */
+export async function saveTemplateAction(
+  input: { id?: string; name: string; description: string; instructions: string; audience: string; firstMessage: string }
+): Promise<{ ok: boolean; error?: string; template?: AiTemplate }> {
+  try {
+    const template = await saveAiTemplate(input);
+    revalidatePath('/ai');
+    return { ok: true, template };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Notes a template as used, and optionally makes it what every chat follows by default. */
+export async function useTemplateAction(id: string, setAsDefault: boolean): Promise<{ ok: boolean; error?: string; template?: AiTemplate }> {
+  try {
+    const template = await useAiTemplate(id, setAsDefault);
+    revalidatePath('/ai');
+    return { ok: true, template };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Removes a saved template. */
+export async function deleteTemplateAction(id: string): Promise<AiResult> {
+  try {
+    await deleteAiTemplate(id);
+    revalidatePath('/ai');
     return { ok: true };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');

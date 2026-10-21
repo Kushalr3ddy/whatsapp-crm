@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
-import { getAiSettings, getMe, listAiJobs, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { AiJob, AiSettings } from '@/lib/crm';
+import { getAiSettings, getMe, listAiJobs, listAiTemplates, getAiAlwaysOnRules, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { AiJob, AiSettings, AiTemplate } from '@/lib/crm';
 import { PageHeader } from '../ui';
 import { AiPanel } from './ai-panel';
 import { AiQueue } from './ai-queue';
+import { TemplatesPanel } from './templates-panel';
 
 /** Rendered per request: the switch and the consent come from the database. */
 export const dynamic = 'force-dynamic';
@@ -16,13 +17,18 @@ export const dynamic = 'force-dynamic';
 export default async function AiPage() {
   let settings: AiSettings | null = null;
   let jobs: AiJob[] = [];
+  let templates: AiTemplate[] = [];
+  let rules: string[] = [];
   let isAdmin = false;
   let failure: string | null = null;
   let expired = false;
   try {
     isAdmin = (await getMe()).role === 'admin';
     if (isAdmin) {
-      [settings, jobs] = await Promise.all([getAiSettings(), listAiJobs().catch((): AiJob[] => [])]);
+      [settings, jobs, templates, rules] = await Promise.all([
+        getAiSettings(), listAiJobs().catch((): AiJob[] => []),
+        listAiTemplates().catch((): AiTemplate[] => []), getAiAlwaysOnRules().catch((): string[] => [])
+      ]);
     }
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
@@ -40,10 +46,11 @@ export default async function AiPage() {
       {failure === null && !isAdmin && (
         <p className="notice notice-warning">Only admins can change the AI assistant. Ask an admin if you need a change.</p>
       )}
+      {failure === null && settings?.enabled === true && <TemplatesPanel templates={templates} rules={rules} />}
+      {failure === null && settings !== null && <AiPanel settings={settings} rules={rules} />}
       {failure === null && settings?.enabled === true && (
         <div className="mt-6"><AiQueue initial={jobs} mayStart={settings.mayStartCampaigns} /></div>
       )}
-      {failure === null && settings !== null && <AiPanel settings={settings} />}
     </main>
   );
 }

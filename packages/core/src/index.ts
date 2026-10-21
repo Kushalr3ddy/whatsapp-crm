@@ -30,6 +30,12 @@ export {
 } from './ai-settings.js';
 
 export {
+  generateTemplate, parseGenerated, listTemplates, getTemplate, saveTemplate, useTemplate, deleteTemplate,
+  AiTemplateError, AI_ALWAYS_ON_RULES, AI_TEMPLATE_MAX_DESCRIPTION,
+  type AiTemplate, type AiTemplateInput, type GeneratedTemplate
+} from './ai-templates.js';
+
+export {
   createCampaignDraft, startCampaign, setCampaignStatus, editCampaign,
   type ActionContext, type CampaignAudience, type NewCampaign, type CampaignLimits, type StartedCampaign
 } from './campaign-actions.js';

@@ -5,7 +5,7 @@ import type { AiSettings } from '@/lib/crm';
 import { saveAiAction } from './actions';
 
 /** The settings form: consent, the on/off switch, the instructions and the daily limit. */
-export function AiPanel({ settings }: { settings: AiSettings }) {
+export function AiPanel({ settings, rules }: { settings: AiSettings; rules: string[] }) {
   const consented = settings.consentAcceptedAt !== null;
   const [consent, setConsent] = useState(consented);
   const [enabled, setEnabled] = useState(settings.enabled);
@@ -62,13 +62,19 @@ export function AiPanel({ settings }: { settings: AiSettings }) {
         </p>
 
         <label className="mt-4 flex flex-col gap-1 text-sm font-medium">
-          What it may talk about, and how
+          <span>What it may talk about, and how <span className="font-normal text-muted">(instructions for the AI)</span></span>
           <textarea
             value={instructions} onChange={(e) => { setInstructions(e.target.value); }} rows={6} maxLength={8000}
             placeholder="You answer questions for Acme Hiring: job openings, interview timings and documents. Be short and polite. If unsure, say a person will follow up."
             className="field font-normal"
           />
         </label>
+
+        {rules.length > 0 && (
+          <p className="mt-2 text-xs text-muted">
+            Always added automatically, and not editable: {rules.map((r) => r.replace(/\.$/, '')).join('. ')}.
+          </p>
+        )}
 
         <label className="mt-4 flex max-w-xs flex-col gap-1 text-sm font-medium">
           Most messages it may send in a day
