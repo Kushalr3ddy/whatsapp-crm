@@ -30,6 +30,15 @@ test.describe('ai assistant settings', () => {
     // new-campaign form offers "Write with AI".
     await expect(page.getByRole('heading', { name: 'Tell the assistant what to do' })).toBeVisible();
     await expect(page.getByLabel(/may start and resume campaigns by itself/)).toBeVisible();
+    // An instruction goes into the queue at once and shows up in the list, with its place or a spinner, and can be
+    // watched from there. It asks for nothing to be done, so the model has nothing to change in the test org.
+    const note = `Just say hello, do nothing else ${String(Date.now())}`;
+    await page.getByLabel('Instruction for the assistant').fill(note);
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    const queue = page.getByLabel('AI queue');
+    await expect(queue.getByText(note)).toBeVisible();
+    await expect(queue.getByText(/Instruction · (waiting|working|done|failed)/).first()).toBeVisible();
+
     await page.goto('/broadcast/new');
     await expect(page.getByLabel('Write with AI', { exact: true })).toBeVisible();
 

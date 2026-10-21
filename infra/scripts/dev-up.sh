@@ -12,18 +12,25 @@
 # socket, and `npm run dev` reloads on every file save (docs/04-architecture.md). This script
 # only removes the need for three terminals — it does not merge them.
 #
-# Usage: dev-up.sh [--no-web] [--no-gateway]
+# Usage: dev-up.sh [--no-web] [--no-gateway] [--fast-web]
+#
+#   --fast-web   serve the UI from a production build (`next build` then `next start`) instead of `next dev`.
+#                Pages open in well under a second instead of compiling on first visit (1-7 s each), which is what
+#                you want for demos and for someone else testing. The cost: about 30 s to build at start, and no
+#                live reload, so UI edits need a restart. Everyday UI work: leave it off.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 WITH_WEB=1
 WITH_GATEWAY=1
+WEB_SCRIPT=web
 for arg in "$@"; do
   case "$arg" in
     --no-web)     WITH_WEB=0 ;;
     --no-gateway) WITH_GATEWAY=0 ;;
-    *) echo "unknown option: $arg"; echo "usage: dev-up.sh [--no-web] [--no-gateway]"; exit 2 ;;
+    --fast-web)   WEB_SCRIPT=web:prod ;;
+    *) echo "unknown option: $arg"; echo "usage: dev-up.sh [--no-web] [--no-gateway] [--fast-web]"; exit 2 ;;
   esac
 done
 
@@ -99,7 +106,7 @@ for _ in $(seq 1 60); do
 done
 
 [ "$WITH_GATEWAY" = 1 ] && start gateway npm run gateway
-[ "$WITH_WEB" = 1 ] && start web npm run web
+[ "$WITH_WEB" = 1 ] && start web npm run "$WEB_SCRIPT"
 
 if [ "$WITH_WEB" = 1 ]; then
   printf '  waiting for the web ui'

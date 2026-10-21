@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
-import { getAiSettings, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { AiSettings } from '@/lib/crm';
+import { getAiSettings, getMe, listAiJobs, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { AiJob, AiSettings } from '@/lib/crm';
 import { PageHeader } from '../ui';
 import { AiPanel } from './ai-panel';
-import { CommandBox } from './command-box';
+import { AiQueue } from './ai-queue';
 
 /** Rendered per request: the switch and the consent come from the database. */
 export const dynamic = 'force-dynamic';
@@ -15,12 +15,15 @@ export const dynamic = 'force-dynamic';
  */
 export default async function AiPage() {
   let settings: AiSettings | null = null;
+  let jobs: AiJob[] = [];
   let isAdmin = false;
   let failure: string | null = null;
   let expired = false;
   try {
     isAdmin = (await getMe()).role === 'admin';
-    if (isAdmin) settings = await getAiSettings();
+    if (isAdmin) {
+      [settings, jobs] = await Promise.all([getAiSettings(), listAiJobs().catch((): AiJob[] => [])]);
+    }
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
     failure = error instanceof CrmApiError ? error.message : 'Could not reach the API.';
@@ -38,7 +41,7 @@ export default async function AiPage() {
         <p className="notice notice-warning">Only admins can change the AI assistant. Ask an admin if you need a change.</p>
       )}
       {failure === null && settings?.enabled === true && (
-        <div className="mt-6"><CommandBox mayStart={settings.mayStartCampaigns} /></div>
+        <div className="mt-6"><AiQueue initial={jobs} mayStart={settings.mayStartCampaigns} /></div>
       )}
       {failure === null && settings !== null && <AiPanel settings={settings} />}
     </main>

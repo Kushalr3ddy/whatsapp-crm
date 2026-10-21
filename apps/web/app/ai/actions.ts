@@ -2,8 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { saveAiSettings, allowAiReply, sendAiCommand, draftCampaignBody, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { AiCommandResult } from '@/lib/crm';
+import {
+  saveAiSettings, allowAiReply, listAiJobs, enqueueAiJob, cancelAiJob, CrmApiError, NotAuthenticatedError
+} from '@/lib/crm';
+import type { AiJob } from '@/lib/crm';
 
 /** What an AI settings action gives back: done, or a plain reason it was not. */
 export interface AiResult { ok: boolean; error?: string }
@@ -38,13 +40,11 @@ export async function allowAiReplyAction(conversationId: string, reason: string)
   return { ok: true };
 }
 
-/** Tells the assistant to run campaigns; returns what it did, or why it could not. */
-export async function aiCommandAction(instruction: string): Promise<AiResult & { result?: AiCommandResult }> {
-  if (instruction.trim().length < 3) return { ok: false, error: 'Write what you want the assistant to do.' };
+/** Puts a request in the AI queue. */
+export async function enqueueJobAction(kind: 'command' | 'draft', input: string): Promise<AiResult & { id?: string }> {
+  if (input.trim().length < 3) return { ok: false, error: 'Write what you want the assistant to do.' };
   try {
-    const result = await sendAiCommand(instruction.trim());
-    revalidatePath('/broadcast');
-    return { ok: true, result };
+    return { ok: true, id: (await enqueueAiJob(kind, input.trim())).id };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
@@ -52,13 +52,23 @@ export async function aiCommandAction(instruction: string): Promise<AiResult & {
   }
 }
 
-/** Writes campaign wording from a goal, for the new-campaign form. */
-export async function draftBodyAction(goal: string): Promise<AiResult & { body?: string }> {
-  if (goal.trim().length < 3) return { ok: false, error: 'Say what the message should do.' };
+/** The queue as it is right now; polled by the page. A failed poll is not an error to show: the next one tries again. */
+export async function listJobsAction(): Promise<{ ok: boolean; jobs: AiJob[] }> {
   try {
-    return { ok: true, body: (await draftCampaignBody(goal.trim())).body };
+    return { ok: true, jobs: await listAiJobs() };
   } catch (error) {
-    if (error instanceof NotAuthenticatedError) redirect('/login');
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    return { ok: false, jobs: [] };
+  }
+}
+
+/** Cancels a waiting request. */
+export async function cancelJobAction(id: string): Promise<AiResult> {
+  try {
+    await cancelAiJob(id);
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     throw error;
   }
