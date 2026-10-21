@@ -23,13 +23,13 @@ test.describe('do-not-contact', () => {
     await page.goto(`/contacts?q=${encodeURIComponent(PHONE)}`);
     // A row is a line that opens to show its less-used controls.
     const row = page.locator('li', { hasText: NAME });
-    await row.locator('summary').click();
+    await row.locator('summary').first().click();
     await row.getByRole('button', { name: 'Do not contact', exact: true }).click();
     await expect(page.locator('li', { hasText: NAME }).getByText('do not contact', { exact: true })).toBeVisible();
 
-    await page.locator('li', { hasText: NAME }).locator('summary').click();
+    await page.locator('li', { hasText: NAME }).locator('summary').first().click();
     await page.locator('li', { hasText: NAME }).getByRole('button', { name: 'Allow contact' }).click();
-    await page.locator('li', { hasText: NAME }).locator('summary').click();
+    await page.locator('li', { hasText: NAME }).locator('summary').first().click();
     await expect(page.locator('li', { hasText: NAME }).getByRole('button', { name: 'Do not contact', exact: true })).toBeVisible();
   });
 });
