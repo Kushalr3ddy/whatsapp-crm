@@ -23,6 +23,7 @@ import { customFieldsRouter } from './routes/custom-fields.js';
 import { encryptionRouter } from './routes/encryption.js';
 import { segmentsRouter } from './routes/segments.js';
 import { campaignsRouter } from './routes/campaigns.js';
+import { aiRouter } from './routes/ai.js';
 
 /**
  * How large a file may be uploaded to `/imports`.
@@ -166,6 +167,7 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(requireAuthenticated);
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
+  api.use('/ai', aiRouter(deps.db));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));

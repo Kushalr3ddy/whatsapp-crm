@@ -149,7 +149,11 @@ export const AUDIT = {
   contactsBulkTagged: 'contacts.bulk_tagged',
   contactsBulkUntagged: 'contacts.bulk_untagged',
   customFieldCreated: 'custom_field.created',
-  customFieldDeleted: 'custom_field.deleted'
+  customFieldDeleted: 'custom_field.deleted',
+  // The AI assistant: switching it on or off (with the data-sharing consent), and changing its instructions or limits.
+  aiEnabled: 'ai.enabled',
+  aiDisabled: 'ai.disabled',
+  aiSettingsChanged: 'ai.settings_changed'
 } as const;
 
 /**

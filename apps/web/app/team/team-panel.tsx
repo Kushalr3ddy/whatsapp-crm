@@ -74,6 +74,18 @@ function MemberRow(
 ) {
   const [resetting, setResetting] = useState(false);
   const disabled = member.status === 'disabled';
+  // The AI assistant is managed in its own settings: no role, password or enable/disable here.
+  if (member.isBot) {
+    return (
+      <li className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="min-w-0">
+          <p className="truncate font-medium">{member.displayName} <span className="badge badge-accent ml-2">AI</span></p>
+          <p className="text-sm text-muted">Assign a conversation to it to hand the chat over. Switch it on or off in AI assistant.</p>
+        </div>
+        <a href="/ai" className="btn btn-sm">AI assistant settings</a>
+      </li>
+    );
+  }
   return (
     <li className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">

@@ -37,6 +37,8 @@ export const appUser = pgTable('app_user', {
   passwordHash: text('password_hash'),
   displayName: text('display_name').notNull(),
   status: text('status').notNull().default('active'),
+  /** The org's AI assistant. It has no password and can never sign in; it is a member only so it can own conversations. */
+  isBot: boolean('is_bot').notNull().default(false),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
@@ -842,4 +844,47 @@ export const campaignRecipient = pgTable('campaign_recipient', {
   // One row per person per campaign. Also what makes a re-run idempotent.
   uniqueIndex('campaign_recipient_uidx').on(t.campaignId, t.contactId),
   index('campaign_recipient_pending_idx').on(t.campaignId, t.status)
+]);
+
+/**
+ * The AI assistant's settings, one row per org (F12). Absent or `enabled = false` means the assistant does
+ * nothing and no part of the product mentions it. It can only be switched on after an admin accepts the
+ * consent note, because contact messages are sent to the model provider.
+ */
+export const aiSetting = pgTable('ai_setting', {
+  orgId: uuid('org_id').primaryKey().references(() => org.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false),
+  /** What the assistant may talk about and how: the org's own instructions, never customer text. */
+  instructions: text('instructions').notNull().default(''),
+  /** The most messages the assistant may queue in a day for this org; a cost and safety ceiling. */
+  dailyMessageCap: integer('daily_message_cap').notNull().default(200),
+  consentAcceptedAt: timestamp('consent_accepted_at', { withTimezone: true }),
+  consentAcceptedBy: uuid('consent_accepted_by').references(() => appUser.id, { onDelete: 'set null' }),
+  /** The assistant's own user, created the first time it is enabled. */
+  botUserId: uuid('bot_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+/**
+ * One thing the assistant did or tried to do: a reply, a campaign action, or a send it was stopped from
+ * making. Answers "what did the AI do, with which model, at what cost, and why was it held back?" (F12 AC-5).
+ */
+export const aiRun = pgTable('ai_run', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').references(() => conversation.id, { onDelete: 'set null' }),
+  campaignId: uuid('campaign_id').references(() => campaign.id, { onDelete: 'set null' }),
+  /** `reply`, `campaign_action`, ... */
+  kind: text('kind').notNull(),
+  /** `sent`, `blocked`, `failed`, `skipped`. */
+  outcome: text('outcome').notNull(),
+  /** Why it was held back, e.g. an anti-ban gate name, `daily_cap`, or `model_error`. Null when it went through. */
+  reason: text('reason'),
+  model: text('model'),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('ai_run_org_created_idx').on(t.orgId, t.createdAt),
+  index('ai_run_conversation_idx').on(t.conversationId)
 ]);

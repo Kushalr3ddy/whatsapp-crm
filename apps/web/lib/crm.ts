@@ -714,6 +714,29 @@ export interface TeamMember {
   role: 'admin' | 'agent';
   status: 'active' | 'disabled';
   lastLoginAt: string | null;
+  /** True for the org's AI assistant; it has no password and is managed in its own settings. */
+  isBot: boolean;
+}
+
+/** The AI assistant's settings. Mirrors `GET /api/v1/ai/settings`. */
+export interface AiSettings {
+  enabled: boolean;
+  instructions: string;
+  dailyMessageCap: number;
+  consentAcceptedAt: string | null;
+  botUserId: string | null;
+}
+
+/** Reads the AI assistant's settings. Admin only. */
+export async function getAiSettings(): Promise<AiSettings> {
+  return request<AiSettings>('/ai/settings');
+}
+
+/** Changes the AI assistant's settings; `acceptConsent` is needed the first time it is switched on. */
+export async function saveAiSettings(
+  change: { enabled?: boolean; instructions?: string; dailyMessageCap?: number; acceptConsent?: boolean }
+): Promise<AiSettings> {
+  return request<AiSettings>('/ai/settings', { method: 'PUT', body: JSON.stringify(change) });
 }
 
 /** Lists everyone in the org. Admin only. */
