@@ -1,0 +1,1 @@
+ALTER TABLE "ai_setting" ADD COLUMN "may_start_campaigns" boolean DEFAULT false NOT NULL;

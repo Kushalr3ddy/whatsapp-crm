@@ -135,6 +135,8 @@ export const AUDIT = {
   campaignStarted: 'campaign.started',
   campaignPaused: 'campaign.paused',
   campaignCancelled: 'campaign.cancelled',
+  // Its name or wording was changed while it was a draft or paused.
+  campaignEdited: 'campaign.edited',
   // An admin knowingly lifting recipient-experience gates for one campaign, and switching a number
   // between enforcing the anti-ban engine and advisory mode (D-29). Both carry a reason.
   campaignGatesOverridden: 'campaign.gates_overridden',
@@ -153,7 +155,9 @@ export const AUDIT = {
   // The AI assistant: switching it on or off (with the data-sharing consent), and changing its instructions or limits.
   aiEnabled: 'ai.enabled',
   aiDisabled: 'ai.disabled',
-  aiSettingsChanged: 'ai.settings_changed'
+  aiSettingsChanged: 'ai.settings_changed',
+  // An instruction given to the AI assistant, and what it did about it.
+  aiCommand: 'ai.command'
 } as const;
 
 /**

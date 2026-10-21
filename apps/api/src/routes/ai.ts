@@ -4,7 +4,10 @@ import { sql } from 'drizzle-orm';
 import { setTenant, tenantDatabase, type Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver } from '@crm/llm';
-import { getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply } from '@crm/core';
+import {
+  getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, draftCampaignText, AiCommandError,
+  type CampaignLimits
+} from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
@@ -14,6 +17,7 @@ const changeSettings = z.object({
   enabled: z.boolean().optional(),
   instructions: z.string().max(8000).optional(),
   dailyMessageCap: z.number().int().min(1).max(5000).optional(),
+  mayStartCampaigns: z.boolean().optional(),
   acceptConsent: z.boolean().optional()
 }).refine((v) => Object.values(v).some((x) => x !== undefined), 'give at least one setting');
 
@@ -21,8 +25,13 @@ const changeSettings = z.object({
  * The AI assistant's settings. Admin only, and `requireRole` means a signed-in admin: an API key can never
  * switch the assistant on, because accepting the data-sharing note is a decision for a person.
  */
-export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null): Router {
+export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null, limits: CampaignLimits): Router {
   const router = Router();
+
+  /** Whether the assistant is on, so screens can offer its helpers. Anyone signed in may ask; it reveals nothing else. */
+  router.get('/status', requireScope('conversations:read'), async (req: Request, res: Response) => {
+    res.json({ data: { enabled: (await getAiSettings(db, req.crm!.orgId)).enabled } });
+  });
 
   router.get('/settings', requireRole('admin'), async (req: Request, res: Response) => {
     res.json({ data: await getAiSettings(db, req.crm!.orgId) });
@@ -87,6 +96,54 @@ export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, 
       dncOverride: { reason: parsed.data.reason, adminUserId: req.crm!.userId! }
     });
     res.json({ data: result });
+  });
+
+  /**
+   * Tells the assistant, in plain language, to run campaigns: create one, pause, resume or edit. A signed-in admin, or an
+   * API key that may send messages (which could create and start campaigns directly anyway). The assistant goes through
+   * the same checks as a person, can never lift an anti-ban or do-not-contact gate, and only starts a campaign if the org
+   * allowed it. The answer lists what it did and what it refused.
+   */
+  router.post('/commands', requireScope('messages:send'), async (req: Request, res: Response) => {
+    if (req.crm!.kind === 'session' && req.crm!.role !== 'admin') {
+      res.status(403).json(problem(req, 403, 'FORBIDDEN', 'Only an admin can instruct the AI assistant.'));
+      return;
+    }
+    const parsed = z.object({ instruction: z.string().trim().min(3).max(2000) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Write what you want the assistant to do (3 to 2000 characters).'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    try {
+      const result = await runAiCommand({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm(), limits }, orgId, req.crm!.userId, parsed.data.instruction);
+      res.json({ data: result });
+    } catch (error) {
+      if (error instanceof AiCommandError) {
+        res.status(error.code === 'ai_off' ? 409 : 502).json(problem(req, error.code === 'ai_off' ? 409 : 502, error.code === 'ai_off' ? 'AI_OFF' : 'AI_UNAVAILABLE', error.message));
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /** Writes campaign wording from a short goal, for the campaign form. Creates and sends nothing. */
+  router.post('/draft-campaign-text', requireScope('messages:send'), async (req: Request, res: Response) => {
+    const parsed = z.object({ goal: z.string().trim().min(3).max(1000) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Describe what the message should do (3 to 1000 characters).'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    try {
+      res.json({ data: { body: await draftCampaignText({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.goal) } });
+    } catch (error) {
+      if (error instanceof AiCommandError) {
+        res.status(error.code === 'ai_off' ? 409 : 502).json(problem(req, error.code === 'ai_off' ? 409 : 502, error.code === 'ai_off' ? 'AI_OFF' : 'AI_UNAVAILABLE', error.message));
+        return;
+      }
+      throw error;
+    }
   });
 
   return router;

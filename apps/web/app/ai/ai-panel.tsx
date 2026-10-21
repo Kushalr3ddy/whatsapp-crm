@@ -11,6 +11,7 @@ export function AiPanel({ settings }: { settings: AiSettings }) {
   const [enabled, setEnabled] = useState(settings.enabled);
   const [instructions, setInstructions] = useState(settings.instructions);
   const [cap, setCap] = useState(String(settings.dailyMessageCap));
+  const [mayStart, setMayStart] = useState(settings.mayStartCampaigns);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
@@ -22,7 +23,7 @@ export function AiPanel({ settings }: { settings: AiSettings }) {
     setSaved(false);
     start(async () => {
       const result = await saveAiAction({
-        enabled, instructions, dailyMessageCap: Number(cap), ...(consent && !consented ? { acceptConsent: true } : {})
+        enabled, instructions, dailyMessageCap: Number(cap), mayStartCampaigns: mayStart, ...(consent && !consented ? { acceptConsent: true } : {})
       });
       if (!result.ok) { setError(result.error ?? 'Could not save.'); return; }
       setSaved(true);
@@ -75,6 +76,16 @@ export function AiPanel({ settings }: { settings: AiSettings }) {
             type="number" min={1} max={5000} value={cap} onChange={(e) => { setCap(e.target.value); }}
             className="field font-normal"
           />
+        </label>
+        <label className="mt-4 flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={mayStart} onChange={(e) => { setMayStart(e.target.checked); }} className="mt-1" />
+          <span>
+            The assistant may start and resume campaigns by itself
+            <span className="block text-xs text-muted">
+              Off (recommended): it prepares a campaign and an admin presses Start. Either way every anti-ban limit still applies,
+              and it can never lift a do-not-contact or other gate.
+            </span>
+          </span>
         </label>
       </section>
 

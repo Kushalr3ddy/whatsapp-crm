@@ -26,6 +26,13 @@ test.describe('ai assistant settings', () => {
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Saved.')).toBeVisible();
 
+    // Once on: the campaign command box and the start-permission switch (off by default) are there, and the
+    // new-campaign form offers "Write with AI".
+    await expect(page.getByRole('heading', { name: 'Tell the assistant what to do' })).toBeVisible();
+    await expect(page.getByLabel(/may start and resume campaigns by itself/)).toBeVisible();
+    await page.goto('/broadcast/new');
+    await expect(page.getByLabel('Write with AI', { exact: true })).toBeVisible();
+
     await page.goto('/team');
     const row = page.getByRole('listitem').filter({ hasText: 'AI assistant' });
     await expect(row.getByText('AI', { exact: true })).toBeVisible();

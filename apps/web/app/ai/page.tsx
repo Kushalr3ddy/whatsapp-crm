@@ -3,6 +3,7 @@ import { getAiSettings, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/
 import type { AiSettings } from '@/lib/crm';
 import { PageHeader } from '../ui';
 import { AiPanel } from './ai-panel';
+import { CommandBox } from './command-box';
 
 /** Rendered per request: the switch and the consent come from the database. */
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,9 @@ export default async function AiPage() {
       {failure !== null && <p className="notice notice-danger">{failure}</p>}
       {failure === null && !isAdmin && (
         <p className="notice notice-warning">Only admins can change the AI assistant. Ask an admin if you need a change.</p>
+      )}
+      {failure === null && settings?.enabled === true && (
+        <div className="mt-6"><CommandBox mayStart={settings.mayStartCampaigns} /></div>
       )}
       {failure === null && settings !== null && <AiPanel settings={settings} />}
     </main>

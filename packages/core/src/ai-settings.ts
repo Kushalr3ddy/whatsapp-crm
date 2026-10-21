@@ -8,6 +8,8 @@ export interface AiSettings {
   readonly enabled: boolean;
   readonly instructions: string;
   readonly dailyMessageCap: number;
+  /** True when the assistant may start and resume campaigns itself; otherwise it prepares them and an admin presses Start. */
+  readonly mayStartCampaigns: boolean;
   /** When an admin accepted the data-sharing note; null until then. */
   readonly consentAcceptedAt: string | null;
   /** The assistant's own user, once it has been switched on at least once. Assign a conversation to it to hand the chat over. */
@@ -19,6 +21,7 @@ export interface AiSettingsChange {
   readonly enabled?: boolean | undefined;
   readonly instructions?: string | undefined;
   readonly dailyMessageCap?: number | undefined;
+  readonly mayStartCampaigns?: boolean | undefined;
   readonly acceptConsent?: boolean | undefined;
 }
 
@@ -30,7 +33,7 @@ export class AiSettingsRuleError extends Error {
 
 /** What an org has before anyone touches it: everything off. */
 const DEFAULTS: AiSettings = {
-  enabled: false, instructions: '', dailyMessageCap: 200, consentAcceptedAt: null, botUserId: null
+  enabled: false, instructions: '', dailyMessageCap: 200, mayStartCampaigns: false, consentAcceptedAt: null, botUserId: null
 };
 
 /** Reads the org's AI settings, or the all-off defaults when it has none. */
@@ -47,7 +50,7 @@ type Executor = Pick<Database, 'execute'>;
 /** Reads settings inside an already-open tenant transaction. */
 async function readSettings(tx: Executor, orgId: string): Promise<AiSettings> {
   const rows = await tx.execute(sql`
-    SELECT enabled, instructions, daily_message_cap AS "dailyMessageCap",
+    SELECT enabled, instructions, daily_message_cap AS "dailyMessageCap", may_start_campaigns AS "mayStartCampaigns",
            consent_accepted_at AS "consentAcceptedAt", bot_user_id AS "botUserId"
     FROM ai_setting WHERE org_id = ${orgId}`);
   return (rows as unknown as AiSettings[])[0] ?? DEFAULTS;
@@ -83,16 +86,17 @@ export async function saveAiSettings(
     const next = {
       enabled,
       instructions: (change.instructions ?? before.instructions).trim(),
-      dailyMessageCap: change.dailyMessageCap ?? before.dailyMessageCap
+      dailyMessageCap: change.dailyMessageCap ?? before.dailyMessageCap,
+      mayStartCampaigns: change.mayStartCampaigns ?? before.mayStartCampaigns
     };
     await tx.execute(sql`
-      INSERT INTO ai_setting (org_id, enabled, instructions, daily_message_cap, bot_user_id,
+      INSERT INTO ai_setting (org_id, enabled, instructions, daily_message_cap, may_start_campaigns, bot_user_id,
                               consent_accepted_at, consent_accepted_by, updated_at)
-      VALUES (${orgId}, ${next.enabled}, ${next.instructions}, ${next.dailyMessageCap}, ${botUserId},
+      VALUES (${orgId}, ${next.enabled}, ${next.instructions}, ${next.dailyMessageCap}, ${next.mayStartCampaigns}, ${botUserId},
               ${consentNow ? sql`now()` : null}, ${consentNow && actor.type === 'user' ? actor.id : null}, now())
       ON CONFLICT (org_id) DO UPDATE SET
         enabled = EXCLUDED.enabled, instructions = EXCLUDED.instructions,
-        daily_message_cap = EXCLUDED.daily_message_cap, bot_user_id = EXCLUDED.bot_user_id,
+        daily_message_cap = EXCLUDED.daily_message_cap, may_start_campaigns = EXCLUDED.may_start_campaigns, bot_user_id = EXCLUDED.bot_user_id,
         consent_accepted_at = COALESCE(ai_setting.consent_accepted_at, EXCLUDED.consent_accepted_at),
         consent_accepted_by = COALESCE(ai_setting.consent_accepted_by, EXCLUDED.consent_accepted_by),
         updated_at = now()`);
@@ -103,12 +107,12 @@ export async function saveAiSettings(
         after: { enabled: next.enabled, consentAccepted: hasConsent }
       });
     }
-    if (next.instructions !== before.instructions || next.dailyMessageCap !== before.dailyMessageCap) {
+    if (next.instructions !== before.instructions || next.dailyMessageCap !== before.dailyMessageCap || next.mayStartCampaigns !== before.mayStartCampaigns) {
       // The instructions text is not copied into the log; its length says enough about what changed.
       await writeAudit(tx, {
         orgId, actor, action: AUDIT.aiSettingsChanged, targetType: 'ai_setting',
-        before: { dailyMessageCap: before.dailyMessageCap, instructionsLength: before.instructions.length },
-        after: { dailyMessageCap: next.dailyMessageCap, instructionsLength: next.instructions.length }
+        before: { dailyMessageCap: before.dailyMessageCap, mayStartCampaigns: before.mayStartCampaigns, instructionsLength: before.instructions.length },
+        after: { dailyMessageCap: next.dailyMessageCap, mayStartCampaigns: next.mayStartCampaigns, instructionsLength: next.instructions.length }
       });
     }
     return readSettings(tx, orgId);
