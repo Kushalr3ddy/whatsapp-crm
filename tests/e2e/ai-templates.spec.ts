@@ -20,8 +20,14 @@ test.describe('ai templates', () => {
     await box.fill(`I run a small bakery called Crumb ${stamp}. Message people about the new sourdough on Friday and answer questions about opening hours, 8 to 6.`);
     await page.getByRole('button', { name: 'Write the instructions' }).click();
 
-    // The review section appears with the AI warning, locked instructions and the always-on rules.
-    await expect(page.getByText(/Written by AI/)).toBeVisible({ timeout: 90_000 });
+    // Either the review section appears, or the page says no model is set up (CI has none): then there is nothing to test.
+    const written = page.getByText(/Written by AI/);
+    const noModel = page.getByRole('alert').filter({ hasText: /No AI model is configured|switched off/ });
+    await expect(written.or(noModel).first()).toBeVisible({ timeout: 90_000 });
+    test.skip(await noModel.first().isVisible(), 'no AI model is configured on this server');
+
+    // The review section shows the AI warning, locked instructions and the always-on rules.
+    await expect(written).toBeVisible();
     const instructions = page.getByLabel(/Instructions for the AI/);
     await expect(instructions).toHaveAttribute('readonly', '');
     await expect(page.getByLabel('Always added automatically')).toContainText('untrusted');
