@@ -7,6 +7,7 @@ import type { LlmDriver } from '@crm/llm';
 import {
   enqueueAiJob, listAiJobs, cancelAiJob, AiJobError, type QueueViewer,
   getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, draftCampaignText, AiCommandError,
+  generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError,
   type CampaignLimits
 } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
@@ -194,6 +195,102 @@ export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, 
       }
       throw error;
     }
+  });
+
+  // ---- Templates: describe in plain words, the AI writes the instructions, save, pick again ----------------------------
+
+  /** At most this many generations per organisation per minute, so one org cannot run up the bill or the provider's rate limit. */
+  const generations = new Map<string, number[]>();
+  const GENERATIONS_PER_MINUTE = 5;
+  const underRateLimit = (orgId: string): boolean => {
+    const now = Date.now();
+    const recent = (generations.get(orgId) ?? []).filter((t) => now - t < 60_000);
+    if (recent.length >= GENERATIONS_PER_MINUTE) { generations.set(orgId, recent); return false; }
+    recent.push(now);
+    generations.set(orgId, recent);
+    return true;
+  };
+
+  /** Turns a template error into a response. */
+  const templateProblem = (req: Request, res: Response, error: AiTemplateError): void => {
+    const status = { too_long: 422, invalid: 422, ai_off: 409, not_found: 404, no_model: 502 }[error.code];
+    const code = { too_long: 'TOO_LONG', invalid: 'VALIDATION_FAILED', ai_off: 'AI_OFF', not_found: 'NOT_FOUND', no_model: 'AI_UNAVAILABLE' }[error.code];
+    res.status(status).json(problem(req, status, code, error.message));
+  };
+
+  /** Writes a template from a plain-words description. Saves nothing. Admin, and limited to a few a minute. */
+  router.post('/templates/generate', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({ description: z.string().max(20000), answers: z.array(z.string().max(500)).max(10).optional() }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send { "description": "..." }.'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) {
+      res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.'));
+      return;
+    }
+    try {
+      res.json({ data: await generateTemplate({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.description, parsed.data.answers ?? []) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** The fixed always-on rules, so the page can show exactly what is added in front of every set of instructions. */
+  router.get('/always-on-rules', requireRole('admin'), (_req: Request, res: Response) => {
+    res.json({ data: AI_ALWAYS_ON_RULES });
+  });
+
+  router.get('/templates', requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    res.json({ data: await listTemplates(tenantDatabase(db, orgId, tenantRole), orgId) });
+  });
+
+  router.get('/templates/:id', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const found = await getTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id));
+    if (found === null) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+    res.json({ data: found });
+  });
+
+  router.post('/templates', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({
+      id: z.string().uuid().optional(), name: z.string().max(200), description: z.string().max(20000),
+      instructions: z.string().max(60000), audience: z.string().max(1000).default(''), firstMessage: z.string().max(4000).default('')
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    try {
+      res.json({ data: await saveTemplate(tenantDatabase(db, orgId, tenantRole), orgId, parsed.data, auditActor(req)) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  router.post('/templates/:id/use', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({ setAsDefault: z.boolean().optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send { "setAsDefault": true } or nothing.')); return; }
+    const orgId = req.crm!.orgId;
+    try {
+      res.json({ data: await useTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), { setAsDefault: parsed.data.setAsDefault === true }, auditActor(req)) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      if (error instanceof AiSettingsRuleError) { res.status(422).json(problem(req, 422, 'AI_RULE', error.reason)); return; }
+      throw error;
+    }
+  });
+
+  router.delete('/templates/:id', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const gone = await deleteTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+    if (!gone) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+    res.status(204).end();
   });
 
   return router;

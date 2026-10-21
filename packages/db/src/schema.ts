@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
-  boolean, customType, index, integer, jsonb, pgTable, primaryKey,
+  type AnyPgColumn, boolean, customType, index, integer, jsonb, pgTable, primaryKey,
   text, timestamp, uniqueIndex, uuid
 } from 'drizzle-orm/pg-core';
 
@@ -770,6 +770,9 @@ export const campaign = pgTable('campaign', {
   /** `draft` → `running` ⇄ `paused` → `completed`, or `cancelled`. */
   status: text('status').notNull().default('draft'),
 
+  /** The AI template replies to this campaign follow (D-85), or none. Set when the campaign is made from a template. */
+  aiTemplateId: uuid('ai_template_id').references((): AnyPgColumn => aiTemplate.id, { onDelete: 'set null' }),
+
   /**
    * What to send. Plain text for now — `message_template` and its approval flow do not exist
    * yet, and a campaign that cannot say anything is not worth having in the meantime.
@@ -866,6 +869,32 @@ export const aiSetting = pgTable('ai_setting', {
   botUserId: uuid('bot_user_id').references(() => appUser.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });
+
+/**
+ * A saved AI template: what an owner described in plain words, and the instructions the AI wrote from it, kept together so it
+ * can be picked again. The locked always-on rules are NOT stored here; they are added in front of the instructions every time the
+ * assistant replies (see `AI_ALWAYS_ON_RULES`), so editing a template can never switch them off.
+ */
+export const aiTemplate = pgTable('ai_template', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** What the owner typed or pasted. */
+  description: text('description').notNull().default(''),
+  /** The instructions for the AI (bullet points), written by the model and possibly edited by hand. */
+  instructions: text('instructions').notNull(),
+  /** Who the first message is for, in words (a suggestion; the audience itself is always a tag). */
+  audience: text('audience').notNull().default(''),
+  /** A draft of the opening message. */
+  firstMessage: text('first_message').notNull().default(''),
+  createdBy: uuid('created_by').references(() => appUser.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  useCount: integer('use_count').notNull().default(0)
+}, (t) => [
+  index('ai_template_org_used_idx').on(t.orgId, t.lastUsedAt)
+]);
 
 /**
  * One thing the assistant did or tried to do: a reply, a campaign action, or a send it was stopped from

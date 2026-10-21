@@ -17,7 +17,8 @@ const createCampaign = z.object({
   fromImportRunId: z.string().uuid().optional(),
   explicitContactIds: z.array(z.string().uuid()).min(1).max(50_000).optional(),
   fromTagId: z.string().uuid().optional(),
-  fromSegmentId: z.string().uuid().optional()
+  fromSegmentId: z.string().uuid().optional(),
+  aiTemplateId: z.string().uuid().optional()
 }).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId, v.fromSegmentId]
   .filter((x) => x !== undefined).length === 1, {
   message: 'state the audience exactly once: fromImportRunId, explicitContactIds, fromTagId, or fromSegmentId'
@@ -73,16 +74,17 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }): 
     }
     const orgId = req.crm!.orgId;
     const {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId
     } = parsed.data;
 
     const created = await req.tenant!((tx) => createCampaignDraft(tx, orgId, actionContext(req), {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId
     }));
 
     if ('error' in created) {
       const detail = created.error === 'no_tag' ? 'No such tag.'
         : created.error === 'no_segment' ? 'No such segment.'
+        : created.error === 'no_template' ? 'No such AI template.'
         : 'No such sender.';
       res.status(404).json(problem(req, 404, 'NOT_FOUND', detail));
       return;

@@ -715,6 +715,66 @@ export async function cancelAiJob(id: string): Promise<void> {
   await request<unknown>(`/ai/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
 }
 
+/** A template the AI wrote from a description, before it is saved. Mirrors `POST /api/v1/ai/templates/generate`. */
+export interface GeneratedAiTemplate {
+  name: string;
+  instructions: string;
+  audience: string;
+  firstMessage: string;
+  /** Short questions for facts the description did not give. */
+  missing: string[];
+}
+
+/** A saved template. Mirrors a row of `GET /api/v1/ai/templates`. */
+export interface AiTemplate {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  audience: string;
+  firstMessage: string;
+  useCount: number;
+  lastUsedAt: string | null;
+  updatedAt: string;
+}
+
+/** The fixed rules the server adds in front of every set of instructions. */
+export async function getAiAlwaysOnRules(): Promise<string[]> {
+  return request<string[]>('/ai/always-on-rules');
+}
+
+/** Asks the AI to write a template from a plain-words description. Saves nothing. */
+export async function generateAiTemplate(description: string, answers: string[] = []): Promise<GeneratedAiTemplate> {
+  return request<GeneratedAiTemplate>('/ai/templates/generate', { method: 'POST', body: JSON.stringify({ description, answers }) });
+}
+
+/** The organisation's saved templates, most recently used first. */
+export async function listAiTemplates(): Promise<AiTemplate[]> {
+  return request<AiTemplate[]>('/ai/templates');
+}
+
+/** One saved template. */
+export async function getAiTemplate(id: string): Promise<AiTemplate> {
+  return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}`);
+}
+
+/** Saves a template: replaces the one with `id`, or creates a new one. */
+export async function saveAiTemplate(
+  input: { id?: string; name: string; description: string; instructions: string; audience: string; firstMessage: string }
+): Promise<AiTemplate> {
+  return request<AiTemplate>('/ai/templates', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** Notes a template as used; with `setAsDefault` its instructions become what every chat follows by default. */
+export async function useAiTemplate(id: string, setAsDefault: boolean): Promise<AiTemplate> {
+  return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}/use`, { method: 'POST', body: JSON.stringify({ setAsDefault }) });
+}
+
+/** Removes a saved template. */
+export async function deleteAiTemplate(id: string): Promise<void> {
+  await requestVoid(`/ai/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 /** What the assistant did about an instruction. Mirrors `POST /api/v1/ai/commands`. */
 export interface AiCommandResult {
   message: string;
@@ -1154,7 +1214,7 @@ export type CampaignTarget =
  * Throws `CrmApiError` (`NOT_FOUND`) if the sender or the tag does not belong to the org.
  */
 export async function createCampaign(
-  input: { name: string; body: string; senderIdentityId: string } & CampaignTarget
+  input: { name: string; body: string; senderIdentityId: string; aiTemplateId?: string } & CampaignTarget
 ): Promise<{ id: string; status: string }> {
   return request<{ id: string; status: string }>('/campaigns', {
     method: 'POST', body: JSON.stringify(input)

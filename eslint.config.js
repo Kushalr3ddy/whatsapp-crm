@@ -15,7 +15,7 @@ export default tseslint.config(
   // header that it must not be edited, and it uses triple-slash references our rules forbid,
   // so linting it would fail `npm run check` after every build. `*.config.mjs` files sit
   // outside every tsconfig, so the type-aware parser cannot resolve them.
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**',
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**', 'mockups/**',
               '*.config.js', '**/*.config.mjs', 'scripts/*.mjs', '**/.next/**', '**/next-env.d.ts'] },
 
   eslint.configs.recommended,
