@@ -111,6 +111,8 @@ export function ImportPanel() {
   // Extra columns to keep on each contact (as fields). None are ticked until the person chooses.
   const [keep, setKeep] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Set when Import is pressed before Preview; shown right under the buttons, where the person is looking.
+  const [needPreview, setNeedPreview] = useState(false);
   // Rows that failed or lost something in the last preview or commit, shown in a box to fix.
   const [problems, setProblems] = useState<ImportProblems | null>(null);
   const [pending, startTransition] = useTransition();
@@ -126,10 +128,12 @@ export function ImportPanel() {
   useEffect(() => {
     const draft = loadDraft();
     if (draft === null) return;
+    // A finished import is done: coming back to this page starts clean, not on the old result.
+    if (draft.summary?.committed === true) { saveDraft(null); return; }
     setUpload(draft.upload); setPhones(draft.phones ?? (draft.phone === '' ? [] : [draft.phone])); setName(draft.name);
     setFirst(draft.first ?? ''); setLast(draft.last ?? ''); setSkipPersonal(draft.skipPersonal ?? true); setEmail(draft.email);
     setTagName(draft.tagName); setKeep(draft.keep ?? []); setFileName(draft.fileName ?? ''); setSummary(draft.summary);
-    if (draft.committing && draft.summary?.committed !== true) setResumed(true);
+    if (draft.committing) setResumed(true);
     // The rows-to-fix box is not remembered, it is asked for again.
     const sm = draft.summary?.result;
     if (sm !== undefined && (sm.errors > 0 || (sm.warnings ?? 0) > 0)) {
@@ -198,6 +202,7 @@ export function ImportPanel() {
   function go(dryRun: boolean) {
     if (upload === null || phone === '') return;
     setError(null);
+    setNeedPreview(false);
     setResumed(false);
     // Note a commit as running, so coming back mid-run can say so.
     if (!dryRun) saveDraft({ upload, phone, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary, committing: true });
@@ -230,14 +235,14 @@ export function ImportPanel() {
 
   /** Clears everything back to the file picker for another import. */
   function reset() {
-    setUpload(null); setSummary(null); setError(null); setProblems(null);
+    setUpload(null); setSummary(null); setError(null); setNeedPreview(false); setProblems(null);
     setPhones([]); setName(''); setFirst(''); setLast(''); setEmail(''); setKeep([]); setTagName('');
     setFileName(''); setResumed(false); saveDraft(null); lastFile.current = null;
     if (fileRef.current !== null) fileRef.current.value = '';
   }
 
   return (
-    <div className="page page-narrow">
+    <div className="page page-wide">
       <h1 className="page-title">Import contacts</h1>
       <p className="page-desc">
         Upload a CSV or Excel (.xlsx) sheet. The same file is not imported twice — re-uploading
@@ -413,7 +418,7 @@ export function ImportPanel() {
               <button
                 type="button"
                 onClick={() => {
-                  if (summary === null) { setError('Please click Preview first, so you can see what will be imported.'); return; }
+                  if (summary === null) { setNeedPreview(true); return; }
                   go(false);
                 }}
                 disabled={pending || phone === '' || summary?.committed === true}
@@ -425,6 +430,11 @@ export function ImportPanel() {
                 Start over
               </button>
             </div>
+            {needPreview && summary === null && (
+              <p role="alert" className="notice notice-danger mt-3 text-base font-semibold">
+                Click Preview first, so you can see what will be imported before it is saved.
+              </p>
+            )}
           </section>
          </div>
 

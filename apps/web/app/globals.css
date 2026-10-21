@@ -212,6 +212,7 @@
   /* Page frame ---------------------------------------------------------------------------- */
   .page { margin-inline: auto; width: 100%; max-width: 64rem; padding: 2rem 1.5rem 4rem; }
   .page-narrow { max-width: 42rem; }
+  .page-wide { max-width: 56rem; }
   .page-title { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; }
   .page-desc { margin-top: 0.35rem; font-size: 0.9375rem; color: var(--color-muted); }
   .section-title { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; color: var(--color-muted); text-transform: uppercase; }
