@@ -2518,6 +2518,11 @@ before its last writes land. **To do:** flush the auth state on SIGTERM; refuse 
 "No matching sessions" and say so on the Linked numbers page with a "Reset" button (relink), instead of showing "Linked". **Until then:** do not
 restart the gateway while testing; `bash infra/scripts/dev-up.sh --no-gateway` restarts only the API and web. Runbook entry: `docs/14-runbooks.md`.
 
+**Also found (2026-10-21), same root:** the health scorer read our own decrypt failures and undelivered messages as a suspected soft ban and put the number in quarantine with a
+**48-hour pause** (risk 100), holding every send; it only cleared because Kushal turned **Advisory mode** on for that number (anti-ban enforcement off; turn it back after testing).
+The scorer should ignore decrypt failures for `fromMe` messages and for a burst right after a restart, and a message the recipient could not read should not count as undelivered.
+**Done in #96:** the gateway now answers a recipient's resend request for text (`resendText` / Baileys `getMessage`), so "Waiting for this message" can clear.
+
 ---
 
 ## D-83 · `npm run dev:fast` leaves some screens stale after an action — pinned (found 2026-10-21)

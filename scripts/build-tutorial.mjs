@@ -338,7 +338,9 @@ ${steps([
 <li><b>Resolve</b> also stops it, because it only answers <b>open</b> chats.</li>
 <li>If it cannot help, it gives the chat back by itself: the chat becomes <b>Unassigned</b> with a note saying why. Check <b>Unassigned</b> now and then.</li>
 </ul>
-<p>It answers plain text only (not photos, files or voice notes), stays within its daily limit, and <b>never</b> messages someone marked do-not-contact.</p>
+<p>It reads plain text only. If someone sends a photo, a voice note or a file, it replies once, "I can only read text messages here, so could you type that out for me?", and does not repeat it. It stays within its daily limit and <b>never</b> messages someone marked do-not-contact.</p>
+<p><b>It leads the conversation.</b> If your instructions describe a goal (for example: "find out their name, city, years of driving and when they can start"), it answers what the person asks and then asks the next question toward that goal, one at a time. When the goal is done, or the person asks for a human, it hands the chat back with a summary in the note.</p>
+${care('<b>It has no fact-checking yet.</b> If the instructions do not say something (pay, documents, requirements), it may still answer, and it can be wrong. Put the real facts in its instructions, and keep it to test chats until guardrails are added.')}
 ${care('<b>Not built yet:</b> if a customer writes STOP or "unsubscribe", the assistant does not mark them do-not-contact automatically. A person has to flag them. Keep an eye on chats you hand over.')}
 <h3>Telling it what to do</h3>
 <p>Type plain sentences in the box on the AI page, for example: <i>"Send the Friday interview reminder to everyone tagged pune."</i>
