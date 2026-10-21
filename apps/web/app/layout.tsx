@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { Inter } from 'next/font/google';
 import { Nav } from './nav';
+import { NavProgress } from './nav-progress';
 import { listSenders, getMe } from '@/lib/crm';
 import './globals.css';
 
@@ -35,12 +36,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Admins get a Team tab; everyone else does not see it. The API refuses non-admins either way.
   let isAdmin = false;
   if ((await cookies()).get('crm_session') !== undefined) {
-    try {
-      alerts = (await listSenders()).filter((s) => s.restrictionState !== 'ok').length;
-    } catch { alerts = 0; }
-    try {
-      isAdmin = (await getMe()).role === 'admin';
-    } catch { isAdmin = false; }
+    // Together, not one after the other: this runs before every page, so each saved round trip is felt on every click.
+    const [senders, me] = await Promise.all([listSenders().catch(() => null), getMe().catch(() => null)]);
+    alerts = senders === null ? 0 : senders.filter((s) => s.restrictionState !== 'ok').length;
+    isAdmin = me?.role === 'admin';
   }
 
   // An optional line across the top of every page, set with ENVIRONMENT_BANNER (for example on a test or
@@ -59,6 +58,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>
       <body className="flex h-screen flex-col overflow-hidden antialiased" suppressHydrationWarning>
+        <NavProgress />
         {banner !== '' && (
           <div role="status" className="notice notice-warning shrink-0 rounded-none border-x-0 border-t-0 py-1.5 text-center text-sm">
             {banner}
