@@ -93,6 +93,10 @@ export const TABLE_NOTES: Record<string, TableNote> = {
     group: 'Campaigns',
     purpose: 'The AI assistant’s switch for an org: on or off, its instructions, a daily message limit, and who accepted the data-sharing note. Off until an admin accepts.'
   },
+  ai_job: {
+    group: 'Campaigns',
+    purpose: 'The AI assistant’s waiting list: instructions and wording requests, run one at a time per org. Shows who is queued, what is running and what finished; only a queued one can be cancelled.'
+  },
   ai_run: {
     group: 'Audit and health',
     purpose: 'One row each time the AI assistant sends, tries, or is held back (and why), with the model and token counts, so its work and cost can be checked.'

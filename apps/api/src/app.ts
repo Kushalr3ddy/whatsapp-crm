@@ -24,6 +24,7 @@ import { encryptionRouter } from './routes/encryption.js';
 import { segmentsRouter } from './routes/segments.js';
 import { campaignsRouter } from './routes/campaigns.js';
 import { aiRouter } from './routes/ai.js';
+import { AiJobRunner } from './ai-runner.js';
 import { createLlm, type LlmDriver } from '@crm/llm';
 
 /**
@@ -70,7 +71,7 @@ export interface AppDependencies {
  * Route handlers stay thin: validate, delegate, respond. Nothing that talks to a third
  * party runs here — it goes on a queue (docs/00-prior-art.md, M2 and M27).
  */
-export function buildApp(deps: AppDependencies): Express {
+export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunner } {
   const app = express();
 
   // Trust the reverse proxy for client IPs; Caddy sits in front (docs/13-deployment.md).
@@ -173,7 +174,13 @@ export function buildApp(deps: AppDependencies): Express {
   api.use(requireAuthenticated);
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
-  api.use('/ai', aiRouter(deps.db, deps.kms, () => deps.llm ?? createLlm(deps.config), deps.tenantRole, { perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY }));
+  const aiLimits = { perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY };
+  const getLlm = (): LlmDriver => deps.llm ?? createLlm(deps.config);
+  // Works through the AI queue. Started by the server (`start()`), not here, so tests make no background timers.
+  const aiRunner = new AiJobRunner({
+    db: deps.db, tenantRole: deps.tenantRole, kms: deps.kms, getLlm, limits: aiLimits, logger: deps.logger
+  });
+  api.use('/ai', aiRouter(deps.db, deps.kms, getLlm, deps.tenantRole, aiLimits, aiRunner));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));
@@ -238,5 +245,5 @@ export function buildApp(deps: AppDependencies): Express {
     });
   });
 
-  return app;
+  return Object.assign(app, { aiRunner });
 }

@@ -5,11 +5,13 @@ import { setTenant, tenantDatabase, type Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver } from '@crm/llm';
 import {
+  enqueueAiJob, listAiJobs, cancelAiJob, AiJobError, type QueueViewer,
   getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, draftCampaignText, AiCommandError,
   type CampaignLimits
 } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
+import type { AiJobRunner } from '../ai-runner.js';
 import { problem } from '../problem.js';
 
 /** Body for changing the AI assistant's settings. Every field is optional; at least one is needed. */
@@ -25,7 +27,7 @@ const changeSettings = z.object({
  * The AI assistant's settings. Admin only, and `requireRole` means a signed-in admin: an API key can never
  * switch the assistant on, because accepting the data-sharing note is a decision for a person.
  */
-export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null, limits: CampaignLimits): Router {
+export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null, limits: CampaignLimits, runner: AiJobRunner): Router {
   const router = Router();
 
   /** Whether the assistant is on, so screens can offer its helpers. Anyone signed in may ask; it reveals nothing else. */
@@ -125,6 +127,54 @@ export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, 
       }
       throw error;
     }
+  });
+
+  /** Who is looking at the queue: admins and API keys see everyone's requests, anyone else only their own. */
+  const viewerOf = (req: Request): QueueViewer => ({
+    userId: req.crm!.userId, seesAll: req.crm!.kind !== 'session' || req.crm!.role === 'admin'
+  });
+
+  /**
+   * Puts a request in the AI queue: `command` (an instruction, admins and message-sending API keys) or `draft` (campaign
+   * wording, anyone signed in). It runs when its turn comes, one at a time per org, and answers at once with its id.
+   */
+  router.post('/jobs', requireScope('messages:send'), async (req: Request, res: Response) => {
+    const parsed = z.object({ kind: z.enum(['command', 'draft']), input: z.string().trim().min(3).max(2000) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Say what you want (3 to 2000 characters).'));
+      return;
+    }
+    if (parsed.data.kind === 'command' && req.crm!.kind === 'session' && req.crm!.role !== 'admin') {
+      res.status(403).json(problem(req, 403, 'FORBIDDEN', 'Only an admin can instruct the AI assistant.'));
+      return;
+    }
+    const orgId = req.crm!.orgId;
+    try {
+      const { id } = await enqueueAiJob(tenantDatabase(db, orgId, tenantRole), orgId, {
+        kind: parsed.data.kind, input: parsed.data.input, requestedBy: req.crm!.userId
+      });
+      runner.kick(orgId);
+      res.status(202).json({ data: { id } });
+    } catch (error) {
+      if (error instanceof AiJobError) { res.status(429).json(problem(req, 429, 'QUEUE_FULL', error.message)); return; }
+      throw error;
+    }
+  });
+
+  /** The queue: what is waiting (with its place in line), what is running, and the last day's finished requests. */
+  router.get('/jobs', requireScope('messages:send'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    res.json({ data: await listAiJobs(tenantDatabase(db, orgId, tenantRole), orgId, viewerOf(req)) });
+  });
+
+  /** Cancels a request that has not started. One already running cannot be stopped. */
+  router.post('/jobs/:id/cancel', requireUuidParam('id'), requireScope('messages:send'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const outcome = await cancelAiJob(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), viewerOf(req));
+    if (outcome === 'cancelled') { res.json({ data: { id: String(req.params.id), status: 'cancelled' } }); return; }
+    if (outcome === 'not_found') { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such request.')); return; }
+    if (outcome === 'forbidden') { res.status(403).json(problem(req, 403, 'FORBIDDEN', 'That request is not yours to cancel.')); return; }
+    res.status(409).json(problem(req, 409, 'NOT_QUEUED', 'It has already started or finished, so it cannot be cancelled.'));
   });
 
   /** Writes campaign wording from a short goal, for the campaign form. Creates and sends nothing. */
