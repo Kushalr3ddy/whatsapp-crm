@@ -81,3 +81,4 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 
 The old `CONTEXT.md` session log has been deleted (2026-10-06). For *how the project got here*, read
 [`../CHANGELOG.md`](../CHANGELOG.md) and the git history; for *where it stands now*, [`../HANDOFF.md`](../HANDOFF.md).
+| [40 · Testing and bug handling: the guide for Kushal and Mikhil](40-testing-and-bug-guide.md) | Start here for anything about tests, bugs, CI or reporting |
