@@ -139,6 +139,7 @@ describe('providers, model lists and the test', () => {
       const r = await probeLlm({ ...cfg, LLM_API_KEY: 'sk-super-secret' }, { driver: failing });
       expect(r.usable).toBe(false);
       expect(r.problem).toMatch(words);
+      expect(r.problemKind).toBe(status === 401 ? 'key' : status === 404 ? 'model' : 'rate_limit');
       expect(JSON.stringify(r)).not.toContain('sk-super-secret');
     }
   });
@@ -147,5 +148,13 @@ describe('providers, model lists and the test', () => {
     const r = await probeLlm({ LLM_DRIVER: 'openai', LLM_TIMEOUT_MS: 20000 });
     expect(r.usable).toBe(false);
     expect(r.problem).toMatch(/needs LLM_MODEL/);
+    expect(r.problemKind).toBe('settings');
+  });
+
+  it('tells a slow provider, an unusable answer and an unreachable one apart', async () => {
+    const kinds = async (error: LlmError) => (await probeLlm(cfg, { driver: { name: 'fake', complete: () => Promise.reject(error) } })).problemKind;
+    expect(await kinds(new LlmError('timeout', 'slow'))).toBe('timeout');
+    expect(await kinds(new LlmError('bad_response', 'odd'))).toBe('response');
+    expect(await kinds(new LlmError('http', 'could not connect'))).toBe('unreachable');
   });
 });

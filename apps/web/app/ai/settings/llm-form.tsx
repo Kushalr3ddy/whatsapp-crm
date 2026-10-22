@@ -6,6 +6,32 @@ import type { LlmModel, LlmProbe, LlmSettings } from '@/lib/crm';
 import { listModelsAction, removeLlmAction, saveLlmAction, testLlmAction } from '../actions';
 import { ModelPicker } from './model-picker';
 
+/** What to check for each kind of failure, in the order people usually find the cause. */
+function checklist(kind: LlmProbe['problemKind'], providerLabel: string, custom: boolean): string[] {
+  switch (kind) {
+    case 'key': return [
+      'The key was pasted whole, with no space or line break before or after it.',
+      `It is a key for ${providerLabel}, not for another service.`,
+      'The key is switched on in your account and is allowed to use this model.'
+    ];
+    case 'model': return [
+      'The model name is spelled exactly as the provider lists it. Press Find models and pick it from the list.',
+      'Your key is allowed to use that model (some need a paid plan or an approval).',
+      ...(custom ? ['The address of the service is complete, usually ending in /v1.'] : [])
+    ];
+    case 'rate_limit': return ['Wait a minute and press Test it again.', `Your ${providerLabel} account still has credit or quota.`];
+    case 'timeout': return ['Press Test it again; the provider may be busy.', 'Choose a smaller or faster model.'];
+    case 'unreachable': return [
+      ...(custom ? ['The address of the service is correct and starts with https://.'] : []),
+      'This computer is online, and the provider is not having an outage.',
+      ...(providerLabel.startsWith('Ollama') ? ['Ollama is running on this machine.'] : [])
+    ];
+    case 'response': return ['Choose a different model: this one answered in a form the app cannot use.'];
+    case 'settings': return ['The provider, the key and the model are all filled in.'];
+    default: return [];
+  }
+}
+
 /**
  * Choose the provider, enter the key, pick a model, test it, and make it the one the install uses. The key is typed into a hidden box, sent
  * to the server and never shown again (only its last four characters). A blank key keeps the saved one for the same provider. "Use this" is
@@ -24,6 +50,7 @@ export function LlmForm({ settings }: { settings: LlmSettings }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
+  const [failedStep, setFailedStep] = useState<'models' | 'test' | 'save'>('test');
   const [pending, start] = useTransition();
 
   const preset = settings.providers.find((p) => p.id === provider);
@@ -45,7 +72,7 @@ export function LlmForm({ settings }: { settings: LlmSettings }) {
     setError(null); setNotice(null);
     start(async () => {
       const r = await listModelsAction(choice);
-      if (!r.ok || r.models === undefined) { setError(r.error ?? 'Could not list the models.'); return; }
+      if (!r.ok || r.models === undefined) { setFailedStep('models'); setError(r.error ?? 'The provider did not answer.'); return; }
       setModels(r.models);
       if (r.models.length === 0) setNotice('The provider listed no models. Type a model name yourself.');
     });
@@ -56,7 +83,7 @@ export function LlmForm({ settings }: { settings: LlmSettings }) {
     setError(null); setNotice(null); setProbe(null);
     start(async () => {
       const r = await testLlmAction(choice);
-      if (!r.ok || r.probe === undefined) { setError(r.error ?? 'Could not run the test.'); return; }
+      if (!r.ok || r.probe === undefined) { setFailedStep('test'); setError(r.error ?? 'The test did not run.'); return; }
       setProbe(r.probe); setProbedFor(key);
     });
   }
@@ -66,7 +93,7 @@ export function LlmForm({ settings }: { settings: LlmSettings }) {
     setError(null); setNotice(null);
     start(async () => {
       const r = await saveLlmAction(choice, anyway);
-      if (!r.ok) { setError(r.error ?? 'Could not save.'); return; }
+      if (!r.ok) { setFailedStep('save'); setError(r.error ?? 'Something went wrong.'); return; }
       setApiKey(''); setModels([]); setProbe(null);
       setNotice(`Saved. The assistant uses ${preset?.label ?? provider}, model ${model}, from its next reply. No restart is needed.`);
       router.refresh();
@@ -183,14 +210,29 @@ export function LlmForm({ settings }: { settings: LlmSettings }) {
         )}
         {probe !== null && !probe.usable && (
           <div className="notice notice-danger mt-3" role="alert">
-            {probe.problem}
+            <strong>The test failed.</strong> {probe.problem}
+            <p className="mt-2 text-sm font-medium">Please check:</p>
+            <ul className="mt-1 list-disc pl-5 text-sm">
+              {checklist(probe.problemKind, provider === 'custom' ? 'the service you entered' : preset?.label ?? 'the provider', provider === 'custom').map((c) => <li key={c}>{c}</li>)}
+            </ul>
+            <p className="mt-2 text-sm">Then press <em>Test it</em> again. Nothing has been changed.</p>
             <div className="mt-2">
               <button type="button" className="btn btn-sm" disabled={pending} onClick={() => { save(true); }}>Use it anyway</button>
               <span className="ml-2 text-xs text-muted">Not recommended: the assistant will not work until this is fixed.</span>
             </div>
           </div>
         )}
-        {error !== null && <p role="alert" className="notice notice-danger mt-3">{error}</p>}
+        {error !== null && (
+          <div role="alert" className="notice notice-danger mt-3">
+            <strong>{failedStep === 'models' ? 'Could not list the models.' : failedStep === 'test' ? 'Could not run the test.' : 'Could not save.'}</strong> {error}
+            <p className="mt-1 text-sm">
+              {failedStep === 'models'
+                ? 'Check the key and, for Other, the address. You can still type a model name and press Test it.'
+                : failedStep === 'test' ? 'Check the provider, the key, the model name and, for Other, the address, then try again. Nothing has been changed.'
+                : 'Nothing was changed. Check the provider, key and model, press Test it, then Use this.'}
+            </p>
+          </div>
+        )}
         {notice !== null && <p role="status" className="notice notice-success mt-3">{notice}</p>}
       </section>
     </div>

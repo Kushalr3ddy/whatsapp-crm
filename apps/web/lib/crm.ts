@@ -759,7 +759,7 @@ export interface LlmModel { id: string; name?: string; contextLength?: number }
 
 /** What a test of a model found. */
 export interface LlmProbe {
-  usable: boolean; toolCalling: boolean; model: string; milliseconds: number; problem: string | null; notes: string[];
+  usable: boolean; toolCalling: boolean; model: string; milliseconds: number; problem: string | null; problemKind: 'key' | 'model' | 'rate_limit' | 'timeout' | 'unreachable' | 'response' | 'settings' | null; notes: string[];
 }
 
 /** What the AI settings form sends: the provider, an address for "other", the key (blank keeps the saved one) and the model. */

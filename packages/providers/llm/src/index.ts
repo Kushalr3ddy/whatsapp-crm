@@ -79,5 +79,5 @@ export { LiveLlm, type LiveLlmStatus } from './live.js';
 export { readLlmEnv, writeLlmEnv, parseLlmEnv, LLM_ENV_KEYS, type LlmEnvValues, type LlmEnvKey } from './env-file.js';
 export { PROVIDERS, providerById, providerFor, type ProviderPreset } from './presets.js';
 export { listModels, type ModelInfo, type ListModelsInput } from './models.js';
-export { probeLlm, explainLlmError, type ProbeResult } from './probe.js';
+export { probeLlm, explainLlmError, problemKindOf, type ProbeResult, type ProblemKind } from './probe.js';
 export { assertSafeBaseUrl, isPrivateAddress, UnsafeUrlError } from './url-guard.js';
