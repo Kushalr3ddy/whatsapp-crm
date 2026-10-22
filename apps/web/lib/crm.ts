@@ -864,6 +864,16 @@ export async function listSenders(): Promise<Sender[]> {
   return request<Sender[]>('/senders');
 }
 
+/** Admin only: hides an unlinked number from the Numbers page (its conversations stay in the inbox). */
+export async function removeSender(senderId: string): Promise<void> {
+  return requestVoid(`/senders/${encodeURIComponent(senderId)}/remove`, { method: 'POST' });
+}
+
+/** Admin only: deletes a tag. People who carried it are untagged; no person or campaign is deleted. */
+export async function deleteTag(tagId: string): Promise<void> {
+  return requestVoid(`/tags/${encodeURIComponent(tagId)}`, { method: 'DELETE' });
+}
+
 /** A freshly generated encryption key, shown once. The current key is never included. */
 export interface NewEncryptionKey { version: number; previousVersion: number; key: string }
 

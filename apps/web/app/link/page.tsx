@@ -4,7 +4,8 @@ import type { Sender, HealthEvent } from '@/lib/crm';
 import { LinkPanel } from './link-panel';
 import { AddNumber } from './add-number';
 import { PageHeader } from '../ui';
-import { setEnforcementAction } from './actions';
+import { ConfirmAction } from '@/components/confirm-action';
+import { setEnforcementAction, removeSenderAction } from './actions';
 
 /** Rendered per request — linking state changes second by second. */
 export const dynamic = 'force-dynamic';
@@ -127,7 +128,26 @@ function SenderCard({ sender, isAdmin, events, autoStart = false }: { sender: Se
           autoStart={autoStart}
         />
       )}
+      {isAdmin && <RemoveNumber sender={sender} />}
     </li>
+  );
+}
+
+/** Admin-only: take a number off this page. A linked number must be unlinked first. */
+function RemoveNumber({ sender }: { sender: Sender }) {
+  if (sender.linked) {
+    return <p className="mt-3 text-xs text-muted">To remove this number, press Unlink first.</p>;
+  }
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <ConfirmAction label="Remove this number" title="Remove this number?" confirmLabel="Remove"
+        fields={{ senderId: sender.id }} action={removeSenderAction} className="text-xs text-muted hover:text-danger">
+        <p>
+          <strong>{sender.label ?? 'This number'}</strong> will disappear from this page. Its conversations and
+          messages stay in the inbox, and nothing is sent or deleted on WhatsApp.
+        </p>
+      </ConfirmAction>
+    </div>
   );
 }
 

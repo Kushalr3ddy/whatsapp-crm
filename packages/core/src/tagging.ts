@@ -137,3 +137,18 @@ export async function ensureTag(tx: Executor, orgId: string, name: string): Prom
   const rows = await tx.execute(sql`SELECT id FROM tag WHERE org_id = ${orgId} AND name = ${name}`);
   return (rows as unknown as Array<{ id: string }>)[0]!.id;
 }
+
+/**
+ * Deletes a tag. People who carried it are untagged (the `contact_tag` links cascade away); the people
+ * themselves are never deleted, and campaigns that were built from the tag only lose the pointer to it.
+ * Returns the tag's name and how many people carried it, or null when there is no such tag in the org.
+ */
+export async function deleteTag(
+  tx: Executor, orgId: string, tagId: string
+): Promise<{ name: string; contactCount: number } | null> {
+  const rows = await tx.execute(sql`
+    WITH n AS (SELECT count(*)::int AS n FROM contact_tag WHERE tag_id = ${tagId} AND org_id = ${orgId}),
+         del AS (DELETE FROM tag WHERE id = ${tagId} AND org_id = ${orgId} RETURNING name)
+    SELECT del.name, n.n AS "contactCount" FROM del, n`);
+  return (rows as unknown as Array<{ name: string; contactCount: number }>)[0] ?? null;
+}
