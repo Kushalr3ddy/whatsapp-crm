@@ -2733,6 +2733,8 @@ Pinned to come back to; not started.
 
 Pinned as a priority; **mockup first** (Kushal, 2026-10-21), then build.
 
+**Update 2026-10-22 (R-011, PR "campaign replies go to the AI"):** built the campaign half of P4: when someone replies to a message from a campaign that has an AI template and nobody owns the chat, the chat is handed to the assistant, and the assistant answers with **that campaign's template** (campaign over the organisation-wide default). Still open: a **per-chat** template (the top precedence level), the gallery, and the edit warning.
+
 ---
 
 ## D-86 · AI page: the one-off orders box moves to the bottom; templated orders and order history — pinned (Kushal, 2026-10-21)

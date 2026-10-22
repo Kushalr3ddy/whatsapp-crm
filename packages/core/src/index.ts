@@ -157,3 +157,4 @@ export {
   keyVersionCounts, versionsMissingFromKeyRing, reencryptBatch, verifySample, assertKeyRingCoversData,
   type KeyVersionCounts, type ReencryptResult, type VerifyResult, type SqlExecutor
 } from './key-rotation.js';
+export { claimCampaignReply, campaignTemplateFor } from './campaign-reply.js';

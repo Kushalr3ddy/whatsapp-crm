@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { campaignTemplateFor } from './campaign-reply.js';
 import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver, LlmMessage, LlmResponse } from '@crm/llm';
@@ -117,7 +118,8 @@ export async function autoReply(
   } else {
     try {
       answer = await llm.complete({
-        system: systemText(conv.orgName, settings.instructions),
+        // A chat that came from a campaign with an AI template follows that template; otherwise the organisation's own instructions (D-85, R-011).
+        system: systemText(conv.orgName, (await campaignTemplateFor(db, orgId, conversationId))?.instructions ?? settings.instructions),
         messages: history, tools: [HAND_OVER_TOOL], maxTokens: MAX_REPLY_TOKENS
       });
     } catch (error) {

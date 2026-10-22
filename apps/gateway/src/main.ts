@@ -7,7 +7,7 @@ import { tenantDatabase } from './tenant.js';
 import { localKmsFromConfig } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
-import { storeInboundMessage, storeOwnMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
+import { storeInboundMessage, storeOwnMessage, claimCampaignReply, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
   DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
   markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText } from '@crm/core';
 import { LiveLlm } from '@crm/llm';
@@ -240,6 +240,14 @@ async function main(): Promise<void> {
           // everything else, itself. Not awaited: a slow model must never hold up the inbound stream.
           if (llm.name !== 'none' && stored.messageId !== null) {
             const conversationId = stored.conversationId;
+            // A reply to a campaign that has an AI template: hand the chat to the assistant first, so it answers this very message (R-011).
+            try {
+              if (await claimCampaignReply(inOrg(org), org, conversationId)) {
+                logger.info({ senderId: event.senderId, conversationId }, 'a campaign reply was handed to the AI assistant');
+              }
+            } catch (error) {
+              logger.error({ conversationId, err: error instanceof Error ? error.message : String(error) }, 'could not hand a campaign reply to the assistant');
+            }
             void autoReply({ db: inOrg(org), kms, llm }, org, conversationId, stored.messageId)
               .then((r) => {
                 if (r.outcome !== 'skipped' || r.reason === 'not_text') {
