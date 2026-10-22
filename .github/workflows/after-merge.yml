@@ -1,0 +1,29 @@
+# When a pull request is merged: tell the issues it fixed, so the reporter can check the fix on their own copy.
+# GitHub already closes an issue named by `Fixes #N` in the PR description; this adds the "please verify" step (label needs-verify + a comment).
+name: after-merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  tell-the-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: comment on and label the issues this PR fixed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BODY: ${{ github.event.pull_request.body }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # "Fixes #12", "closes #12", "Resolves #12" (case-insensitive), any number of them.
+          for n in $(printf '%s' "$BODY" | grep -oiE '(fix(es|ed)?|close[sd]?|resolve[sd]?) +#[0-9]+' | grep -oE '[0-9]+' | sort -u); do
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "Fixed in #$PR (merged): $TITLE. Please check it on your copy and reply here. If it works for you we will mark it \`verified\`; if not, say what you still see."
+            gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --add-label needs-verify || true
+          done
