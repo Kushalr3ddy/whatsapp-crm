@@ -583,6 +583,9 @@ const sheetRow = (rowNumber: number): number => rowNumber + 1;
 /** How many problem rows to list before saying "and N more". */
 const SHOWN = 8;
 
+/** The start of the note the server writes when an import replaces a person's name (packages/core ingestion). */
+const NAME_REPLACED = 'Name replaced: ';
+
 /**
  * A small box listing the rows that could not be imported, or lost a number, so the person can
  * correct the sheet and upload it again rather than discover the gap later. Plain words, the value
@@ -592,14 +595,34 @@ function ProblemBox(
   { problems, phoneColumn, headers, committed }:
   { problems: ImportProblems; phoneColumn: string; headers: string[]; committed: boolean }
 ) {
-  const { errors, warnings } = problems;
-  if (errors.length === 0 && warnings.length === 0) return null;
+  const { errors } = problems;
+  // A name that differs from the one already in the book is not a problem with the row: the newest name wins.
+  const renamed = problems.warnings.filter((w) => w.note.startsWith(NAME_REPLACED));
+  const warnings = problems.warnings.filter((w) => !w.note.startsWith(NAME_REPLACED));
+  if (errors.length === 0 && warnings.length === 0 && renamed.length === 0) return null;
   const typed = (raw: Record<string, string> | null): string => raw?.[phoneColumn] ?? '';
   return (
     <div
-      role="alert" aria-label="Rows to fix"
+      role="alert" aria-label={errors.length > 0 || warnings.length > 0 ? 'Rows to fix' : 'Names replaced'}
       className={`rounded-md border px-3 py-2 text-sm ${errors.length > 0 ? 'border-danger' : 'border-border'}`}
     >
+      {renamed.length > 0 && (
+        <div className={errors.length > 0 || warnings.length > 0 ? 'mb-3' : ''}>
+          <p className="font-medium">
+            {renamed.length} {renamed.length === 1 ? 'person' : 'people'} already in your book{' '}
+            {committed ? (renamed.length === 1 ? 'had their name replaced' : 'had their names replaced') : 'will have their name replaced'}{' '}
+            by this file (the newest file wins; the old name is kept in the audit log).
+          </p>
+          <ul className="mt-2 flex flex-col gap-1 text-xs">
+            {renamed.slice(0, SHOWN).map((w) => (
+              <li key={w.rowNumber}>
+                <span className="font-medium">Row {sheetRow(w.rowNumber)}</span> · <span className="text-muted">{w.note.replace(NAME_REPLACED, 'Was ')}</span>
+              </li>
+            ))}
+            {renamed.length > SHOWN && <li className="text-muted">…and {renamed.length - SHOWN} more.</li>}
+          </ul>
+        </div>
+      )}
       {errors.length > 0 && (
         <>
           <p className="mb-1 font-semibold text-danger">Invalid numbers found, please check these rows.</p>

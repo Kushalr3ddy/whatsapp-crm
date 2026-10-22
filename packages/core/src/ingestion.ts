@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
+import { writeAudit, AUDIT, SYSTEM_ACTOR, type AuditActor } from './audit.js';
 import { isBlankMarker, normalisePhoneCell, type CsvTable } from '@crm/shared';
 
 /**
@@ -228,6 +229,8 @@ export async function runImport(
   input: {
     orgId: string; importRunId: string; table: CsvTable;
     mapping: ImportMapping; dryRun: boolean;
+    /** Who ran it, for the audit row written when a name is replaced. Defaults to the system actor. */
+    actor?: AuditActor;
   }
 ): Promise<ImportSummary> {
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
@@ -243,7 +246,7 @@ export async function runImport(
       for (let i = 0; i < chunk.length; i++) {
         const rowNumber = start + i + 1;
         const row = chunk[i]!;
-        const outcome = await importOneRow(tx, input.orgId, rowNumber, row, input.mapping, input.dryRun, kept);
+        const outcome = await importOneRow(tx, input.orgId, rowNumber, row, input.mapping, input.dryRun, kept, input.importRunId, input.actor ?? SYSTEM_ACTOR);
         outcomes.push(outcome);
         counts[outcome.outcome === 'error' ? 'errors' : outcome.outcome] += 1;
         if (outcome.outcome !== 'error' && outcome.note) warnings += 1;
@@ -280,7 +283,8 @@ async function ensureKeptFields(tenant: TenantWork, orgId: string, wanted: reado
 /** Maps, resolves and (unless this is a dry run) writes one row. Never throws for bad data. */
 async function importOneRow(
   tx: Transaction, orgId: string, rowNumber: number, row: Record<string, string>,
-  mapping: ImportMapping, dryRun: boolean, kept: readonly KeptField[]
+  mapping: ImportMapping, dryRun: boolean, kept: readonly KeptField[],
+  importRunId: string, actor: AuditActor
 ): Promise<RowOutcome> {
   const raw = mapping.unmapped === 'drop' ? null : row;
   const { identities, error, note } = identitiesFor(row, mapping);
@@ -314,10 +318,17 @@ async function importOneRow(
     if (hit) { contactId = hit.contactId; break; }
   }
 
+  // A different name for someone already in the book: the newest name wins (the old one is audited).
+  const existingName = contactId === null ? null : await currentName(tx, orgId, contactId);
+  const replaces = existingName !== null && displayName !== '' && existingName !== displayName
+    && existingName !== '' && !identities.some((i) => i.value === existingName);
+  const nameNote = replaces ? `Name replaced: "${existingName}" → "${displayName}"` : null;
+  const rowNote = [note, nameNote].filter((n): n is string => n !== null && n !== undefined).join('; ') || null;
+
   if (dryRun) {
     return {
       rowNumber, outcome: contactId === null ? 'created' : 'updated',
-      contactId, error: null, note, raw
+      contactId, error: null, note: rowNote, raw
     };
   }
 
@@ -341,18 +352,24 @@ async function importOneRow(
         VALUES (${orgId}, ${contactId}, ${identity.kind}, ${identity.value}, ${index === 0})
         ON CONFLICT DO NOTHING`);
     }
-    return { rowNumber, outcome: 'created', contactId, error: null, note, raw };
+    return { rowNumber, outcome: 'created', contactId, error: null, note: rowNote, raw };
   }
 
-  // An existing contact. **A sparse file must never destroy richer data** (M9), so a name is
-  // filled in only where there is nothing already — never overwritten. Richer merge policies
-  // are per-field and come with `contact_field_def`; this is the safe default until then.
+  // An existing contact. A blank name never overwrites anything (a sparse file must not destroy
+  // richer data, M9). A real, different name replaces the old one: the newest file wins, and the old
+  // name is kept in the audit log, before and after (pinned D-90: a "needs review" choice later).
   const touched = await tx.execute(sql`
     UPDATE contact SET display_name = ${displayName}, updated_at = now()
     WHERE id = ${contactId} AND org_id = ${orgId}
       AND ${displayName} <> ''
-      AND (display_name IS NULL OR display_name = '' OR display_name = ${identities[0]!.value})
+      AND display_name IS DISTINCT FROM ${displayName}
     RETURNING id`);
+  if (replaces) {
+    await writeAudit(tx, {
+      orgId, actor, action: AUDIT.contactNameReplaced, targetType: 'contact', targetId: contactId,
+      before: { displayName: existingName }, after: { displayName, importRunId, rowNumber }
+    });
+  }
 
   // Any identity the row carried that this contact did not: additive, because learning
   // somebody's email from a second file is the point of importing it.
@@ -375,8 +392,16 @@ async function importOneRow(
 
   const changed = (touched as unknown as unknown[]).length > 0 || fieldsAdded;
   return {
-    rowNumber, outcome: changed ? 'updated' : 'skipped', contactId, error: null, note, raw
+    rowNumber, outcome: changed ? 'updated' : 'skipped', contactId, error: null, note: rowNote, raw
   };
+}
+
+/** The name a contact has now, or null when it does not exist. */
+async function currentName(tx: Transaction, orgId: string, contactId: string): Promise<string | null> {
+  const rows = await tx.execute(sql`
+    SELECT display_name AS "name" FROM contact WHERE id = ${contactId} AND org_id = ${orgId}`);
+  const hit = (rows as unknown as Array<{ name: string | null }>)[0];
+  return hit === undefined ? null : (hit.name ?? '');
 }
 
 /** Writes the ledger for one batch. Every row gets a record, including the ones that worked. */
