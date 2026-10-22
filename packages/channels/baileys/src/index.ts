@@ -215,6 +215,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
     const sent = await conn.socket.sendMessage(jid, toBaileysContent(content) as never);
     if (!sent?.key.id) throw new Error('WhatsApp accepted the send but returned no message id');
+    this.#rememberSent(sent.key.id);
 
     return { providerMessageId: sent.key.id, acceptedAt: new Date() };
   }
@@ -504,6 +505,16 @@ export class BaileysChannelProvider implements ChannelProvider {
     this.#reconnectTimers.set(senderId, timer);
   }
 
+  /** Ids of messages this process sent, kept briefly so their echo is not mistaken for a message typed on the phone (D-94). */
+  readonly #recentlySent = new Map<string, number>();
+
+  /** Notes that the CRM itself sent this message id, and forgets ids older than ten minutes. */
+  #rememberSent(id: string): void {
+    const now = Date.now();
+    this.#recentlySent.set(id, now);
+    for (const [key, at] of this.#recentlySent) if (now - at > 10 * 60_000) this.#recentlySent.delete(key);
+  }
+
   /** Converts one Baileys message into the normalised inbound shape. */
   #emitInbound(senderId: string, raw: unknown): void {
     if (this.#shuttingDown) return;
@@ -512,8 +523,11 @@ export class BaileysChannelProvider implements ChannelProvider {
       message?: Record<string, unknown> | null;
       messageTimestamp?: number | Long;
     };
-    // Our own outbound messages echo back through this event; they are already recorded.
-    if (m.key?.fromMe === true || !m.key?.id || !m.key.remoteJid || !m.message) return;
+    if (!m.key?.id || !m.key.remoteJid || !m.message) return;
+    // A message the owner typed on their own phone (or another linked device) arrives with `fromMe` too (D-94). The CRM's own sends also
+    // echo back through here and are already recorded, so those are skipped: the ones this process sent are remembered by id.
+    const fromMe = m.key.fromMe === true;
+    if (fromMe && this.#recentlySent.has(m.key.id)) return;
 
     const jid = m.key.remoteJid;
     // Not a person: groups (and the groups inside communities), channels (`@newsletter`), and broadcast lists
@@ -538,6 +552,7 @@ export class BaileysChannelProvider implements ChannelProvider {
       contentType,
       mediaRef: hasMedia ? m.key.id : null,
       receivedAt: toDate(m.messageTimestamp),
+      ...(fromMe ? { fromMe: true } : {}),
       raw
     });
   }

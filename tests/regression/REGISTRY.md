@@ -16,3 +16,4 @@ Every bug that has reached a person gets a row here and a test that fails if it 
 | R-007 | 2026-10-22 | A contact row opened before the page finished starting up did not show its panel | CI | e2e @smoke | guarded | #111 | |
 | R-008 | 2026-10-22 | A server action that redirects instantly can hang on a production server (Next 15.5.25); workaround: Preview requires a tag | flaky CI, repro loop | e2e | open |  | #135 |
 | R-009 | 2026-10-22 | Browser tests that import people used phone numbers that land on the seeded demo people (0120-0139) and, since newest-name-wins, renamed them: the seeded-pages tests (Farhan Ali, Asha Rao) then failed at random in CI | CI, trace of a failed run | e2e | guarded | #138 |  |
+| R-010 | 2026-10-22 | Messages the owner sent from their own phone never appeared in the inbox (the gateway dropped every fromMe message) | Kushal, 2026-10-22 | integration | guarded | #144 | #143 |

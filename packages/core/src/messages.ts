@@ -107,6 +107,87 @@ export async function storeInboundMessage(
   };
 }
 
+/** A message the owner typed on their own phone (or another linked device) to a contact, as WhatsApp reported it (D-94). */
+export interface OwnMessage {
+  readonly orgId: string;
+  readonly senderIdentityId: string;
+  readonly providerMessageId: string;
+  /** The OTHER person in the chat: E.164, or null for a privacy address that carries no number. */
+  readonly toPhoneE164: string | null;
+  readonly toProviderAddress: string;
+  readonly body: string;
+  readonly contentType: string;
+  /** When the owner sent it, by WhatsApp's clock: the thread shows this time, not the time the CRM learned of it. */
+  readonly sentAt: Date;
+}
+
+/**
+ * Stores a message the owner sent from their own phone, so a thread shows both halves of the conversation (D-94).
+ *
+ * It is an ordinary outbound message (`sent_by = 'phone'`) at WhatsApp's own time. It deliberately does **not** count as unread, does not
+ * touch `last_inbound_at`, reopens nothing, and never wakes the AI assistant (the caller does not offer it to one). A person the CRM has
+ * never heard of becomes a contact, exactly as an inbound message would create one. Idempotent on the provider's message id: a redelivery,
+ * or a message the CRM itself sent, inserts nothing and reports `isNew: false`.
+ */
+export async function storeOwnMessage(
+  db: Database, kms: KmsDriver, msg: OwnMessage
+): Promise<StoredInbound> {
+  const hasPhone = msg.toPhoneE164 !== null && msg.toPhoneE164 !== '';
+  const sentAt = msg.sentAt.toISOString();
+  const kind = hasPhone ? 'phone' : 'wa_lid';
+  const value = hasPhone ? msg.toPhoneE164! : msg.toProviderAddress;
+
+  const rows = await db.execute(sql`
+    WITH already AS (
+      SELECT 1 FROM message WHERE org_id = ${msg.orgId} AND provider_message_id = ${msg.providerMessageId}
+    ), existing AS (
+      SELECT contact_id FROM contact_identity
+      WHERE org_id = ${msg.orgId} AND kind = ${kind} AND value_normalized = ${value}
+    ), new_contact AS (
+      INSERT INTO contact (org_id, display_name, source)
+      SELECT ${msg.orgId}, ${value}, 'phone_message'
+      WHERE NOT EXISTS (SELECT 1 FROM already) AND NOT EXISTS (SELECT 1 FROM existing)
+      RETURNING id
+    ), new_identity AS (
+      INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary, verified_at)
+      SELECT ${msg.orgId}, id, ${kind}, ${value}, true, ${sentAt} FROM new_contact
+      RETURNING contact_id
+    ), resolved AS (
+      SELECT contact_id FROM existing
+      UNION ALL SELECT contact_id FROM new_identity
+    ), conv AS (
+      INSERT INTO conversation (org_id, contact_id, sender_identity_id, last_outbound_at, unread_count)
+      SELECT ${msg.orgId}, contact_id, ${msg.senderIdentityId}, ${sentAt}, 0 FROM resolved
+      WHERE NOT EXISTS (SELECT 1 FROM already)
+      ON CONFLICT (contact_id, sender_identity_id) DO UPDATE
+        SET last_outbound_at = greatest(coalesce(conversation.last_outbound_at, ${sentAt}::timestamptz), ${sentAt}::timestamptz),
+            updated_at = now()
+      RETURNING id
+    ), ins AS (
+      INSERT INTO message (org_id, conversation_id, direction, provider_message_id,
+                           content_type, body_enc, body_hmac, status, sent_by, created_at, sent_at)
+      SELECT ${msg.orgId}, conv.id, 'outbound', ${msg.providerMessageId}, ${msg.contentType},
+             ${Buffer.from(kms.encrypt(new TextEncoder().encode(msg.body)))},
+             ${kms.blindIndex(msg.body)}, 'sent', 'phone', ${sentAt}, ${sentAt}
+      FROM conv
+      ON CONFLICT (org_id, provider_message_id) DO NOTHING
+      RETURNING id
+    )
+    SELECT (SELECT contact_id FROM resolved) AS contact_id,
+           (SELECT id FROM conv) AS conversation_id,
+           (SELECT id FROM ins) AS message_id,
+           EXISTS (SELECT 1 FROM ins) AS is_new`);
+
+  const row = (rows as unknown as Array<{
+    contact_id: string | null; conversation_id: string | null; message_id: string | null; is_new: boolean;
+  }>)[0];
+  if (!row) throw new Error('storing the owner\'s own message returned nothing');
+  return {
+    contactId: row.contact_id ?? '', conversationId: row.conversation_id ?? '',
+    isNew: row.is_new, messageId: row.message_id
+  };
+}
+
 /** Marks a queued outbound message as accepted by the provider. */
 export async function markMessageSent(
   db: Database, messageId: string, providerMessageId: string

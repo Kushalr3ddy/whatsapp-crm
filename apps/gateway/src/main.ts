@@ -7,7 +7,7 @@ import { tenantDatabase } from './tenant.js';
 import { localKmsFromConfig } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
-import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
+import { storeInboundMessage, storeOwnMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
   DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
   markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText } from '@crm/core';
 import { LiveLlm } from '@crm/llm';
@@ -24,6 +24,9 @@ interface GatewayCommand {
   readonly kind: 'link' | 'unlink' | 'send';
   readonly id: string;
 }
+
+/** How long a message the owner sent from the phone waits before it is stored, so the CRM's own send has recorded its id first (D-94). */
+const OWN_MESSAGE_SETTLE_MS = 10_000;
 
 /**
  * The WhatsApp gateway.
@@ -150,6 +153,34 @@ async function main(): Promise<void> {
     })();
   }
 
+  /**
+   * Stores one message the owner sent from their own phone (D-94). Waits first (see OWN_MESSAGE_SETTLE_MS) so a message the CRM itself
+   * sent, whose echo also arrives, has had time to record its WhatsApp id; the database then makes the repeat a no-op.
+   */
+  async function storeOwnerMessage(org: string, event: NormalisedInboundEvent): Promise<void> {
+    try {
+      let toPhone = event.fromPhoneE164;
+      if (toPhone === null && event.linkedPhoneE164 !== undefined && event.linkedPhoneE164 !== null) {
+        await linkLidToPhone(inOrg(org), org, { lid: event.fromProviderAddress, phoneE164: event.linkedPhoneE164 });
+        toPhone = event.linkedPhoneE164;
+      }
+      // "Message yourself": the chat is the linked number itself. Nothing to show in a CRM inbox.
+      const ownPhone = await inOrg(org).execute(sql`SELECT phone_e164 AS "p" FROM sender_identity WHERE id = ${event.senderId}`);
+      if (toPhone !== null && (ownPhone as unknown as Array<{ p: string | null }>)[0]?.p === toPhone) return;
+      const stored = await storeOwnMessage(inOrg(org), kms, {
+        orgId: org, senderIdentityId: event.senderId, providerMessageId: event.providerMessageId,
+        toPhoneE164: toPhone, toProviderAddress: event.fromProviderAddress,
+        body: event.body, contentType: event.contentType, sentAt: event.receivedAt
+      });
+      if (stored.isNew) {
+        logger.info({ senderId: event.senderId, conversationId: stored.conversationId }, 'message the owner sent from their phone stored');
+        if (event.mediaRef !== null && stored.messageId !== null) await fetchAttachment(stored.messageId, org, event);
+      }
+    } catch (error) {
+      logger.error({ err: error instanceof Error ? error.message : String(error) }, 'failed to store a message the owner sent from their phone');
+    }
+  }
+
   // ── inbound: whatever arrives on any connected number ────────────────────────────────
   void (async () => {
     for await (const event of provider.inbound()) {
@@ -162,6 +193,14 @@ async function main(): Promise<void> {
         // A privacy address that WhatsApp also gave us the number for: link the two onto one contact
         // first, so this message lands on the right person instead of a number-less duplicate.
         let fromPhone = event.fromPhoneE164;
+        if (event.fromMe === true) {
+          // The owner typed this on their own phone (D-94). It is stored as a message the owner sent, after a short wait (below), and
+          // never reaches the AI assistant, the unread count or a read receipt. Not awaited: it must not hold up the inbound stream.
+          const own = event;
+          const ownerOrg = org;
+          setTimeout(() => { void storeOwnerMessage(ownerOrg, own); }, OWN_MESSAGE_SETTLE_MS).unref();
+          continue;
+        }
         if (fromPhone === null && event.linkedPhoneE164 !== undefined && event.linkedPhoneE164 !== null) {
           const outcome = await linkLidToPhone(inOrg(org), org, {
             lid: event.fromProviderAddress, phoneE164: event.linkedPhoneE164
