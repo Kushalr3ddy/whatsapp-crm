@@ -43,6 +43,7 @@
     "test:session:real": "SESSION_I_KNOW_THIS_SENDS=1 bash scripts/run-session.sh real",
     "regress": "bash scripts/regress.sh local",
     "regress:ci": "bash scripts/regress.sh ci",
+    "regress:nightly": "bash scripts/regress.sh nightly",
     "regress:check": "node tests/regression/check-registry.mjs",
     "bug": "node scripts/bug.mjs",
     "feedback:import": "node scripts/feedback-import.mjs",

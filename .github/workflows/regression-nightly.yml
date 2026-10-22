@@ -1,0 +1,103 @@
+# The nightly regression: every night (and on demand) the WHOLE browser suite runs on a production build, with the flaky-tagged tests included, so slow drift and
+# things that break without a code change (a library update, the clock) are found while nobody is looking. If it is red it opens (or adds to) one GitHub issue;
+# when it is green again the issue is closed. Tests that passed only on a retry are listed in a separate "Flaky tests" issue.
+name: regression-nightly
+
+on:
+  schedule:
+    - cron: '30 20 * * *'   # 02:00 in India (UTC+5:30)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: whatsapp_crm_dev
+        ports: ['5434:5432']
+        options: >-
+          --health-cmd "pg_isready -U dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://dev:dev@localhost:5434/whatsapp_crm_dev
+      APP_SECRET: ci-only-app-secret-0123456789abcdef0123456789abcdef  # gitleaks:allow
+      PUBLIC_URL: http://localhost:3000
+      ENCRYPTION_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff  # gitleaks:allow
+      ENCRYPTION_INDEX_KEY: ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100  # gitleaks:allow
+      API_KEY: ci-only-bootstrap-api-key-0123456789abcdef  # gitleaks:allow
+      SEND_TYPING_SIMULATION: 'false'
+      NODE_ENV: development
+      GATEWAY_CHANNEL: fake
+      GATEWAY_SWEEP_SECONDS: '3'
+      SEND_CIRCADIAN: 'false'
+      SEND_RECIPIENT_TIMEZONE: 'false'
+      SEND_BACKGROUND_ENTROPY: 'false'
+      TEST_EMAIL: e2e@test.local
+      TEST_PASSWORD: E2eTest!pass99
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: install chromium
+        run: npx playwright install --with-deps chromium
+      - name: migrate, provision the e2e admin, seed
+        run: |
+          npm run db:migrate
+          npm run admin -- org --name "E2E Test Org" --slug e2e-test --email "$TEST_EMAIL" --password "$TEST_PASSWORD"
+          npm run local:seed
+      - name: start API and gateway
+        run: |
+          npm run dev > /tmp/api.log 2>&1 &
+          npm run gateway > /tmp/gateway.log 2>&1 &
+          timeout 120 bash -c 'until curl -sf http://localhost:3000/ready >/dev/null; do sleep 2; done'
+      - name: the whole suite on a production build
+        id: run
+        continue-on-error: true
+        run: npm run regress:nightly
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-regression
+          path: |
+            regression-report.md
+            test-results/
+      - name: if red, open or update the issue
+        if: steps.run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tests/regression/file-issue.mjs --title "Nightly regression failed" --label regression-nightly --body-file regression-report.md
+      - name: if green, close the issue when it was open
+        if: steps.run.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tests/regression/file-issue.mjs --title "Nightly regression failed" --label regression-nightly --close "Green again on ${{ github.run_id }}."
+      - name: list flaky tests in one issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          F=$(node -e "try{const s=require('./test-results/regress/summary.json');console.log(s.flaky.length)}catch{console.log(0)}")
+          if [ "$F" != "0" ]; then
+            node -e "const s=require('./test-results/regress/summary.json');console.log('These tests passed only on the retry in last night\'s run:\n\n'+s.flaky.map(t=>'- '+t).join('\n')+'\n\nFix each one, or tag it @flaky in its title to take it out of the blocking checks until it is fixed.')" > /tmp/flaky.md
+            node tests/regression/file-issue.mjs --title "Flaky tests (auto)" --label flaky --body-file /tmp/flaky.md
+          fi
+      - name: the nightly run itself failed
+        if: steps.run.outcome == 'failure'
+        run: exit 1
+      - name: server logs on failure
+        if: failure()
+        run: tail -n 100 /tmp/api.log /tmp/gateway.log test-results/regress/web.log || true
