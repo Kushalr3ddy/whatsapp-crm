@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { LlmModel, LlmProbe, LlmSettings } from '@/lib/crm';
 import { listModelsAction, removeLlmAction, saveLlmAction, testLlmAction } from '../actions';
+import { ModelPicker } from './model-picker';
 
 /**
  * Choose the provider, enter the key, pick a model, test it, and make it the one the install uses. The key is typed into a hidden box, sent
@@ -150,22 +151,19 @@ export function LlmForm({ settings }: { settings: LlmSettings }) {
               <span className="text-xs text-muted">Optional: lists what this provider offers. You can also type a model name.</span>
             </div>
 
-            <label className="mt-3 flex flex-col gap-1 text-sm font-medium">
-              3. Model
-              <input
-                list="llm-models" className="field font-normal" value={model} placeholder="Search or type a model name"
-                onChange={(e) => { setModel(e.target.value); setProbe(null); }}
+            <div className="mt-3 flex flex-col gap-1">
+              <label htmlFor="llm-model" className="text-sm font-medium">3. Model</label>
+              <ModelPicker
+                id="llm-model" value={model} models={models} recommended={preset.recommended}
+                onChange={(next) => { setModel(next); setProbe(null); }}
               />
-              <datalist id="llm-models">
-                {models.map((m) => <option key={m.id} value={m.id}>{m.name ?? ''}{m.contextLength !== undefined ? ` · ${String(Math.round(m.contextLength / 1000))}k context` : ''}</option>)}
-              </datalist>
-              {models.length > 0 && <span className="text-xs font-normal text-muted">{models.length} models found. Start typing to narrow the list.</span>}
+              {models.length > 0 && <span className="text-xs text-muted">{models.length} models found. Open the list, or start typing to narrow it.</span>}
               {preset.recommended !== null && model !== preset.recommended && (
-                <button type="button" className="mt-1 self-start text-xs font-normal underline" onClick={() => { setModel(preset.recommended ?? ''); setProbe(null); }}>
+                <button type="button" className="self-start text-xs underline" onClick={() => { setModel(preset.recommended ?? ''); setProbe(null); }}>
                   Use the model we tested: {preset.recommended}
                 </button>
               )}
-            </label>
+            </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button type="button" className="btn" disabled={pending || !canKey || model === '' || (preset.id === 'custom' && baseUrl === '')} onClick={runTest}>
