@@ -14,8 +14,9 @@ for (let i = 0; i < N; i++) {
   await page.goto(`${base}/contacts`); if (process.argv[4] !== 'nowait') await page.waitForLoadState('networkidle');
   await page.locator('summary', { hasText: 'Tag many at once' }).click();
   if (process.argv[5] === 'withtag') await page.locator('select[name="bulkTag"]').selectOption({ index: 1 });
+  if (process.argv[5] === 'notag') await page.getByLabel('Tag to apply').selectOption({ label: 'No tag' });
   await page.getByRole('button', { name: 'Preview', exact: true }).first().click();
-  const expected = process.argv[5] === 'withtag' ? page.getByText(/would change|No one matches|people would|would be/i).first() : page.getByText('Choose a tag first.');
+  const expected = process.argv[5] === 'notag' ? page.getByText(/You chose “No tag”/) : process.argv[5] === 'withtag' ? page.getByText(/would change|No one matches|people would|would be/i).first() : page.getByText('Choose a tag first.');
   const ok = await expected.waitFor({ timeout: 6000 }).then(() => true).catch(() => false);
   if (!ok) { fail += 1; detail.push(`#${i}: url=${page.url().slice(-32)} counting=${await page.getByRole('button', { name: /Counting/ }).count()} text=${await page.getByText('Choose a tag first.').count()} | ${log.join(' ; ')}`); }
 }
