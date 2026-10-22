@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { setSenderEnforcement, createSender, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import { setSenderEnforcement, createSender, removeSender, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 
 /**
  * Switches a number between enforcing the anti-ban engine and advisory mode (D-29). Admin-only on
@@ -42,4 +42,17 @@ export async function addNumberAction(label: string): Promise<AddNumberResult> {
   }
   revalidatePath('/link');
   return { ok: true, id };
+}
+
+/** Hides an unlinked number from this page (admin). A refusal (still linked, not an admin) just reloads. */
+export async function removeSenderAction(formData: FormData): Promise<void> {
+  const senderId = String(formData.get('senderId') ?? '');
+  if (senderId === '') return;
+  try {
+    await removeSender(senderId);
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/link');
+    if (!(error instanceof CrmApiError)) throw error;
+  }
+  revalidatePath('/link');
 }

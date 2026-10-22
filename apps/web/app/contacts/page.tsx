@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { listContacts, listTags, listSenders, listCustomFields, listCampaigns, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Contact, Tag, Sender, CustomField, Campaign } from '@/lib/crm';
 import {
-  createFieldAction, deleteFieldAction, saveContactFieldsAction, setDncAction,
+  saveContactFieldsAction, setDncAction,
   bulkTagPreviewAction, bulkTagConfirmAction, bulkTagCheckedAction,
   createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
 } from './actions';
@@ -11,6 +11,8 @@ import { PageHeader, EmptyState, initialsOf } from '../ui';
 import { TagChip } from './tag-chip';
 import { RemoveTag } from './remove-tag';
 import { SubmitButton } from './submit-button';
+import { FieldsPanel } from './fields-panel';
+import { TagManager } from './tag-manager';
 
 /** What the person is looking at: search, tag, date range and order. Every link and form on the page carries it. */
 interface View {
@@ -203,7 +205,8 @@ export default async function ContactsPage(
           <summary className="cursor-pointer text-sm font-medium">New tag</summary>
           <div className="mt-3"><NewTagForm /></div>
         </details>
-        <FieldsAdmin fields={fields} />
+        <FieldsPanel fields={fields} />
+        <TagManager tags={tags} />
       </div>
 
       {sp.tagMade !== undefined && sp.tagMade !== '' && (
@@ -622,49 +625,6 @@ function ContactFields({ contact, fields }: { contact: Contact; fields: CustomFi
         ))}
         <button type="submit" className="col-span-2 justify-self-start btn btn-sm">
           Save fields
-        </button>
-      </form>
-    </details>
-  );
-}
-
-/**
- * Defining the org's fields. Everyone sees what exists (and the `{{key}}` to use it in a campaign);
- * only an admin's create/remove goes through, since it changes every contact.
- */
-function FieldsAdmin({ fields }: { fields: CustomField[] }) {
-  return (
-    <details className="card px-4 py-2.5 text-sm">
-      <summary className="cursor-pointer font-medium">
-        Custom fields ({fields.length})
-      </summary>
-      <p className="mt-2 text-muted">
-        Extra details on each contact, usable as {'{{field}}'} in a campaign message.
-      </p>
-      <ul className="mt-2 flex flex-col gap-1">
-        {fields.map((f) => (
-          <li key={f.key} className="flex items-center gap-2">
-            <span className="font-medium">{f.label}</span>
-            <code className="text-muted">{`{{${f.key}}}`}</code>
-            <span className="text-muted">{f.type}{f.type === 'select' && `: ${f.options.join(', ')}`}</span>
-            <form action={deleteFieldAction} className="ml-auto">
-              <input type="hidden" name="key" value={f.key} />
-              <button type="submit" className="text-muted hover:text-danger" title="Remove this field and its values (admin)">remove</button>
-            </form>
-          </li>
-        ))}
-      </ul>
-      <form action={createFieldAction} className="mt-2 flex flex-wrap items-center gap-2">
-        <input name="label" required placeholder="Field name, e.g. City" aria-label="Field name"
-          className="field field-sm" />
-        <select name="type" aria-label="Field type" className="field field-sm">
-          <option value="text">text</option><option value="number">number</option>
-          <option value="date">date</option><option value="select">select</option>
-        </select>
-        <input name="options" placeholder="options, comma separated (select only)" aria-label="Options"
-          className="min-w-48 flex-1 rounded-md border border-border bg-surface px-2 py-1" />
-        <button type="submit" className="btn btn-sm">
-          Add field (admin)
         </button>
       </form>
     </details>

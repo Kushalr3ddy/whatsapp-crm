@@ -864,6 +864,12 @@ export async function listSenders(): Promise<Sender[]> {
   return request<Sender[]>('/senders');
 }
 
+/** Admin only: hides an unlinked number from the Numbers page (its conversations stay in the inbox). */
+export async function removeSender(senderId: string): Promise<void> {
+  return requestVoid(`/senders/${encodeURIComponent(senderId)}/remove`, { method: 'POST' });
+}
+
+
 /** A freshly generated encryption key, shown once. The current key is never included. */
 export interface NewEncryptionKey { version: number; previousVersion: number; key: string }
 

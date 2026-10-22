@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import {
-  resolveTarget, countMatching, bulkTag, bulkUntag, writeAudit, AUDIT, type TagTarget
+  resolveTarget, countMatching, bulkTag, bulkUntag, deleteTag, writeAudit, AUDIT, type TagTarget
 } from '@crm/core';
 import { auditActor, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
@@ -143,12 +143,25 @@ export function tagsRouter(): Router {
       res.json({ data: { action, dryRun, matched: outcome.matched, changed: outcome.changed } });
     });
 
-  /** Deletes a tag; its `contact_tag` links cascade away with it. */
+  /**
+   * Deletes a tag (needs the contacts:write scope, audited). Everyone who carried it is untagged; no contact and no
+   * campaign is deleted.
+   */
   router.delete('/:id', requireUuidParam('id'), requireScope('contacts:write'),
     async (req: Request, res: Response) => {
-      const rows = await req.tenant!((tx) => tx.execute(sql`
-        DELETE FROM tag WHERE id = ${req.params.id} AND org_id = ${req.crm!.orgId} RETURNING id`));
-      if ((rows as unknown as unknown[]).length === 0) {
+      const orgId = req.crm!.orgId;
+      const tagId = String(req.params.id);
+      const gone = await req.tenant!(async (tx) => {
+        const done = await deleteTag(tx, orgId, tagId);
+        if (done === null) return false;
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.tagDeleted, targetType: 'tag', targetId: tagId,
+          before: { name: done.name, contactCount: done.contactCount },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+        return true;
+      });
+      if (!gone) {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such tag.'));
         return;
       }
