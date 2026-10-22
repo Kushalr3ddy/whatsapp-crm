@@ -33,7 +33,7 @@ timeout 90 bash -c "until curl -sf http://localhost:$PORT/login >/dev/null; do s
 
 if [ "$MODE" = local ]; then GREP=(); else GREP=(--grep "@smoke|speed probe"); fi
 step "browser tests on the production build ($([ "$MODE" = local ] && echo 'the whole suite' || echo 'smoke set + speed probe'))"
-E2E_BASE_URL="http://localhost:$PORT" PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/playwright.json" \
+REGRESS=1 E2E_BASE_URL="http://localhost:$PORT" PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/playwright.json" \
   npx playwright test --reporter=list,json "${GREP[@]}" || FAIL=1
 
 step "report"

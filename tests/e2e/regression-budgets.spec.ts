@@ -9,6 +9,8 @@ import { signIn, nav, CREDS_MISSING } from './helpers';
  */
 test.describe('speed probe', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
+  // Timings mean something only on a production build: `npm run regress` sets REGRESS=1. In the plain dev-server e2e run (first visits compile) it is skipped.
+  test.skip(process.env.REGRESS !== '1', 'timings are only measured by npm run regress (production build)');
 
   test('time the main screens from a click to the page showing', async ({ page }) => {
     test.setTimeout(120_000);
