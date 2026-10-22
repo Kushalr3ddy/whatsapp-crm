@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-22 (second session) — the other dev's feedback fixed, a timed audit on a production build, the bug workflow, D-94
+- **Merged #102 to #115 and #129 to #138.** The other dev's 13 prod issues are fixed (#104 import/contacts feedback, #105 deletes + remove a number + custom-fields panel, #106 campaigns, #112 working state on 14 buttons, #113 a waiting recipient says why, #107 newest name wins on import, #110 never send from a number to itself, #111 lighter Contacts rows) and tracked as GitHub issues **#116 to #128**, with a generated triage doc (`docs/feedback/2026-10-22-prod.md`).
+- **Found by the production-build audit** (`docs/38`): forms that redirect hung forever on a production server (Next's own gzip): fixed (#108, R-001). Median click-to-response 1.12 s to 0.55 s; Contacts open 5.97 s to 1.93 s; sign out 0.62 s; web server memory 3 GB to 0.25 GB.
+- **"Waiting for this message" traced** (gateway restart desync D-82, a gateway crash #103, and sending to the sending number itself #110); relinked, delivery is healthy.
+- **Regression framework + bug workflow** (#115, #129 to #133; guide `docs/40`, flow `docs/39`): bug registry R-001 to R-010, `npm run bug / regress / regress:ci / regress:nightly / feedback:import / feedback:report / changelog`, production-build smoke tests, a bug-fix gate, a PR report comment, retry-once flaky flag and `@flaky` quarantine, a nightly full run (not yet run), issue forms, an in-app "Report a problem" button, labels. **#136:** the browser tests run in 3 parallel shards, Chromium and the Next build are cached, the Chromium install retries. **Branch protection is on for `main`** (check, e2e, secrets-scan).
+- **R-009 (#138):** import tests collided with the seeded demo people's phone numbers and, with newest-name-wins, renamed them: the seeded-pages tests failed at random. **R-008 (#135, open):** an instant server-action redirect to the same page can hang on a production server; worked around for "Tag many at once".
+- **D-94 built (#144, R-010, open):** messages you type on your own phone are stored (outbound, `phone`, WhatsApp's own time, no unread, no AI) and shown; thread bubbles show the time only, with Today / Yesterday headings. **Not live until the gateway is restarted** (needs his OK). History on linking and undecryptable own messages are still open.
+- **Pins:** D-46 high priority, D-89 progress, D-90, D-91, D-92, D-93, D-94 (high priority). **Second feedback batch** (a Google Doc): issues #139 to #142 waiting for the other dev's answers.
+- **Housekeeping:** 32 merged remote and 41 local branches deleted, the session worktrees removed (kept `main`, the open PR's branch and the 3 newest merged). Memory notes added: bug workflow, D-46 raise-first, "if it works, don't touch it".
+- **Not tested / not done:** D-94 on a real phone; the nightly, `after-merge` and `automerge` workflows have never run; the Google Doc ingest worker (D-92) is pinned only.
+
 ### 2026-10-22 — AI settings tab (D-9)
 - **AI settings sub-tab inside the AI tab**: choose provider, enter key, pick model, test, use; saved to the settings file and applied without a restart in the API and the gateway. Admin only; key never returned or audited; https-only public addresses; 10 calls a minute. Proven on a real Groq key; 15 unit, 10 integration and 2 browser tests. Docs: API, providers, workflow 8, D-9.
 - **Found by the real run and fixed:** the model test's token limit was too small for a reasoning model (`gpt-oss-20b`), which made a working model look broken.
@@ -1150,6 +1161,7 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
 
 In the order Kushal set, remaining (2026-10-21). *Pinned* items are deliberately held:
 
+000. **Top (Kushal, 2026-10-22):** **D-46** laggy UI stays at the top (next: fetch a Contacts row's panel on demand); **D-94** (history on linking, undecryptable own messages) and getting #144's gateway restart approved and tested on his phone; **R-008** (#135: make the read-only Preview a plain GET form); answers from the other dev on #139 to #142; add `regress-smoke` and `bug-gate` to the required checks on `main`; then **#141** (show the sent text on a campaign recipient row), **D-92** (the Google Doc ingest worker), **D-91** (the AI takeover lock), **D-93** (a separate AI log).
 00. **PRIORITY (Kushal, 2026-10-21): D-59, file support in campaigns first** (one image or GIF per campaign, the message as its caption; the assistant's `create_campaign` can attach an existing file).
 0. **AI (2026-10-21):** (#96 is merged) Kushal's order: **D-81** guardrails (facts, STOP words, approval mode) and **D-84** (goal field,
    auto-assign new chats, follow-ups); **D-82** (flush the auth state on shutdown, detect the decrypt burst); **D-83** (stale screens on `dev:fast`). The

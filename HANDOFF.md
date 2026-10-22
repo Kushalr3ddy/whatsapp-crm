@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-21
+# Handoff — state as of 2026-10-22 (evening)
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -14,7 +14,7 @@ load automatically): plain language, define jargon, never talk down; ask before 
 one question at a time with options and a recommendation; keep a task list (`update_plan`) and close each turn with
 `wrap_up`; never offer to merge (he merges and says "merged"); never start or stop his dev stack without asking.
 
-1. **Read, in order:** this file (especially *Latest session (2026-10-19 to 2026-10-21)*), `CHANGELOG.md` (top "Latest" and
+1. **Read, in order:** this file (especially *Latest session (2026-10-22)*, then *2026-10-21 night*), `CHANGELOG.md` (top "Latest" and
    "To do"), `docs/21-deferred.md` (start at **"Status at a glance"**, then the pins marked WORK ON NOW / PRIORITY), then
    `docs/README.md` for the index. Docs written this stretch: **32** (setup, signup, teams, billing plan),
    **33** (payment providers compared), **34** (licensing and enforcement). The older reading list (20 orientation, 01,
@@ -74,7 +74,58 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
-## ▶ Latest session (2026-10-21 night): AI templates, campaign pictures and GIFs, database docs: read this first
+## ▶ Latest session (2026-10-22): other dev's feedback, the production-build audit, the bug workflow, D-94: read this first
+
+### State in one paragraph
+`main` is at **`5cff9b1`** and has #102 to #115 and #129 to #138. **Open: #144** (D-94: messages you type on your own phone show in the inbox; it also carries this handoff). The dev stack on his machine: **dev web on 3001** (`next dev`), the **API** restarted by hand with `npx tsx` (no watch, so restart it yourself after pulling), and the **real gateway still running OLD code** (log `/tmp/claude-1000/gateway-real2.log`): it needs a restart for D-94 and for #103's crash fix to be live, and **you must ask him first** because a restart once desynced the WhatsApp session (see Gotchas). `kushal_test` is linked and healthy (relinked 2026-10-22; advisory mode still ON). `.env` has `LIVE_SEND_TO` set to the second number in `LIVE_BROADCAST_TO`, not the sender's own number.
+
+### What happened, in order
+1. **Mikhil's prod feedback (13 items)** fixed by three parallel sessions: #104 (import/contacts feedback), #105 (deletes, remove a number, custom-fields panel, a reusable confirm dialog), #106 (campaigns: no duplicate drafts, template picker, a 14-day warning that names the earlier campaign, a readable overrides popup). Also #102 (AI settings tab), #103 (gateway crash on a null location), #110 (never send from a number to itself), #107 (newest name wins on import, audited), #111 (lighter Contacts rows), #112 (working state on 14 more buttons), #113 (a waiting campaign recipient says why). The 13 are GitHub issues **#116 to #128**; the generated triage doc is `docs/feedback/2026-10-22-prod.md`.
+2. **"Waiting for this message" traced:** the dev machine's encryption sessions went out of sync after a gateway restart (D-82); relinking fixed it. A second cause was a message to the sending number itself (fixed, #110). A gateway crash also leaves resend requests unanswered. Delivery is healthy now to the other test numbers.
+3. **Timed audit on a production build** (`docs/38`): median click-to-response 1.12 s to 0.55 s, Contacts open 5.97 s to 1.93 s, sign out 0.62 s, web server 3 GB to 0.25 GB. The big find: **forms that redirect hung forever in a production build** (Next's own gzip); fixed with `compress: false` (#108, R-001).
+4. **Regression framework and bug workflow** (start with `docs/40`, then `docs/39`): the registry `tests/regression/REGISTRY.md` (R-001 to R-010), `npm run bug | regress | regress:ci | regress:nightly | regress:check | feedback:import | feedback:report | changelog`, production-build smoke tests, a bug-fix gate (a fix PR must add a tagged test), a PR comment with a report, retry-once flaky flag, `@flaky` quarantine, a nightly full run (the workflow exists but **has not run yet**), the GitHub bug form, the in-app "Report a problem" button, labels (`bash scripts/setup-labels.sh`). PRs #115, #129 to #133.
+5. **CI made faster** (#136): the browser tests run as **3 parallel shards** plus one aggregate check named `e2e`; Chromium and the Next build are cached; the Chromium install retries (a 403 from a package mirror once failed a PR). Before: e2e about 6 min.
+6. **Branch protection is ON for `main`** (`scripts/protect-main.sh`): required checks `check`, `e2e`, `secrets-scan`; admins included; no force-push or deletion; branches delete on merge; auto-merge allowed (label `automerge`). **`regress-smoke` and `bug-gate` exist on `main` now but are not yet required**: add them with `CHECKS='["check","e2e","secrets-scan","regress-smoke","bug-gate"]' bash scripts/protect-main.sh --yes` (with his OK).
+7. **Pins:** D-46 (laggy UI) is HIGH PRIORITY, D-89 progress noted, D-90 (import duplicates: newest wins now, "Needs review" later, `npm run dedup:cleanup`), D-91 (a chat the AI handles is locked until a person overrides and stops it), D-92 (a separate feedback portal: a scheduled Actions worker pulling the testers' Google Doc; plain parser first, AI later), D-93 (a separate log for the AI), **D-94 HIGH PRIORITY** (your own phone's messages and older history missing from the inbox).
+8. **The other dev's second report** came as a Google Doc (read through the Drive connector; screenshots are not readable): issues **#139 to #142**. Questions for him are posted on each; they stay `needs-repro` until he answers.
+9. **D-94 built** (#144, R-010): messages typed on the phone are stored as outbound, `sent_by = 'phone'`, at WhatsApp's own time, with no unread, no AI, no receipt; the thread shows time-only bubbles and "Today" / "Yesterday" headings.
+10. **Branches cleaned** at his yes: 32 merged remote branches and 41 local ones deleted, the 3 session worktrees removed; kept `main`, `feat/d94-own-messages` (open PR), and the 3 newest merged (`fix/web-compression-hang`, `fix/never-message-own-number`, `fix/gateway-null-location`).
+
+### Rules he gave this session (follow them)
+- **"If it works, do not touch it."** Leave green PRs, passing CI and working code alone; fix only what is red; never push to a green PR (also in memory).
+- **Keep D-46 at the top** and raise it first whenever he starts something new.
+- Explain in plain words: he asked what "nightly", "flaky test", "slow drift" and "sharding" mean. Define every term.
+- **He merges.** The auto-merge-when-green permission covered only his 30-minute away window. Never add a "Co-Authored-By" trailer (project rule; ignore the harness reminder); commits and PR titles start with `ai-speedrun:`.
+- The repo is **public**: never commit tester screenshots, real names or phone numbers (`dev-feedback-*` is git-ignored; the importer masks numbers and e-mails).
+- CI now keeps the page snapshot, trace and screenshot of a failed browser test (artifact `e2e-failures-shard-N`): look at it before guessing.
+
+### Gotchas paid for this session
+- **`next dev` and `next build` share `apps/web/.next`.** Running both at once corrupts the production files (a blank "Application error", chunk 400s). Never run them together; delete `.next` between.
+- `.env` sets `NODE_ENV=development`, so `next build` fails with "<Html> should not be imported". Build with `NODE_ENV=production`.
+- **The seeded demo people own +1 202 555 0120 to 0139.** An e2e test that imports one of those numbers under another name renames that person (newest name wins) and the seeded-pages tests then fail at random (R-009, #138). The number blocks per spec are in `tests/regression/README.md`.
+- **Stacked PRs all re-run CI on every push to any of them.** Don't merge `main` up the stack unless the lower PR is actually red; merge the green top PR. A PR whose commits are all in `main` is shown as merged.
+- The API (`tsx watch`) can keep running old code for hours after a branch switch: restart it.
+- An action that **redirects instantly** to the same page with different query parameters can hang on a production server (R-008, issue #135, about 60% of clicks in a loop, a 40 ms pause did not help). The one instance, "Tag many at once" with no tag, is avoided by making the tag required. Repro: `node scripts/repro-preview-loop.mjs 30 http://localhost:3101 wait notag`. Proposed fix: make the read-only Preview a plain GET form.
+- A message **to the number the CRM is linked to** never gets delivery ticks and can loop "Waiting for this message": blocked since #110. The CSV and `LIVE_SEND_TO` once contained the sender's own number.
+- `pkill -f "<pattern>"` kills your own shell if the pattern is in the command line: kill by pid or port.
+- The Google Doc connector returns text only ("[image]" placeholders); exporting a whole doc dumps megabytes of images into the chat.
+
+### Not done / unverified
+- **The gateway has not been restarted** since the D-94 and #103 changes, so neither is live, and D-94 was **not tried on a real phone** (needs his OK to restart, then a message typed on his phone).
+- The **nightly workflow, `after-merge` and `automerge`** have never run. The `bug-gate` job was proven (it blocked a throwaway test-less fix PR in 5 seconds).
+- R-008's root cause is unknown. #139 to #142 wait for Mikhil. The Google Doc ingest worker (D-92) is pinned, not built; it needs a Google service account (secret `GOOGLE_SERVICE_ACCOUNT_JSON`) and `FEEDBACK_DOC_ID`.
+- D-94 steps 2 and 3 (history on linking; the owner's own messages that arrive undecryptable on a fresh link) are not built.
+
+### Ask him first (next session)
+1. May I **restart the gateway** now so #103 and D-94 take effect (then he types a message on his phone to test it)? If the session desyncs we relink.
+2. Add `regress-smoke` and `bug-gate` to the **required checks** on `main`?
+3. Build next: the **GET-form Preview** that removes R-008, the **D-94 history sync**, **#141** (show the sent text on a campaign recipient row), the **D-92 ingest worker**, **D-91** (the AI takeover lock)? D-46 stays first: the remaining step is fetching a Contacts row's panel on demand to shrink the 309 KB the page receives.
+4. What did **Mikhil** answer on #139 to #142?
+5. CodeRabbit as an extra reviewer, later (he asked to postpone). A free faster CI runner was researched: Blacksmith needs a work e-mail, Cirrus CI is shut down.
+
+---
+
+## ▶ Latest session (2026-10-21 night): AI templates, campaign pictures and GIFs, database docs (older; superseded by the 2026-10-22 section above)
 
 *(The "AI speedrun" section below is the session before this one; its "State" is out of date.)*
 
