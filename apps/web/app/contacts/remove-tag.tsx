@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SubmitButton } from './submit-button';
 
 /**
  * A tag chip (a small rounded label showing a tag's name) on a contact, whose "×" asks first.
@@ -33,7 +34,7 @@ export function RemoveTag({ contactId, tagId, tagName, action }: {
       <span>
         Are you sure? This person will lose “{tagName}”, and you may have to search for them and tag them again.
       </span>
-      <button type="submit" className="btn btn-sm btn-danger">Yes, remove</button>
+      <SubmitButton className="btn btn-sm btn-danger" pendingLabel="Removing…">Yes, remove</SubmitButton>
       <button type="button" onClick={() => { setAsking(false); }} className="btn btn-sm">Keep it</button>
     </form>
   );

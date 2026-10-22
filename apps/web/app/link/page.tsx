@@ -6,6 +6,7 @@ import { AddNumber } from './add-number';
 import { PageHeader } from '../ui';
 import { ConfirmAction } from '@/components/confirm-action';
 import { setEnforcementAction, removeSenderAction } from './actions';
+import { SubmitButton } from '../contacts/submit-button';
 
 /** Rendered per request — linking state changes second by second. */
 export const dynamic = 'force-dynamic';
@@ -276,9 +277,9 @@ function EnforcementControl({ sender }: { sender: Sender }) {
       <form action={setEnforcementAction} className="mt-2">
         <input type="hidden" name="senderId" value={sender.id} />
         <input type="hidden" name="mode" value="enforce" />
-        <button type="submit" className="btn btn-sm btn-primary text-ink">
+        <SubmitButton className="btn btn-sm btn-primary text-ink" pendingLabel="Switching…">
           Back to enforcing
-        </button>
+        </SubmitButton>
       </form>
     );
   }
@@ -295,9 +296,9 @@ function EnforcementControl({ sender }: { sender: Sender }) {
         <textarea name="reason" required minLength={10} maxLength={500} rows={2}
           placeholder="Why? (recorded in the audit log)"
           className="field field-sm" />
-        <button type="submit" className="self-start btn btn-sm btn-danger">
+        <SubmitButton className="self-start btn btn-sm btn-danger" pendingLabel="Switching…">
           Turn anti-ban enforcement off for this number
-        </button>
+        </SubmitButton>
       </form>
     </details>
   );
