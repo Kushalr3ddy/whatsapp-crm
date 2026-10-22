@@ -681,12 +681,13 @@ export function extractBody(message: Record<string, unknown>): {
     const body = names.length > 0 ? `Contact cards: ${names.join(', ')}` : contactLine(m.contactsArrayMessage.displayName);
     return { body, contentType: 'text' };
   }
+  // Decoded WhatsApp messages carry null, not undefined, for the kinds they are not: test for both.
   const place = m.locationMessage ?? m.liveLocationMessage;
-  if (place !== undefined) {
+  if (place !== undefined && place !== null) {
     const where = place.degreesLatitude !== undefined && place.degreesLongitude !== undefined
       ? `${String(place.degreesLatitude)}, ${String(place.degreesLongitude)}` : 'location unknown';
     const label = (m.locationMessage?.name ?? m.locationMessage?.address ?? m.liveLocationMessage?.caption ?? '').trim();
-    return { body: `${m.liveLocationMessage !== undefined ? 'Live location' : 'Location'}: ${label === '' ? where : `${label} (${where})`}`, contentType: 'text' };
+    return { body: `${m.liveLocationMessage !== undefined && m.liveLocationMessage !== null ? 'Live location' : 'Location'}: ${label === '' ? where : `${label} (${where})`}`, contentType: 'text' };
   }
   return { body: '', contentType: 'other' };
 }
