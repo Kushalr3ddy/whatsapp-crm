@@ -65,23 +65,21 @@ test.describe('forms that redirect, on a production build', () => {
     await cleanUp(page);
   });
 
-  test('[R-001] @smoke a form whose action redirects (Tag many at once Preview) is not left hanging on "Counting…"', async ({ page }) => {
-    // The most reliable way to see the gzip hang: a tiny redirecting response. With the bug, the button stays on "Counting…" for ever.
+  test('[R-006] @smoke "Tag many at once": Preview with no tag chosen does not hang and does not send anything', async ({ page }) => {
+    // Originally the button gave no answer. The tag choice is now required in the browser, so no request is made at all (an instant server redirect
+    // can hang on a production server: see R-008). The browser's own message stands in for the server's "Choose a tag first".
     await signIn(page);
     await page.goto('/contacts');
     await page.waitForLoadState('networkidle');
     await page.locator('summary', { hasText: 'Tag many at once' }).click();
-    await page.getByRole('button', { name: 'Preview', exact: true }).first().click();
-    await expect(page.getByRole('button', { name: /Counting/ })).toHaveCount(0, { timeout: 8_000 });
-  });
-
-  test('[R-006] @smoke "Tag many at once" Preview with no tag chosen answers within 8 seconds', async ({ page }) => {
-    await signIn(page);
-    await page.goto('/contacts');
-    await page.waitForLoadState('networkidle');
-    await page.locator('summary', { hasText: 'Tag many at once' }).click();
-    await page.getByRole('button', { name: 'Preview', exact: true }).first().click();
-    await expect(page.getByText('Choose a tag first.')).toBeVisible({ timeout: 8_000 });
+    const posts: string[] = [];
+    page.on('request', (r) => { if (r.method() === 'POST') posts.push(r.url()); });
+    const preview = page.getByRole('button', { name: 'Preview', exact: true }).first();
+    await preview.click();
+    const tag = page.getByLabel('Tag to apply');
+    expect(await tag.evaluate((el) => (el as unknown as { validity: { valueMissing: boolean } }).validity.valueMissing)).toBe(true);
+    await expect(page.getByRole('button', { name: /Counting/ })).toHaveCount(0);
+    expect(posts).toHaveLength(0);
   });
 
   test('[R-007] @smoke a contact row opened by script right after the page loads still shows its panel', async ({ page }) => {
