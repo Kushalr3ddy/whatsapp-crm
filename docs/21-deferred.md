@@ -28,7 +28,7 @@ is not re-proposed.
 | D-6 | UUIDv7 primary keys | 📌 pinned |
 | D-7 | Turborepo, and splitting the queue driver | 📌 pinned |
 | D-8 | Self-serve setup wizard, guided walkthrough, whitelabelling | ◐ partly built (what-next buttons) · ⏸ parked |
-| D-9 | Generating `.env`, and a secrets driver | 📌 pinned |
+| D-9 | Generating `.env`, and a secrets driver; **first the AI agent setup (key, provider, model)** | 🔺 priority 2026-10-22 (AI setup first) · 📌 the rest pinned |
 | D-10 | What belongs in the inbox — broadcast output, and unknown senders | 📌 pinned |
 | D-11 | Media at rest — encryption, retention, scanning, compliance | ◐ partly built (serving; rest parked) |
 | D-13 | Access auditing — who *read* what | ✅ done |
@@ -327,7 +327,30 @@ is what keeps this cheap.
 
 ---
 
-## D-9 · Generating `.env`, and a secrets driver
+## D-9 · Generating `.env`, and a secrets driver — 🔺 **PRIORITY (Kushal, 2026-10-22): start with setting up the AI agent (the key, the provider and the model)**
+
+### First piece, now a priority: set up the AI agent without hand-editing `.env` (added 2026-10-22)
+
+**Where it stands.** The assistant is switched on in the app, but the model it talks to is chosen on the **server**, in five lines of `.env`: `LLM_DRIVER` (`none`, `gemini`, `openai`, `anthropic`, `ollama`,
+`compatible`), `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` (needed for `compatible`: Groq, OpenRouter, vLLM) and `LLM_TIMEOUT_MS`. A person setting up has to know the provider names, the base address, a model
+name that exists on that provider and supports tool calls, and then restart. A wrong value shows up later as "No AI model is configured" or "the provider refused the key". `npm run llm:check` compares models but does not set anything up.
+
+**What Kushal wants:** one guided place to **enter the key, pick the provider, and pick the model**, as part of `.env` setup.
+
+**Shape (recommended; not built).**
+- **`npm run setup:ai`**, a prompt in the terminal, and the same step inside the future `setup:env`:
+  1. *Provider:* a short list with presets (Groq, Gemini, OpenAI, Anthropic, OpenRouter, Ollama on this machine, Other OpenAI-compatible). A preset fills the driver and the base address.
+  2. *Key:* typed hidden, never printed or logged; skipped for Ollama.
+  3. *Model:* the provider's own list is fetched with the key where the provider offers one, with a recommended default marked (today: Groq `openai/gpt-oss-20b`, Gemini `gemini-3.1-flash-lite`); or type a name.
+  4. *Test:* one tiny call that checks the key, the model, and that the model **answers and can call a tool** (the failure that bit `llm:check`), with the reason in plain words if not. Nothing is written until it passes (or the person says write it anyway).
+  5. *Write:* only the `LLM_*` lines, only the lines that are absent or that the person agreed to change, a dated backup of `.env` first, a newline fix so a value never glues onto the last line (this has happened), and a reminder that the API and gateway must be restarted. It **never touches `ENCRYPTION_KEY`** or any other line.
+- **Inside the app, read-only status on `/ai` (admin):** which provider and model are active, whether the last test call worked, and a **"Test the connection"** button that makes the same single call. It says how to change them (`npm run setup:ai`), because changing a server setting from a web page would put an API key in a database or need a restart.
+- **Open decisions (ask before building):** (1) keep the key only in `.env` (simple, one key for the whole install) or allow **one key per organisation**, stored encrypted in the database (more work, needed if different customers bring their own account); (2) whether `/ai` may *write* the settings later, with the server restarting itself; (3) which providers to ship presets for first; (4) whether the test call may use a real, tiny, paid request.
+- **Why it matters now:** the assistant, the templates and campaign wording all stop working without a valid model, and the first person to deploy (Kushal on Linode, and anyone after) hits this first. CI has no model set, which is also why model-dependent specs skip.
+- **Related:** D-4 (the agent), D-81 (guardrails), D-85 (templates), `docs/18-providers.md` (the drivers and the measured comparison), `scripts/llm-check.ts`.
+
+### The rest of D-9 (still pinned)
+
 
 **What:** an idempotent `npm run setup:env` that generates the required secrets, and eventually
 a `SecretsDriver` (Infisical, OpenBao, AWS Secrets Manager) plus a non-local `KmsDriver` so the
