@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   // The API key and base URL are read at request time inside server components and actions,
   // never inlined into the client bundle. Nothing here may be prefixed NEXT_PUBLIC_.
   reactStrictMode: true,
+  compress: false,
   // Server actions refuse request bodies over 1 MB by default, and the import and attachment
   // uploads go through them. Set just above the API's own limits (20 MB imports, 16 MB
   // attachments) so the API, not Next, is the one that decides what is too large.

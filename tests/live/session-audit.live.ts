@@ -50,15 +50,37 @@ test.describe('session audit', () => {
     let area = 'start';
     let failStreak = 0;
 
+    // What the browser itself reports while a step runs: script errors, console errors, and failed or slow requests. Kept per step so a bug can be traced to the click that caused it.
+    let diag: string[] = [];
+    const flag = (kind: string, text: string): void => { diag.push(`${kind}: ${text}`.slice(0, 200)); };
+    page.on('pageerror', (e) => { flag('page error', e.message); });
+    page.on('console', (m) => { if (m.type() === 'error') flag('console error', m.text()); });
+    page.on('response', (r) => { if (r.status() >= 400 && !/_next\/|favicon/.test(r.url())) flag(`HTTP ${String(r.status())}`, r.url().replace(/^https?:\/\/[^/]+/, '')); });
+    page.on('requestfailed', (r) => { if (!/_next\/|favicon/.test(r.url()) && r.failure()?.errorText !== 'net::ERR_ABORTED') flag('request failed', r.url().replace(/^https?:\/\/[^/]+/, '')); });
+    /** Brings the window to the front before each step, so a click on another window or a moved mouse does not leave the test typing into nothing. */
+    const refocus = async (): Promise<void> => { await page.bringToFront().catch(() => undefined); };
+    /** Failures that come from the window being disturbed (something over the page, a moved element), not from the product. Safe to try once more: they happen before the click lands. */
+    const DISTURBED = /intercepts pointer events|not stable|detached from the DOM|outside of the viewport|Element is not attached/;
+
     /** Runs one step, times it, keeps going if it fails, and takes a screenshot when it does. */
     async function step(name: string, body: () => Promise<string | void>): Promise<boolean> {
       const started = Date.now();
       let ok = true; let note = '';
-      try { note = (await body()) ?? ''; }
+      diag = [];
+      await refocus();
+      try {
+        try { note = (await body()) ?? ''; }
+        catch (first) {
+          if (!DISTURBED.test(String(first))) throw first;
+          await refocus(); await page.mouse.move(2, 2).catch(() => undefined);
+          note = `retried once after the window was disturbed. ${(await body()) ?? ''}`;
+        }
+      }
       catch (error) {
         ok = false; note = String(error instanceof Error ? error.message : error).split('\n').slice(0, 3).join(' ').slice(0, 300);
         await page.screenshot({ path: join(OUT, `FAILED-${String(rows.length + 1).padStart(3, '0')}.png`) }).catch(() => undefined);
       }
+      if (diag.length > 0) note = `${note}${note === '' ? '' : ' | '}browser reported: ${[...new Set(diag)].slice(0, 4).join('; ')}`.slice(0, 600);
       const row: Row = { n: rows.length + 1, area, name, ms: Date.now() - started, startedAt: new Date(started).toISOString(), ok, note };
       rows.push(row);
       // Written as it happens, so a run that is stopped or crashes still leaves its timings, and the log can be followed live.
@@ -206,6 +228,35 @@ test.describe('session audit', () => {
     await step('Refresh button', async () => { await page.getByRole('link', { name: 'Refresh' }).click(); await page.waitForLoadState('domcontentloaded'); });
     await step('open the first contact row', async () => { await page.locator('summary').first().click({ timeout: 8_000 }); });
     await step('Dates and order box opens', async () => { await page.locator('summary', { hasText: 'Dates and order' }).click(); });
+    await step('Custom fields panel opens (scrolls, searches)', async () => {
+      await page.locator('summary', { hasText: /^Custom fields/ }).click();
+      const search = page.getByLabel('Search fields');
+      if (await search.count() > 0) { await search.fill('zzz-no-such-field'); await expect(page.getByText('No field matches.')).toBeVisible(); await search.fill(''); }
+      return `${await page.locator('summary', { hasText: /^Custom fields/ }).innerText()}`;
+    });
+    await step('Manage tags opens; Delete tag asks "Are you sure?" and Cancel keeps it', async () => {
+      const manage = page.locator('summary', { hasText: /^Manage tags/ });
+      if (await manage.count() === 0) return 'no tags yet, so the manager is hidden';
+      await manage.click();
+      await page.getByRole('button', { name: /^Delete tag / }).first().click();
+      await expect(page.getByRole('alertdialog')).toBeVisible();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    });
+    await step('Tag many at once: Preview with no tag chosen answers within 8 s (asks for a tag)', async () => {
+      await page.locator('summary', { hasText: 'Tag many at once' }).click();
+      const began = Date.now();
+      await page.getByRole('button', { name: 'Preview', exact: true }).first().click();
+      try {
+        await expect(page.getByText(/pick a tag|choose a tag first|Pick a tag/i).first()).toBeVisible({ timeout: 8_000 });
+        return `answered after ${((Date.now() - began) / 1000).toFixed(1)} s`;
+      } catch {
+        const stuck = await page.getByRole('button', { name: /Counting/ }).count();
+        // Leave the stuck page so the steps after it measure their own screens.
+        await page.goto('/contacts');
+        throw new Error(stuck > 0 ? 'BUG: the button stayed on "Counting…" and the page never showed the result (server answered with a redirect that the browser did not follow)' : 'no answer was shown within 8 s');
+      }
+    });
     await press('Import contacts button', page.getByRole('link', { name: 'Import contacts' }).first(), page.getByRole('heading', { name: /import contacts/i }).first());
     if (!existsSync(CSV)) {
       await step('the CSV file exists', async () => { throw new Error(`file not found: ${CSV}`); });
@@ -254,6 +305,36 @@ test.describe('session audit', () => {
         await expect(done).toBeVisible({ timeout: 60_000 });
         return (await done.first().innerText()).replace(/\s+/g, ' ').slice(0, 200);
       });
+      // The newest file's name wins (PR #107): a file with the first person's number and another name is previewed (listed as replaced), imported, and then undone by importing the original again.
+      const first = readPeople(CSV)[0];
+      if (first !== undefined) {
+        const renamedCsv = join(OUT, 'renamed.csv');
+        const head = readFileSync(CSV, 'utf8').split('\n')[0] ?? '';
+        writeFileSync(renamedCsv, `${head}\nRenamed By Audit,${first.phone},${first.email},${first.city}\n`);
+        await step('import: start a file with a new name for someone already in the book', async () => {
+          await page.getByRole('button', { name: /Start over|Import another/ }).first().click();
+          await page.locator('input[type="file"]').setInputFiles(renamedCsv);
+          await expect(page.getByText(/rows ·/)).toBeVisible({ timeout: 30_000 });
+        });
+        await step('import: Preview lists the person whose name would be replaced', async () => {
+          await page.getByRole('button', { name: 'Preview' }).click();
+          const box = page.getByText(/will have their name replaced/);
+          await expect(box).toBeVisible({ timeout: 30_000 });
+          return (await page.getByRole('alert', { name: 'Names replaced' }).innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 220);
+        });
+        await shot('05b-import-name-replaced-preview');
+        await step('import: Import the new name', async () => { await page.getByRole('button', { name: 'Import', exact: true }).click(); await expect(page.getByText(/✓ Imported/)).toBeVisible({ timeout: 60_000 }); });
+        await step('import: undo it by importing the original file again', async () => {
+          await page.getByRole('button', { name: /Start over|Import another/ }).first().click();
+          await page.locator('input[type="file"]').setInputFiles(copy);
+          await page.getByRole('button', { name: 'Upload anyway' }).click();
+          await expect(page.getByText(/rows ·/)).toBeVisible({ timeout: 30_000 });
+          await page.getByRole('button', { name: 'Preview' }).click();
+          await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible({ timeout: 30_000 });
+          await page.getByRole('button', { name: 'Import', exact: true }).click();
+          await expect(page.getByText(/✓ Imported/)).toBeVisible({ timeout: 60_000 });
+        });
+      }
     }
     const search = async (label: string, q: string, expectation: 'some' | 'none'): Promise<void> => {
       await step(`search "${q}"`, async () => {
@@ -306,24 +387,44 @@ test.describe('session audit', () => {
       await pick('senderIdentityId', sender?.label ?? SENDER_LABEL);
       await pick('fromTagId', TAG);
     });
-    await step('Create draft', async () => {
-      await page.getByRole('button', { name: /create draft/i }).click();
+    await step('template picker and "Build a new template" link are on the form', async () => {
+      await expect(page.getByText('Start from a saved template')).toBeVisible();
+      await expect(page.getByRole('link', { name: /Build a new template/ })).toBeVisible();
+    });
+    await step('Create draft (double-clicked on purpose: only one draft may appear)', async () => {
+      await page.getByRole('button', { name: /create draft/i }).dblclick();
       await expect(page).toHaveURL(/\/broadcast\/[0-9a-f-]{36}/, { timeout: 20_000 });
       campaignId = /\/broadcast\/([0-9a-f-]{36})/.exec(page.url())![1]!;
       await expect(page.getByText(/Draft/).first()).toBeVisible();
+      await expect(page.getByText(/Draft created/)).toBeVisible();
     });
     await shot('06-campaign-draft');
+    await step('only one draft with this name exists after the double click', async () => {
+      const list = await api<Array<{ name: string; status: string }>>('/campaigns');
+      const same = list.filter((c) => c.name === campaignName);
+      expect(same, `${String(same.length)} campaigns named "${campaignName}"`).toHaveLength(1);
+    });
+    await step('the 14-day warning names the earlier campaign, and the overrides popup is readable', async () => {
+      const warn = page.getByText(/already messaged in another campaign/);
+      const warned = await warn.count() > 0;
+      await page.getByRole('button', { name: 'Start with overrides…' }).click();
+      await expect(page.getByRole('heading', { name: 'Start with overrides' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Start, lifting the ticked rules' })).toBeVisible();
+      await shot('06b-overrides-popup');
+      await page.getByRole('button', { name: 'Back' }).click();
+      return warned ? (await warn.first().innerText()).slice(0, 160) : 'no cooldown warning (nobody in this audience was messaged recently)';
+    });
     await step('Start the campaign', async () => {
       if (process.env.SESSION_OVERRIDE_GATES === '1') {
-        // Test Phone One was messaged moments ago by the Inbox step, so the 14-day "cooldown" gate would skip them. An admin may lift the
-        // recipient-experience gates for a campaign, with a written reason that is audited; this is the same call the Start button's override uses.
-        const started = await page.request.post(`${API}/campaigns/${campaignId}/start`, {
-          headers: await csrf(), data: { overrideGates: ['engagement', 'cooldown', 'duplicate_campaign'], reason: 'session audit: messages to the operator\'s own test numbers' }
-        });
-        expect(started.status(), await started.text()).toBeLessThan(300);
-        await page.reload();
-        await expect(page.getByText(/Running|Completed/i).first()).toBeVisible({ timeout: 30_000 });
-        return 'started with the admin override of the recipient gates (audited), because the same people were messaged moments earlier';
+        // The same people were messaged moments ago by the Inbox step, so the recipient-experience gates would skip them. An admin may lift them with a written reason (audited): done through the Start-with-overrides popup.
+        await page.getByRole('button', { name: 'Start with overrides…' }).click();
+        const dialog = page.getByRole('dialog').or(page.getByRole('alertdialog')).first();
+        for (const label of [/Engagement lock/, /Cooldown/, /Duplicate campaign/]) await page.getByLabel(label).check();
+        await page.getByPlaceholder(/Why\?/).fill('session audit: messages to the operator\'s own test numbers');
+        await page.getByRole('button', { name: 'Start, lifting the ticked rules' }).click();
+        await dialog.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+        await expect(page.getByText(/Running|Completed|Starting/i).first()).toBeVisible({ timeout: 30_000 });
+        return 'started through the overrides popup (audited), because the same people were messaged moments earlier';
       }
       await page.getByRole('button', { name: 'Start', exact: true }).click();
       await expect(page.getByText(/Running|Completed/i).first()).toBeVisible({ timeout: 30_000 });
@@ -339,6 +440,15 @@ test.describe('session audit', () => {
     });
     await shot('07-campaign-done');
     await step('campaign page after reload', async () => { await page.reload(); await expect(page.getByText(campaignName).first()).toBeVisible(); });
+
+    area = '5b linked numbers';
+    await press('open Linked numbers', nav('Linked numbers'), page.getByRole('heading', { name: 'Linked numbers', exact: true }));
+    await step('Remove this number asks "Are you sure?" and Cancel keeps it (not confirmed)', async () => {
+      await page.getByRole('button', { name: 'Remove this number' }).first().click();
+      await expect(page.getByRole('alertdialog')).toBeVisible();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    });
 
     // ───────────────────────────────────────────────────── 6 · team: demote the only admin
     area = '6 team';
