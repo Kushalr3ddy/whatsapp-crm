@@ -105,6 +105,8 @@ is not re-proposed.
 | D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
 | D-89 | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
 | D-90 | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
+| D-91 | A chat the AI is handling cannot be typed into until a person overrides and stops the AI | 📌 pinned (Kushal, 2026-10-22) |
+| D-92 | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2821,4 +2823,41 @@ Pinned to come back to; not started.
 **Contacts are never duplicated by re-importing a file:** the same phone or email always matches the same person (unique index `contact_identity_lookup_uidx`). What piles up are the records around it: import runs (marked replaced by "Upload anyway"), file-name tags, draft campaigns. Merging two *people* (different phone spellings) would mean merging their conversations, so `dedup:cleanup` only lists them.
 
 Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
+
+---
+
+## D-91 · A chat the AI is handling cannot be typed into until a person overrides and stops the AI — pinned (Kushal, 2026-10-22)
+
+**What:** while a conversation is **assigned to the AI assistant** (its assignee is the assistant's bot user, `app_user.is_bot`), the chat's text box is **blocked for people**. A person takes the chat by pressing **Override and stop the AI** first; only after that does the text box work. If they try to type or send before overriding, show a clear warning instead of letting it through:
+
+> *The AI has been assigned this chat. Please override and stop the AI before you can take over the chat here.*
+
+**Why:** two voices answering one customer at once (the AI and a person) is confusing for the customer and can contradict itself; and a person typing into a chat the AI also answers risks both replying.
+
+**Shape (to confirm when built):**
+- **Screen** (`apps/web/app/inbox/[id]/composer.tsx`, `ai-notice.tsx`, `thread-controls.tsx`): the box is disabled and shows the warning when the person clicks or focuses it or presses send; one button, **Override and stop the AI**, does the take-over.
+- **Server** (`apps/api/src/routes/messages.ts`, which already refuses with `THREAD_ASSIGNED` when another human owns a thread): refuse a person's message to an AI-assigned chat with a clear `AI_ASSIGNED` code, so the rule holds for the API and not only the screen.
+- **Override** = assign the chat to the person, which stops the assistant for this chat (it only answers chats assigned to it, `packages/core/src/ai-reply.ts`), and cancels any AI reply still queued for it. Audited like other assignment changes. The AI does not resume by itself; a person hands the chat back on purpose.
+
+**To decide when we build it:** may any agent override, or admins only; whether the AI may be handed the chat back with one click; what the banner says to a second person looking at the same chat.
+
+**Test:** a browser test that an AI-assigned chat's box is disabled, shows the warning, and works after Override; an integration test that the API refuses (tag it with the next R-number when it is built). Related: D-81, D-84, D-85, D-86.
+
+Pinned to come back to; not started.
+
+---
+
+## D-92 · A separate feedback portal: testers' Google Doc into GitHub issues, with AI help and follow-up questions later — pinned (Kushal, 2026-10-22)
+
+**What:** feedback intake lives **apart from the CRM**: not in its app, API or database. Decided so far: **no new server for now.** A **scheduled GitHub Actions worker** (every 5 to 10 minutes, or on demand) reads the shared Google Doc where Mikhil and the alpha testers paste their screenshots and describe each problem in their own words, and turns each problem into a GitHub issue (`bug`, `alpha-feedback`, `needs-triage`), never twice (a hidden marker per heading), and adds a comment when a problem is edited later. It feeds the same flow as `npm run feedback:import` (docs/39).
+
+**Parsing:** **no AI needed for the template** ([`feedback/TEMPLATE.md`](feedback/TEMPLATE.md): a heading per problem, then lines such as *Which screen:* and *What happened instead:*): plain code reads it exactly. **AI later** (pinned): for messy free-text blocks (pull out screen, steps, expectation) and to **draft the clarifying questions** to send back. Phone numbers and e-mail addresses are masked before anything is posted; **screenshots stay in the Google Doc** (private) and are only referred to, because the repository is public.
+
+**Clarifying questions:** for now **Kushal asks the testers himself** (there are only the other dev and a few alpha testers). For production level: the worker (or a later portal) posts the questions into the Doc as a comment or a reply and tracks who answered; the AI drafts them.
+
+**Needs from Kushal to switch on:** a Google service account (read-only) whose key is stored as the GitHub secret `GOOGLE_SERVICE_ACCOUNT_JSON`, the document shared with that account, and the doc's id as `FEEDBACK_DOC_ID`. Until those exist the worker does nothing and does not fail. (Scheduled workflows on a public repository are paused by GitHub after 60 days without repository activity.)
+
+**Later, if it outgrows this:** a small standalone portal (its own server and storage, never the CRM database) with logins for the team and testers.
+
+Pinned to come back to; the ingest worker is the first slice.
 
