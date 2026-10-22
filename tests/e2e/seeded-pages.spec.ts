@@ -11,7 +11,7 @@ import { signIn, nav, CREDS_MISSING } from './helpers';
 test.describe('seeded pages', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
 
-  test('inbox: filters, opening a thread, a note, resolve and reopen', async ({ page }) => {
+  test('[R-009] inbox: filters, opening a thread, a note, resolve and reopen', async ({ page }) => {
     await signIn(page);
     await page.goto('/inbox');
     // Thread links, found by their href so the locator survives the list changing under a filter.
@@ -61,7 +61,7 @@ test.describe('seeded pages', () => {
     await expect(page.getByRole('button', { name: 'Resolve', exact: true })).toBeVisible();
   });
 
-  test('contacts: search narrows the list', async ({ page }) => {
+  test('[R-009] contacts: search narrows the list', async ({ page }) => {
     await signIn(page);
     await page.goto('/contacts');
     await page.getByLabel('Search contacts').fill('Farhan');
