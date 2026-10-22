@@ -28,6 +28,7 @@ Which layer? Pick the cheapest that would really have caught it: **integration**
 - **`bug-gate`** (`tests/regression/bug-gate.mjs`): a branch named `fix/…` (or a PR labelled `bug`) must add or change a test with a `[R-nnn]` tag in its title, and that bug's registry row must be `guarded`. Escape hatch for a fix that truly cannot have a test: label the PR `no-regression-test` and say why in the description.
 - **`regress-smoke`**: also runs the browser tests of the R-numbers the PR touches (`tests/regression/changed-ids.mjs` reads them from the diff), on a production build, and posts one **comment on the PR** with the report (updated every run).
 - **Retry once:** a test that fails and then passes on the retry is shown in the report as **flaky**, not green-washed. To take a known-flaky test out of the blocking checks while it is fixed, put `@flaky` in its title (the nightly run, still to come, keeps running it).
+- **Nightly:** a scheduled run (02:00 India time, or on demand) of the whole browser suite on a production build, flaky-tagged tests included. If it goes red it opens one issue (`Nightly regression failed`, label `regression-nightly`) and closes it when green again; tests that passed only on a retry go in one `Flaky tests (auto)` issue. `npm run regress:nightly` runs the same thing locally.
 - The PR template (`.github/pull_request_template.md`) walks through the same checklist.
 
 ## Phone numbers in tests (R-009)

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # The regression run.   npm run regress        everything, on a PRODUCTION build of the web app (your machine)
+#                       npm run regress:nightly the nightly CI run: the whole browser suite on a production build, flaky-tagged tests included
 #                       npm run regress:ci     the CI version: registry check + the @smoke browser tests + the speed probe, production build
 # Needs the API and gateway already running (npm run dev:all --no-web, or the CI job's own start-up). Starts only the web app itself, as a
 # production build on port 3101 (so it does not touch a dev server on 3001), and stops it again. Writes regression-report.md.
@@ -35,7 +36,8 @@ trap 'kill $WEB 2>/dev/null' EXIT
 timeout 90 bash -c "until curl -sf http://localhost:$PORT/login >/dev/null; do sleep 1; done" || { echo "the production web server did not start"; tail -20 "$OUT/web.log"; exit 5; }
 
 PATTERN="@smoke|speed probe"; [ -n "$IDS" ] && PATTERN="$PATTERN|$(echo "$IDS" | tr ',' '|')"
-if [ "$MODE" = local ]; then GREP=(); else GREP=(--grep "$PATTERN"); fi
+if [ "$MODE" = local ] || [ "$MODE" = nightly ]; then GREP=(); else GREP=(--grep "$PATTERN"); fi
+[ "$MODE" = nightly ] && export REGRESS_INCLUDE_FLAKY=1
 step "browser tests on the production build ($([ "$MODE" = local ] && echo 'the whole suite' || echo "smoke set + speed probe${IDS:+ + $IDS}"))"
 REGRESS=1 E2E_BASE_URL="http://localhost:$PORT" PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/playwright.json" \
   npx playwright test --reporter=list,json "${GREP[@]}" || FAIL=1

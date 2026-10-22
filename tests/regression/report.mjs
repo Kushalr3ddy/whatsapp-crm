@@ -54,5 +54,6 @@ if (failed.length > 0) { lines.push('', '## Failures', ''); for (const t of fail
 const strict = process.env.REGRESS_STRICT_BUDGETS === '1';
 lines.push('', over > 0 ? `${String(over)} screen(s) over budget (${strict ? 'strict mode: counts as a failure' : 'warning only'}).` : 'All timed screens are within budget.');
 writeFileSync('regression-report.md', lines.join('\n') + '\n');
+writeFileSync(`${dir}/summary.json`, JSON.stringify({ total: tests.length, passed: count('passed'), failed: failed.length, flaky: tests.filter((t) => t.status === 'flaky').map((t) => t.title), overBudget: over }, null, 2));
 console.log(lines.join('\n'));
 process.exit(failed.length > 0 || (strict && over > 0) ? 1 : 0);

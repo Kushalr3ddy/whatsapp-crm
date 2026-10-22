@@ -25,6 +25,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   // One retry in CI: a test that fails once and then passes is reported as FLAKY (tests/regression/report.mjs), not hidden and not a red PR.
   retries: process.env.CI ? 1 : 0,
+  // A test with @flaky in its title is out of every blocking run while it is being fixed; the nightly run sets REGRESS_INCLUDE_FLAKY=1 to keep running it.
+  ...(process.env.REGRESS_INCLUDE_FLAKY === '1' ? {} : { grepInvert: /@flaky/ }),
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],
