@@ -242,6 +242,42 @@ describe('committing', () => {
     // M9: the blank cell must not win over a real name.
     expect((rows as unknown as Array<{ name: string }>)[0]!.name).toBe('Priya Sharma');
   });
+
+  it('replaces a name with the newest file\'s, says so on the preview, and keeps the old one in the audit log', async () => {
+    const first = await upload(THREE_ROWS);
+    await run(first.body.data.id, false);
+
+    const second = await upload('Full Name,Mobile\nShivaraman,9876500001\n');
+    const preview = await run(second.body.data.id, true);
+    expect(preview.body.data).toMatchObject({ updated: 1, warnings: 1 });
+
+    const committed = await run(second.body.data.id, false);
+    expect(committed.body.data).toMatchObject({ updated: 1, dryRun: false });
+
+    const rows = await db.execute(sql`
+      SELECT c.display_name AS name FROM contact c
+      JOIN contact_identity ci ON ci.contact_id = c.id
+      WHERE ci.value_normalized = '+919876500001' AND c.org_id = ${orgId}`);
+    expect((rows as unknown as Array<{ name: string }>)[0]!.name).toBe('Shivaraman');
+
+    const audit = await db.execute(sql`
+      SELECT before, after FROM audit_log
+      WHERE org_id = ${orgId} AND action = 'contact.name_replaced_by_import'`);
+    const logged = audit as unknown as Array<{ before: { displayName: string }; after: { displayName: string } }>;
+    expect(logged).toHaveLength(1);
+    expect(logged[0]!.before.displayName).toBe('Priya Sharma');
+    expect(logged[0]!.after.displayName).toBe('Shivaraman');
+  });
+
+  it('writes no audit row when the same name comes in again', async () => {
+    const first = await upload(THREE_ROWS);
+    await run(first.body.data.id, false);
+    const again = await upload('Full Name,Mobile\nPriya Sharma,9876500001\n');
+    await run(again.body.data.id, false);
+    const audit = await db.execute(sql`
+      SELECT count(*)::int AS n FROM audit_log WHERE org_id = ${orgId} AND action = 'contact.name_replaced_by_import'`);
+    expect((audit as unknown as Array<{ n: number }>)[0]!.n).toBe(0);
+  });
 });
 
 describe('bad rows', () => {

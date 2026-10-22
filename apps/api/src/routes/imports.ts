@@ -229,7 +229,7 @@ export function importsRouter(storage: StorageDriver, maxBytes: number, defaultC
       // One tenant transaction per batch of rows, opened through the same runner every other
       // route uses — so an import is subject to row-level security exactly like a request is.
       const summary = await runImport(req.tenant!, {
-        orgId, importRunId: runId, table, mapping, dryRun: parsed.data.dryRun
+        orgId, importRunId: runId, table, mapping, dryRun: parsed.data.dryRun, actor: auditActor(req)
       });
 
       // Tagging happens in the same transaction that marks the run committed, so a run is never

@@ -128,6 +128,13 @@ export const AUDIT = {
   importUploaded: 'import.uploaded',
   importDryRun: 'import.dry_run',
   importCommitted: 'import.committed',
+  // An import carried a different name for a person already in the book: the newest name wins and
+  // the old one is kept here, before and after.
+  contactNameReplaced: 'contact.name_replaced_by_import',
+
+  // The clean-up script (`npm run dedup:cleanup`) merging or cancelling copies left by re-importing the same files.
+  tagMergedByCleanup: 'tag.merged_by_cleanup',
+  campaignCancelledByCleanup: 'campaign.cancelled_by_cleanup',
 
   // Campaigns. Starting one is the act worth recording — it is the moment an audience is
   // frozen and a number commits to sending to all of them.

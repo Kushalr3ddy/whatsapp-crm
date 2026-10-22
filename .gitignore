@@ -70,3 +70,4 @@ mockups/
 # Dated backups the AI settings tab makes of the env file before changing it (they hold keys)
 .env.bak-*
 *.env.bak-*
+dedup-report-*.csv
