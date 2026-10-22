@@ -7,6 +7,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 MODE=${1:-local}
+shift || true
+# --ids R-001,R-002 : also run these bugs' browser tests (a PR's own R-numbers) in the CI-sized run
+IDS=""; while [ $# -gt 0 ]; do case "$1" in --ids) IDS="${2:-}"; shift 2;; *) shift;; esac; done
 OUT=test-results/regress; rm -rf "$OUT"; mkdir -p "$OUT"
 FAIL=0
 step() { echo; echo "== $1"; }
@@ -31,8 +34,9 @@ WEB=$!
 trap 'kill $WEB 2>/dev/null' EXIT
 timeout 90 bash -c "until curl -sf http://localhost:$PORT/login >/dev/null; do sleep 1; done" || { echo "the production web server did not start"; tail -20 "$OUT/web.log"; exit 5; }
 
-if [ "$MODE" = local ]; then GREP=(); else GREP=(--grep "@smoke|speed probe"); fi
-step "browser tests on the production build ($([ "$MODE" = local ] && echo 'the whole suite' || echo 'smoke set + speed probe'))"
+PATTERN="@smoke|speed probe"; [ -n "$IDS" ] && PATTERN="$PATTERN|$(echo "$IDS" | tr ',' '|')"
+if [ "$MODE" = local ]; then GREP=(); else GREP=(--grep "$PATTERN"); fi
+step "browser tests on the production build ($([ "$MODE" = local ] && echo 'the whole suite' || echo "smoke set + speed probe${IDS:+ + $IDS}"))"
 REGRESS=1 E2E_BASE_URL="http://localhost:$PORT" PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/playwright.json" \
   npx playwright test --reporter=list,json "${GREP[@]}" || FAIL=1
 

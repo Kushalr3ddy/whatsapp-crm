@@ -24,6 +24,12 @@ The API (and gateway) must already be running (`npm run dev:all -- --no-web`); t
 
 Which layer? Pick the cheapest that would really have caught it: **integration** (`tests/integration`, vitest, real database, no browser) for rules and data; **e2e** (`tests/e2e`, Playwright) for something a person sees or clicks; **simulation** (`tests/simulation`) for anti-ban behaviour over time.
 
+## What CI checks on a pull request that fixes a bug
+- **`bug-gate`** (`tests/regression/bug-gate.mjs`): a branch named `fix/…` (or a PR labelled `bug`) must add or change a test with a `[R-nnn]` tag in its title, and that bug's registry row must be `guarded`. Escape hatch for a fix that truly cannot have a test: label the PR `no-regression-test` and say why in the description.
+- **`regress-smoke`**: also runs the browser tests of the R-numbers the PR touches (`tests/regression/changed-ids.mjs` reads them from the diff), on a production build, and posts one **comment on the PR** with the report (updated every run).
+- **Retry once:** a test that fails and then passes on the retry is shown in the report as **flaky**, not green-washed. To take a known-flaky test out of the blocking checks while it is fixed, put `@flaky` in its title (the nightly run, still to come, keeps running it).
+- The PR template (`.github/pull_request_template.md`) walks through the same checklist.
+
 ## Speed budgets
 `budgets.json` holds click-to-ready limits in milliseconds. The speed probe (`tests/e2e/regression-budgets.spec.ts`) times the main screens and the report compares them. A slow screen **warns**; `REGRESS_STRICT_BUDGETS=1 npm run regress` makes it fail. Re-measure in depth with `node scripts/measure-contacts.mjs` and `node scripts/measure-api.mjs`, and compare two full audits with `node tests/live/session-compare.mjs`.
 

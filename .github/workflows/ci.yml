@@ -172,11 +172,34 @@ jobs:
         if: failure()
         run: tail -n 100 /tmp/api.log /tmp/gateway.log /tmp/web.log || true
 
+  # A pull request that fixes a bug must add or change a test with that bug's [R-nnn] tag, and the bug must be `guarded` in the registry
+  # (tests/regression/bug-gate.mjs). Applies to fix/* branches and PRs labelled `bug`; the label `no-regression-test` is the explained escape hatch.
+  bug-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: registry and tests agree
+        run: node tests/regression/check-registry.mjs
+      - name: a fix must come with its test
+        env:
+          BRANCH: ${{ github.head_ref }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node tests/regression/bug-gate.mjs "origin/${{ github.base_ref }}"
+
   # The same browser tests, but on a PRODUCTION build of the web app, for the bugs that only exist there (R-001: forms hanging on "Creating…"
   # because Next's own gzip never finished a redirecting response). Only the @smoke set and the speed probe, so it stays short.
   regress-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: write
     services:
       postgres:
         image: postgres:16-alpine
@@ -208,6 +231,8 @@ jobs:
       TEST_PASSWORD: E2eTest!pass99
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -225,11 +250,24 @@ jobs:
           npm run dev > /tmp/api.log 2>&1 &
           npm run gateway > /tmp/gateway.log 2>&1 &
           timeout 120 bash -c 'until curl -sf http://localhost:3000/ready >/dev/null; do sleep 2; done'
-      - name: regression (registry, production build, smoke tests, speed probe)
-        run: npm run regress:ci
+      - name: which bugs does this PR touch?
+        id: ids
+        if: github.event_name == 'pull_request'
+        run: echo "ids=$(node tests/regression/changed-ids.mjs "origin/${{ github.base_ref }}" HEAD)" >> "$GITHUB_OUTPUT"
+      - name: regression (registry, production build, smoke tests, speed probe, this PR's own bugs)
+        run: npm run regress:ci -- --ids "${{ steps.ids.outputs.ids }}"
       - name: the report
         if: always()
         run: cat regression-report.md || true
+      # One comment on the PR, updated on every run, with the report (pass/fail, each known bug still guarded, speed table, flaky tests).
+      - name: comment the report on the PR
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f regression-report.md ] || exit 0
+          { echo '<!-- regression-report -->'; cat regression-report.md; } > /tmp/comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --edit-last --create-if-none --body-file /tmp/comment.md || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
