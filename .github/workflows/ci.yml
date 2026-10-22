@@ -87,8 +87,14 @@ jobs:
   # The anti-ban simulation is its own workflow now (.github/workflows/simulation.yml): it takes
   # several minutes and has its own trigger rules, so it neither slows this job nor hides in it.
 
-  e2e:
+  # The browser tests, split across 3 machines that run at the same time (each with its own database and stack). GitHub provides these machines:
+  # free and parallel on a public repository. The job named `e2e` below is the single check that branch protection requires; it passes only if all 3 shards do.
+  e2e-shard:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     services:
       postgres:
@@ -135,8 +141,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: cache the Playwright browser
+        id: pw
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: install chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium; else npx playwright install --with-deps chromium; fi
 
       - name: migrate dev database
         run: npm run db:migrate
@@ -157,20 +170,31 @@ jobs:
           npm run web > /tmp/web.log 2>&1 &
           timeout 120 bash -c 'until curl -sf http://localhost:3000/ready >/dev/null; do sleep 2; done'
           timeout 120 bash -c 'until curl -sf http://localhost:3001/login >/dev/null; do sleep 2; done'
-      - name: e2e
-        run: npm run test:e2e
+      - name: e2e (shard ${{ matrix.shard }} of 3)
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/3
 
       # The page snapshot, trace and screenshot of every failed browser test, so a failure can be looked at, not guessed at.
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: e2e-failures
+          name: e2e-failures-shard-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
 
       - name: server logs on failure
         if: failure()
         run: tail -n 100 /tmp/api.log /tmp/gateway.log /tmp/web.log || true
+
+  # One check named `e2e`: green only when every shard is green.
+  e2e:
+    needs: e2e-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: all shards must have passed
+        run: |
+          echo "shards: ${{ needs.e2e-shard.result }}"
+          [ "${{ needs.e2e-shard.result }}" = "success" ]
 
   # A pull request that fixes a bug must add or change a test with that bug's [R-nnn] tag, and the bug must be `guarded` in the registry
   # (tests/regression/bug-gate.mjs). Applies to fix/* branches and PRs labelled `bug`; the label `no-regression-test` is the explained escape hatch.
@@ -238,8 +262,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: cache the Next.js build
+        uses: actions/cache@v4
+        with:
+          path: apps/web/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('apps/web/**/*.ts', 'apps/web/**/*.tsx') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - name: cache the Playwright browser
+        id: pw
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: install chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium; else npx playwright install --with-deps chromium; fi
       - name: migrate, provision the e2e admin, seed
         run: |
           npm run db:migrate

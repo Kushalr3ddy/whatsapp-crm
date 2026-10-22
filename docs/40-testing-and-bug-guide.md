@@ -57,7 +57,7 @@ A fix that truly cannot have a test (a wording change, say): put the label `no-r
 | check | what it does | if it is red |
 |---|---|---|
 | **check** | typecheck, lint, all unit and integration tests | run `npm run typecheck`, `npm run lint`, `npm test` locally and read the error |
-| **e2e** | the browser tests on the dev server with a fake WhatsApp number | open the failed run → "e2e" → the failing test name and the line; CI saves the page snapshot, trace and screenshot (artifact **e2e-failures**) |
+| **e2e** | the browser tests on the dev server with a fake WhatsApp number, **split across 3 machines running at once** (`e2e-shard` 1, 2, 3); `e2e` is green only when all 3 are | open the failed run → the failing shard → the test name and the line; CI saves the page snapshot, trace and screenshot (artifact **e2e-failures-shard-N**). Each shard has its own fresh database, so a test must not depend on data another test file creates |
 | **secrets-scan** | looks for passwords/keys committed by mistake | remove the secret from the commit **and** change it; never just delete it later |
 | **regress-smoke** | builds the real production app and runs the smoke tests plus the tests of the bugs this PR touches; posts a **report comment** on the PR | read the comment: it lists each known bug as ✅ or ❌ and a speed table |
 | **bug-gate** | a PR named `fix/…` (or labelled `bug`) must add a test with `[R-nnn]` in its name, and the bug must be `guarded` | follow the message: it says exactly what is missing |
@@ -67,6 +67,11 @@ A fix that truly cannot have a test (a wording change, say): put the label `no-r
 **`main` is protected** (set 2026-10-22): a PR cannot merge unless `check`, `e2e` and `secrets-scan` pass, nobody (not even an admin) can push straight to `main` or force-push it, and branches are deleted after merging. When the regression framework and the gate are on `main`, add their checks to the list with `CHECKS='["check","e2e","secrets-scan","regress-smoke","bug-gate"]' bash scripts/protect-main.sh --yes`.
 
 **Merging:** Kushal merges. A PR with the label `automerge` merges itself once the checks are green (for docs/tests-only changes). **Stacked PRs** (one built on another) merge in order, bottom first.
+
+## Why CI is split and cached (and what to watch)
+- **Sharding:** the ~30 browser test files used to run one after another on one GitHub machine (about 4.5 minutes). They now run as 3 jobs side by side, each on its own GitHub-provided machine (free and parallel on a public repository), so the wall-clock time is about a third. A small final job named `e2e` collects the three results; that single name is what branch protection requires.
+- **Caching:** the Chromium browser for the tests and the Next.js build cache are saved between runs, so a run does not download and rebuild them each time. A changed `package-lock.json` or changed web code refreshes the cache automatically.
+- **Watch for:** a test that needs data created by *another* test file passes on one machine and fails when the files are split. Make every test create what it needs (as the R-007 test does).
 
 ## Running everything yourself, before a deploy
 ```bash
