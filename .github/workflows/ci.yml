@@ -148,8 +148,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: install chromium
+        # Retries: the package mirror sometimes answers 403 or times out, which used to fail a whole PR before any test ran.
         run: |
-          if [ "${{ steps.pw.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium; else npx playwright install --with-deps chromium; fi
+          for attempt in 1 2 3; do
+            if [ "${{ steps.pw.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium && break; else npx playwright install --with-deps chromium && break; fi
+            echo "install failed (attempt $attempt), retrying in 15 s"; sleep 15
+          done
+          npx playwright install chromium
 
       - name: migrate dev database
         run: npm run db:migrate
@@ -276,8 +281,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: install chromium
+        # Retries: the package mirror sometimes answers 403 or times out, which used to fail a whole PR before any test ran.
         run: |
-          if [ "${{ steps.pw.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium; else npx playwright install --with-deps chromium; fi
+          for attempt in 1 2 3; do
+            if [ "${{ steps.pw.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium && break; else npx playwright install --with-deps chromium && break; fi
+            echo "install failed (attempt $attempt), retrying in 15 s"; sleep 15
+          done
+          npx playwright install chromium
       - name: migrate, provision the e2e admin, seed
         run: |
           npm run db:migrate
