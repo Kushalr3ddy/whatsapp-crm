@@ -107,6 +107,8 @@ is not re-proposed.
 | D-90 | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
 | D-91 | A chat the AI is handling cannot be typed into until a person overrides and stops the AI | 📌 pinned (Kushal, 2026-10-22) |
 | D-92 | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
+| D-93 | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
+| D-94 | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2860,4 +2862,37 @@ Pinned to come back to; not started.
 **Later, if it outgrows this:** a small standalone portal (its own server and storage, never the CRM database) with logins for the team and testers.
 
 Pinned to come back to; the ingest worker is the first slice.
+
+---
+
+## D-93 · A separate log for the AI assistant, through the whole process — pinned (Kushal, 2026-10-22)
+
+**What:** the AI assistant gets **its own log**, apart from the gateway's and the API's, so one chat's AI reply can be followed from start to finish without searching a mixed stream: *inbound message received → is the chat assigned to the assistant → consent, on/off and daily-cap checks → do-not-contact check → the instructions and the rules used (template id, version) → model call (provider, model, how long, tokens) → any tool call (hand-over, start a campaign) → the reply queued → gateway pacing and send → delivered/read*. Each line carries the same ids (organisation, conversation, message, assistant run), so a person can filter one chat. **No message text and no phone numbers in the log** (the conversation is private data): ids, decisions, reasons and timings only.
+
+**Why:** today the assistant's steps are spread over the API log and the gateway log (`packages/core/src/ai-reply.ts`, `apps/gateway/src/main.ts`), which makes "why did it not reply here?" or "why did it hand over?" slow to answer, and the same visibility is needed for the takeover lock (D-91) and for testing it.
+
+**Shape (to decide when built):** a dedicated logger child (`component: "ai"`) written to its own file/stream (`ai.log`, rotated) as well as stdout, with a small viewer or a filter command (`npm run logs:ai -- --conversation <id>`); the audit table keeps recording the changes, this is the trace of the process. Related: D-84, D-85, D-91.
+
+Pinned to come back to; not started.
+
+---
+
+## D-94 · Messages the owner sends from their own phone, and older chat history, are missing from the inbox — **HIGH PRIORITY** (Kushal, 2026-10-22)
+
+**What:** Kushal: "chat history that is sent by the user [is] not visible in the inboxes." Today the inbox only shows what a contact sent **to** the linked number and what was sent **from the CRM**. Whatever the owner types **in the WhatsApp app on their own phone** to a contact never appears, so a thread in the CRM can show only half of a conversation, and a person picking up a chat cannot see what the owner already said.
+
+**What the code does today (evidence):**
+- `packages/channels/baileys/src/index.ts` (about line 516, inside the inbound handler) **drops every message whose key has `fromMe: true`**: `if (m.key?.fromMe === true || …) return;`. That is a message the owner sent from the phone (or another linked device), so it is thrown away on purpose before it is stored.
+- `syncFullHistory: false` (line 367): the older history WhatsApp can hand a newly linked device is not requested either, so chats that existed **before** the number was linked start empty.
+- In the gateway log of 2026-10-22 about **650 "failed to decrypt" errors were `fromMe: true` messages** (the owner's own sends arriving on the linked device and not being readable by a freshly linked session), which is the same family: those messages exist on WhatsApp's side and are lost to the CRM.
+
+**What to decide and build:**
+1. **Store the owner's own sends** from the phone as outbound messages in the right conversation (sender shown as "sent from the phone"), de-duplicated against messages the CRM itself sent (same provider message id), in order, with their delivery state. They must **not** trigger the AI assistant, a campaign cooldown, or an auto-reply.
+2. **Older history on linking:** request a bounded history sync when a number is linked (a limited window such as the last 30 to 90 days, or the last N messages per chat), imported once, never re-sent, never counted against sending limits. Needs a size and privacy decision, and care with the anti-ban side (no sending is involved).
+3. **Decryption of the owner's own messages** on a fresh link: find out whether those failures are recoverable (asking the phone to re-send history) or only appear after a re-link.
+4. **Inbox:** show them in the thread in the same order, visibly different from CRM-sent messages; unread counts unaffected.
+
+**Test:** an integration test that a `fromMe` message from the phone is stored once and shows in the thread (and not twice if the CRM sent it); a test that it does not wake the assistant; a regression R-number when built. Related: D-45 (`@lid` linking), D-82 (session desync, which also causes these decrypt failures), D-91.
+
+Pinned as **high priority**; not started.
 
