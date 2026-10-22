@@ -27,6 +27,16 @@ flowchart TD
   P[Nightly full regression] -.-> Q[Opens an issue if anything is red]
 ```
 
+## If you are a new chat session: handling a bug report, in 8 lines
+1. Read this page and `tests/regression/README.md`. The commands: `npm run bug`, `npm run regress:check`, `npm run regress`, `npm run feedback:import`, `npm run feedback:report`, `npm run changelog`.
+2. A report arrives as a Google Doc / Notion page, a markdown file, a GitHub issue or a pasted message. **Ask the reporter about anything unclear before touching code.** Never commit their screenshots or real names and numbers (the repo is public).
+3. Make or find the GitHub issue (`feedback:import` for a file; for a doc, read it with the Drive connector and create one issue per problem). Set a severity label and an `area:` label.
+4. `npm run bug -- "<what broke>" --found "<who, where>" --issue N`. Write the test so it **fails for the right reason first**.
+5. Fix the code on `fix/R-nnn-short-name`. Set the registry row to `guarded` and put the PR number in Fix.
+6. Open the PR with `Fixes #N`. CI must pass: check, e2e, secrets-scan, regress-smoke, bug-gate. If a test fails, **look at the failure** (CI keeps the page snapshot and screenshot of a failed browser test); a pass-on-retry is a flaky test, to be fixed or tagged `@flaky`, never ignored.
+7. Kushal merges (unless the PR carries the `automerge` label). After the merge the issue gets a "please verify" comment.
+8. Refresh the triage doc with `npm run feedback:report -- --batch <name>` and tell Kushal in plain words what is fixed, what is partly fixed and what is open.
+
 ## 1 · Reporting (anyone)
 - **A Google Doc or Notion page** (use [`feedback/TEMPLATE.md`](feedback/TEMPLATE.md)): paste the screenshot and describe it in your own words. A chat session reads the doc (the Drive connector for Google Docs), **asks you questions about anything unclear**, then creates the issues. Screenshots stay in the doc or on the laptop; they are never uploaded to GitHub or committed, because the repository is public and they show real names and numbers.
 - **The "Report a problem" button** (bottom of the sidebar): opens the GitHub bug form on the right screen. Nothing is sent until you press submit there.
