@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { docIdFrom, docJsonToText, splitProblems, titleFrom, toImporterMarkdown } from '../../scripts/lib/gdoc';
+import { docHtmlToText, docIdFrom, docJsonToText, splitProblems, titleFrom, toImporterMarkdown } from '../../scripts/lib/gdoc';
 
 /**
  * The Google Doc reader (D-92): a tester's doc becomes one problem per heading or numbered line, with the screenshots counted (never copied)
@@ -57,5 +57,25 @@ describe('reading a feedback doc', () => {
     const items = splitProblems(docJsonToText(doc));
     expect(items.map((i) => i.title)).toEqual(['First problem', 'Second problem']);
     expect(items[0]!.images).toBe(1);
+  });
+
+  it('reads the simple HTML view of a doc (the way the browser tool does, with no credentials): a list item, typed numbers, pictures', () => {
+    // The shape of /document/d/<id>/mobilebasic as seen on a real feedback doc: the first problem is a real list item, later ones are typed "2.", pictures are <img> in paragraphs.
+    const html = '<html><head><style>.x{}</style></head><body><div class="container"><div class="doc-content"><ol class="s" start="1"><li><span>Can&#39;t send messages &amp; it says waiting:</span></li></ol>' +
+      '<p><span><img src="https://example.invalid/a?x=1"></span></p><p><span></span></p><hr>' +
+      '<p><span>2. number is not in the sheet</span></p><p><span><img src="b"></span></p>' +
+      '<p><span>3. cant see the message</span></p><p><span>does show in the inbox</span></p><p><span><img src="c"></span><span><img src="d"></span></p></div></div></body></html>';
+    const text = docHtmlToText(html);
+    expect(text.split('\n')).toEqual(["1. Can't send messages & it says waiting:", '[image]', '2. number is not in the sheet', '[image]', '3. cant see the message', 'does show in the inbox', '[image] [image]']);
+    const items = splitProblems(text);
+    expect(items.map((i) => i.n)).toEqual([1, 2, 3]);
+    expect(items.map((i) => i.images)).toEqual([1, 1, 2]);
+    expect(items[0]!.title).toBe("Can't send messages & it says waiting");
+  });
+
+  it('turns an HTML heading into a problem start and a bullet into a plain line', () => {
+    const text = docHtmlToText('<div class="doc-content"><h2><span>Import is slow</span></h2><ul><li><span>it hangs</span></li></ul></div>');
+    expect(text).toBe('## Import is slow\n- it hangs');
+    expect(splitProblems(text).map((i) => i.title)).toEqual(['Import is slow']);
   });
 });
