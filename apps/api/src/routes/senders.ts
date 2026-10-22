@@ -82,7 +82,7 @@ export function sendersRouter(): Router {
              ) AS "contactedContacts"
       FROM sender_identity si
       LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
-      WHERE si.org_id = ${req.crm!.orgId}
+      WHERE si.org_id = ${req.crm!.orgId} AND si.status <> 'removed'
       ORDER BY si.created_at ASC`));
 
     // Turn the two raw recovery columns into the derived phase/fraction the UI shows, so the client
@@ -258,6 +258,46 @@ export function sendersRouter(): Router {
     }
     res.status(202).json({ data: { senderId, status: 'unlink_requested' } });
   });
+
+  /**
+   * Removes a number from the Numbers page (admin only, audited). It is *hidden*, not deleted: its
+   * row is marked `removed`, so its conversations and message history stay reachable in the inbox.
+   * A number that still has stored credentials must be unlinked first, so this can never cut a live
+   * session's credentials.
+   */
+  router.post('/:id/remove', requireUuidParam('id'), requireRole('admin'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+      const outcome = await req.tenant!(async (tx) => {
+        const rows = await tx.execute(sql`
+          SELECT si.label, si.status,
+                 EXISTS (SELECT 1 FROM channel_auth_state a WHERE a.sender_identity_id = si.id) AS linked
+          FROM sender_identity si WHERE si.id = ${id} AND si.org_id = ${orgId}`);
+        const row = (rows as unknown as Array<{ label: string; status: string; linked: boolean }>)[0];
+        if (row === undefined || row.status === 'removed') return 'missing' as const;
+        if (row.linked) return 'linked' as const;
+        await tx.execute(sql`
+          UPDATE sender_identity SET status = 'removed', updated_at = now()
+          WHERE id = ${id} AND org_id = ${orgId}`);
+        await writeAudit(tx, {
+          orgId, actor: auditActor(req), action: AUDIT.senderRemoved, targetType: 'sender_identity',
+          targetId: id, before: { label: row.label, status: row.status },
+          ip: req.ip ?? null, requestId: String(req.id)
+        });
+        return 'ok' as const;
+      });
+      if (outcome === 'missing') {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such sender.'));
+        return;
+      }
+      if (outcome === 'linked') {
+        res.status(409).json(problem(req, 409, 'SENDER_LINKED',
+          'This number is still linked. Unlink it first, then remove it.'));
+        return;
+      }
+      res.status(204).end();
+    });
 
   /** Returns the challenge once the gateway has it, or reports that it is still pending. */
   router.get('/:id/link', requireUuidParam('id'), requireScope('senders:read'), async (req: Request, res: Response) => {

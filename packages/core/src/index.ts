@@ -130,7 +130,7 @@ export {
   type CampaignProgress, type AudiencePreview, type CampaignForecast
 } from './campaigns.js';
 export {
-  searchPredicate, resolveTarget, countMatching, bulkTag, bulkUntag, tagImportRun, ensureTag,
+  searchPredicate, resolveTarget, countMatching, bulkTag, bulkUntag, tagImportRun, ensureTag, deleteTag,
   type TagTarget
 } from './tagging.js';
 export {

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  createTag, attachTag, detachTag, listTags, createCampaign, createCustomField, deleteCustomField,
+  createTag, deleteTag, attachTag, detachTag, listTags, createCampaign, createCustomField, deleteCustomField,
   setContactFields, setDoNotContact, bulkTagContacts, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
 
@@ -28,6 +28,7 @@ export async function createTagAction(formData: FormData): Promise<void> {
   const name = String(formData.get('name') ?? '').trim();
   if (name === '') return;
   await run(() => createTag(name));
+  redirect(`/contacts?tagMade=${encodeURIComponent(name)}`);
 }
 
 /**
@@ -47,6 +48,13 @@ export async function attachTagAction(formData: FormData): Promise<void> {
     }
     if (tagId !== '') await attachTag(contactId, tagId);
   });
+}
+
+/** Deletes a tag everywhere (admin). People are untagged, never deleted. */
+export async function deleteTagAction(formData: FormData): Promise<void> {
+  const tagId = String(formData.get('tagId') ?? '');
+  if (tagId === '') return;
+  await run(() => deleteTag(tagId));
 }
 
 /** Removes a tag from a contact. */

@@ -6,7 +6,7 @@ import { dailyCeiling, type PacingLimits } from './pacing.js';
 import { renderBody } from './body-variation.js';
 import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
 import type { TenantWork } from './ingestion.js';
-import { blockingPolicyGate, POLICY_SKIP_REASON } from './policy-gates.js';
+import { blockingPolicyGate, POLICY_SKIP_REASON, COOLDOWN_DAYS } from './policy-gates.js';
 
 /**
  * Bulk sends.
@@ -57,6 +57,10 @@ export interface AudiencePreview {
   readonly reachable: number;
   /** The rest — no phone/`wa_*` identity, so they would be recorded as skipped, never dropped. */
   readonly unreachable: number;
+  /** Reachable people already sent a different campaign inside the cooldown window (they would be skipped). */
+  readonly recentlyMessaged: number;
+  /** The campaign that most of them were messaged by, or null when none. */
+  readonly recentCampaign: string | null;
 }
 
 /**
@@ -87,7 +91,15 @@ export async function previewAudience(
                SELECT 1 FROM contact_identity ci
                WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
                  AND ci.kind IN ('phone', 'wa_jid', 'wa_lid')
-             ) AS reachable
+             ) AS reachable,
+             -- The latest other campaign that already messaged this person inside the cooldown window, if any.
+             (SELECT cp2.name FROM message m
+                JOIN conversation v ON v.id = m.conversation_id
+                JOIN campaign cp2 ON cp2.id = m.campaign_id
+              WHERE v.org_id = ${orgId} AND v.contact_id = c.id
+                AND m.direction = 'outbound' AND m.campaign_id <> cp.id AND m.status <> 'failed'
+                AND m.created_at > now() - make_interval(days => ${COOLDOWN_DAYS})
+              ORDER BY m.created_at DESC LIMIT 1) AS recent_campaign
       FROM campaign cp
       JOIN contact c ON c.org_id = cp.org_id
       WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}
@@ -108,10 +120,13 @@ export async function previewAudience(
     )
     SELECT count(*)::int AS total,
            count(*) FILTER (WHERE reachable)::int AS reachable,
-           count(*) FILTER (WHERE NOT reachable)::int AS unreachable
+           count(*) FILTER (WHERE NOT reachable)::int AS unreachable,
+           count(*) FILTER (WHERE reachable AND recent_campaign IS NOT NULL)::int AS "recentlyMessaged",
+           (SELECT recent_campaign FROM audience WHERE reachable AND recent_campaign IS NOT NULL
+            GROUP BY recent_campaign ORDER BY count(*) DESC LIMIT 1) AS "recentCampaign"
     FROM audience`);
   const row = (rows as unknown as AudiencePreview[])[0];
-  return row ?? { total: 0, reachable: 0, unreachable: 0 };
+  return row ?? { total: 0, reachable: 0, unreachable: 0, recentlyMessaged: 0, recentCampaign: null };
 }
 
 /** Counts every recipient of a campaign by status. */

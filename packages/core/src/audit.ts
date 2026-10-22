@@ -141,6 +141,8 @@ export const AUDIT = {
   // between enforcing the anti-ban engine and advisory mode (D-29). Both carry a reason.
   campaignGatesOverridden: 'campaign.gates_overridden',
   senderEnforcementChanged: 'sender.enforcement_changed',
+  senderRemoved: 'sender.removed',
+  tagDeleted: 'tag.deleted',
   // Do-not-contact: flagging someone, and an admin knowingly messaging a flagged contact anyway.
   contactDncChanged: 'contact.dnc_changed',
   // Two contacts turned out to be one person (a privacy address was linked to a phone number).
