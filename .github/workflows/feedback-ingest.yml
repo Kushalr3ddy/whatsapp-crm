@@ -1,0 +1,50 @@
+# Pulls the testers' Google Doc into GitHub issues, every 10 minutes and on demand (D-92). One issue per problem in the doc, never twice
+# (the importer marks each issue with the doc and the problem's number); new problems appended to the doc become new issues.
+# Does NOTHING (and does not fail) until the secret GOOGLE_SERVICE_ACCOUNT_JSON and the variable FEEDBACK_DOC_ID exist: see docs/40.
+# Screenshots are never copied: the doc is private and this repository is public. Phone numbers and e-mail addresses are masked.
+name: feedback-ingest
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: feedback-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: is it set up?
+        id: setup
+        env:
+          KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DOC: ${{ vars.FEEDBACK_DOC_ID }}
+        run: |
+          if [ -n "$KEY" ] && [ -n "$DOC" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "Not set up yet (needs the GOOGLE_SERVICE_ACCOUNT_JSON secret and the FEEDBACK_DOC_ID variable): nothing to do."; fi
+      - uses: actions/checkout@v4
+        if: steps.setup.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.setup.outputs.ready == 'true'
+      - name: read the doc and open an issue for each new problem
+        if: steps.setup.outputs.ready == 'true'
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DOC: ${{ vars.FEEDBACK_DOC_ID }}
+          REPORTER: ${{ vars.FEEDBACK_REPORTER }}
+          REDACT: ${{ vars.FEEDBACK_REDACT }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx tsx scripts/gdoc-to-md.ts "$DOC" --out /tmp/feedback.md --reporter "${REPORTER:-a tester}"
+          node scripts/feedback-import.mjs /tmp/feedback.md --batch "gdoc-${DOC:0:8}" --reporter "${REPORTER:-a tester}" ${REDACT:+--redact "$REDACT"} --apply

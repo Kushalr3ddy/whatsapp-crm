@@ -2863,7 +2863,9 @@ Pinned to come back to; not started.
 
 **Later, if it outgrows this:** a small standalone portal (its own server and storage, never the CRM database) with logins for the team and testers.
 
-Pinned to come back to; the ingest worker is the first slice.
+**Update 2026-10-22 (PR "Google Doc ingester"):** the first slice is built: `npm run feedback:gdoc` turns the doc into the importer's markdown (one problem per numbered line or heading, screenshots counted not copied; a private doc is read with a Google service account, a link-shared doc needs nothing, a saved text file works), and `.github/workflows/feedback-ingest.yml` runs it with the importer every 10 minutes and on demand, doing nothing until `GOOGLE_SERVICE_ACCOUNT_JSON` and `FEEDBACK_DOC_ID` are set (setup steps in docs/40). Still pinned: AI for messy docs, AI-drafted follow-up questions posted back to the tester, and a portal with its own storage.
+
+Pinned to come back to; the AI parts and the questions are what is left.
 
 ---
 
