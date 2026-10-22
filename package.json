@@ -45,6 +45,8 @@
     "regress:ci": "bash scripts/regress.sh ci",
     "regress:check": "node tests/regression/check-registry.mjs",
     "bug": "node scripts/bug.mjs",
+    "feedback:import": "node scripts/feedback-import.mjs",
+    "feedback:report": "node scripts/feedback-report.mjs",
     "test:roles": "playwright test tests/e2e/zz-roles-flow.spec.ts",
     "test:roles:live": "ROLES_LIVE=1 playwright test tests/e2e/zz-roles-flow.spec.ts --headed",
     "//2": "─── database: db:setup does everything a new clone needs ────────────",

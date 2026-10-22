@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { ThemeToggle } from './theme-toggle';
 import { signOut } from './login/actions';
 import { SubmitButton } from './contacts/submit-button';
+import { ReportProblem } from './report-problem';
 
 /** One destination in the sidebar. `soon` marks a section that exists only as a placeholder. */
 interface Tab {
@@ -134,6 +135,7 @@ export function Nav({ alerts = 0, isAdmin = false }: { alerts?: number; isAdmin?
           </span>
         </div>
         <ThemeToggle />
+        <ReportProblem />
         <form action={signOut} className="md:contents">
           <SubmitButton className="btn btn-ghost btn-sm w-full whitespace-nowrap" pendingLabel="Signing out…">
             Sign out

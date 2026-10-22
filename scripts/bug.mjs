@@ -1,14 +1,15 @@
 // Reports a bug into the regression registry and scaffolds its test:
-//   npm run bug -- "Create draft hangs in production" --found "Mikhil, prod" --layer e2e --area broadcast
+//   npm run bug -- "Create draft hangs in production" --found "Mikhil, prod" --layer e2e --area broadcast --issue 42
 // Adds the next R-nnn row (status open) to tests/regression/REGISTRY.md and writes a stub test that is skipped (`fixme`) until you fill
 // in the steps. The workflow: report -> write the failing test (remove `fixme`) -> fix the code -> mark the row `guarded` with the PR.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 && args[i + 1] ? args[i + 1] : fallback; };
 const title = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
-if (!title) { console.error('usage: npm run bug -- "what broke, in plain words" [--found "who/where"] [--layer e2e|integration] [--area name]'); process.exit(2); }
-const layer = flag('layer', 'e2e'); const found = flag('found', 'unknown'); const area = flag('area', 'general');
+if (!title) { console.error('usage: npm run bug -- "what broke, in plain words" [--found "who/where"] [--layer e2e|integration] [--area name] [--issue N]'); process.exit(2); }
+const layer = flag('layer', 'e2e'); const found = flag('found', 'unknown'); const area = flag('area', 'general'); const issue = flag('issue', '');
 if (!['e2e', 'integration'].includes(layer)) { console.error('--layer must be e2e or integration'); process.exit(2); }
 
 const regPath = 'tests/regression/REGISTRY.md';
@@ -16,7 +17,7 @@ const reg = readFileSync(regPath, 'utf8');
 const last = Math.max(0, ...[...reg.matchAll(/^\| R-(\d{3}) \|/gm)].map((m) => Number(m[1])));
 const id = `R-${String(last + 1).padStart(3, '0')}`;
 const date = new Date().toISOString().slice(0, 10);
-const row = `| ${id} | ${date} | ${title.replace(/\|/g, '/')} | ${found.replace(/\|/g, '/')} | ${layer} | open | |\n`;
+const row = `| ${id} | ${date} | ${title.replace(/\|/g, '/')} | ${found.replace(/\|/g, '/')} | ${layer} | open | | ${issue === '' ? '' : `#${issue.replace(/^#/, '')}`} |\n`;
 writeFileSync(regPath, reg.replace(/\n*$/, '\n') + row);
 
 const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
@@ -55,5 +56,12 @@ describe('${id}', () => {
   it.todo('[${id}] ${title.replace(/'/g, "\\'")}');
 });
 `);
+}
+if (issue !== '') {
+  // Tell the reporter's issue which R-number it is, so the issue and the registry point at each other. Needs `gh` signed in; never blocks.
+  try {
+    execFileSync('gh', ['issue', 'comment', issue.replace(/^#/, ''), '--body', `Tracked as **${id}** in the regression registry (tests/regression/REGISTRY.md). A failing test will be written first, then the fix; the PR will say \`Fixes #${issue.replace(/^#/, '')}\`.`], { stdio: 'ignore' });
+    console.log(`commented on issue #${issue.replace(/^#/, '')}`);
+  } catch { console.log('(could not comment on the issue: add the R-number by hand)'); }
 }
 console.log(`${id} added to ${regPath}\n  test stub: ${file}\n\nNext: 1) write the failing test  2) fix the code  3) set the row to "guarded" and fill in the PR.`);

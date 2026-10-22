@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How bugs are handled here
+    url: https://github.com/Kushalr3ddy/whatsapp-crm/blob/main/docs/39-bug-workflow.md
+    about: What happens after you report something, and how a fix is checked

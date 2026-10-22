@@ -1,12 +1,16 @@
 name: Bug report
 description: Something in the CRM did not work (anyone can file one)
-labels: [bug]
+labels: [bug, alpha-feedback, needs-triage]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Plain words are fine. **Please do not paste screenshots, phone numbers, names or messages of real people here: this page is public.** Say "I have a screenshot" instead and we will ask you for it privately.
   - type: textarea
     id: what
     attributes:
-      label: What happened, in plain words
-      description: What did you click, what did you expect, and what happened instead? A screenshot helps.
+      label: What happened, in your own words
+      description: What did you click, what did you expect, and what happened instead?
     validations: { required: true }
   - type: input
     id: where
@@ -20,12 +24,24 @@ body:
       label: Where it happened
       options: [My own machine (dev), A deployed copy (prod), Not sure]
     validations: { required: true }
+  - type: dropdown
+    id: impact
+    attributes:
+      label: How much does it get in your way?
+      options: [It stopped me from doing my job, It works but is confusing or slow, Cosmetic or small]
+    validations: { required: true }
+  - type: checkboxes
+    id: shot
+    attributes:
+      label: Evidence
+      options:
+        - label: I have a screenshot or screen recording I can share privately
   - type: textarea
     id: more
     attributes:
       label: Anything else
-      description: The time it happened (we can find it in the logs), the number or contact involved, whether it happens every time.
+      description: About what time it happened (we can find it in the logs), and whether it happens every time.
   - type: markdown
     attributes:
       value: |
-        **For whoever picks this up:** run `npm run bug -- "<title>" --found "<who, where>"` to give it an R-number and a test stub, write the failing test, fix it, then mark it `guarded` in `tests/regression/REGISTRY.md` (see `tests/regression/README.md`).
+        **For whoever picks this up:** give it a severity (S1 to S4) and an `area:` label, reproduce it, then run `npm run bug -- "<title>" --issue <this number>`. The full flow is in `docs/39-bug-workflow.md`.
