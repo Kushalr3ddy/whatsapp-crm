@@ -583,6 +583,13 @@ async function handleSendOnce(ctx: WorkContext, messageId: string): Promise<void
     return;
   }
 
+  // Never send from a number to itself. A linked device's message to its own account cannot be decrypted on the phone:
+  // it shows "Waiting for this message" and keeps asking for a resend (31 retry requests in one day, 2026-10-22).
+  if (job.recipientKind === 'phone' && job.senderPhone !== null && job.recipientValue === job.senderPhone) {
+    await markMessageFailed(ctx.db, messageId, 'own_number');
+    return;
+  }
+
   // The last line of the do-not-contact gate. It is checked when a message is created, but a contact
   // can be flagged after that, and advisory mode relaxes only number-protecting holds — never this.
   // Only an admin's explicit, audited per-message override lets it through.

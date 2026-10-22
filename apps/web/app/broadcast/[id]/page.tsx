@@ -195,7 +195,8 @@ const SKIP_LABEL: Record<string, string> = {
   cancelled: 'campaign cancelled',
   engaged: 'an agent is mid-conversation',
   cooldown: 'sent a campaign within 14 days',
-  in_other_campaign: 'in another live campaign'
+  in_other_campaign: 'in another live campaign',
+  own_number: 'the number sending this campaign (WhatsApp cannot message itself)'
 };
 
 /**

@@ -212,7 +212,15 @@ export async function snapshotAudience(
                SELECT 1 FROM contact_identity ci
                WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
                  AND ci.kind IN ('phone', 'wa_jid', 'wa_lid')
-             ) AS reachable
+             ) AS reachable,
+             -- The sending number itself: WhatsApp cannot deliver a linked device's message to its own account,
+             -- the phone shows "Waiting for this message" and retries forever (measured 2026-10-22).
+             EXISTS (
+               SELECT 1 FROM contact_identity ci
+               JOIN sender_identity own ON own.id = cp.sender_identity_id
+               WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
+                 AND ci.kind = 'phone' AND ci.value_normalized = own.phone_e164
+             ) AS own_number
       FROM campaign cp
       JOIN contact c ON c.org_id = cp.org_id
       WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}
@@ -238,8 +246,8 @@ export async function snapshotAudience(
     )
     INSERT INTO campaign_recipient (org_id, campaign_id, contact_id, status, skip_reason)
     SELECT ${orgId}, ${campaignId}, contact_id,
-           CASE WHEN reachable THEN 'pending' ELSE 'skipped' END,
-           CASE WHEN reachable THEN NULL ELSE 'no_phone' END
+           CASE WHEN reachable AND NOT own_number THEN 'pending' ELSE 'skipped' END,
+           CASE WHEN own_number THEN 'own_number' WHEN reachable THEN NULL ELSE 'no_phone' END
     FROM audience
     ON CONFLICT (campaign_id, contact_id) DO NOTHING
     RETURNING id`);
