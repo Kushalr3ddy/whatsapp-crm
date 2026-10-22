@@ -105,6 +105,10 @@ is not re-proposed.
 | D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
 | D-89 | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
 | D-90 | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
+| D-91 | A chat the AI is handling cannot be typed into until a person overrides and stops the AI | 📌 pinned (Kushal, 2026-10-22) |
+| D-92 | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
+| D-93 | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
+| D-94 | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2821,4 +2825,74 @@ Pinned to come back to; not started.
 **Contacts are never duplicated by re-importing a file:** the same phone or email always matches the same person (unique index `contact_identity_lookup_uidx`). What piles up are the records around it: import runs (marked replaced by "Upload anyway"), file-name tags, draft campaigns. Merging two *people* (different phone spellings) would mean merging their conversations, so `dedup:cleanup` only lists them.
 
 Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
+
+---
+
+## D-91 · A chat the AI is handling cannot be typed into until a person overrides and stops the AI — pinned (Kushal, 2026-10-22)
+
+**What:** while a conversation is **assigned to the AI assistant** (its assignee is the assistant's bot user, `app_user.is_bot`), the chat's text box is **blocked for people**. A person takes the chat by pressing **Override and stop the AI** first; only after that does the text box work. If they try to type or send before overriding, show a clear warning instead of letting it through:
+
+> *The AI has been assigned this chat. Please override and stop the AI before you can take over the chat here.*
+
+**Why:** two voices answering one customer at once (the AI and a person) is confusing for the customer and can contradict itself; and a person typing into a chat the AI also answers risks both replying.
+
+**Shape (to confirm when built):**
+- **Screen** (`apps/web/app/inbox/[id]/composer.tsx`, `ai-notice.tsx`, `thread-controls.tsx`): the box is disabled and shows the warning when the person clicks or focuses it or presses send; one button, **Override and stop the AI**, does the take-over.
+- **Server** (`apps/api/src/routes/messages.ts`, which already refuses with `THREAD_ASSIGNED` when another human owns a thread): refuse a person's message to an AI-assigned chat with a clear `AI_ASSIGNED` code, so the rule holds for the API and not only the screen.
+- **Override** = assign the chat to the person, which stops the assistant for this chat (it only answers chats assigned to it, `packages/core/src/ai-reply.ts`), and cancels any AI reply still queued for it. Audited like other assignment changes. The AI does not resume by itself; a person hands the chat back on purpose.
+
+**To decide when we build it:** may any agent override, or admins only; whether the AI may be handed the chat back with one click; what the banner says to a second person looking at the same chat.
+
+**Test:** a browser test that an AI-assigned chat's box is disabled, shows the warning, and works after Override; an integration test that the API refuses (tag it with the next R-number when it is built). Related: D-81, D-84, D-85, D-86.
+
+Pinned to come back to; not started.
+
+---
+
+## D-92 · A separate feedback portal: testers' Google Doc into GitHub issues, with AI help and follow-up questions later — pinned (Kushal, 2026-10-22)
+
+**What:** feedback intake lives **apart from the CRM**: not in its app, API or database. Decided so far: **no new server for now.** A **scheduled GitHub Actions worker** (every 5 to 10 minutes, or on demand) reads the shared Google Doc where Mikhil and the alpha testers paste their screenshots and describe each problem in their own words, and turns each problem into a GitHub issue (`bug`, `alpha-feedback`, `needs-triage`), never twice (a hidden marker per heading), and adds a comment when a problem is edited later. It feeds the same flow as `npm run feedback:import` (docs/39).
+
+**Parsing:** **no AI needed for the template** ([`feedback/TEMPLATE.md`](feedback/TEMPLATE.md): a heading per problem, then lines such as *Which screen:* and *What happened instead:*): plain code reads it exactly. **AI later** (pinned): for messy free-text blocks (pull out screen, steps, expectation) and to **draft the clarifying questions** to send back. Phone numbers and e-mail addresses are masked before anything is posted; **screenshots stay in the Google Doc** (private) and are only referred to, because the repository is public.
+
+**Clarifying questions:** for now **Kushal asks the testers himself** (there are only the other dev and a few alpha testers). For production level: the worker (or a later portal) posts the questions into the Doc as a comment or a reply and tracks who answered; the AI drafts them.
+
+**Needs from Kushal to switch on:** a Google service account (read-only) whose key is stored as the GitHub secret `GOOGLE_SERVICE_ACCOUNT_JSON`, the document shared with that account, and the doc's id as `FEEDBACK_DOC_ID`. Until those exist the worker does nothing and does not fail. (Scheduled workflows on a public repository are paused by GitHub after 60 days without repository activity.)
+
+**Later, if it outgrows this:** a small standalone portal (its own server and storage, never the CRM database) with logins for the team and testers.
+
+Pinned to come back to; the ingest worker is the first slice.
+
+---
+
+## D-93 · A separate log for the AI assistant, through the whole process — pinned (Kushal, 2026-10-22)
+
+**What:** the AI assistant gets **its own log**, apart from the gateway's and the API's, so one chat's AI reply can be followed from start to finish without searching a mixed stream: *inbound message received → is the chat assigned to the assistant → consent, on/off and daily-cap checks → do-not-contact check → the instructions and the rules used (template id, version) → model call (provider, model, how long, tokens) → any tool call (hand-over, start a campaign) → the reply queued → gateway pacing and send → delivered/read*. Each line carries the same ids (organisation, conversation, message, assistant run), so a person can filter one chat. **No message text and no phone numbers in the log** (the conversation is private data): ids, decisions, reasons and timings only.
+
+**Why:** today the assistant's steps are spread over the API log and the gateway log (`packages/core/src/ai-reply.ts`, `apps/gateway/src/main.ts`), which makes "why did it not reply here?" or "why did it hand over?" slow to answer, and the same visibility is needed for the takeover lock (D-91) and for testing it.
+
+**Shape (to decide when built):** a dedicated logger child (`component: "ai"`) written to its own file/stream (`ai.log`, rotated) as well as stdout, with a small viewer or a filter command (`npm run logs:ai -- --conversation <id>`); the audit table keeps recording the changes, this is the trace of the process. Related: D-84, D-85, D-91.
+
+Pinned to come back to; not started.
+
+---
+
+## D-94 · Messages the owner sends from their own phone, and older chat history, are missing from the inbox — **HIGH PRIORITY** (Kushal, 2026-10-22)
+
+**What:** Kushal: "chat history that is sent by the user [is] not visible in the inboxes." Today the inbox only shows what a contact sent **to** the linked number and what was sent **from the CRM**. Whatever the owner types **in the WhatsApp app on their own phone** to a contact never appears, so a thread in the CRM can show only half of a conversation, and a person picking up a chat cannot see what the owner already said.
+
+**What the code does today (evidence):**
+- `packages/channels/baileys/src/index.ts` (about line 516, inside the inbound handler) **drops every message whose key has `fromMe: true`**: `if (m.key?.fromMe === true || …) return;`. That is a message the owner sent from the phone (or another linked device), so it is thrown away on purpose before it is stored.
+- `syncFullHistory: false` (line 367): the older history WhatsApp can hand a newly linked device is not requested either, so chats that existed **before** the number was linked start empty.
+- In the gateway log of 2026-10-22 about **650 "failed to decrypt" errors were `fromMe: true` messages** (the owner's own sends arriving on the linked device and not being readable by a freshly linked session), which is the same family: those messages exist on WhatsApp's side and are lost to the CRM.
+
+**What to decide and build:**
+1. **Store the owner's own sends** from the phone as outbound messages in the right conversation (sender shown as "sent from the phone"), de-duplicated against messages the CRM itself sent (same provider message id), in order, with their delivery state. They must **not** trigger the AI assistant, a campaign cooldown, or an auto-reply.
+2. **Older history on linking:** request a bounded history sync when a number is linked (a limited window such as the last 30 to 90 days, or the last N messages per chat), imported once, never re-sent, never counted against sending limits. Needs a size and privacy decision, and care with the anti-ban side (no sending is involved).
+3. **Decryption of the owner's own messages** on a fresh link: find out whether those failures are recoverable (asking the phone to re-send history) or only appear after a re-link.
+4. **Inbox:** show them in the thread in the same order, visibly different from CRM-sent messages; unread counts unaffected.
+
+**Test:** an integration test that a `fromMe` message from the phone is stored once and shows in the thread (and not twice if the CRM sent it); a test that it does not wake the assistant; a regression R-number when built. Related: D-45 (`@lid` linking), D-82 (session desync, which also causes these decrypt failures), D-91.
+
+Pinned as **high priority**; not started.
 
