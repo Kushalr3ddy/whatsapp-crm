@@ -69,6 +69,7 @@ test.describe('forms that redirect, on a production build', () => {
     // The most reliable way to see the gzip hang: a tiny redirecting response. With the bug, the button stays on "Counting…" for ever.
     await signIn(page);
     await page.goto('/contacts');
+    await page.waitForLoadState('networkidle');
     await page.locator('summary', { hasText: 'Tag many at once' }).click();
     await page.getByRole('button', { name: 'Preview', exact: true }).first().click();
     await expect(page.getByRole('button', { name: /Counting/ })).toHaveCount(0, { timeout: 8_000 });
@@ -77,8 +78,18 @@ test.describe('forms that redirect, on a production build', () => {
   test('[R-006] @smoke "Tag many at once" Preview with no tag chosen answers within 8 seconds', async ({ page }) => {
     await signIn(page);
     await page.goto('/contacts');
+    await page.waitForLoadState('networkidle');
     await page.locator('summary', { hasText: 'Tag many at once' }).click();
     await page.getByRole('button', { name: 'Preview', exact: true }).first().click();
     await expect(page.getByText('Choose a tag first.')).toBeVisible({ timeout: 8_000 });
+  });
+
+  test('[R-007] @smoke a contact row opened by script right after the page loads still shows its panel', async ({ page }) => {
+    // The row's panel is built when it is opened (D-89). A row opened before the page finished starting up used to stay empty.
+    await signIn(page);
+    await page.goto('/contacts');
+    const row = page.locator('li').filter({ has: page.getByLabel(/^Select /) }).first();
+    await row.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });
+    await expect(row.getByLabel('Add a tag')).toBeVisible({ timeout: 8_000 });
   });
 });
