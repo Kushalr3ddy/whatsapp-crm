@@ -1,0 +1,21 @@
+# Opt-in auto-merge: put the label `automerge` on a pull request and it merges itself once the required checks pass (GitHub's own auto-merge).
+# Needs the repository setting "Allow auto-merge" and branch protection with required checks (scripts/protect-main.sh does both).
+# Meant for low-risk PRs (docs, tests). Everything else: Kushal merges.
+name: automerge
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    if: github.event.label.name == 'automerge'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --auto --merge
