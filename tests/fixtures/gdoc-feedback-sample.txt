@@ -1,0 +1,9 @@
+1.  Can't send messages from AI: shows as waiting for message: 
+\[image\]
+2\. number is not there in the excel sheet i think, but is still showing as person there and being updated: 
+\[image\]
+3\. cant see the message that is being sent to user
+\[image\]
+does show in the inbox part of the app tho
+\[image\]
+4\. tracking sucks, if AI is used the users needs to know what is being sent, when it is being sent, what is the status and a summary of shi as well \[image\]
