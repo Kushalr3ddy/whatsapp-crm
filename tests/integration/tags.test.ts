@@ -95,7 +95,7 @@ describe('tags themselves', () => {
     expect(other.status).toBe(201);
   });
 
-  it('deletes a tag', async () => {
+  it('[R-005] deletes a tag', async () => {
     const t = await post('/tags', { name: 'temp' });
     const d = await del(`/tags/${t.body.data.id}`);
     expect(d.status).toBe(204);

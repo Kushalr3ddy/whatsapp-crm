@@ -243,7 +243,7 @@ describe('committing', () => {
     expect((rows as unknown as Array<{ name: string }>)[0]!.name).toBe('Priya Sharma');
   });
 
-  it('replaces a name with the newest file\'s, says so on the preview, and keeps the old one in the audit log', async () => {
+  it('[R-003] replaces a name with the newest file\'s, says so on the preview, and keeps the old one in the audit log', async () => {
     const first = await upload(THREE_ROWS);
     await run(first.body.data.id, false);
 

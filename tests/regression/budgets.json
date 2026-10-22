@@ -1,0 +1,17 @@
+{
+  "note": "Click-to-ready budgets in milliseconds, measured on a production build on a developer laptop (session audit 2026-10-22: median 550 ms). Over a budget WARNS in the report; set REGRESS_STRICT_BUDGETS=1 to fail instead.",
+  "default": 1500,
+  "steps": {
+    "Overview": 1500,
+    "Inbox": 1500,
+    "Contacts": 2000,
+    "Linked numbers": 1500,
+    "Import": 1500,
+    "Campaigns": 1500,
+    "Team": 1500,
+    "AI assistant": 2000,
+    "Security": 1500,
+    "open a contact row": 500,
+    "Contacts search": 2000
+  }
+}
