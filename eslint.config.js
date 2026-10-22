@@ -16,7 +16,7 @@ export default tseslint.config(
   // so linting it would fail `npm run check` after every build. `*.config.mjs` files sit
   // outside every tsconfig, so the type-aware parser cannot resolve them.
   { ignores: ['**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**', 'mockups/**',
-              '*.config.js', '**/*.config.mjs', 'scripts/*.mjs', '**/.next/**', '**/next-env.d.ts'] },
+              '*.config.js', '**/*.config.mjs', 'scripts/*.mjs', 'tests/fixtures/*.mjs', 'tests/live/*.mjs', '**/.next/**', '**/next-env.d.ts'] },
 
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

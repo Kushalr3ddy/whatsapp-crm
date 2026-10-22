@@ -39,6 +39,8 @@
     "test:e2e": "playwright test",
     "verify": "bash scripts/verify.sh",
     "test:live": "playwright test --config playwright.live.config.ts",
+    "test:session": "bash scripts/run-session.sh dry",
+    "test:session:real": "SESSION_I_KNOW_THIS_SENDS=1 bash scripts/run-session.sh real",
     "test:roles": "playwright test tests/e2e/zz-roles-flow.spec.ts",
     "test:roles:live": "ROLES_LIVE=1 playwright test tests/e2e/zz-roles-flow.spec.ts --headed",
     "//2": "─── database: db:setup does everything a new clone needs ────────────",

@@ -103,6 +103,7 @@ is not re-proposed.
 | D-83 | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
 | D-84 | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
 | D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
+| D-89 | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
 | D-90 | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
@@ -2792,6 +2793,18 @@ Pinned to come back to; not started.
 
 ---
 
+## D-89 · Speed: the Contacts page, sign out, and measuring in production mode — pinned (session audit, 2026-10-22)
+
+Findings are in [`37-session-audit-findings.md`](37-session-audit-findings.md). In short, a timed pass over every screen found **one real bottleneck, one unexplained delay, and a measuring problem**:
+1. **Contacts is the slow page.** 6.3 to 7.2 s to open and 3.3 to 5.5 s per search (about 4.2 s on average), in a test org of about 110 people, against 0.3 to 3 s for every other page. It sends about 1 MB of HTML and 158 forms for 50 people because each row builds its hidden controls up front (the "rows that open" change of D-70). **Build the controls when a row opens, share one do-not-contact form, and re-measure.** At an idle machine it was 1.7 s; the target is under 1 s.
+2. **Sign out took 9.9 s** (and 3.9 s to confirm the session was gone). Profile it.
+3. **Measure in a production build**, not `next dev`: first visits took 2.6 to 8.5 s only because the dev server compiles on first request. D-83 (some screens stale after an action in `dev:fast`) needs fixing before production-mode numbers can be trusted for every flow.
+4. **A held campaign should say why** (new-contact limit, quarantine, not connected, pacing): today it shows "Pending" with no reason for as long as it is held (a test sat 8 minutes). Each message already stores a `hold_reason`; show it on the campaign page with when it will resume.
+5. **Dev hygiene:** `next dev` grew to 4.5 GB in 15 hours and, with a busy browser, pushed the machine into 7.8 GB of swap and made the test browser die. Restart it daily; close heavy Chrome tabs during measurements.
+
+Related: D-46 (UI lag), D-61 (lighter web tier), D-70 (the Contacts page), D-83, D-72 (phone width).
+
+Pinned to come back to; not started.
 ## D-90 · Import duplicates: newest name wins now; a "Needs review" list later; a cleanup script for old copies — pinned (Kushal, 2026-10-22)
 
 **Why:** Mikhil imported two Excel files with the same phone number and different names; the contact kept the first name and nothing said so.
