@@ -64,3 +64,5 @@ The PR must pass `check` (typecheck, lint, unit and integration tests), `e2e`, `
 
 ## What is built and what is still to come
 Built: labels, issue forms, the in-app button, the importer, the report generator, the registry with its Issue column, the production-build smoke job, the PR template, the bug-fix gate (a fix PR must add a tagged test that guards the bug), the PR's own R-numbers run on a production build with a comment on the PR, and retry-once flaky flagging. **Next:** branch protection (required checks), the nightly run with `@flaky` quarantine and auto-opened issues, and closing the loop on merge.
+
+<!-- throwaway: proves the bug-fix gate blocks a fix with no test -->
