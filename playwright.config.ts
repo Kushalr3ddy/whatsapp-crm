@@ -23,6 +23,8 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   timeout: 30_000,
   expect: { timeout: 10_000 },
+  // One retry in CI: a test that fails once and then passes is reported as FLAKY (tests/regression/report.mjs), not hidden and not a red PR.
+  retries: process.env.CI ? 1 : 0,
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],

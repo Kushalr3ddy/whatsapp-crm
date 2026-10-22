@@ -24,6 +24,12 @@ The API (and gateway) must already be running (`npm run dev:all -- --no-web`); t
 
 Which layer? Pick the cheapest that would really have caught it: **integration** (`tests/integration`, vitest, real database, no browser) for rules and data; **e2e** (`tests/e2e`, Playwright) for something a person sees or clicks; **simulation** (`tests/simulation`) for anti-ban behaviour over time.
 
+## What CI checks on a pull request that fixes a bug
+- **`bug-gate`** (`tests/regression/bug-gate.mjs`): a branch named `fix/…` (or a PR labelled `bug`) must add or change a test with a `[R-nnn]` tag in its title, and that bug's registry row must be `guarded`. Escape hatch for a fix that truly cannot have a test: label the PR `no-regression-test` and say why in the description.
+- **`regress-smoke`**: also runs the browser tests of the R-numbers the PR touches (`tests/regression/changed-ids.mjs` reads them from the diff), on a production build, and posts one **comment on the PR** with the report (updated every run).
+- **Retry once:** a test that fails and then passes on the retry is shown in the report as **flaky**, not green-washed. To take a known-flaky test out of the blocking checks while it is fixed, put `@flaky` in its title (the nightly run, still to come, keeps running it).
+- The PR template (`.github/pull_request_template.md`) walks through the same checklist.
+
 ## Phone numbers in tests (R-009)
 All test people use fiction numbers `+1 202 555 0xxx`. The seeded demo people (`npm run local:seed`) own **0120 to 0139**; a test that imports one of those numbers under another name renames that person (newest name wins) and the seeded-pages tests then fail at random. Keep each test's numbers in its own block: send-flow 0180-0198, broadcast-flow 0200-0299, keep-columns 0200+, contacts-tags 0245-0290, import-flow 0300-0489, import-notice 0490-0579, import-reupload 0600. Never reuse 0120-0139.
 
