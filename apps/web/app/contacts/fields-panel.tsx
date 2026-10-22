@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { CustomField } from '@/lib/crm';
 import { ConfirmAction } from '@/components/confirm-action';
 import { createFieldAction, deleteFieldAction } from './actions';
+import { SubmitButton } from './submit-button';
 
 /**
  * Defining the org's fields. Everyone sees what exists (and the `{{key}}` to use it in a campaign);
@@ -59,7 +60,7 @@ export function FieldsPanel({ fields }: { fields: CustomField[] }) {
         </select>
         <input name="options" placeholder="options, comma separated (select only)" aria-label="Options"
           className="min-w-48 flex-1 rounded-md border border-border bg-surface px-2 py-1" />
-        <button type="submit" className="btn btn-sm">Add field (admin)</button>
+        <SubmitButton className="btn btn-sm" pendingLabel="Adding…">Add field (admin)</SubmitButton>
       </form>
     </details>
   );

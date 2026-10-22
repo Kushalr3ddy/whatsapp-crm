@@ -1672,7 +1672,7 @@ D-44 would force, so doing it first de-risks the upgrade.
 > `localhost:5001`: **check whether that is a dev server**). **Work order:** (1) re-time the same clicks on a production build
 > (`next build && next start`) to separate dev-compile time from real slowness; (2) slim the Contacts rows (lazy row controls, one
 > shared do-not-contact form; D-89); (3) a pending indicator on every navigation and button (done for contacts tags and campaigns in
-> PRs #104 and #106); (4) slow-query check on the contact list and tag filter (`searchPredicate`).
+> PRs #104 and #106, and on 14 more buttons in the pending-buttons PR: sign out, tag ticked, create draft from checked, do-not-contact, save fields, remove tag, add field, enforcement switch, segments); (4) slow-query check on the contact list and tag filter (`searchPredicate`).
 
 **What:** Kushal reports (2026-10-10) that the web app lags when he clicks through it quickly. His idea: keep Next.js
 only for the few screens that need live updates (the inbox/thread) and make the rest (campaigns, contacts, import,

@@ -5,6 +5,7 @@ import {
 } from '@/lib/crm';
 import type { Segment, Tag, SegmentDefinition } from '@/lib/crm';
 import { createSegmentAction, deleteSegmentAction } from './actions';
+import { SubmitButton } from '../contacts/submit-button';
 
 /** Rendered per request — the builder's live count comes from the query string. */
 export const dynamic = 'force-dynamic';
@@ -117,12 +118,9 @@ export default async function SegmentsPage(
                 </span>
                 <form action={deleteSegmentAction}>
                   <input type="hidden" name="id" value={s.id} />
-                  <button
-                    type="submit" title="Delete segment"
-                    className="btn btn-sm"
-                  >
+                  <SubmitButton title="Delete segment" className="btn btn-sm" pendingLabel="Deleting…">
                     Delete
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </li>
@@ -188,10 +186,9 @@ function Builder(
           className="btn">
           Preview count
         </button>
-        <button type="submit" formAction={createSegmentAction}
-          className="btn btn-primary">
+        <SubmitButton formAction={createSegmentAction} className="btn btn-primary" pendingLabel="Saving…">
           Save segment
-        </button>
+        </SubmitButton>
         {previewing && (
           <span className="text-sm text-muted">
             {previewCount === null

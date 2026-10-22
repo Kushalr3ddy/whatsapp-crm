@@ -463,10 +463,9 @@ function CampaignFromSelection(
                 {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 <option value="none">No tag</option>
               </select>
-              <button type="submit" formAction={bulkTagCheckedAction} formNoValidate
-                className="btn btn-sm">
+              <SubmitButton formAction={bulkTagCheckedAction} formNoValidate className="btn btn-sm" pendingLabel="Tagging…">
                 Tag ticked
-              </button>
+              </SubmitButton>
             </div>
             <span className="text-xs text-muted">
               <code>{'{{name}}'}</code> fills the contact&apos;s name; <code>{'{Hi|Hey}'}</code>{' '}
@@ -485,12 +484,9 @@ function CampaignFromSelection(
               ))}
             </select>
             <div className="flex items-center gap-2">
-              <button
-                type="submit"
-                className="btn btn-primary"
-              >
+              <SubmitButton className="btn btn-primary" pendingLabel="Creating…">
                 Create draft from checked
-              </button>
+              </SubmitButton>
               <span className="text-xs text-muted">
                 Uses the contacts checked below; do-not-contact people can&apos;t be picked.
               </span>
@@ -577,15 +573,14 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
             <form action={setDncAction}>
               <input type="hidden" name="contactId" value={contact.id} />
               <input type="hidden" name="value" value={contact.doNotContact ? 'false' : 'true'} />
-              <button
-                type="submit"
+              <SubmitButton
                 title={contact.doNotContact
                   ? 'Allow messaging this person again'
                   : 'Never message this person (an admin can still override)'}
-                className="btn btn-sm"
+                className="btn btn-sm" pendingLabel="Saving…"
               >
                 {contact.doNotContact ? 'Allow contact' : 'Do not contact'}
-              </button>
+              </SubmitButton>
             </form>
           </div>
 
@@ -623,9 +618,9 @@ function ContactFields({ contact, fields }: { contact: Contact; fields: CustomFi
             )}
           </label>
         ))}
-        <button type="submit" className="col-span-2 justify-self-start btn btn-sm">
+        <SubmitButton className="col-span-2 justify-self-start btn btn-sm" pendingLabel="Saving…">
           Save fields
-        </button>
+        </SubmitButton>
       </form>
     </details>
   );
