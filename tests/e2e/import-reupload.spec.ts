@@ -11,7 +11,7 @@ test.describe('import: the same file again', () => {
 
   test('is refused with a reason, then "Upload anyway" starts a fresh import', async ({ page }) => {
     const stamp = String(Date.now());
-    const file = { name: `again-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(`Name,Mob\nAgain One,+12025550130\nBatch,${stamp}\n`) };
+    const file = { name: `again-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(`Name,Mob\nAgain One,+12025550600\nBatch,${stamp}\n`) };
 
     await signIn(page);
     await page.goto('/import');

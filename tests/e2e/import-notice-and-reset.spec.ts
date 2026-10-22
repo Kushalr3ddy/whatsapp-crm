@@ -11,7 +11,8 @@ test.describe('import: notice under the buttons, clean after finishing, wider wi
 
   test('Import before Preview warns under the buttons; a finished import is gone on return', async ({ page }) => {
     const stamp = String(Date.now());
-    const n = 100 + (Number(stamp.slice(-3)) % 90);
+    // 0490 to 0579: clear of the seeded people (0120-0139), see R-009.
+    const n = 490 + (Number(stamp.slice(-3)) % 90);
     const file = `notice-${stamp}.csv`;
     const csv = `Name,Mob\nNotice One,+1202555${String(n).padStart(4, '0')}\n`;
 

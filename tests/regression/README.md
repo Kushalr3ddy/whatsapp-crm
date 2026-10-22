@@ -31,6 +31,9 @@ Which layer? Pick the cheapest that would really have caught it: **integration**
 - **Nightly:** a scheduled run (02:00 India time, or on demand) of the whole browser suite on a production build, flaky-tagged tests included. If it goes red it opens one issue (`Nightly regression failed`, label `regression-nightly`) and closes it when green again; tests that passed only on a retry go in one `Flaky tests (auto)` issue. `npm run regress:nightly` runs the same thing locally.
 - The PR template (`.github/pull_request_template.md`) walks through the same checklist.
 
+## Phone numbers in tests (R-009)
+All test people use fiction numbers `+1 202 555 0xxx`. The seeded demo people (`npm run local:seed`) own **0120 to 0139**; a test that imports one of those numbers under another name renames that person (newest name wins) and the seeded-pages tests then fail at random. Keep each test's numbers in its own block: send-flow 0180-0198, broadcast-flow 0200-0299, keep-columns 0200+, contacts-tags 0245-0290, import-flow 0300-0489, import-notice 0490-0579, import-reupload 0600. Never reuse 0120-0139.
+
 ## Speed budgets
 `budgets.json` holds click-to-ready limits in milliseconds. The speed probe (`tests/e2e/regression-budgets.spec.ts`) times the main screens and the report compares them. A slow screen **warns**; `REGRESS_STRICT_BUDGETS=1 npm run regress` makes it fail. Re-measure in depth with `node scripts/measure-contacts.mjs` and `node scripts/measure-api.mjs`, and compare two full audits with `node tests/live/session-compare.mjs`.
 
