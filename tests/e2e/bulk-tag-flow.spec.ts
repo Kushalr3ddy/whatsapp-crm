@@ -71,9 +71,11 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
 
     // 4. Tag one person by hand.
     await page.goto('/contacts');
-    const rowWithTagPicker = () => page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first();
+    // A row's opened panel (add a tag, do-not-contact, fields) is built only once the row is opened (D-89), so find a row by its checkbox.
+    const rowWithTagPicker = () => page.locator('li').filter({ has: page.getByLabel(/^Select /) }).first();
     const firstRow = rowWithTagPicker();
     await firstRow.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });   // the add-a-tag box is inside the opened row
+    await expect(firstRow.getByLabel('Add a tag')).toBeVisible();
     await firstRow.getByLabel('Add a tag').fill(handTag);
     await firstRow.getByRole('button', { name: 'Add', exact: true }).click();
     // Whichever row now carries the chip. The list is not in a stable order (tagging touches the

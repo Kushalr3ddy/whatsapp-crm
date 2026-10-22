@@ -27,7 +27,8 @@ test.describe('contacts: refresh, dates and order', () => {
 
     // Clearing brings the list back, and a row opens to show when the person was added and last imported.
     await page.getByRole('link', { name: 'Clear' }).click();
-    const row = page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first();
+    // The opened panel is built only when the row is opened (D-89), so find the row by its checkbox.
+    const row = page.locator('li').filter({ has: page.getByLabel(/^Select /) }).first();
     await row.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });
     await expect(row.getByText('Last imported')).toBeVisible();
   });
