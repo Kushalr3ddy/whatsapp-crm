@@ -16,7 +16,7 @@ test.describe('speed probe', () => {
     test.setTimeout(120_000);
     await signIn(page);
     const out: Record<string, number> = {};
-    // Each click is timed until the address changes (the new page has been fetched and shown) and the page's own <main> is there.
+    // Each click is timed until the address changes (the new page has been fetched and shown) and the page's own heading (not a loading placeholder) is there.
     const screens: Array<[string, RegExp]> = [
       ['Inbox', /\/inbox/], ['Contacts', /\/contacts/], ['Linked numbers', /\/link/], ['Import', /\/import/], ['Campaigns', /\/broadcast/],
       ['Team', /\/team/], ['AI assistant', /\/ai(\/|$)/], ['Security', /\/security/], ['Overview', /localhost:\d+\/?$/]
@@ -26,7 +26,7 @@ test.describe('speed probe', () => {
       const t0 = Date.now();
       await nav(page).getByRole('link', { name: label, exact: true }).click();
       await page.waitForURL(address);
-      await expect(page.locator('main').first()).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
       out[label] = Date.now() - t0;
     }
     await nav(page).getByRole('link', { name: 'Contacts', exact: true }).click();
