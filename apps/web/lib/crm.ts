@@ -333,6 +333,8 @@ export interface CampaignRecipient {
   displayName: string | null;
   /** The underlying message's own delivery state (`sent`/`delivered`/`read`/`failed`), if any. */
   messageStatus: string | null;
+  /** Why a queued message is still waiting (`paced:per_minute`, `sender_not_connected`, …), or null. */
+  holdReason?: string | null;
   /** The contact's primary phone or email, for identifying them in the list. */
   identity: string | null;
 }
