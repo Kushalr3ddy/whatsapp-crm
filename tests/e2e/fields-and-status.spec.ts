@@ -27,11 +27,16 @@ test.describe('custom fields and the numbers page', () => {
     await page.getByRole('button', { name: 'Add field (admin)' }).click();
 
     await ensureOpen();
-    await expect(page.getByText(`{{${key}}}`)).toBeVisible();
+    // The row shows the label; the {{variable}} is in its tooltip.
+    const row = page.locator('li', { hasText: label });
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute('title', new RegExp(`\\{\\{${key}\\}\\}`));
 
-    // Remove it again so the run leaves nothing behind.
-    await page.locator('li', { hasText: `{{${key}}}` }).getByRole('button', { name: 'remove' }).click();
-    await expect(page.getByText(`{{${key}}}`)).toHaveCount(0);
+    // Remove it again so the run leaves nothing behind: asks "Are you sure?" first.
+    await row.getByRole('button', { name: `Remove field ${label}` }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Remove', exact: true }).click();
+    await ensureOpen();
+    await expect(page.locator('li', { hasText: label })).toHaveCount(0);
   });
 
   test('the Numbers page offers advisory mode to an admin', async ({ page }) => {

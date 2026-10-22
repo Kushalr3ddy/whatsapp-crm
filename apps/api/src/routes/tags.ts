@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import {
   resolveTarget, countMatching, bulkTag, bulkUntag, deleteTag, writeAudit, AUDIT, type TagTarget
 } from '@crm/core';
-import { auditActor, requireRole, requireScope } from '../auth.js';
+import { auditActor, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
 
@@ -144,10 +144,10 @@ export function tagsRouter(): Router {
     });
 
   /**
-   * Deletes a tag (admin only, audited). Everyone who carried it is untagged; no contact and no
+   * Deletes a tag (needs the contacts:write scope, audited). Everyone who carried it is untagged; no contact and no
    * campaign is deleted.
    */
-  router.delete('/:id', requireUuidParam('id'), requireRole('admin'),
+  router.delete('/:id', requireUuidParam('id'), requireScope('contacts:write'),
     async (req: Request, res: Response) => {
       const orgId = req.crm!.orgId;
       const tagId = String(req.params.id);
