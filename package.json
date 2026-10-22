@@ -47,6 +47,8 @@
     "regress:check": "node tests/regression/check-registry.mjs",
     "bug": "node scripts/bug.mjs",
     "feedback:gdoc": "tsx --env-file-if-exists=.env scripts/gdoc-to-md.ts",
+    "feedback:latest": "node scripts/feedback-latest.mjs",
+    "feedback:bookmarklet": "tsx scripts/feedback-bookmarklet.ts",
     "feedback:import": "node scripts/feedback-import.mjs",
     "feedback:report": "node scripts/feedback-report.mjs",
     "changelog": "node scripts/changelog.mjs",

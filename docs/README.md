@@ -77,6 +77,7 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 | [39 From a bug report to a merged fix](39-bug-workflow.md) | The flow with a diagram, labels, the 8-line guide for a new chat |
 | [40 Testing and bug handling: the guide for Kushal and Mikhil](40-testing-and-bug-guide.md) | **Start here** for tests, bugs, CI and reporting |
 | [Plan: the bug-to-merge pipeline](plans/2026-10-22-bug-workflow-plan.md) | The agreed plan behind docs 39 and 40, with what was built and what changed |
+| [41 Overnight automation run](41-overnight-automation-run-2026-10-22.md) | What the unattended night run was allowed to do, how to revert it, and what it did |
 | [31 Codebase map](31-codebase-map.md) | Every directory and file in the repository and what it is for, built from each file's own header comment; the first place to look when you do not know where something lives |
 | [User tutorial (PDF)](CRM-user-tutorial.pdf) | A walkthrough of the whole platform with screenshots, for the people who use it every day: signing in, linking a number, importing, contacts, the inbox, campaigns, the team, the AI assistant, the safety rules and troubleshooting. Rebuild with `npm run tutorial:shots -- <folder>` then `npm run tutorial:pdf -- <folder>` |
 | [Getting started](../GETTING_STARTED.md) | (Repo root) fresh clone → running, signed-in instance, in nine steps |
