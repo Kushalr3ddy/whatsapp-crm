@@ -63,7 +63,7 @@ is not re-proposed.
 | D-43 | Extra restriction-alert channels (webhook, email, canary self-test) | 📌 pinned |
 | D-44 | Baileys 7 upgrade | 📌 pinned |
 | D-45 | Link a `@lid` address to its phone number | ✅ done |
-| D-46 | UI responsiveness — the app feels laggy when used fast | 📌 pinned |
+| D-46 | UI responsiveness — the app feels laggy when used fast | 🔺 **HIGH PRIORITY** (Kushal, 2026-10-22) · 📌 pinned |
 | D-47 | Signup page, billing gate and beta-tester override | ⏸ parked |
 | D-48 | Security test suite (OWASP) | 📌 pinned |
 | D-49 | Revamp the browser (e2e) suite to industry standard, covering every UI | 📌 pinned |
@@ -104,6 +104,7 @@ is not re-proposed.
 | D-84 | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
 | D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
 | D-89 | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
+| D-90 | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -1662,7 +1663,17 @@ D-44 would force, so doing it first de-risks the upgrade.
 
 ---
 
-## D-46 · UI responsiveness — the app feels laggy when used fast
+## D-46 · UI responsiveness — the app feels laggy when used fast — **HIGH PRIORITY (Kushal, 2026-10-22)**
+
+> **2026-10-22:** Kushal: "the whole interface is laggy asf; sometimes it is fast but most of the times it takes a lot of time from
+> clicking to screen changes to reflect." Raise this **first whenever he starts anything else.** Evidence so far (session audit,
+> `docs/37-session-audit-findings.md` on branch `test/session-audit`): in `next dev` every first visit to a page compiles it
+> (2.6 to 8.5 s); the Contacts page is about 1 MB of HTML with 158 forms for 50 rows (6 to 9.5 s to open, about 3.4 s per search);
+> sign out took 2 to 10 s; Mikhil's "All chip still loading after 2 minutes" is the same family (his prod runs on
+> `localhost:5001`: **check whether that is a dev server**). **Work order:** (1) re-time the same clicks on a production build
+> (`next build && next start`) to separate dev-compile time from real slowness; (2) slim the Contacts rows (lazy row controls, one
+> shared do-not-contact form; D-89); (3) a pending indicator on every navigation and button (done for contacts tags and campaigns in
+> PRs #104 and #106); (4) slow-query check on the contact list and tag filter (`searchPredicate`).
 
 **What:** Kushal reports (2026-10-10) that the web app lags when he clicks through it quickly. His idea: keep Next.js
 only for the few screens that need live updates (the inbox/thread) and make the rest (campaigns, contacts, import,
@@ -2794,3 +2805,20 @@ Findings are in [`37-session-audit-findings.md`](37-session-audit-findings.md). 
 Related: D-46 (UI lag), D-61 (lighter web tier), D-70 (the Contacts page), D-83, D-72 (phone width).
 
 Pinned to come back to; not started.
+## D-90 · Import duplicates: newest name wins now; a "Needs review" list later; a cleanup script for old copies — pinned (Kushal, 2026-10-22)
+
+**Why:** Mikhil imported two Excel files with the same phone number and different names; the contact kept the first name and nothing said so.
+
+**Built (this PR):**
+- **Newest name wins.** When an import carries a different name for someone already in the book, the name is replaced (a blank name never overwrites). The old and new name go to `audit_log` as `contact.name_replaced_by_import`, with the import run and row.
+- The **Preview and the result** list those rows ("N people already in your book will have their name replaced", with `Was "old" → "new"`), apart from the rows that lost a number.
+- **`npm run dedup:cleanup`** (`scripts/dedup-cleanup.ts`), run by hand. Dry run by default, writes `dedup-report-<time>.csv`; `--apply` asks for `yes`. It merges tags that differ only in capitals or spaces (people and campaigns move to the oldest), cancels identical draft campaigns (keeps the newest), and only *reports* repeated uploads and possible same-person contacts (same last ten phone digits).
+
+**Not built (pinned): a "Needs review" choice.** Instead of silently taking the newest name, the import would import every non-conflicting row at once and park the conflicts in a list on the import (`existing → new`, Keep / Replace / Keep and note, with bulk buttons); rows not yet reviewed change nothing, and the result says "N imported, M waiting for your choice". It needs a new list screen and a state for "waiting", which is why it is not the first version.
+
+**Dedup timing, in one line:** decide at import time, at Preview, before anything is written. A CRM keeps **one row per phone number** (it is what the 14-day cooldown and "do not message twice" rely on), so there is no ETL, partitioning or slowly-changing-dimension pipeline; the history that matters (the old name) lives in the audit log. A full valid-from/valid-to history (SCD type 2) only becomes worth it if someone needs "what was this person's name on date X".
+
+**Contacts are never duplicated by re-importing a file:** the same phone or email always matches the same person (unique index `contact_identity_lookup_uidx`). What piles up are the records around it: import runs (marked replaced by "Upload anyway"), file-name tags, draft campaigns. Merging two *people* (different phone spellings) would mean merging their conversations, so `dedup:cleanup` only lists them.
+
+Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
+
