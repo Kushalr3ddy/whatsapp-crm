@@ -28,7 +28,7 @@ test.describe('custom fields and the numbers page', () => {
 
     await ensureOpen();
     // The row shows the label; the {{variable}} is in its tooltip.
-    const row = page.locator('li', { hasText: label });
+    const row = page.locator(`li[title*="{{${key}}}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute('title', new RegExp(`\\{\\{${key}\\}\\}`));
 
@@ -36,7 +36,7 @@ test.describe('custom fields and the numbers page', () => {
     await row.getByRole('button', { name: `Remove field ${label}` }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Remove', exact: true }).click();
     await ensureOpen();
-    await expect(page.locator('li', { hasText: label })).toHaveCount(0);
+    await expect(page.locator(`li[title*="{{${key}}}"]`)).toHaveCount(0);
   });
 
   test('the Numbers page offers advisory mode to an admin', async ({ page }) => {
