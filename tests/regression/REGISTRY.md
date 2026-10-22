@@ -7,10 +7,10 @@ Every bug that has reached a person gets a row here and a test that fails if it 
 
 | ID | Date | What broke (in plain words) | Found by | Layer | Status | Fix | Issue |
 |---|---|---|---|---|---|---|---|
-| R-001 | 2026-10-22 | Forms that redirect after saving hung forever on "Creating…" / "Counting…" in a production build (Next's own gzip never finished the response) | session audit on a production build | e2e @smoke | guarded | #108 | |
-| R-002 | 2026-10-22 | A campaign or message to the sending number itself: the phone shows "Waiting for this message" and keeps asking for a resend | session audit, gateway log | integration | guarded | #110 | |
-| R-003 | 2026-10-22 | An import with a different name for someone already in the book kept the old name and said nothing | Mikhil (prod feedback issue 2) | integration | guarded | #107 | |
-| R-004 | 2026-10-22 | Clicking Create draft several times made several identical drafts (no feedback after the click) | Mikhil (issue 5) | e2e @smoke | guarded | #106 | |
+| R-001 | 2026-10-22 | Forms that redirect after saving hung forever on "Creating…" / "Counting…" in a production build (Next's own gzip never finished the response) | session audit on a production build | e2e @smoke | guarded | #108 | #120 |
+| R-002 | 2026-10-22 | A campaign or message to the sending number itself: the phone shows "Waiting for this message" and keeps asking for a resend | session audit, gateway log | integration | guarded | #110 | #128 |
+| R-003 | 2026-10-22 | An import with a different name for someone already in the book kept the old name and said nothing | Mikhil (prod feedback issue 2) | integration | guarded | #107 | #117 |
+| R-004 | 2026-10-22 | Clicking Create draft several times made several identical drafts (no feedback after the click) | Mikhil (issue 5) | e2e @smoke | guarded | #106 | #120 |
 | R-005 | 2026-10-22 | Deleting a tag with an API key was refused (403) after the delete was limited to admin sessions | CI | integration | guarded | #105 | |
-| R-006 | 2026-10-22 | "Tag many at once" Preview with no tag chosen gave no answer | Mikhil (issue 4) | e2e @smoke | guarded | #104, #108 | |
+| R-006 | 2026-10-22 | "Tag many at once" Preview with no tag chosen gave no answer | Mikhil (issue 4) | e2e @smoke | guarded | #104, #108 | #119 |
 | R-007 | 2026-10-22 | A contact row opened before the page finished starting up did not show its panel | CI | e2e | guarded | #111 | |
