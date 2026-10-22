@@ -9,6 +9,7 @@ import { Meter, initialsOf } from '../../ui';
 import { CampaignControls, SendAnywayButton } from '../campaign-controls';
 import { AutoRefresh } from '../auto-refresh';
 import { GATE_LABEL } from '../gates';
+import { holdLabel } from '@/lib/hold-label';
 
 /** Rendered per request — progress and the status/search filters come live from the query string. */
 export const dynamic = 'force-dynamic';
@@ -389,7 +390,9 @@ function RecipientRow({ recipient }: { recipient: CampaignRecipient }) {
 
 /** The recipient's outcome as a badge, with the reason a skip/failure carries. */
 function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
-  const { status, skipReason, messageStatus } = recipient;
+  const { status, skipReason, messageStatus, holdReason } = recipient;
+  // Waiting to go out: say why, in words, instead of a bare "pending".
+  const waiting = (status === 'pending' || status === 'queued') && messageStatus === 'queued';
   const cls =
     status === 'sent' ? 'text-success border-transparent bg-success-soft'
     : status === 'failed' ? 'text-danger border-danger/50'
@@ -402,6 +405,7 @@ function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
   return (
     <div className="flex shrink-0 items-center gap-2">
       {(skipReason !== null) && <span className="text-xs text-muted">{SKIP_LABEL[skipReason] ?? skipReason}</span>}
+      {waiting && <span className="text-xs text-warning">waiting: {holdLabel(holdReason ?? null)}</span>}
       <span className={`badge capitalize ${cls}`}>{label}</span>
     </div>
   );

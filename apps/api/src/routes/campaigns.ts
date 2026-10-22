@@ -333,7 +333,7 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }, s
           SELECT cr.id, cr.status, cr.skip_reason AS "skipReason",
                  cr.attempted_at AS "attemptedAt",
                  c.display_name AS "displayName",
-                 m.status AS "messageStatus",
+                 m.status AS "messageStatus", m.hold_reason AS "holdReason",
                  (SELECT ci.value_normalized FROM contact_identity ci
                   WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
                   ORDER BY ci.is_primary DESC LIMIT 1) AS "identity"
