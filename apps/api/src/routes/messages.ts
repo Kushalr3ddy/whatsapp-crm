@@ -1056,6 +1056,12 @@ export function messagesRouter(
         SELECT c.do_not_contact AS flagged FROM contact_identity ci JOIN contact c ON c.id = ci.contact_id
         WHERE ci.org_id = ${orgId} AND ci.kind = 'phone' AND ci.value_normalized = ${phone.value.e164}`)
       ) as unknown as Array<{ flagged: boolean }>;
+      const own = (await tx.execute(sql`
+        SELECT 1 FROM sender_identity
+        WHERE org_id = ${orgId} AND phone_e164 = ${phone.value.e164}
+          AND (${senderId ?? null}::uuid IS NULL OR id = ${senderId ?? null}::uuid)
+        LIMIT 1`)) as unknown as unknown[];
+      if (own.length > 0) return { ownNumber: true as const };
       const verdict = dncVerdict(req, known[0]?.flagged === true, overrideDnc);
       if (verdict === 'blocked' || verdict === 'forbidden') return { dncRefused: verdict };
       const rows = await tx.execute(sql`
@@ -1099,6 +1105,11 @@ export function messagesRouter(
       return { made };
     });
     if ('dncRefused' in outcome) { sendDncRefusal(req, res, outcome.dncRefused); return; }
+    if ('ownNumber' in outcome) {
+      res.status(422).json(problem(req, 422, 'OWN_NUMBER',
+        'That is the number you are sending from. WhatsApp cannot deliver a linked number\'s message to itself (the phone shows "Waiting for this message"), so choose another recipient.'));
+      return;
+    }
 
     const created = outcome.made;
     if (!created) {

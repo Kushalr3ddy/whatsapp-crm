@@ -139,6 +139,33 @@ describe('creating one', () => {
   });
 });
 
+describe('the sending number itself', () => {
+  it('is skipped as an audience member, and the rest are queued', async () => {
+    // A linked number cannot be sent a message from itself: the phone shows "Waiting for this message" and keeps asking for a resend.
+    const own = (await db.execute(sql`
+      INSERT INTO contact (org_id, display_name, source) VALUES (${orgId}, 'Me', 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    await db.execute(sql`
+      INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
+      VALUES (${orgId}, ${own}, 'phone', '+919000000001', true)`);
+    const created = await create([...contactIds.slice(0, 2), own]);
+    expect(created.status).toBe(201);
+    const started = await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
+    expect(started.body.data.progress).toMatchObject({ total: 3, pending: 2, skipped: 1 });
+    const rows = await db.execute(sql`
+      SELECT skip_reason FROM campaign_recipient WHERE campaign_id = ${created.body.data.id} AND contact_id = ${own}`);
+    expect((rows as unknown as Array<{ skip_reason: string }>)[0]!.skip_reason).toBe('own_number');
+  });
+
+  it('cannot be messaged from the inbox either: 422 OWN_NUMBER, nothing queued', async () => {
+    const r = await request(app).post('/api/v1/messages').set(...auth())
+      .send({ to: '+919000000001', body: 'hello me', senderId });
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('OWN_NUMBER');
+    const queued = await db.execute(sql`SELECT count(*)::int AS n FROM message WHERE org_id = ${orgId}`);
+    expect((queued as unknown as Array<{ n: number }>)[0]!.n).toBe(0);
+  });
+});
+
 describe('targeting by tag', () => {
   /** Tags the given contacts with a fresh tag, and returns the tag id. */
   const tagContacts = async (name: string, ids: string[]): Promise<string> => {
