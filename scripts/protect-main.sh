@@ -6,7 +6,9 @@
 # Undo: gh api -X DELETE repos/OWNER/REPO/branches/main/protection
 set -euo pipefail
 REPO=${REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}
-CHECKS='["check","e2e","secrets-scan","regress-smoke","bug-gate"]'
+# The required checks. Only list a check that already runs on pull requests into main, or no PR can ever merge. Start with the three that exist; add
+# regress-smoke once the regression framework is on main, and bug-gate once the bug-fix gate is:   CHECKS='["check","e2e","secrets-scan","regress-smoke","bug-gate"]' bash scripts/protect-main.sh --yes
+CHECKS=${CHECKS:-'["check","e2e","secrets-scan"]'}
 echo "Repository: $REPO"
 echo "Required checks before merging into main: $CHECKS"
 echo "Also: branches must be up to date is OFF (so stacked PRs merge in order); admins are NOT exempt; force-push and deletion refused; auto-merge allowed."
