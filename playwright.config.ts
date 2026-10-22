@@ -26,7 +26,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],
-  use: { baseURL, trace: 'on-first-retry' },
+  use: { baseURL, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   // Reuse the stack if it is already up (the usual local case: `npm run dev:all`), otherwise start
   // it. Kept generous because a cold start migrates the database and boots three processes.
