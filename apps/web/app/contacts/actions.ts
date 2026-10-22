@@ -28,6 +28,7 @@ export async function createTagAction(formData: FormData): Promise<void> {
   const name = String(formData.get('name') ?? '').trim();
   if (name === '') return;
   await run(() => createTag(name));
+  redirect(`/contacts?tagMade=${encodeURIComponent(name)}`);
 }
 
 /**

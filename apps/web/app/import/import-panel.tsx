@@ -406,6 +406,10 @@ export function ImportPanel() {
               />
             </label>
 
+            <p className="mb-2 text-sm text-muted">
+              <strong>Preview</strong> checks your file and shows who is new and who is already in your book. It saves nothing.
+              {summary === null && ' The Import button appears once you have run a preview.'}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -415,17 +419,16 @@ export function ImportPanel() {
               >
                 {pending ? 'Working…' : 'Preview'}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (summary === null) { setNeedPreview(true); return; }
-                  go(false);
-                }}
-                disabled={pending || phone === '' || summary?.committed === true}
-                className="btn btn-primary"
-              >
-                Import
-              </button>
+              {summary !== null && (
+                <button
+                  type="button"
+                  onClick={() => { go(false); }}
+                  disabled={pending || phone === '' || summary.committed}
+                  className="btn btn-primary"
+                >
+                  {pending ? 'Working…' : 'Import'}
+                </button>
+              )}
               <button type="button" onClick={reset} className="text-xs text-muted underline underline-offset-2">
                 Start over
               </button>
@@ -455,6 +458,11 @@ export function ImportPanel() {
                 {summary.result.read} read · {summary.result.created} contacts{' '}
                 {summary.committed ? 'created' : 'would be created'} · {summary.result.updated} updated ·{' '}
                 {summary.result.errors} errors
+                {!summary.committed && summary.result.updated > 0 && (
+                  <span className="mt-1 block rounded bg-warning-soft px-2 py-1 text-warning">
+                    {summary.result.updated} {summary.result.updated === 1 ? 'person is' : 'people are'} already in your book and will be updated (their name and details are overwritten with this file’s).
+                  </span>
+                )}
                 {summary.committed && summary.result.tagged !== undefined && (
                   <> · {summary.result.tagged} tagged “{tagName.trim()}”</>
                 )}
