@@ -53,6 +53,10 @@ describe('mapStatus', () => {
 });
 
 describe('extractBody', () => {
+  it('does not crash on a message whose location fields are null (a reaction or a system message)', () => {
+    const m = { locationMessage: null, liveLocationMessage: null, reactionMessage: {} } as unknown as Parameters<typeof extractBody>[0];
+    expect(extractBody(m)).toEqual({ body: '', contentType: 'other' });
+  });
   it('reads a plain text message', () => {
     expect(extractBody({ conversation: 'hello' })).toEqual({ body: 'hello', contentType: 'text' });
   });
