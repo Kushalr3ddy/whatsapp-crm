@@ -1,13 +1,15 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
-  listSenders, listTags, listImportRuns, listSegments, getAiStatus, listCampaignPictures, CrmApiError, NotAuthenticatedError
+  listSenders, listTags, listImportRuns, listSegments, getAiStatus, listCampaignPictures, listAiTemplates, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { Sender, Tag, ImportRun, Segment, CampaignPicture } from '@/lib/crm';
+import type { Sender, Tag, ImportRun, Segment, CampaignPicture, AiTemplate } from '@/lib/crm';
 import { createCampaignAction } from '../actions';
 import { AudiencePicker } from './audience-picker';
 import { WriteWithAi } from './write-with-ai';
 import { PictureField } from './picture-field';
+import { TemplatePicker } from './template-picker';
+import { SubmitButton } from './submit-button';
 
 /** Rendered per request — the sender and tag pickers reflect live data. */
 export const dynamic = 'force-dynamic';
@@ -41,11 +43,13 @@ export default async function NewCampaignPage(
   let segments: Segment[] = [];
   let aiOn = false;
   let pictures: CampaignPicture[] = [];
+  let templates: AiTemplate[] = [];
   let failure: string | null = null;
   let expired = false;
   try {
-    [senders, tags, imports, segments, pictures, aiOn] = await Promise.all([
+    [senders, tags, imports, segments, pictures, templates, aiOn] = await Promise.all([
       listSenders(), listTags(), listImportRuns(), listSegments(), listCampaignPictures().catch((): CampaignPicture[] => []),
+      listAiTemplates().catch((): AiTemplate[] => []),
       // Only whether to offer the helper: if it cannot be read, it is simply not offered.
       getAiStatus().then((s) => s.enabled).catch(() => false)
     ]);
@@ -95,6 +99,7 @@ export default async function NewCampaignPage(
         <form action={createCampaignAction} className="flex flex-col gap-5">
           <section className="card p-5">
             {step(1, 'Write the message')}
+            <TemplatePicker templates={templates} />
             {aiOn && <WriteWithAi />}
             <label className="mb-3 flex flex-col gap-1.5">
               <span className="text-sm font-medium">Name</span>
@@ -152,7 +157,7 @@ export default async function NewCampaignPage(
           </section>
 
           <div className="flex items-center gap-3">
-            <button type="submit" className="btn btn-primary">Create draft</button>
+            <SubmitButton label="Create draft" pendingLabel="Creating…" />
             <Link href="/broadcast" className="text-sm text-muted hover:text-ink">Cancel</Link>
           </div>
         </form>

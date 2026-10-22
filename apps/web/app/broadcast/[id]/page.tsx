@@ -6,7 +6,9 @@ import {
 import type { Me, CampaignDetail, CampaignRecipient, CampaignPreview } from '@/lib/crm';
 import { campaignStatusBadge } from '../campaign-status';
 import { Meter, initialsOf } from '../../ui';
-import { startCampaignAction, pauseCampaignAction, cancelCampaignAction } from '../actions';
+import { CampaignControls, SendAnywayButton } from '../campaign-controls';
+import { AutoRefresh } from '../auto-refresh';
+import { GATE_LABEL } from '../gates';
 
 /** Rendered per request — progress and the status/search filters come live from the query string. */
 export const dynamic = 'force-dynamic';
@@ -23,11 +25,11 @@ const STATUSES = ['sent', 'queued', 'pending', 'skipped', 'failed'] as const;
 export default async function CampaignPage(
   { params, searchParams }: {
     params: Promise<{ id: string }>;
-    searchParams: Promise<{ status?: string; q?: string }>;
+    searchParams: Promise<{ status?: string; q?: string; created?: string }>;
   }
 ) {
   const { id } = await params;
-  const { status, q } = await searchParams;
+  const { status, q, created } = await searchParams;
   const activeStatus = typeof status === 'string' ? status : '';
   const query = typeof q === 'string' ? q : '';
 
@@ -80,8 +82,27 @@ export default async function CampaignPage(
                   : <>Draft — not started yet</>}
               </p>
             </div>
-            <Controls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
+            <CampaignControls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
           </header>
+
+          {created === '1' && campaign.status === 'draft' && (
+            <p role="status" className="mb-4 notice notice-success">
+              Draft created. Nothing has been sent yet — check the message and who it reaches, then press Start.
+            </p>
+          )}
+
+          {campaign.status === 'running' && <AutoRefresh />}
+
+          {campaign.status === 'draft' && preview !== null && (preview.audience.recentlyMessaged ?? 0) > 0 && (
+            <div role="alert" className="mb-4 notice notice-warning flex flex-wrap items-center justify-between gap-3">
+              <p>
+                {preview.audience.recentlyMessaged} of {preview.audience.reachable} contacts were already messaged in another
+                campaign{(preview.audience.recentCampaign ?? null) !== null ? <>, “{preview.audience.recentCampaign}”</> : null}, in the
+                last 14 days. They will be skipped unless you send anyway.
+              </p>
+              {me?.role === 'admin' ? <SendAnywayButton /> : <span className="text-xs">Only an admin can send anyway.</span>}
+            </div>
+          )}
 
           {campaign.pauseReason === 'restriction_likely' && campaign.status === 'paused' && (
             <p role="alert" className="mb-4 notice notice-danger">
@@ -167,36 +188,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-/**
- * The start/pause/cancel controls, shown only where they make sense: a draft can start or be
- * cancelled, a running campaign can pause or cancel, a paused one can resume or cancel, and a
- * finished one has none. Each is a plain form posting to a server action — no client JS.
- */
-function Controls({ id, status, isAdmin }: { id: string; status: string; isAdmin: boolean }) {
-  const primary = 'btn btn-sm btn-primary';
-  const plain = 'btn btn-sm';
-  const danger = 'btn btn-sm btn-danger';
-
-  const button = (action: (fd: FormData) => Promise<void>, label: string, cls: string) => (
-    <form action={action}>
-      <input type="hidden" name="id" value={id} />
-      <button type="submit" className={cls}>{label}</button>
-    </form>
-  );
-
-  if (status === 'completed' || status === 'cancelled') return null;
-
-  return (
-    <div className="flex items-center gap-1.5">
-      {status === 'draft' && isAdmin && <OverrideStart id={id} />}
-      {status === 'draft' && button(startCampaignAction, 'Start', primary)}
-      {status === 'running' && button(pauseCampaignAction, 'Pause', plain)}
-      {status === 'paused' && button(startCampaignAction, 'Resume', primary)}
-      {button(cancelCampaignAction, 'Cancel', danger)}
-    </div>
-  );
-}
-
 /** What each `skip_reason` means, for the per-recipient list. */
 const SKIP_LABEL: Record<string, string> = {
   dnc: 'marked do-not-contact',
@@ -206,49 +197,6 @@ const SKIP_LABEL: Record<string, string> = {
   cooldown: 'sent a campaign within 14 days',
   in_other_campaign: 'in another live campaign'
 };
-
-/** Plain-language labels for the recipient-experience gates an admin may lift. */
-const GATE_LABEL: Record<string, string> = {
-  dnc: 'Do-not-contact — they asked not to be messaged (use with great care)',
-  engagement: 'Engagement lock — an agent is mid-conversation with them',
-  cooldown: 'Cooldown — sent a campaign in the last 14 days',
-  duplicate_campaign: 'Duplicate campaign — waiting in another live campaign'
-};
-
-/**
- * Admin-only: start while lifting one or more recipient-experience gates. Needs a reason, which is
- * audited. Never offers the number-protecting limits (daily cap, rate, warmup) or do-not-contact.
- */
-function OverrideStart({ id }: { id: string }) {
-  return (
-    <details className="relative">
-      <summary className="cursor-pointer list-none btn btn-sm">
-        Start with overrides…
-      </summary>
-      <form action={startCampaignAction}
-        className="absolute right-0 z-10 mt-1 w-80 rounded-lg border border-border bg-surface p-3 text-xs shadow-lg">
-        <input type="hidden" name="id" value={id} />
-        <p className="mb-2 text-muted">
-          Send to people these gates would normally skip. The daily cap, rate limits, warmup and
-          do-not-contact still apply.
-        </p>
-        {Object.entries(GATE_LABEL).map(([gate, label]) => (
-          <label key={gate} className="mb-1 flex items-start gap-2">
-            <input type="checkbox" name="overrideGates" value={gate} className="mt-0.5" />
-            <span>{label}</span>
-          </label>
-        ))}
-        <textarea name="reason" required minLength={10} maxLength={500} rows={2}
-          placeholder="Why? (recorded in the audit log)"
-          className="mt-2 w-full rounded-md border border-border bg-canvas p-1.5" />
-        <button type="submit"
-          className="mt-2 btn btn-sm btn-primary">
-          Start, lifting the ticked gates
-        </button>
-      </form>
-    </details>
-  );
-}
 
 /**
  * The progress counters, each a link that filters the list below to that status — so the summary
@@ -269,19 +217,29 @@ function ProgressTiles(
   ];
   const showForecast = campaign.status === 'running' || campaign.status === 'paused';
 
-  const done = p.sent + p.skipped + p.failed;
+  // The bar counts people actually attempted. Skipped people were never sent anything, so a campaign that skipped everyone
+  // must not look finished.
+  const done = p.sent + p.failed;
+  const allSkipped = p.total > 0 && p.skipped === p.total;
   return (
     <>
       <div className="card mb-3 p-4">
         <div className="mb-2 flex items-baseline justify-between">
           <p className="font-medium">
-            <span className="tabular-nums">{done}</span> of <span className="tabular-nums">{p.total}</span> done
+            <span className="tabular-nums">{done}</span> of <span className="tabular-nums">{p.total}</span> sent
+            {p.skipped > 0 && <span className="text-muted"> · {p.skipped} skipped</span>}
+            {p.queued > 0 && <span className="text-muted"> · {p.queued} queued</span>}
           </p>
           <p className="text-sm tabular-nums text-muted">
             {p.total === 0 ? 0 : Math.round((done / p.total) * 100)}%
           </p>
         </div>
         <Meter value={done} max={p.total} label="Campaign progress" />
+        {allSkipped && (
+          <p role="alert" className="mt-2 text-sm text-warning">
+            Nothing was sent: all {p.total} people were skipped. See the Skipped list below for why.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">

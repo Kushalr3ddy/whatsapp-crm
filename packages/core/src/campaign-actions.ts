@@ -69,6 +69,15 @@ export async function createCampaignDraft(
     if ((pic as unknown as unknown[]).length === 0) return { error: 'no_picture' };
   }
 
+  // A double click (or ten) must not make ten drafts: an identical draft made in the last 30 seconds is returned instead.
+  const twin = await tx.execute(sql`
+    SELECT id FROM campaign
+    WHERE org_id = ${orgId} AND status = 'draft' AND name = ${input.name} AND body = ${input.body}
+      AND sender_identity_id = ${input.senderIdentityId} AND created_at > now() - interval '30 seconds'
+    ORDER BY created_at DESC LIMIT 1`);
+  const existing = (twin as unknown as Array<{ id: string }>)[0];
+  if (existing !== undefined) return { id: existing.id };
+
   const rows = await tx.execute(sql`
     INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
                           explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, status)

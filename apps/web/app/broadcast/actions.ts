@@ -130,7 +130,7 @@ export async function createCampaignAction(formData: FormData): Promise<void> {
     redirect(`/broadcast/new?error=${encodeURIComponent(code)}`);
   }
   revalidatePath('/broadcast');
-  redirect(`/broadcast/${id}`);
+  redirect(`/broadcast/${id}?created=1`);
 }
 
 /** Starts (or resumes) a campaign. */
