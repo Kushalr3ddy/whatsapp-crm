@@ -324,7 +324,7 @@ function BulkTagBar(
             <option value="add">Add tag</option>
             <option value="remove">Remove tag</option>
           </select>
-          <select name="bulkTag" aria-label="Tag to apply" defaultValue="" className="field field-sm w-full min-w-0">
+          <select name="bulkTag" aria-label="Tag to apply" defaultValue="" required className="field field-sm w-full min-w-0">
             <option value="" disabled>choose a tag…</option>
             {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             <option value="none">No tag</option>
