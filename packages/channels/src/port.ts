@@ -95,6 +95,12 @@ export interface NormalisedInboundEvent {
    */
   readonly mediaRef: string | null;
   readonly receivedAt: Date;
+  /**
+   * True when the owner sent this message themselves, from their own phone or another linked device, rather than the contact
+   * sending it to us (D-94). `fromPhoneE164` / `fromProviderAddress` then name the OTHER person in the chat. Messages the CRM
+   * itself sent are never reported this way (they are already recorded). Absent or false for ordinary inbound traffic.
+   */
+  readonly fromMe?: boolean;
   /** The untouched provider payload, persisted before processing so it can be replayed. */
   readonly raw: unknown;
 }

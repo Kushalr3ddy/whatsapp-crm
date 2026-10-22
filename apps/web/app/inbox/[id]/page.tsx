@@ -11,7 +11,12 @@ import { PresenceBeat } from './presence-beat';
 import { ViewersLine } from './viewers-line';
 import { holdLabel } from '@/lib/hold-label';
 
-/** Formats a message timestamp. Full date, because a thread spans days. */
+/** The time of day inside a bubble, like WhatsApp ("12:44 pm"); the full date is the day heading above and the hover text. */
+function timeOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/** Formats a full timestamp (date and time), for notes and for the hover text on a bubble. */
 function stamp(iso: string): string {
   return new Date(iso).toLocaleString([], {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
@@ -91,7 +96,8 @@ function DeliveryState({ message }: { message: Message }) {
   // and nothing has left yet — so it is spelled out rather than shown as a bare word.
   const queued = message.status === 'queued';
   // "sent" with no delivery after a while is the silent-restriction symptom, so say how long.
-  const stuckHours = message.status === 'sent' && message.sentAt !== null
+  // A message typed on the owner's phone may never report delivery to the CRM, so it is never flagged as stuck.
+  const stuckHours = message.status === 'sent' && message.sentAt !== null && message.sentBy !== 'phone'
     ? (Date.now() - new Date(message.sentAt).getTime()) / 3_600_000 : 0;
   const stuck = stuckHours >= 0.5;
   return (
@@ -116,6 +122,7 @@ type TimelineEntry =
  */
 function authorLabel(message: Message): string | null {
   if (message.direction !== 'outbound') return null;
+  if (message.sentBy === 'phone') return 'You, from your phone';
   if (message.sentByName !== null) return message.sentByName;
   return message.sentBy === 'system' ? 'Campaign' : 'API';
 }
@@ -147,7 +154,7 @@ function MessageBubble({ message }: { message: Message }) {
           message.direction === 'outbound' ? 'text-on-accent/70' : 'text-muted'
         ].join(' ')}
       >
-        {stamp(message.createdAt)}
+        <span title={stamp(message.createdAt)}>{timeOf(message.createdAt)}</span>
         <DeliveryState message={message} />
       </p>
     </div>
@@ -217,9 +224,13 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
   const senderLabel = conversation?.senderLabel ?? null;
 
   // A date heading each time the day changes, so a long thread reads in chapters.
-  const dayOf = (iso: string): string => new Date(iso).toLocaleDateString([], {
-    weekday: 'long', day: 'numeric', month: 'long'
-  });
+  const dayOf = (iso: string): string => {
+    const d = new Date(iso);
+    const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 86_400_000);
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+  };
   const connected = senderStatus?.canSend === true;
   const statusLabel = senderStatus === null ? null
     : connected ? 'Linked'

@@ -2894,5 +2894,7 @@ Pinned to come back to; not started.
 
 **Test:** an integration test that a `fromMe` message from the phone is stored once and shows in the thread (and not twice if the CRM sent it); a test that it does not wake the assistant; a regression R-number when built. Related: D-45 (`@lid` linking), D-82 (session desync, which also causes these decrypt failures), D-91.
 
-Pinned as **high priority**; not started.
+**Update 2026-10-22 (PR "own messages", R-010):** built **step 1 and step 4**: a message the owner types on their own phone is now stored as an outbound message (`sent_by = 'phone'`, at WhatsApp's own time, no unread, never offered to the AI assistant), shown in the thread labelled "You, from your phone", and de-duplicated against the CRM's own sends (the provider remembers ids it sent, the gateway waits 10 s before storing, and the database allows one row per WhatsApp message id). The thread now also shows WhatsApp-style times (the time in the bubble, the full date on hover, "Today" / "Yesterday" day headings). **Still open:** step 2 (older history when a number is linked) and step 3 (the owner's own messages that arrive undecryptable on a fresh link). A gateway restart is needed for the new behaviour to take effect. Messages typed on the phone while the gateway was down are not recovered (they arrive as history, which is step 2).
+
+Remaining work pinned as **high priority**.
 
