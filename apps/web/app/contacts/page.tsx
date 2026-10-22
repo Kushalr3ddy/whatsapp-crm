@@ -11,6 +11,8 @@ import { PageHeader, EmptyState, initialsOf } from '../ui';
 import { TagChip } from './tag-chip';
 import { RemoveTag } from './remove-tag';
 import { SubmitButton } from './submit-button';
+import { FieldsPanel } from './fields-panel';
+import { TagManager } from './tag-manager';
 
 /** What the person is looking at: search, tag, date range and order. Every link and form on the page carries it. */
 interface View {
