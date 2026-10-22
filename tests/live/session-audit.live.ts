@@ -310,7 +310,7 @@ test.describe('session audit', () => {
       if (first !== undefined) {
         const renamedCsv = join(OUT, 'renamed.csv');
         const head = readFileSync(CSV, 'utf8').split('\n')[0] ?? '';
-        writeFileSync(renamedCsv, `${head}\nRenamed By Audit,${first.phone},${first.email},${first.city}\n`);
+        writeFileSync(renamedCsv, `${head}\nRenamed By Audit ${new Date().toISOString().slice(11, 19)},${first.phone},${first.email},${first.city}\n`);
         await step('import: start a file with a new name for someone already in the book', async () => {
           await page.getByRole('button', { name: /Start over|Import another/ }).first().click();
           await page.locator('input[type="file"]').setInputFiles(renamedCsv);
@@ -443,8 +443,13 @@ test.describe('session audit', () => {
 
     area = '5b linked numbers';
     await press('open Linked numbers', nav('Linked numbers'), page.getByRole('heading', { name: 'Linked numbers', exact: true }));
-    await step('Remove this number asks "Are you sure?" and Cancel keeps it (not confirmed)', async () => {
-      await page.getByRole('button', { name: 'Remove this number' }).first().click();
+    await step('Remove this number: hidden while linked (says to Unlink first); when removable it asks "Are you sure?"', async () => {
+      const remove = page.getByRole('button', { name: 'Remove this number' });
+      if (await remove.count() === 0) {
+        await expect(page.getByText(/To remove this number, press Unlink first/).first()).toBeVisible();
+        return 'the number is linked, so Remove is hidden and the page says to Unlink first (nothing pressed)';
+      }
+      await remove.first().click();
       await expect(page.getByRole('alertdialog')).toBeVisible();
       await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click();
       await expect(page.getByRole('alertdialog')).toHaveCount(0);
