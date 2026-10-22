@@ -52,6 +52,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The runner image lists Microsoft's package server, which often answers 403 or hangs for minutes (it once failed a PR and once
+      # made one job take 13 minutes). Playwright's browser libraries come from Ubuntu's own packages, so drop that source first.
+      - name: skip the flaky Microsoft package source
+        run: |
+          grep -lr "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
       - name: install chromium
         run: npx playwright install --with-deps chromium
       - name: migrate, provision the e2e admin, seed
