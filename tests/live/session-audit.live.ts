@@ -203,8 +203,16 @@ test.describe('session audit', () => {
       copyFileSync(CSV, copy);
       await step('import: upload, rows read', async () => {
         await page.locator('input[type="file"]').setInputFiles(copy);
-        await expect(page.getByText(/rows ·/)).toBeVisible({ timeout: 30_000 });
-        return (await page.getByText(/rows ·/).first().innerText()).replace(/\s+/g, ' ');
+        const rowsRead = page.getByText(/rows ·/);
+        const seenBefore = page.getByText(/already uploaded/);
+        await expect(rowsRead.or(seenBefore).first()).toBeVisible({ timeout: 30_000 });
+        // An organisation that imported this file in an earlier run refuses the same bytes; that is the feature, so use "Upload anyway".
+        if (await seenBefore.first().isVisible()) {
+          await page.getByRole('button', { name: 'Upload anyway' }).click();
+          await expect(rowsRead).toBeVisible({ timeout: 30_000 });
+          return 'the file had been uploaded before, so "Upload anyway" was used: ' + (await rowsRead.first().innerText()).replace(/\s+/g, ' ');
+        }
+        return (await rowsRead.first().innerText()).replace(/\s+/g, ' ');
       });
       await shot('04-import-mapped');
       await step('import: tick the City column to be stored', async () => { await page.getByLabel('City').check(); });
@@ -289,6 +297,17 @@ test.describe('session audit', () => {
     });
     await shot('06-campaign-draft');
     await step('Start the campaign', async () => {
+      if (process.env.SESSION_OVERRIDE_GATES === '1') {
+        // Test Phone One was messaged moments ago by the Inbox step, so the 14-day "cooldown" gate would skip them. An admin may lift the
+        // recipient-experience gates for a campaign, with a written reason that is audited; this is the same call the Start button's override uses.
+        const started = await page.request.post(`${API}/campaigns/${campaignId}/start`, {
+          headers: await csrf(), data: { overrideGates: ['engagement', 'cooldown', 'duplicate_campaign'], reason: 'session audit: messages to the operator\'s own test numbers' }
+        });
+        expect(started.status(), await started.text()).toBeLessThan(300);
+        await page.reload();
+        await expect(page.getByText(/Running|Completed/i).first()).toBeVisible({ timeout: 30_000 });
+        return 'started with the admin override of the recipient gates (audited), because the same people were messaged moments earlier';
+      }
       await page.getByRole('button', { name: 'Start', exact: true }).click();
       await expect(page.getByText(/Running|Completed/i).first()).toBeVisible({ timeout: 30_000 });
     });

@@ -14,7 +14,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 OUT="$PWD/test-results/session-$MODE-$STAMP"; mkdir -p "$OUT"
 
 if [ "$MODE" = real ]; then
-  export SESSION_EMAIL=$(getenv email) SESSION_PASSWORD=$(getenv password) SESSION_SENDER=kushal_test
+  export SESSION_EMAIL=$(getenv email) SESSION_PASSWORD=$(getenv password) SESSION_SENDER=kushal_test SESSION_OVERRIDE_GATES=1
 else
   export SESSION_EMAIL=$(getenv TEST_EMAIL) SESSION_PASSWORD=$(getenv TEST_PASSWORD) SESSION_SENDER="Seed number"
 fi

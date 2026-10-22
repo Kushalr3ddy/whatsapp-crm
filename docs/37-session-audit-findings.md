@@ -9,6 +9,12 @@ How to read the times: they are **wall-clock from the click until the page shows
 time it is opened and runs unoptimised) on a machine whose CPU was also driving the test browser and its video recording (Chromium averaged 109 % CPU and peaked at 310 %).
 Production on the Linode box will be faster than every dev-mode number here. The *order* of the slow things is the useful part.
 
+## 0 · Second dry run (clean): 120 steps, 0 failed, 255 s
+
+The first dry run had 12 failures that all came from one script mistake, so it is superseded by a clean one. Numbers from the clean run: **Contacts open 9.5 s, Refresh 5.2 s, "open Contacts to search" 6.3 s, 11 searches 2.9 to 4.4 s (average 3.4 s)**; import steps 0.1 to 1.6 s; campaign form to draft 2.1 s, Start 1.4 s; **Sign out 2.0 s** (it was 9.9 s in the first run, so it is inconsistent, not always slow) and 7.5 s for the check that the session is gone; CPU averaged 89 % with Chromium alone at 147 % (peak 326 %). Free memory dipped to 2.5 GB.
+
+New finding from this run: **every recipient of the campaign was skipped with "cooldown"** (the people had been messaged by the earlier runs inside the 14-day window). That is the anti-ban recipient gate working, but it will also hit the real run, because the Inbox step messages Test Phone One just before the campaign. The real run starts the campaign with the admin override of those gates (audited, with a written reason), as the repo's own live flow does, and notes it.
+
 ## 1 · What worked (no bug found)
 
 | Step | Result |
@@ -38,10 +44,11 @@ Production on the Linode box will be faster than every dev-mode number here. The
 ## 3 · Product findings and bugs
 
 1. **A held campaign says nothing about why (UX gap, real).** With the e2e number's new-contact limit used up (5 a day by default), three recipients sat at **"Pending"** for 8 minutes. The campaign page only said "3 left, finishes today at 1468/day". The gateway log knew the reason (`new_contact_throttle`, retry in one hour) and each message stores a hold reason. The page should say "Waiting: the number has reached its limit of new contacts today. It will resume at …". (Your real number is in advisory mode, which skips these holds.)
-2. **The City column is not saved unless ticked**, so searching a city finds nothing until it is stored. This is the intended "never store what you did not choose" behaviour, but a person importing "Full Name, Mobile, Email, City" may expect city to be kept. Consider ticking the non-personal columns by default, or saying so on the result ("City was not saved").
-3. **After "Upload anyway" you must press Preview before Import.** The page says so ("Click Preview first…"), so it is consistent, but it is one more click than the first import.
-4. **Test-data clutter in the e2e org** (12 linked numbers, 11 "Not linked"; eight team members) makes the dashboard long. Not a product bug, but it inflates page sizes in measurements.
-5. **No functional bug was found in sign-in, search, import, import-again, team, AI, AI settings, security or billing.**
+2. **A campaign silently skips people messaged recently.** All three recipients showed as skipped (cooldown). The gate is intended, and the page lists the skipped people, but the reason is easy to miss on the page and the 14-day window surprises test runs. Consider a line at the top: "3 of 3 skipped: messaged in the last 14 days (cooldown). An admin can override.".
+3. **The City column is not saved unless ticked**, so searching a city finds nothing until it is stored. This is the intended "never store what you did not choose" behaviour, but a person importing "Full Name, Mobile, Email, City" may expect city to be kept. Consider ticking the non-personal columns by default, or saying so on the result ("City was not saved").
+4. **After "Upload anyway" you must press Preview before Import.** The page says so ("Click Preview first…"), so it is consistent, but it is one more click than the first import.
+5. **Test-data clutter in the e2e org** (12 linked numbers, 11 "Not linked"; eight team members) makes the dashboard long. Not a product bug, but it inflates page sizes in measurements.
+6. **No functional bug was found in sign-in, search, import, import-again, team, AI, AI settings, security or billing.**
 
 ## 4 · The machine (what slowed everything)
 
