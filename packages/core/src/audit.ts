@@ -156,6 +156,8 @@ export const AUDIT = {
   aiEnabled: 'ai.enabled',
   aiDisabled: 'ai.disabled',
   aiSettingsChanged: 'ai.settings_changed',
+  // Which AI provider and model the install uses was changed from the AI settings tab (never the key).
+  aiLlmChanged: 'ai.llm_changed',
   aiTemplateSaved: 'ai.template_saved',
   aiTemplateDeleted: 'ai.template_deleted',
   // An instruction given to the AI assistant, and what it did about it.

@@ -3,11 +3,14 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { setTenant, tenantDatabase, type Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
-import type { LlmDriver } from '@crm/llm';
+import {
+  PROVIDERS, providerById, providerFor, listModels, probeLlm, assertSafeBaseUrl, UnsafeUrlError, defaultBaseUrl,
+  readLlmEnv, writeLlmEnv, LlmError, type LlmDriver, type LlmConfig, type LiveLlm, type ProviderPreset
+} from '@crm/llm';
 import {
   enqueueAiJob, listAiJobs, cancelAiJob, AiJobError, type QueueViewer,
   getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, draftCampaignText, AiCommandError,
-  generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError,
+  auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError,
   type CampaignLimits
 } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
@@ -28,7 +31,10 @@ const changeSettings = z.object({
  * The AI assistant's settings. Admin only, and `requireRole` means a signed-in admin: an API key can never
  * switch the assistant on, because accepting the data-sharing note is a decision for a person.
  */
-export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null, limits: CampaignLimits, runner: AiJobRunner): Router {
+export function aiRouter(
+  db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null, limits: CampaignLimits, runner: AiJobRunner,
+  llmSettings: { live: LiveLlm; envFile: string; allowPrivate: boolean; injected: boolean }
+): Router {
   const router = Router();
 
   /** Whether the assistant is on, so screens can offer its helpers. Anyone signed in may ask; it reveals nothing else. */
@@ -195,6 +201,128 @@ export function aiRouter(db: Database, kms: KmsDriver, getLlm: () => LlmDriver, 
       }
       throw error;
     }
+  });
+
+  // ---- AI settings: which provider, key and model the install uses (D-9) ---------------------------------------------------
+  // Admin session only (an API key can never change it). The key is never returned; the settings are written to the env file that the API and
+  // the gateway re-read, so a change applies from the next model call with no restart.
+
+  const llmCalls = new Map<string, number[]>();
+  /** At most ten model-settings calls (listing, testing, saving) per organisation per minute; testing costs a little money. */
+  const underLlmLimit = (orgId: string): boolean => {
+    const now = Date.now();
+    const recent = (llmCalls.get(orgId) ?? []).filter((t) => now - t < 60_000);
+    if (recent.length >= 10) { llmCalls.set(orgId, recent); return false; }
+    recent.push(now); llmCalls.set(orgId, recent);
+    return true;
+  };
+
+  const llmInput = z.object({
+    provider: z.string().min(1).max(40),
+    baseUrl: z.string().trim().max(500).optional(),
+    apiKey: z.string().trim().max(500).optional(),
+    model: z.string().trim().max(200).optional()
+  });
+
+  /** What a settings call means once the page's choices are resolved against what is saved: the model configuration, the preset, and whether the key was typed now. */
+  async function resolveLlm(body: z.infer<typeof llmInput>): Promise<{ config: LlmConfig; preset: ProviderPreset; baseUrl: string; keyTyped: boolean } | { error: string }> {
+    const preset = providerById(body.provider);
+    if (preset === undefined) return { error: 'Choose a provider from the list.' };
+    const saved = await readLlmEnv(llmSettings.envFile);
+    const status = llmSettings.live.status();
+    // A key left blank means "keep the saved one", but only for the same provider; a key is never carried to a different service.
+    const sameProvider = providerFor(status.driver, status.baseUrl ?? undefined)?.id === preset.id;
+    const keyTyped = body.apiKey !== undefined && body.apiKey !== '';
+    const apiKey = keyTyped ? body.apiKey! : sameProvider ? (saved.LLM_API_KEY ?? '') : '';
+    if (preset.needsKey && apiKey === '') return { error: 'Enter the API key.' };
+    const baseUrl = preset.baseUrl ?? (preset.id === 'custom' ? body.baseUrl ?? '' : defaultBaseUrl(preset.driver) ?? '');
+    if (baseUrl === '') return { error: 'Enter the address of the service.' };
+    try { await assertSafeBaseUrl(baseUrl, { ollama: preset.id === 'ollama', allowPrivate: llmSettings.allowPrivate }); }
+    catch (error) { return { error: error instanceof UnsafeUrlError ? error.message : 'That address cannot be used.' }; }
+    const timeout = Number(saved.LLM_TIMEOUT_MS);
+    return {
+      preset, baseUrl, keyTyped,
+      config: {
+        LLM_DRIVER: preset.driver, LLM_MODEL: body.model !== undefined && body.model !== '' ? body.model : undefined,
+        LLM_API_KEY: apiKey === '' ? undefined : apiKey, LLM_BASE_URL: baseUrl,
+        LLM_TIMEOUT_MS: Number.isFinite(timeout) && timeout >= 1000 ? timeout : 60000
+      }
+    };
+  }
+
+  /** The providers the page offers and what is in use now. Anyone signed in may see it; only an admin sees the last four characters of the key. */
+  router.get('/llm', requireScope('conversations:read'), (req: Request, res: Response) => {
+    const status = llmSettings.live.status();
+    const isAdmin = req.crm!.kind !== 'session' || req.crm!.role === 'admin';
+    res.json({
+      data: {
+        ...status, keyLast4: isAdmin ? status.keyLast4 : null, baseUrl: isAdmin ? status.baseUrl : null,
+        provider: providerFor(status.driver, status.baseUrl ?? undefined)?.id ?? null,
+        providers: PROVIDERS, ready: llmSettings.live.name !== 'none' || llmSettings.injected
+      }
+    });
+  });
+
+  /** The models this provider and key offer, for the picker. A blank key reuses the saved one for the same provider. */
+  router.post('/llm/models', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = llmInput.safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider and enter the key.')); return; }
+    if (!underLlmLimit(req.crm!.orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    const r = await resolveLlm(parsed.data);
+    if ('error' in r) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', r.error)); return; }
+    try {
+      res.json({ data: await listModels({ preset: r.preset, baseUrl: r.baseUrl, apiKey: r.config.LLM_API_KEY ?? '' }) });
+    } catch (error) {
+      const detail = error instanceof LlmError && (error.statusCode === 401 || error.statusCode === 403)
+        ? 'The provider refused the key. Check that it is correct.' : error instanceof LlmError ? error.message : 'Could not list the models.';
+      res.status(502).json(problem(req, 502, 'PROVIDER_ERROR', `${detail} You can still type a model name yourself.`));
+    }
+  });
+
+  /** Tests a model with two tiny real calls. Saves nothing. */
+  router.post('/llm/test', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = llmInput.safeParse(req.body);
+    if (!parsed.success || parsed.data.model === undefined || parsed.data.model === '') { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider, enter the key and pick a model.')); return; }
+    if (!underLlmLimit(req.crm!.orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    const r = await resolveLlm(parsed.data);
+    if ('error' in r) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', r.error)); return; }
+    res.json({ data: await probeLlm(r.config) });
+  });
+
+  /**
+   * Makes this the model the install uses from now on: tests it first (unless `anyway` is sent after a failed test the admin chose to ignore),
+   * then writes the `LLM_*` lines to the env file. Audited without the key.
+   */
+  router.put('/llm', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = llmInput.extend({ anyway: z.boolean().optional() }).safeParse(req.body);
+    if (!parsed.success || parsed.data.model === undefined || parsed.data.model === '') { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider, enter the key and pick a model.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underLlmLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    const r = await resolveLlm(parsed.data);
+    if ('error' in r) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', r.error)); return; }
+    let tested = false;
+    if (parsed.data.anyway !== true) {
+      const result = await probeLlm(r.config);
+      if (!result.usable) { res.status(422).json(problem(req, 422, 'TEST_FAILED', `${result.problem ?? 'The test failed.'} Nothing was changed.`)); return; }
+      tested = true;
+    }
+    await writeLlmEnv(llmSettings.envFile, {
+      LLM_DRIVER: r.preset.driver, LLM_MODEL: r.config.LLM_MODEL, LLM_API_KEY: r.config.LLM_API_KEY,
+      LLM_BASE_URL: r.preset.driver === 'compatible' || r.preset.id === 'ollama' ? r.baseUrl : undefined,
+      LLM_TIMEOUT_MS: String(r.config.LLM_TIMEOUT_MS)
+    });
+    await auditLlmChange(db, orgId, auditActor(req), {
+      provider: r.preset.id, model: r.config.LLM_MODEL ?? null, baseUrlHost: new URL(r.baseUrl).hostname, keyReplaced: r.keyTyped, tested
+    });
+    const status = llmSettings.live.status();
+    res.json({ data: { ...status, provider: providerFor(status.driver, status.baseUrl ?? undefined)?.id ?? null } });
+  });
+
+  /** Turns the model off: the assistant keeps its settings but cannot answer until a model is set again. The key is removed from the file. */
+  router.delete('/llm', requireRole('admin'), async (req: Request, res: Response) => {
+    await writeLlmEnv(llmSettings.envFile, { LLM_DRIVER: 'none', LLM_MODEL: undefined, LLM_API_KEY: undefined, LLM_BASE_URL: undefined });
+    await auditLlmChange(db, req.crm!.orgId, auditActor(req), { provider: 'none', model: null, baseUrlHost: null, keyReplaced: false, tested: false });
+    res.status(204).end();
   });
 
   // ---- Templates: describe in plain words, the AI writes the instructions, save, pick again ----------------------------

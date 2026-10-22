@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   saveAiSettings, allowAiReply, listAiJobs, enqueueAiJob, cancelAiJob, generateAiTemplate, saveAiTemplate, useAiTemplate, deleteAiTemplate,
-  createTag, bulkTagContacts, createCampaign, countContacts, CrmApiError, NotAuthenticatedError
+  createTag, bulkTagContacts, createCampaign, countContacts, listLlmModels, testLlm, saveLlm, removeLlm, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { AiJob, AiTemplate, GeneratedAiTemplate } from '@/lib/crm';
+import type { AiJob, AiTemplate, GeneratedAiTemplate, LlmChoice, LlmModel, LlmProbe, LlmSettings } from '@/lib/crm';
 
 /** What an AI settings action gives back: done, or a plain reason it was not. */
 export interface AiResult { ok: boolean; error?: string }
@@ -195,4 +195,41 @@ export async function createGroupCampaignAction(input: {
     }
     throw error;
   }
+}
+
+/** Runs one AI-settings call and turns a refusal into words for the form; a lapsed session goes to sign-in. */
+async function llmCall<T>(run: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+  try {
+    return { ok: true, value: await run() };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai/settings');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** The models the provider offers for this key. A blank key reuses the saved one for the same provider. */
+export async function listModelsAction(choice: LlmChoice): Promise<{ ok: boolean; error?: string; models?: LlmModel[] }> {
+  const r = await llmCall(() => listLlmModels(choice));
+  return r.ok ? { ok: true, models: r.value } : { ok: false, error: r.error };
+}
+
+/** Tests the model with two tiny real calls. Saves nothing. */
+export async function testLlmAction(choice: LlmChoice): Promise<{ ok: boolean; error?: string; probe?: LlmProbe }> {
+  const r = await llmCall(() => testLlm(choice));
+  return r.ok ? { ok: true, probe: r.value } : { ok: false, error: r.error };
+}
+
+/** Makes the tested model the one the install uses from now on. */
+export async function saveLlmAction(choice: LlmChoice, anyway: boolean): Promise<{ ok: boolean; error?: string; settings?: LlmSettings }> {
+  const r = await llmCall(() => saveLlm(choice, anyway));
+  if (r.ok) { revalidatePath('/ai'); revalidatePath('/ai/settings'); }
+  return r.ok ? { ok: true, settings: r.value } : { ok: false, error: r.error };
+}
+
+/** Turns the AI model off. */
+export async function removeLlmAction(): Promise<AiResult> {
+  const r = await llmCall(() => removeLlm());
+  if (r.ok) { revalidatePath('/ai'); revalidatePath('/ai/settings'); }
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
 }

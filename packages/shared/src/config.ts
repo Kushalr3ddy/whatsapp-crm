@@ -83,6 +83,10 @@ const configSchema = z.object({
   /** Unset = the provider's own address. Required for `compatible` (OpenRouter, Groq, vLLM...). */
   LLM_BASE_URL: z.preprocess((v) => v === '' ? undefined : v, z.string().url().optional()),
   LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(20000),
+  /** The file the AI settings tab writes its `LLM_*` lines to, and every process re-reads. Default: `.env` in the working directory (the container sets its state volume). */
+  LLM_ENV_FILE: z.string().default('.env'),
+  /** Off by default. When true the AI settings tab may use a model address on a private network or plain http (a private install, or a test). */
+  LLM_ALLOW_PRIVATE_BASE_URL: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   SMS_DRIVER: z.enum(['none', 'twilio', 'msg91']).default('none'),
 
   // ---- messaging safety (docs/08-antiban.md) ---------------------------------------

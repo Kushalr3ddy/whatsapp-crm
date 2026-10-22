@@ -112,11 +112,52 @@ const model = {
   }
 };
 
+/** The same model as a plain Markdown reference: groups, then each table with its columns, keys, indexes, policies and triggers. */
+function markdown(m: typeof model): string {
+  const out: string[] = [];
+  const cell = (v: string | null | undefined): string => (v ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  out.push('# Database reference (generated)', '',
+    `Generated from the live database on ${m.generatedAt.slice(0, 10)} by \`npm run db:docs\`. **Do not edit by hand**; change the schema or \`packages/db/src/table-notes.ts\` and regenerate.`,
+    'For the optimisations and the main queries, see [`35-database-and-queries.md`](../35-database-and-queries.md).', '',
+    `**${String(m.counts.tables)} tables, ${String(m.counts.foreignKeys)} foreign keys, ${String(m.counts.policies)} row-level-security policies, ${String(m.counts.triggers)} triggers, ${String(m.counts.functions)} functions.**`, '',
+    'Every tenant table has `org_id` and a row-level-security policy: the app runs each request as the restricted `crm_app` role with `app.org_id` set, so a forgotten `WHERE org_id` returns nothing instead of leaking.', '');
+  const groups = [...new Set(m.tables.map((t) => t.group))].sort();
+  out.push('## Tables by group', '');
+  for (const g of groups) {
+    out.push(`### ${g}`, '', '| Table | What it is for | Rows now |', '|---|---|---|');
+    for (const t of m.tables.filter((x) => x.group === g)) out.push(`| [\`${t.name}\`](#${t.name}) | ${cell(t.purpose)} | ${String(t.rows)} |`);
+    out.push('');
+  }
+  out.push('## Table details', '');
+  for (const t of m.tables) {
+    out.push(`### ${t.name}`, '', `_${t.group}._ ${t.purpose}`, '',
+      `Row-level security: ${t.rls ? (t.forced ? 'on and forced' : 'on') : '**off**'}.`, '',
+      '| Column | Type | Null | Default | Key |', '|---|---|---|---|---|');
+    for (const c of t.cols) out.push(`| \`${c.name}\` | ${c.type} | ${c.nullable ? 'yes' : 'no'} | ${cell(c.default)} | ${c.pk ? 'PK' : ''} |`);
+    out.push('');
+    if (t.fks.length > 0) {
+      out.push('**References:**', '');
+      for (const f of t.fks) out.push(`- \`${f.cols.join(', ')}\` → \`${f.to}.${f.toCols.join(', ')}\` (on delete ${f.onDelete})`);
+      out.push('');
+    }
+    const idx = t.indexes.filter((i) => !i.name.endsWith('_pkey'));
+    if (idx.length > 0) { out.push('**Indexes:**', ''); for (const i of idx) out.push(`- \`${i.name}\`: ${i.def.replace(/^CREATE (UNIQUE )?INDEX \S+ ON public\./, (_m, u: string | undefined) => (u ? 'UNIQUE ' : ''))}`); out.push(''); }
+    if (t.policies.length > 0) { out.push('**Policies:**', ''); for (const p of t.policies) out.push(`- \`${p.name}\` (${p.cmd}): ${cell(p.qual ?? p.chk)}`); out.push(''); }
+    if (t.triggers.length > 0) { out.push('**Triggers:**', ''); for (const g of t.triggers) out.push(`- \`${g.name}\`: ${cell(g.def)}`); out.push(''); }
+  }
+  out.push('## Database functions', '');
+  for (const f of m.functions) out.push(`### ${f.name}`, '', '```sql', f.def.trim(), '```', '');
+  return out.join('\n');
+}
+const MD_OUT = resolve(dirname(OUT), 'database-reference.md');
+mkdirSync(dirname(MD_OUT), { recursive: true });
+writeFileSync(MD_OUT, markdown(model));
+
 const PAGE = readFileSync(new URL('./db-docs.template.html', import.meta.url), 'utf8');
 mkdirSync(dirname(OUT), { recursive: true });
 // `<` is escaped so a SQL default or definition containing "</script>" cannot end the data block.
 const data = JSON.stringify(model).replace(/</g, '\\u003c');
 writeFileSync(OUT, PAGE.replace('__DATA__', () => data));
-process.stdout.write(`wrote ${OUT}\n  ${String(model.counts.tables)} tables, ${String(model.counts.foreignKeys)} foreign keys, `
+process.stdout.write(`wrote ${OUT} and ${MD_OUT}\n  ${String(model.counts.tables)} tables, ${String(model.counts.foreignKeys)} foreign keys, `
   + `${String(model.counts.policies)} policies, ${String(model.counts.triggers)} triggers, `
   + `${String(model.counts.functions)} function\n`);

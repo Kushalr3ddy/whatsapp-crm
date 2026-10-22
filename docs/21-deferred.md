@@ -28,7 +28,7 @@ is not re-proposed.
 | D-6 | UUIDv7 primary keys | 📌 pinned |
 | D-7 | Turborepo, and splitting the queue driver | 📌 pinned |
 | D-8 | Self-serve setup wizard, guided walkthrough, whitelabelling | ◐ partly built (what-next buttons) · ⏸ parked |
-| D-9 | Generating `.env`, and a secrets driver | 📌 pinned |
+| D-9 | Generating `.env`, and a secrets driver; **first an "AI settings" sub-tab in the AI tab (provider, key, model, test)** | ✅ AI settings tab built 2026-10-22 · 📌 the rest pinned |
 | D-10 | What belongs in the inbox — broadcast output, and unknown senders | 📌 pinned |
 | D-11 | Media at rest — encryption, retention, scanning, compliance | ◐ partly built (serving; rest parked) |
 | D-13 | Access auditing — who *read* what | ✅ done |
@@ -76,7 +76,7 @@ is not re-proposed.
 | D-56 | Telemetry: metrics, tracing and error tracking beyond logs | 📌 pinned |
 | D-57 | Run the import commit as a background job | 📌 pinned |
 | D-58 | Public site and launch-readiness checklist | 📌 pinned |
-| D-59 | File support in chat (Kushal, 2026-10-16) | 🔺 priority again 2026-10-21: **files in campaigns first** · ◐ partly built (rounds 1 and 2) |
+| D-59 | File support in chat (Kushal, 2026-10-16) | ◐ partly built: rounds 1 and 2, and **files in campaigns first slice built 2026-10-21** (one picture or GIF, 5 MB, no MP4 yet) |
 | D-60 | Number fallback: message the first number that has a WhatsApp account | ✅ done |
 | D-61 | Lighter web tier: plain React with refresh buttons instead of Next eve | 📌 pinned |
 | D-62 | Ship as a single executable, if possible | 📌 pinned |
@@ -102,8 +102,9 @@ is not re-proposed.
 | D-82 | A gateway restart can break the WhatsApp session (decrypt failures, nothing received) | 📌 pinned · hit 2026-10-21 |
 | D-83 | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
 | D-84 | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
-| D-85 | AI templates: pick a template, fill its blanks, get the script; per chat, per campaign, org default | 🔺 priority 2026-10-21 · mockup first |
-| D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE |
+| D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
+| D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
+| D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
 
 ---
@@ -327,7 +328,39 @@ is what keeps this cheap.
 
 ---
 
-## D-9 · Generating `.env`, and a secrets driver
+## D-9 · Generating `.env`, and a secrets driver — ✅ **AI settings tab built 2026-10-22 (was Kushal's priority)**
+
+### ✅ First piece BUILT 2026-10-22: an "AI settings" sub-tab inside the AI tab (decided with Kushal)
+
+**Built as specified below, and proven on a real Groq key in a real second API process:** no model, then models listed (11), a passing test (1.1 s, with function calling), saved to the file (key not in the response), a template generated immediately with no restart, then turned off and refused again. Tests: 15 unit (file writing keeps every other line, backups, address guard, live reload, the test and its plain-words errors), 10 integration (the routes, admin-only, key never returned, audited without it, private address refused, rate limit), 2 browser. Documented in `docs/15-api.md`, `docs/18-providers.md` and workflow 8 in `docs/36-workflows.md`. **Later:** a `setup:ai` terminal command for headless installs; per-organisation keys; a model list cache.
+
+**Where it stands.** The assistant is switched on in the app, but the model it talks to is chosen on the **server**, in five lines of `.env`: `LLM_DRIVER` (`none`, `gemini`, `openai`, `anthropic`, `ollama`,
+`compatible`), `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` (needed for `compatible`: Groq, OpenRouter, vLLM) and `LLM_TIMEOUT_MS`. A person setting up has to know the provider names, the base address and a model
+name that exists on that provider and can call tools, edit a file, and restart. A wrong value shows up later as "No AI model is configured" or "the provider refused the key".
+
+**What Kushal wants, in his words:** a **sub-tab inside the AI tab, "AI settings"**, set up like OpenRouter's: choose the provider, enter the key, **test it with a model you choose**, and **that is what is used from now on.**
+In the end it is stored as entries in the `.env` file.
+
+**Decided (Kushal, 2026-10-22):**
+1. **The key lives in `.env` only**: one provider, key and model for the whole install. No per-organisation keys for now.
+2. **The settings are written from the web page.** An admin can change the provider, key and model in the app; it writes the `LLM_*` lines.
+3. **OpenRouter-style setup:** a provider picker, a key box, a **model picker** (a searchable list fetched from the provider with the key where the provider offers one, with a recommended model marked, or type a name), and a **Test** button.
+4. **The test makes a real, tiny, paid call.** That is accepted.
+
+**How it works (to build):**
+- **Tabs on `/ai`:** **Assistant** (today's page: templates, limits, orders) and **AI settings** (this). Admin only; a person who is not an admin sees which provider and model is in use, never the key.
+- **AI settings tab:** provider (Groq, Gemini, OpenAI, Anthropic, OpenRouter, Ollama on this machine, Other OpenAI-compatible with a base address) → key (typed hidden; saved keys show only the last 4 characters and are never sent back to the browser) → model →
+  **Test**: one small call that checks the key, the model, that it **answers**, and that it **can call a tool** (the failure `llm:check` found), with the reason in plain words if not (key refused, model not found, rate limited, no tool support, too slow) → **Use this** (only after a passing test, or after an explicit "use it anyway").
+- **Saving writes `.env`:** only the `LLM_*` lines, atomically, file mode kept private, after a dated backup, never touching `ENCRYPTION_KEY` or any other line, and fixing a missing final newline first. In the container, where there is no checked-in `.env`, it writes the install's state env file that the container already loads.
+- **Takes effect without a restart:** the API and the gateway (which writes the AI's replies) re-read the `LLM_*` values when they change (a notification to the gateway, as for other settings) and on their next model call, so "from now on" is true without anyone restarting a process.
+- **Safety:** signed-in admin session only (an API key cannot change it); the key is never returned, logged or put in the audit log (the audit entry records who changed the provider and model, and when); the test and the key box are rate limited; a custom base address must be `https` and may not point at a private network
+  address (`localhost` is allowed only for Ollama), so the settings page cannot be used to probe the server's network; a failed test changes nothing.
+- **Also:** a status line on the Assistant tab when no model is set ("The AI is not set up: open AI settings"), replacing today's error that only appears when someone presses Write; the `setup:ai` terminal command for the same steps may follow for headless installs.
+- **Why it matters now:** the assistant, the templates and the campaign wording all stop working without a valid model, and the first person to deploy (Kushal on Linode, and anyone after) hits this first. CI has no model set, which is also why model-dependent specs skip.
+- **Related:** D-4 (the agent), D-81 (guardrails), D-85 (templates, the page this tab sits beside), `docs/18-providers.md` (the drivers and the measured comparison), `scripts/llm-check.ts`.
+
+### The rest of D-9 (still pinned)
+
 
 **What:** an idempotent `npm run setup:env` that generates the required secrets, and eventually
 a `SecretsDriver` (Infisical, OpenBao, AWS Secrets Manager) plus a non-local `KmsDriver` so the
@@ -624,7 +657,7 @@ docs themselves still change weekly.
 
 1. **The repository going public**, or the licence decision landing (**D-3**). Nobody browses a
    private repo's docs site.
-2. **The OpenAPI spec existing.** A generated spec wants somewhere to be rendered, and that is
+2. **The OpenAPI spec existing** (pinned as **D-88**). A generated spec wants somewhere to be rendered, and that is
    the natural anchor for the whole site (`docs/15-api.md`).
 3. **JobPortal's team needing to self-serve** the integration rather than asking.
 4. **The first outside user**, for whom `git clone` to read the docs is a poor first impression.
@@ -2709,3 +2742,39 @@ Pinned to come back to; not started.
 Related: D-68 (tag people first), D-73, D-85 (templates choose a tag audience).
 
 Pinned as a rule; not built.
+
+---
+
+## D-88 · An OpenAPI spec and a Swagger page for the API — pinned (Kushal, 2026-10-22)
+
+**Asked:** "is there a Swagger API thing for this?" **No.** There is no OpenAPI spec and no `/api/v1/openapi.json`; `docs/15-api.md` says so in its first lines, and the only
+substitutes are that document, [`24 · Testing it by hand`](24-local-testing.md) and the Insomnia collection (`tools/insomnia-collection.json`, about 88 requests, kept by hand). The API
+now has about **100 route handlers** (38 GET, 46 POST, 4 PUT, 3 PATCH, 9 DELETE) across 13 files, so a hand-kept list is already behind (the AI settings, templates and campaign-picture
+routes were added after the collection was last updated).
+
+**What to build:**
+- **A generated OpenAPI 3.1 document** served at `/api/v1/openapi.json`, built from the Zod schemas that already validate every request body, so it cannot drift from the code (M22).
+  Most routes keep their schema inline in the route file; the work is a registry (one place that names each route, its method and path, its auth, and its request and response schemas), whether by an
+  existing Zod-to-OpenAPI library or a small one of our own, and moving the inline schemas to be read from it.
+- **A Swagger UI (or Redoc) page** at `/api/docs`, served from our own server with its script and styles bundled (no CDN), with **Try it out** working against the signed-in session or an API key.
+- **Documented in the spec:** the two ways in (a session cookie plus the `x-csrf-token` header for the web app, and `Authorization: Bearer <key>` with its **scopes** such as `messages:send` and
+  `conversations:read`), which routes need an **admin session** (an API key can never call them: AI settings, templates, switching the assistant on), the common error shape (`application/problem+json` with `code`
+  and `detail`), the rate limits (templates generation, AI settings), the upload routes that take raw bytes (`/conversations/:id/attachments`, `/campaigns/media`, `/imports`), and pagination (`cursor` / `nextCursor`).
+- **Kept honest by a test:** a check that fails when a route exists with no spec entry (and the reverse), so a new route cannot ship undocumented.
+- **Then:** a typed client generated from the spec for `packages/sdk` (docs/15 already promises one), and **Schemathesis**-style fuzzing of the spec (D-49's list of testing tools).
+
+**Decisions to make first (ask before building):**
+1. **Who may see the docs page:** public (anyone who finds the address can read the whole surface), behind a signed-in session, admins only, or off in production by default. Recommended: signed-in admins only, and off unless asked for on a public install.
+2. **Library or hand-rolled registry** (a maintained Zod-to-OpenAPI library is less code; a small registry has no new dependency). Not chosen.
+3. **Whether the spec lists the internal admin and gateway routes** or only the public integration surface (what JobPortal and other apps call). Recommended: two tags, public and internal, with internal hidden by default.
+4. **Versioning:** the spec carries the app version; breaking changes need `/api/v2`, which the current routes do not plan for.
+
+**Why parked:** the API is still moving every week (see the AI and campaign routes added this week), and a spec that is hand-maintained is worse than none. The generated approach needs the registry first, which touches every
+route file, so it is a deliberate piece of work, not a quick add.
+
+**What brings it back:** JobPortal (or any integrator) needing to self-serve the integration (D-69), the repository or the docs site going public (D-15), or the first outside user who is not Kushal or Mikhil.
+
+**Meanwhile:** use `docs/15-api.md`, `tools/insomnia-collection.json` (import it into Insomnia or Postman; it does not yet include `/ai/llm`, `/ai/templates` or `/campaigns/media`), and the curl recipes in
+`docs/24-local-testing.md`. Related: D-15 (docs site), D-49 (testing tools), D-69 (job-portal chat plug-in), M22 (a spec written by hand drifts).
+
+Pinned to come back to; not started.

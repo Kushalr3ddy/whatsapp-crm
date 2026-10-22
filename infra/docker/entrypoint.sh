@@ -44,6 +44,11 @@ for name in APP_SECRET API_KEY ENCRYPTION_KEY ENCRYPTION_INDEX_KEY; do
   export "$name=$value"
 done
 
+# The AI settings tab writes the chosen provider, key and model here (mode 600, in the state volume), and the API and the gateway re-read it, so
+# a change applies with no restart. Never printed; kept apart from the generated secrets above.
+export LLM_ENV_FILE="${LLM_ENV_FILE:-$STATE_DIR/llm.env}"
+touch "$LLM_ENV_FILE"; chmod 600 "$LLM_ENV_FILE"
+
 # On SIGTERM (docker stop) or when a child exits: stop everything, politely first. The gateway
 # gets a moment to close its sockets so `channel_session.connection_state` is not left `open`.
 shutdown() {

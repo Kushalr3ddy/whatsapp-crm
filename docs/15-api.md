@@ -228,6 +228,12 @@ qualifies). Errors use the problem shape above.
 | `PATCH /campaigns/:id` | `messages:send` | `{ name?, body? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise) |
 | `GET/PUT /ai/settings` | admin (session) | The AI assistant's switch, instructions, daily message limit, `mayStartCampaigns`, consent. `PUT` refuses to switch on until `acceptConsent` has been sent once (`422 AI_RULE`); creates the assistant's user the first time |
 | `GET /ai/status` | `conversations:read` | `{ enabled }`, so screens know whether to offer the helpers |
+| `GET /ai/llm` | `conversations:read` | Which AI provider and model the install uses now (`driver`, `provider`, `model`, `ready`, `source`), and the providers on offer. An admin also gets the **last four characters** of the key and the address; the key is never returned. |
+| `POST /ai/llm/models` | admin (session) | `{ provider, baseUrl?, apiKey? }` lists the models that provider and key offer. A blank key reuses the saved one **for the same provider only**. 502 with words when the key is refused. |
+| `POST /ai/llm/test` | admin (session) | `{ provider, baseUrl?, apiKey?, model }` two tiny real calls (an answer, then a function call). Returns `{ usable, toolCalling, model, milliseconds, problem, notes }`. Saves nothing. |
+| `PUT /ai/llm` | admin (session) | Tests, then writes `LLM_*` to the settings file; applies from the next model call with no restart. `{ ..., anyway: true }` skips a failed test. `422 TEST_FAILED` changes nothing. Audited (`ai.llm_changed`) without the key. |
+| `DELETE /ai/llm` | admin (session) | Turns the AI model off (`LLM_DRIVER=none`) and removes the key from the file. |
+| (limits) | | 10 calls a minute per organisation across list, test and save; a custom address must be `https` on a public network (Ollama may use `localhost`; `LLM_ALLOW_PRIVATE_BASE_URL=true` lifts it for a private install). |
 | `POST /ai/jobs` | `messages:send` (`command` = admin session or API key) | `{ kind: command\|draft, input }` puts a request in the AI queue; `202 { id }`. `429 QUEUE_FULL` at 20 waiting |
 | `GET /ai/jobs` | `messages:send` | The queue: waiting (with `position`), running, and the last 24 h. Admins and API keys see everyone's; anyone else only their own |
 | `POST /ai/jobs/:id/cancel` | `messages:send` | Cancels a **queued** request (`409 NOT_QUEUED` once started) |

@@ -743,6 +743,53 @@ export interface AiTemplate {
   updatedAt: string;
 }
 
+/** A provider the AI settings tab offers. */
+export interface LlmProvider {
+  id: string; label: string; driver: string; baseUrl: string | null; needsKey: boolean; keyHelp: string; recommended: string | null;
+}
+
+/** Which model the install uses now. The key is never included, only its last four characters (admins only). */
+export interface LlmSettings {
+  driver: string; model: string | null; baseUrl: string | null; keyLast4: string | null; timeoutMs: number;
+  source: 'file' | 'environment'; provider: string | null; providers: LlmProvider[]; ready: boolean;
+}
+
+/** One model in the picker. */
+export interface LlmModel { id: string; name?: string; contextLength?: number }
+
+/** What a test of a model found. */
+export interface LlmProbe {
+  usable: boolean; toolCalling: boolean; model: string; milliseconds: number; problem: string | null; notes: string[];
+}
+
+/** What the AI settings form sends: the provider, an address for "other", the key (blank keeps the saved one) and the model. */
+export interface LlmChoice { provider: string; baseUrl?: string; apiKey?: string; model?: string }
+
+/** Which provider, model and key ending are in use, and the providers on offer. */
+export async function getLlmSettings(): Promise<LlmSettings> {
+  return request<LlmSettings>('/ai/llm');
+}
+
+/** Lists the models a provider and key offer. */
+export async function listLlmModels(choice: LlmChoice): Promise<LlmModel[]> {
+  return request<LlmModel[]>('/ai/llm/models', { method: 'POST', body: JSON.stringify(choice) });
+}
+
+/** Tests a model with two tiny real calls. Saves nothing. */
+export async function testLlm(choice: LlmChoice): Promise<LlmProbe> {
+  return request<LlmProbe>('/ai/llm/test', { method: 'POST', body: JSON.stringify(choice) });
+}
+
+/** Makes this the model the install uses from now on (tested first unless `anyway`). */
+export async function saveLlm(choice: LlmChoice, anyway: boolean): Promise<LlmSettings> {
+  return request<LlmSettings>('/ai/llm', { method: 'PUT', body: JSON.stringify({ ...choice, ...(anyway ? { anyway: true } : {}) }) });
+}
+
+/** Turns the AI model off and removes the key from the settings file. */
+export async function removeLlm(): Promise<void> {
+  await requestVoid('/ai/llm', { method: 'DELETE' });
+}
+
 /** The fixed rules the server adds in front of every set of instructions. */
 export async function getAiAlwaysOnRules(): Promise<string[]> {
   return request<string[]>('/ai/always-on-rules');

@@ -10,7 +10,7 @@ import { FakeChannelProvider } from '@crm/channel-fake';
 import { storeInboundMessage, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
   DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
   markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText } from '@crm/core';
-import { createLlm } from '@crm/llm';
+import { LiveLlm } from '@crm/llm';
 import { createStorage } from '@crm/storage';
 import type { ChannelProvider, NormalisedInboundEvent } from '@crm/channels';
 import {
@@ -56,7 +56,8 @@ async function main(): Promise<void> {
 
   const kms = localKmsFromConfig(config);
   // The language model for the AI assistant. `none` (the default) means it never acts; a half-set config stops boot here.
-  const llm = createLlm(config);
+  // Follows the AI settings tab: a change there applies on the next reply with no restart. A half-set file leaves the AI off rather than crashing.
+  const llm = new LiveLlm({ envFile: config.LLM_ENV_FILE, base: config, onError: (m) => { logger.warn(m); } });
   // Refuse to run if the database holds data under a key this process cannot read (a retired key
   // dropped too early, D-31). Better a loud boot failure than messages that silently won't open.
   await assertKeyRingCoversData(db, kms);

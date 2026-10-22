@@ -25,7 +25,7 @@ import { segmentsRouter } from './routes/segments.js';
 import { campaignsRouter } from './routes/campaigns.js';
 import { aiRouter } from './routes/ai.js';
 import { AiJobRunner } from './ai-runner.js';
-import { createLlm, type LlmDriver } from '@crm/llm';
+import { LiveLlm, type LlmDriver } from '@crm/llm';
 
 /**
  * How large a file may be uploaded to `/imports`.
@@ -177,12 +177,16 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
   const aiLimits = { perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY };
-  const getLlm = (): LlmDriver => deps.llm ?? createLlm(deps.config);
+  // The model follows the AI settings tab: one wrapper for the whole process, re-reading the settings file when it changes.
+  const liveLlm = new LiveLlm({ envFile: deps.config.LLM_ENV_FILE, base: deps.config, onError: (m) => { deps.logger.warn(m); } });
+  const getLlm = (): LlmDriver => deps.llm ?? liveLlm;
   // Works through the AI queue. Started by the server (`start()`), not here, so tests make no background timers.
   const aiRunner = new AiJobRunner({
     db: deps.db, tenantRole: deps.tenantRole, kms: deps.kms, getLlm, limits: aiLimits, logger: deps.logger
   });
-  api.use('/ai', aiRouter(deps.db, deps.kms, getLlm, deps.tenantRole, aiLimits, aiRunner));
+  api.use('/ai', aiRouter(deps.db, deps.kms, getLlm, deps.tenantRole, aiLimits, aiRunner, {
+    live: liveLlm, envFile: deps.config.LLM_ENV_FILE, allowPrivate: deps.config.LLM_ALLOW_PRIVATE_BASE_URL, injected: deps.llm !== undefined
+  }));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
   api.use('/media', mediaRouter(deps.storage));

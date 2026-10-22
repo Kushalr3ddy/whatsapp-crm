@@ -55,8 +55,9 @@ test.describe('import: flow', () => {
     const file = `join-${stamp}.csv`;
     const csv =
       'First Name,Last Name,Phone,Alt Phone,City,Date of Birth\n' +
-      `Anita,Sharma,+1202555${String(base).padStart(4, '0')},+1202555${String(base + 100).padStart(4, '0')},Pune,1990-01-01\n` +
-      `a,sharma,+1202555${String(base + 50).padStart(4, '0')},,Delhi,1991-02-02\n`;
+      // The stamp is in the city so the file's bytes differ on every run: the server refuses a file it has seen before.
+      `Anita,Sharma,+1202555${String(base).padStart(4, '0')},+1202555${String(base + 100).padStart(4, '0')},Pune ${stamp},1990-01-01\n` +
+      `a,sharma,+1202555${String(base + 50).padStart(4, '0')},,Delhi ${stamp},1991-02-02\n`;
 
     await signIn(page);
     await page.goto('/import');
