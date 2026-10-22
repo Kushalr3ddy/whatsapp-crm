@@ -13,4 +13,4 @@ Every bug that has reached a person gets a row here and a test that fails if it 
 | R-004 | 2026-10-22 | Clicking Create draft several times made several identical drafts (no feedback after the click) | Mikhil (issue 5) | e2e @smoke | guarded | #106 | #120 |
 | R-005 | 2026-10-22 | Deleting a tag with an API key was refused (403) after the delete was limited to admin sessions | CI | integration | guarded | #105 | |
 | R-006 | 2026-10-22 | "Tag many at once" Preview with no tag chosen gave no answer | Mikhil (issue 4) | e2e @smoke | guarded | #104, #108 | #119 |
-| R-007 | 2026-10-22 | A contact row opened before the page finished starting up did not show its panel | CI | e2e | guarded | #111 | |
+| R-007 | 2026-10-22 | A contact row opened before the page finished starting up did not show its panel | CI | e2e @smoke | guarded | #111 | |
