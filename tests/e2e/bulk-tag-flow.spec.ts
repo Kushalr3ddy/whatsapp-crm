@@ -16,7 +16,7 @@ const CSV = readFileSync(new URL('../fixtures/import-contacts.csv', import.meta.
 test.describe('import, mass tag, individual tag, broadcast', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
 
-  test('the whole path', async ({ page }) => {
+  test('[R-007] the whole path', async ({ page }) => {
     test.setTimeout(120_000);
     const stamp = String(Date.now());
     const importTag = `e2e-import-${stamp}`;

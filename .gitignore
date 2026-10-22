@@ -71,3 +71,4 @@ mockups/
 .env.bak-*
 *.env.bak-*
 dedup-report-*.csv
+regression-report.md

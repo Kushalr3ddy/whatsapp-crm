@@ -140,7 +140,7 @@ describe('creating one', () => {
 });
 
 describe('the sending number itself', () => {
-  it('is skipped as an audience member, and the rest are queued', async () => {
+  it('[R-002] is skipped as an audience member, and the rest are queued', async () => {
     // A linked number cannot be sent a message from itself: the phone shows "Waiting for this message" and keeps asking for a resend.
     const own = (await db.execute(sql`
       INSERT INTO contact (org_id, display_name, source) VALUES (${orgId}, 'Me', 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
@@ -156,7 +156,7 @@ describe('the sending number itself', () => {
     expect((rows as unknown as Array<{ skip_reason: string }>)[0]!.skip_reason).toBe('own_number');
   });
 
-  it('cannot be messaged from the inbox either: 422 OWN_NUMBER, nothing queued', async () => {
+  it('[R-002] cannot be messaged from the inbox either: 422 OWN_NUMBER, nothing queued', async () => {
     const r = await request(app).post('/api/v1/messages').set(...auth())
       .send({ to: '+919000000001', body: 'hello me', senderId });
     expect(r.status).toBe(422);
