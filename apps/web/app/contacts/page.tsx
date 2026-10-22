@@ -11,6 +11,7 @@ import { PageHeader, EmptyState, initialsOf } from '../ui';
 import { TagChip } from './tag-chip';
 import { RemoveTag } from './remove-tag';
 import { SubmitButton } from './submit-button';
+import { LazyDetails } from './lazy-details';
 import { FieldsPanel } from './fields-panel';
 import { TagManager } from './tag-manager';
 
@@ -513,8 +514,11 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
 
   return (
     <li>
-      <details className="group">
-        <summary className="grid cursor-pointer list-none items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-accent-soft md:grid-cols-[1.25rem_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_6.5rem_1rem]">
+      <LazyDetails
+        className="group"
+        summaryClassName="grid cursor-pointer list-none items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-accent-soft md:grid-cols-[1.25rem_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_6.5rem_1rem]"
+        summary={
+          <>
           {/* Belongs to the campaign form by its `form` id, so no nested-form is needed. */}
           <input
             type="checkbox" name="contactId" value={contact.id} form="pick-campaign"
@@ -539,7 +543,9 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
           </div>
           <p className="text-sm text-muted">{day(contact.createdAt)}</p>
           <span aria-hidden className="hidden text-muted transition-transform group-open:rotate-90 md:inline">›</span>
-        </summary>
+          </>
+        }
+      >
 
         <div className="grid gap-4 border-t border-border px-4 py-3 md:pl-[3.75rem]">
           <dl className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
@@ -586,7 +592,7 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
 
           {fields.length > 0 && <ContactFields contact={contact} fields={fields} />}
         </div>
-      </details>
+      </LazyDetails>
     </li>
   );
 }

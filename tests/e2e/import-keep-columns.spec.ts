@@ -39,6 +39,8 @@ test.describe('import: keep columns, default tag', () => {
 
     // Searching by the City value finds both people.
     await page.goto(`/contacts?q=${encodeURIComponent(city)}`);
+    // The City value is in each row's opened panel, built only when the row is opened (D-89): open both.
+    await page.locator('li > details').evaluateAll((els) => { for (const el of els) (el as unknown as { open: boolean }).open = true; });
     await expect(page.locator('summary', { hasText: `City: ${city}` })).toHaveCount(2);
 
     // And the file-named tag is on them.
