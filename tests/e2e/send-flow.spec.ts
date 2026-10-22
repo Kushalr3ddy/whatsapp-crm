@@ -35,7 +35,8 @@ test.describe('sending, end to end on the fake number', () => {
       'needs the seeded number connected: run the gateway with GATEWAY_CHANNEL=fake after `npm run local:seed`');
 
     // One brand-new contact, so the duplicate-campaign / cooldown gates have no history to block on.
-    const phone = `+1202555${String(180 + (Date.now() % 20)).padStart(4, '0')}`;
+    // 0180 to 0198: never 0199, which is the seeded sending number itself (a number is never sent to from itself: R-002).
+    const phone = `+1202555${String(180 + (Date.now() % 19)).padStart(4, '0')}`;
     const made = await page.request.post(`${API}/contacts`, {
       headers, data: { displayName: 'E2E Send Person', phone }
     });
