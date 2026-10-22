@@ -1,12 +1,28 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link, { useLinkStatus } from 'next/link';
 import type { ReactNode } from 'react';
 
-/** A small pulsing mark inside a link while its page is loading, so a click visibly does something. */
+/** How long a chip may stay loading before it says something is wrong. */
+const SLOW_MS = 10_000;
+
+/** A small spinner and "Loading…" inside a link while its page loads; after 10 seconds it says it is slow. */
 function Pending() {
   const { pending } = useLinkStatus();
-  return pending ? <span aria-hidden className="ml-1 animate-pulse">…</span> : null;
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!pending) { setSlow(false); return; }
+    const t = setTimeout(() => { setSlow(true); }, SLOW_MS);
+    return () => { clearTimeout(t); };
+  }, [pending]);
+  if (!pending) return null;
+  return (
+    <span role="status" className="ml-1.5 inline-flex items-center gap-1 text-xs">
+      <span aria-hidden className="inline-block size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      {slow ? 'Still loading… this is slow. Reload the page if it does not finish.' : 'Loading…'}
+    </span>
+  );
 }
 
 /**

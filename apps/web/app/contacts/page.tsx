@@ -10,6 +10,7 @@ import {
 import { PageHeader, EmptyState, initialsOf } from '../ui';
 import { TagChip } from './tag-chip';
 import { RemoveTag } from './remove-tag';
+import { SubmitButton } from './submit-button';
 
 /** What the person is looking at: search, tag, date range and order. Every link and form on the page carries it. */
 interface View {
@@ -62,7 +63,7 @@ export default async function ContactsPage(
     searchParams: Promise<{
       q?: string; tag?: string; from?: string; to?: string; dateBy?: string; sort?: string; campaignError?: string;
       bulkTag?: string; bulkAction?: string; bulkScope?: string; bulkCount?: string;
-      bulkDone?: string; bulkError?: string;
+      bulkDone?: string; bulkError?: string; tagMade?: string;
     }>;
   }
 ) {
@@ -205,6 +206,12 @@ export default async function ContactsPage(
         <FieldsAdmin fields={fields} />
       </div>
 
+      {sp.tagMade !== undefined && sp.tagMade !== '' && (
+        <p role="status" className="notice mb-4 text-success">
+          Tag “{sp.tagMade}” is ready. Add it to people from their row, or use “Tag many at once”.
+        </p>
+      )}
+
       {failure !== null && <p className="notice notice-danger">{failure}</p>}
 
       {failure === null && contacts.length === 0 && (
@@ -285,7 +292,7 @@ function BulkTagBar(
       {error !== null && <p role="alert" className="mt-1 text-danger">{BULK_ERROR[error] ?? 'Could not do that. Try again.'}</p>}
       {done !== null && (
         <p role="status" className="mt-1 text-success">
-          Done — {done.count} {done.count === 1 ? 'person' : 'people'} {done.action}.
+          Done — {done.count} {done.count === 1 ? 'person' : 'people'} {done.action}.{done.count === 0 && ' (They were already in that state.)'}
         </p>
       )}
       {preview !== null ? (
@@ -295,15 +302,15 @@ function BulkTagBar(
           <input type="hidden" name="bulkAction" value={preview.action} />
           <input type="hidden" name="bulkScope" value={preview.scope} />
           <input type="hidden" name="bulkCount" value={String(preview.count)} />
-          <span>
+          {preview.count === 0 ? (
+            <span role="status">No one matches, so nothing would change.</span>
+          ) : <span role="status">
             {preview.action === 'add' ? 'Add' : 'Remove'} tag <strong>{tagName(preview.tagId)}</strong>{' '}
             {preview.action === 'add' ? 'to' : 'from'} <strong>{preview.count}</strong>{' '}
             {preview.count === 1 ? 'person' : 'people'}
             {preview.scope === 'all' ? ' (everyone)' : narrowed ? ' (matching the current filter)' : ' (everyone listed)'}?
-          </span>
-          <button type="submit" className="btn btn-sm btn-primary">
-            Confirm
-          </button>
+          </span>}
+          {preview.count > 0 && <SubmitButton className="btn btn-sm btn-primary" pendingLabel="Applying…">Confirm</SubmitButton>}
           <a href="/contacts" className="text-xs text-muted underline">Cancel</a>
         </form>
       ) : (
@@ -319,12 +326,11 @@ function BulkTagBar(
             <option value="none">No tag</option>
           </select>
           <select name="bulkScope" aria-label="Who" className="field field-sm w-full min-w-0">
-            <option value="matching">everyone matching the current search / tag filter</option>
+            <option value="matching">everyone matching the filter</option>
             <option value="all">everyone in the book (admin)</option>
           </select>
-          <button type="submit" className="btn btn-sm self-start">
-            Preview
-          </button>
+          <p className="text-xs text-muted">Preview counts the people this would change. It changes nothing yet.</p>
+          <SubmitButton className="btn btn-sm self-start" pendingLabel="Counting…">Preview</SubmitButton>
         </form>
       )}
     </section>
@@ -396,12 +402,7 @@ function NewTagForm() {
         maxLength={60}
         className="w-48 field"
       />
-      <button
-        type="submit"
-        className="btn"
-      >
-        Add tag
-      </button>
+      <SubmitButton className="btn" pendingLabel="Adding…">Add tag</SubmitButton>
     </form>
   );
 }
@@ -567,7 +568,7 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
                   name="tagName" list="all-tags" aria-label="Add a tag" placeholder="+ tag…"
                   autoComplete="off" className="field field-sm"
                 />
-                <button type="submit" className="btn btn-sm">Add</button>
+                <SubmitButton className="btn btn-sm" pendingLabel="Adding…">Add</SubmitButton>
               </form>
             )}
             <form action={setDncAction}>

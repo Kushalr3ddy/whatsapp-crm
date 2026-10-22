@@ -25,18 +25,13 @@ test.describe('import: notice under the buttons, clean after finishing, wider wi
     const box = await page.getByRole('list', { name: 'Import steps' }).boundingBox();
     expect(box?.width ?? 0).toBeGreaterThan(700);
 
-    // Import first: the notice shows in the button row's section, not at the top of the page.
+    // Import only appears once a preview has run.
     const importBtn = page.getByRole('button', { name: 'Import', exact: true });
-    await importBtn.click();
-    const notice = page.getByRole('alert').filter({ hasText: 'Click Preview first' });
-    await expect(notice).toBeVisible();
-    const importY = (await importBtn.boundingBox())?.y ?? 0;
-    expect((await notice.boundingBox())?.y ?? 0).toBeGreaterThan(importY);
+    await expect(importBtn).toHaveCount(0);
 
-    // Preview clears it; then import for real.
+    // Preview shows it; then import for real.
     await page.getByRole('button', { name: 'Preview' }).click();
     await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
-    await expect(notice).toHaveCount(0);
     await importBtn.click();
     await expect(page.getByText(/✓ Imported/)).toBeVisible();
 
