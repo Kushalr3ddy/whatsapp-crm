@@ -364,13 +364,25 @@ export function campaignsRouter(limits: { perMinute: number; perDay: number }, s
   router.get('/', requireScope('conversations:read'), async (req: Request, res: Response) => {
     // `?tagId=` narrows to campaigns aimed at that tag, so a screen can say "a campaign already uses this tag".
     const tagId = typeof req.query.tagId === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.tagId) ? req.query.tagId : null;
-    const rows = await req.tenant!((tx) => tx.execute(sql`
-      SELECT id, name, status, started_at AS "startedAt", created_at AS "createdAt",
-             from_tag_id AS "fromTagId"
-      FROM campaign WHERE org_id = ${req.crm!.orgId}
-        AND (${tagId}::uuid IS NULL OR from_tag_id = ${tagId}::uuid)
-      ORDER BY created_at DESC LIMIT 100`));
-    res.json({ data: rows });
+    const orgId = req.crm!.orgId;
+    const data = await req.tenant!(async (tx) => {
+      const rows = await tx.execute(sql`
+        SELECT c.id, c.name, c.status, c.started_at AS "startedAt", c.created_at AS "createdAt",
+               c.from_tag_id AS "fromTagId", left(c.body, 140) AS "bodySnippet",
+               si.label AS "senderLabel", si.phone_e164 AS "senderPhone",
+               (SELECT count(*)::int FROM campaign_recipient cr WHERE cr.campaign_id = c.id AND cr.org_id = c.org_id) AS "audienceSize"
+        FROM campaign c JOIN sender_identity si ON si.id = c.sender_identity_id
+        WHERE c.org_id = ${orgId}
+          AND (${tagId}::uuid IS NULL OR c.from_tag_id = ${tagId}::uuid)
+        ORDER BY c.created_at DESC LIMIT 100`);
+      const list = rows as unknown as Array<{ id: string; status: string; audienceSize: number }>;
+      // A draft has no frozen recipients yet, so its audience size is the dry-run count.
+      for (const c of list) {
+        if (c.status === 'draft') c.audienceSize = (await previewAudience(tx, orgId, c.id)).total;
+      }
+      return list;
+    });
+    res.json({ data });
   });
 
   return router;

@@ -107,7 +107,14 @@ function CampaignRow({ campaign }: { campaign: Campaign }) {
           <p className="truncate font-medium">{campaign.name}</p>
           <p className="mt-0.5 text-sm text-muted">
             {campaign.startedAt !== null ? 'Started' : 'Created'} {new Date(when).toLocaleString()}
+            {campaign.audienceSize !== undefined && <> · {campaign.audienceSize} {campaign.audienceSize === 1 ? 'person' : 'people'}</>}
+            {(campaign.senderLabel ?? campaign.senderPhone ?? null) !== null && (
+              <> · from {campaign.senderLabel ?? 'number'}{(campaign.senderPhone ?? null) !== null ? ` ${campaign.senderPhone}` : ''}</>
+            )}
           </p>
+          {campaign.bodySnippet !== undefined && campaign.bodySnippet !== '' && (
+            <p className="mt-0.5 truncate text-sm text-muted">“{campaign.bodySnippet}”</p>
+          )}
         </div>
         <span className="flex shrink-0 items-center gap-3">
           <span className={`badge ${badge.cls}`}>{badge.label}</span>

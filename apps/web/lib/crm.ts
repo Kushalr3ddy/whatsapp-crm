@@ -253,6 +253,11 @@ export interface Campaign {
   createdAt: string;
   /** The tag this campaign was aimed at, when it was built from a tag. */
   fromTagId?: string | null;
+  /** The first part of the message, the number it sends from, and how many people it reaches. */
+  bodySnippet?: string;
+  senderLabel?: string | null;
+  senderPhone?: string | null;
+  audienceSize?: number;
 }
 
 /** How many recipients sit in each state. Mirrors the `progress` on `GET /api/v1/campaigns/:id`. */
@@ -309,6 +314,10 @@ export interface CampaignPreview {
     reachable: number;
     /** The rest: no number, so they would be recorded as skipped, never dropped. */
     unreachable: number;
+    /** Reachable people another campaign messaged in the last 14 days (they would be skipped). */
+    recentlyMessaged?: number;
+    /** The campaign that most of them were messaged by. */
+    recentCampaign?: string | null;
   };
   forecast: CampaignForecast;
 }
