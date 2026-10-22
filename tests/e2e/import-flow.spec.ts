@@ -22,7 +22,8 @@ test.describe('import: flow', () => {
     const stamp = String(Date.now());
     const n = Number(stamp.slice(-2)) % 30;
     const file = `flow-${stamp}.csv`;
-    const csv = `Name,Mob,City\nFlow One,+1202555${String(100 + n).padStart(4, '0')},Pune${stamp}\n`;
+    // 0300 to 0329: clear of the seeded people (0120-0139), see R-009.
+    const csv = `Name,Mob,City\nFlow One,+1202555${String(300 + n).padStart(4, '0')},Pune${stamp}\n`;
 
     await signIn(page);
     await page.goto('/import');
@@ -51,7 +52,8 @@ test.describe('import: flow', () => {
 
   test('several phone columns, a joined name and personal columns', async ({ page }) => {
     const stamp = String(Date.now());
-    const base = 100 + (Number(stamp.slice(-3)) % 90);
+    // 0330 to 0389 (and +50, +100): clear of the seeded people (0120-0139), see R-009.
+    const base = 330 + (Number(stamp.slice(-3)) % 60);
     const file = `join-${stamp}.csv`;
     const csv =
       'First Name,Last Name,Phone,Alt Phone,City,Date of Birth\n' +

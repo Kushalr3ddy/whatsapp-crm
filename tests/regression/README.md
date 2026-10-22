@@ -24,6 +24,9 @@ The API (and gateway) must already be running (`npm run dev:all -- --no-web`); t
 
 Which layer? Pick the cheapest that would really have caught it: **integration** (`tests/integration`, vitest, real database, no browser) for rules and data; **e2e** (`tests/e2e`, Playwright) for something a person sees or clicks; **simulation** (`tests/simulation`) for anti-ban behaviour over time.
 
+## Phone numbers in tests (R-009)
+All test people use fiction numbers `+1 202 555 0xxx`. The seeded demo people (`npm run local:seed`) own **0120 to 0139**; a test that imports one of those numbers under another name renames that person (newest name wins) and the seeded-pages tests then fail at random. Keep each test's numbers in its own block: send-flow 0180-0198, broadcast-flow 0200-0299, keep-columns 0200+, contacts-tags 0245-0290, import-flow 0300-0489, import-notice 0490-0579, import-reupload 0600. Never reuse 0120-0139.
+
 ## Speed budgets
 `budgets.json` holds click-to-ready limits in milliseconds. The speed probe (`tests/e2e/regression-budgets.spec.ts`) times the main screens and the report compares them. A slow screen **warns**; `REGRESS_STRICT_BUDGETS=1 npm run regress` makes it fail. Re-measure in depth with `node scripts/measure-contacts.mjs` and `node scripts/measure-api.mjs`, and compare two full audits with `node tests/live/session-compare.mjs`.
 
