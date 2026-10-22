@@ -1,5 +1,5 @@
 import { test, expect, type Locator } from '@playwright/test';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CURSOR_OVERLAY } from './cursor';
 
@@ -23,6 +23,17 @@ const SENDER_LABEL = process.env.SESSION_SENDER ?? '';
 const MODEL_KEY = process.env.SESSION_MODEL_KEY ?? '';
 const CAMPAIGN_TEXT = process.env.SESSION_CAMPAIGN_TEXT ?? 'Test message from the CRM test run, please ignore.';
 const TAG = process.env.SESSION_IMPORT_TAG ?? 'session-import';
+/** How long to wait for a message to leave the gateway, in seconds. Lower it when no gateway for this channel is running (the step then fails fast and says so). */
+const SEND_WAIT_MS = Number(process.env.SESSION_SEND_WAIT_S ?? '300') * 1000;
+
+/** The people in the CSV (name, mobile, email, city), read from its first four columns, so the searches below follow whatever file is used. */
+function readPeople(path: string): Array<{ name: string; phone: string; email: string; city: string }> {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8').split('\n').slice(1).map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [name = '', phone = '', email = '', city = ''] = l.split(',').map((c) => c.trim());
+    return { name, phone, email, city };
+  });
+}
 
 interface Row { n: number; area: string; name: string; ms: number; startedAt: string; ok: boolean; note: string }
 const rows: Row[] = [];
@@ -179,7 +190,7 @@ test.describe('session audit', () => {
           const msgs = await api<Array<{ direction: string; status: string; createdAt?: string }>>(`/conversations/${conversationId}/messages`);
           const out = msgs.filter((m) => m.direction === 'outbound');
           return out.length >= 2 && out.every((m) => ['sent', 'delivered', 'read'].includes(m.status));
-        }, { timeout: 5 * 60_000, intervals: [2_000] }).toBe(true);
+        }, { timeout: SEND_WAIT_MS, intervals: [2_000], message: 'both messages should leave the gateway; is a gateway for this number\'s channel running?' }).toBe(true);
         const msgs = await api<Array<{ direction: string; status: string }>>(`/conversations/${conversationId}/messages`);
         return `sent at ${new Date().toISOString()} (${((Date.now() - began) / 1000).toFixed(1)} s after the reply); statuses: ${msgs.filter((m) => m.direction === 'outbound').map((m) => m.status).join(', ')}; first queued ${sentAt}`;
       });
@@ -259,17 +270,23 @@ test.describe('session audit', () => {
     };
     area = '4 contacts: search';
     await step('open Contacts to search', async () => { await page.goto('/contacts'); await expect(page.getByLabel('Search contacts')).toBeVisible(); });
-    await search('imported name', 'Test Phone One', 'some');
-    await search('imported name', 'Test Phone Two', 'some');
-    await search('imported name', 'Test Phone Three', 'some');
-    await search('imported phone (digits)', '9035524447', 'some');
-    await search('imported phone (with +)', '+34644766643', 'some');
-    await search('imported email', 'test2@example.test', 'some');
-    await search('imported city', 'Madrid', 'some');
-    await search('shared word', 'Phone', 'some');
-    await search('random: a city', 'Bengaluru', 'some');
-    await search('random: part of a number', '4122631', 'some');
-    await search('random: unrelated word', 'zzz-no-such-person', 'none');
+    const people = readPeople(CSV);
+    const first = people[0]; const second = people[1] ?? people[0]; const last = people[people.length - 1];
+    if (first === undefined || second === undefined || last === undefined) {
+      await step('the CSV has people to search for', async () => { throw new Error(`no rows found in ${CSV}`); });
+    } else {
+      const words = people.flatMap((p) => p.name.split(' ')).filter((w) => w.length > 2);
+      const common = [...new Set(words)].sort((a, b) => words.filter((w) => w === b).length - words.filter((w) => w === a).length)[0] ?? first.name;
+      for (const p of people.slice(0, 3)) await search('an imported name', p.name, 'some');
+      await search('an imported phone (digits)', first.phone.replace(/\D/g, '').slice(-10), 'some');
+      await search('an imported phone (with +)', last.phone, 'some');
+      await search('an imported email', second.email, 'some');
+      await search('an imported city', last.city, 'some');
+      await search('a word they share', common, 'some');
+      await search('random: another city', first.city, 'some');
+      await search('random: part of a number', second.phone.replace(/\D/g, '').slice(-7), 'some');
+      await search('random: an unrelated word', 'zzz-no-such-person', 'none');
+    }
     await step('tag filter chip for the import', async () => { await page.goto('/contacts'); await page.getByRole('link', { name: new RegExp(TAG) }).first().click({ timeout: 8_000 }); await page.waitForURL(/tag=/); });
 
     // ───────────────────────────────────────────────────── 5 · campaign to the imported numbers only
@@ -317,7 +334,7 @@ test.describe('session audit', () => {
       await expect.poll(async () => {
         list = await api<R>(`/campaigns/${campaignId}/recipients`);
         return list.length > 0 && list.every((r) => ['sent', 'delivered', 'read', 'skipped', 'failed'].includes(r.status));
-      }, { timeout: 8 * 60_000, intervals: [2_000] }).toBe(true);
+      }, { timeout: SEND_WAIT_MS, intervals: [2_000], message: 'every recipient should settle; is a gateway for this number\'s channel running, and is the number under a send limit?' }).toBe(true);
       return `at ${new Date().toISOString()}: ` + list.map((r) => `${r.displayName ?? '?'}=${r.status}${r.skipReason !== null ? `(${r.skipReason})` : ''}`).join('; ');
     });
     await shot('07-campaign-done');

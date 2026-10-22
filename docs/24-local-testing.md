@@ -518,3 +518,20 @@ cannot touch your linked numbers or stored messages.
 
 Never `cp .env.example .env` over a working install. It destroys `ENCRYPTION_KEY`, and with it
 every linked number and every stored message, permanently.
+
+## The session audit: a timed, recorded pass over every screen (added 2026-10-22)
+
+`tests/live/session-audit.live.ts` is one ordered Playwright test that signs in wrong, then right, walks the dashboard element by element, then every tab (Inbox with a sent message, Contacts with
+an import, "Upload anyway" and searches, a campaign, Team, the AI assistant and its settings, Security, Billing), and signs out. Every step is timed, a failing step is recorded and the run goes on, and a
+resource monitor (`tests/live/resmon.mjs`) samples CPU, memory, swap and each process once a second beside it. A visible Chromium records video.
+
+```bash
+npm run test:session        # the safe version: e2e organisation, fake number, the sample CSV (tests/fixtures/session-import.csv). Nobody is messaged.
+npm run test:session:real   # REAL messages: hiring-studios organisation, kushal_test, LIVE_SEND_TO and every number in the CSV. Pass your own CSV: scripts/run-session.sh real <csv>
+```
+
+- The stack must be up (`npm run dev:all`, or the API, gateway and web started separately). The safe version needs the **fake** gateway (`GATEWAY_CHANNEL=fake`); the real version needs the **real** one, with the number connected.
+- The real version reads `email` and `password` (lowercase) and `LIVE_SEND_TO` from `.env`, and starts the campaign with the audited admin override of the 14-day cooldown (the Inbox step messages the same person moments before).
+- Output goes to `test-results/session-<mode>-<time>/`: `report.md` (every step, its time, CPU and free memory at that moment, notes), `steps.jsonl`, `resources.csv`, `session.webm`, screenshots, and `FAILED-nnn.png` for any failing step.
+- Set `SESSION_SEND_WAIT_S=20` to fail fast on the two steps that wait for a gateway when none is running for that number's channel.
+- Findings from the first runs: [`37-session-audit-findings.md`](37-session-audit-findings.md). Close heavy browser tabs and restart `next dev` if it has been up for hours before measuring (it grew to 4.5 GB and made the test browser die).
