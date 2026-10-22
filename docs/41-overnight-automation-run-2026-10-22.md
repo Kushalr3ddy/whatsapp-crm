@@ -40,6 +40,6 @@ Branch `checkpoint/2026-10-22-night`, tag **`checkpoint-2026-10-22-night`** at `
 
 **Trade-off for you to decide.** Navigation no longer shows grey placeholder blocks; the thin top progress bar still shows. If you want the blocks back, revert #150 (command below) and we look for another way. Because D-46 (laggy feel) is top priority, a better skeleton that does not wrap whole pages is worth a look (e.g. a loading file only inside the slow routes, tested with the R-008 test).
 
-**How to undo.** `git revert -m 1 000d54b` (the merge of #150). To return everything to the start of the night: `git reset --hard overnight-checkpoint-2026-10-22` on a branch, never on main directly.
+**How to undo.** `git revert -m 1 000d54b` (the merge of #150). To return everything to the start of the night: `git checkout -b back-to-checkpoint checkpoint-2026-10-22-night` (a new branch).
 
 **Not done / needs you.** The gateway was not restarted overnight, so R-011 (the AI taking over campaign replies) is not live until you say yes to a restart. `feedback-ingest` still needs the Google service account secret if you want it automatic (the browser tool works without it). #139-#142 wait for Mikhil's answers. The nightly regression workflow has never run: trigger it once by hand.
