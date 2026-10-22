@@ -92,6 +92,8 @@ heuristics. If the simulation ever bans us, that is a build failure.
 
 ## Regression tests for prior defects
 
+**Bugs found after launch** (reported by a tester, found by the audit, caught in CI) have their own system: the **regression registry** `tests/regression/REGISTRY.md`, where every bug gets an R-number and a test with `[R-nnn]` in its title, a bug-fix gate in CI, a production-build smoke run on every PR and a nightly full run. The whole flow, from report to merge, is in [`39-bug-workflow.md`](39-bug-workflow.md) and the mechanics are in [`tests/regression/README.md`](../tests/regression/README.md). The table below is the older list of defects from the previous system (`M*` in `00-prior-art.md`).
+
 Every `M*` in `00-prior-art.md` gets a named regression test. The highest-value ones:
 
 | Defect | Test |
