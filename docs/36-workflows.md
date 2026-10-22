@@ -162,3 +162,28 @@ flowchart TD
   L -- no --> N[Marked failed with the reason]
 ```
 Advisory mode (D-29) lets a number send past the number-protecting holds; the do-not-contact gate is never bypassed.
+
+## 8 · Choosing the AI: the AI settings tab
+
+Second tab inside the AI tab, `/ai/settings`. (Code: `apps/web/app/ai/settings/`, `apps/api/src/routes/ai.ts`, `packages/providers/llm/src/`.) Admin only.
+
+```mermaid
+flowchart TD
+  A([Open AI, then AI settings]) --> B[In use now: provider, model, key ending, or No model set]
+  B --> C[Choose a provider: Groq, Gemini, OpenAI, Anthropic, OpenRouter, Ollama, or other]
+  C --> D{Other?}
+  D -- yes --> E[Type the address: must be https and public]
+  D -- no --> F
+  E --> F[Paste the API key, hidden; blank keeps the saved key for the same provider only]
+  F --> G[Find models: the provider's own list, searchable, recommended one marked]
+  G --> H[Pick or type a model]
+  H --> I[Test it: two tiny real calls, an answer and a function call]
+  I --> J{Usable?}
+  J -- no --> K[Plain-words reason: key refused, model not found, rate limited, too slow] --> L{Use it anyway?}
+  L -- no --> F
+  L -- yes --> M
+  J -- yes --> M[Use this]
+  M --> N[Backup the settings file, write only the five LLM lines, audit without the key]
+  N --> O[API and gateway see the changed file on their next model call: no restart]
+  O --> P([The assistant, templates and campaign wording now use it])
+```

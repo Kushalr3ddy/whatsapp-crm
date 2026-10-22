@@ -28,7 +28,7 @@ is not re-proposed.
 | D-6 | UUIDv7 primary keys | 📌 pinned |
 | D-7 | Turborepo, and splitting the queue driver | 📌 pinned |
 | D-8 | Self-serve setup wizard, guided walkthrough, whitelabelling | ◐ partly built (what-next buttons) · ⏸ parked |
-| D-9 | Generating `.env`, and a secrets driver; **first an "AI settings" sub-tab in the AI tab (provider, key, model, test)** | 🔺 priority 2026-10-22 · decided, not built · 📌 the rest pinned |
+| D-9 | Generating `.env`, and a secrets driver; **first an "AI settings" sub-tab in the AI tab (provider, key, model, test)** | ✅ AI settings tab built 2026-10-22 · 📌 the rest pinned |
 | D-10 | What belongs in the inbox — broadcast output, and unknown senders | 📌 pinned |
 | D-11 | Media at rest — encryption, retention, scanning, compliance | ◐ partly built (serving; rest parked) |
 | D-13 | Access auditing — who *read* what | ✅ done |
@@ -327,9 +327,11 @@ is what keeps this cheap.
 
 ---
 
-## D-9 · Generating `.env`, and a secrets driver — 🔺 **PRIORITY (Kushal, 2026-10-22): start with an "AI settings" sub-tab in the AI tab (provider, key, model, test)**
+## D-9 · Generating `.env`, and a secrets driver — ✅ **AI settings tab built 2026-10-22 (was Kushal's priority)**
 
-### First piece, now a priority: an "AI settings" sub-tab inside the AI tab (decided with Kushal, 2026-10-22)
+### ✅ First piece BUILT 2026-10-22: an "AI settings" sub-tab inside the AI tab (decided with Kushal)
+
+**Built as specified below, and proven on a real Groq key in a real second API process:** no model, then models listed (11), a passing test (1.1 s, with function calling), saved to the file (key not in the response), a template generated immediately with no restart, then turned off and refused again. Tests: 15 unit (file writing keeps every other line, backups, address guard, live reload, the test and its plain-words errors), 10 integration (the routes, admin-only, key never returned, audited without it, private address refused, rate limit), 2 browser. Documented in `docs/15-api.md`, `docs/18-providers.md` and workflow 8 in `docs/36-workflows.md`. **Later:** a `setup:ai` terminal command for headless installs; per-organisation keys; a model list cache.
 
 **Where it stands.** The assistant is switched on in the app, but the model it talks to is chosen on the **server**, in five lines of `.env`: `LLM_DRIVER` (`none`, `gemini`, `openai`, `anthropic`, `ollama`,
 `compatible`), `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` (needed for `compatible`: Groq, OpenRouter, vLLM) and `LLM_TIMEOUT_MS`. A person setting up has to know the provider names, the base address and a model

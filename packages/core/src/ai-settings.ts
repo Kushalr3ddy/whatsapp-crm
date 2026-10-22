@@ -133,3 +133,17 @@ async function createBot(tx: Executor, orgId: string, actor: AuditActor): Promis
   });
   return userId;
 }
+
+/**
+ * Records that the AI provider or model was changed from the AI settings tab. The key is never part of it: only who, which provider and
+ * model, whether the key was replaced, and whether it was tested first.
+ */
+export async function auditLlmChange(
+  db: Database, orgId: string, actor: AuditActor,
+  change: { provider: string; model: string | null; baseUrlHost: string | null; keyReplaced: boolean; tested: boolean }
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await setTenant(tx, orgId);
+    await writeAudit(tx, { orgId, actor, action: AUDIT.aiLlmChanged, targetType: 'ai_llm', after: change });
+  });
+}

@@ -12,8 +12,9 @@ export interface LlmConfig {
   readonly LLM_TIMEOUT_MS: number;
 }
 
-/** Where each OpenAI-format provider lives when LLM_BASE_URL is not set. */
+/** Where each hosted provider lives when LLM_BASE_URL is not set. */
 const DEFAULT_BASE_URL = {
+  anthropic: 'https://api.anthropic.com',
   openai: 'https://api.openai.com/v1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
   ollama: 'http://localhost:11434/v1'
@@ -42,4 +43,9 @@ export function createLlm(config: LlmConfig): LlmDriver {
   const baseUrl = config.LLM_BASE_URL ?? (driver === 'compatible' ? undefined : DEFAULT_BASE_URL[driver]);
   if (baseUrl === undefined) throw new Error('LLM_DRIVER="compatible" needs LLM_BASE_URL.');
   return new OpenAiCompatibleLlm({ baseUrl, apiKey, model, timeoutMs: config.LLM_TIMEOUT_MS });
+}
+
+/** The address a provider uses when none is given, or undefined for `compatible` (which always needs one). */
+export function defaultBaseUrl(driver: LlmConfig['LLM_DRIVER']): string | undefined {
+  return driver === 'none' || driver === 'compatible' ? undefined : DEFAULT_BASE_URL[driver];
 }

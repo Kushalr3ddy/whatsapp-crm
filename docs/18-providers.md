@@ -109,6 +109,19 @@ Two design choices make leaving cheap:
 4. Pass the port's contract suite. No core change is permitted; if one is needed, the port is
    wrong and should be fixed instead.
 
+### Setting the model from the app: the AI settings tab (2026-10-22)
+
+`/ai/settings` (the second tab inside the AI tab) lets an admin choose the provider (Groq, Gemini, OpenAI, Anthropic, OpenRouter, Ollama on this machine, or any OpenAI-compatible
+address), enter the key, pick a model from the provider's own list (or type one), **test** it with two tiny real calls, and **Use this**. That writes the five `LLM_*` lines to the
+settings file (`LLM_ENV_FILE`: `.env` in a source checkout, `state/llm.env` in the container), after a dated backup (the newest three are kept, mode 0600), touching no other line.
+The API and the gateway hold a `LiveLlm` (`packages/providers/llm/src/live.ts`) that checks the file's size and modified time before each model call and rebuilds the driver when it
+changed, so **a change applies from the next call, with no restart**. If the file has a `LLM_DRIVER` line its five settings are used as a set; otherwise the process's own environment
+from boot applies. A half-set file leaves the AI off with a warning in the log instead of crashing.
+
+The key is never returned (an admin sees the last four characters), never logged, and not in the audit entry. A custom address must be `https` and public (checked, including what the name
+resolves to, so the page cannot be used to probe the server's network); Ollama may use `localhost`. The test allows 400 tokens per call because "reasoning" models (for example
+`gpt-oss-20b`) spend part of the limit thinking before they answer: a 20-token limit made that working model look broken, which the first real run caught.
+
 ### Choosing a language model (measured 2026-10-21 with `npm run llm:check`)
 
 The same two checks (a one-line answer, and a `create_campaign` tool call carrying the right tag id) on the same day:

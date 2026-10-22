@@ -125,6 +125,13 @@ himself (not our concern); the container image `whatsapp-crm:alpha-p1` built cle
 Full vitest 859 passed, the browser suite 38 of 39 on the first full run (the one failure, `import-notice-and-reset`, passes alone and failed under load), 50 of 50 facts kept from a long description in 4 s, 0 of 10 hostile prompts leaked
 the rules on the real model, both AI pages have no sideways scroll at 390 px. **Not yet tested: a live send of a picture and a GIF on his real number.**
 
+### Added 2026-10-22: the AI settings tab (D-9, branch `feat/ai-settings-tab`)
+`/ai` now has two tabs, **Assistant** and **AI settings**. On AI settings an admin picks the provider (Groq, Gemini, OpenAI, Anthropic, OpenRouter, Ollama, other), pastes the key, picks a model from the provider's list, **tests** it
+(two tiny real calls) and **Use this**: that writes the five `LLM_*` lines to the settings file (`LLM_ENV_FILE`: `.env` by default, `state/llm.env` in the container) after a dated backup, and the API and gateway pick it up on
+their next model call with no restart (`LiveLlm`). The key is never returned (admins see the last four characters) or audited; custom addresses must be https and public. **The page edits his real `.env` when run against it**,
+so when testing by hand start the stack with `LLM_ENV_FILE=/some/temp.env`; the automated tests use temp files and never save. Found by the real run: the test needs 400 tokens per call, because `gpt-oss-20b` spends its limit thinking.
+Also fixed a flaky e2e (`import-flow` joined-name test collided on repeated runs) and added the Assistant tab banner "No AI model is set up".
+
 ### Ask him first (next session)
 1. Live test a picture and a GIF on the real number (to one of his own saved contacts first)? Advisory mode is still on for `kushal_test`; turn it back to enforcing when testing ends.
 2. Build next: **Send a test to myself** and the **replies section** (5 recent chats), then replies following a campaign's template (P4), the template gallery window and the edit warning with counts (P2)?

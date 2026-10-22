@@ -13,6 +13,11 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-22 — AI settings tab (D-9)
+- **AI settings sub-tab inside the AI tab**: choose provider, enter key, pick model, test, use; saved to the settings file and applied without a restart in the API and the gateway. Admin only; key never returned or audited; https-only public addresses; 10 calls a minute. Proven on a real Groq key; 15 unit, 10 integration and 2 browser tests. Docs: API, providers, workflow 8, D-9.
+- **Found by the real run and fixed:** the model test's token limit was too small for a reasoning model (`gpt-oss-20b`), which made a working model look broken.
+- Fixed a flaky e2e (import joined-name test) and the browser suite is 41 of 41 on a clean run.
+
 ### 2026-10-21 (night) — AI templates, campaign pictures and GIFs, contacts page, database docs
 - **Merged #83, #84, #99, #100, #101** (`main` at `b7e5706`). **#84** Contacts: Refresh, rows that open, date added/imported range and order. **#99 AI templates part 1** (D-85): describe in plain words, the model
   writes bullet instructions without summarising, locked review, save, saved list, page 2 with "Message a group" (editable auto-named tag), always-on rules added to every reply (migrations 0034, 0035).

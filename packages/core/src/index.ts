@@ -25,7 +25,7 @@ export {
 } from './team.js';
 
 export {
-  getAiSettings, saveAiSettings, AiSettingsRuleError,
+  getAiSettings, saveAiSettings, auditLlmChange, AiSettingsRuleError,
   type AiSettings, type AiSettingsChange
 } from './ai-settings.js';
 
