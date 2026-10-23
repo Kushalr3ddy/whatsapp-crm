@@ -85,6 +85,8 @@ const BAILEYS_CAPABILITIES: ChannelCapabilities = {
 /** One live WhatsApp connection plus the state we track alongside it. */
 interface Connection {
   socket: WASocket;
+  /** Waits for every credential and key write asked for so far (see `loadAuthState`). */
+  flush: () => Promise<void>;
   state: ProviderHealth['state'];
   lastConnectedAt: Date | null;
   disconnectReason: DisconnectReason | null;
@@ -182,6 +184,9 @@ export class BaileysChannelProvider implements ChannelProvider {
     conn.socket.end(undefined);
     conn.state = 'closed';
     this.#connections.delete(senderId);
+    // Let the last session writes land before the process may exit: a session behind what WhatsApp has acknowledged is what breaks
+    // the number after a restart (D-82). Bounded, so a stuck database cannot hold a shutdown forever.
+    await Promise.race([conn.flush(), new Promise<void>((resolve) => { setTimeout(resolve, 10_000).unref(); })]);
   }
 
   /**
@@ -348,7 +353,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     const existing = this.#connections.get(senderId);
     if (existing) return existing;
 
-    const { state, saveCreds } = await loadAuthState(this.#options.authStore, senderId);
+    const { state, saveCreds, flush } = await loadAuthState(this.#options.authStore, senderId);
     const { version } = await fetchLatestBaileysVersion();
     const onFail = this.#options.onDecryptFailure;
     const resendText = this.#options.resendText;
@@ -377,7 +382,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     });
 
     const conn: Connection = {
-      socket, state: 'connecting', lastConnectedAt: null, disconnectReason: null, pendingQr: null
+      socket, flush, state: 'connecting', lastConnectedAt: null, disconnectReason: null, pendingQr: null
     };
     this.#connections.set(senderId, conn);
 
