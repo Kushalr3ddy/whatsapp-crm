@@ -136,6 +136,17 @@ cat <<BANNER
 
 BANNER
 
+# Dev mode compiles each page the first time it is opened (1-7 s each) and its memory keeps growing. Say so, and say the way out.
+if [ "$WITH_WEB" = 1 ] && [ "$WEB_SCRIPT" = web ]; then
+  cat <<'HINT'
+  Pages slow on first open? If your laptop is struggling, stop this and run the fast
+  version instead (production build, about 30 s to build, then pages open in under a second):
+
+      npm run dev:all -- --fast-web
+
+HINT
+fi
+
 # Stream all three logs, prefixed. `wait` alone would sit silently; this is the part that
 # makes one terminal usable instead of merely possible.
 tail -n 0 -F "$LOGS"/*.log 2>/dev/null | sed -u \
