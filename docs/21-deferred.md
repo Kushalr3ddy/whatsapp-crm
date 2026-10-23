@@ -14,7 +14,7 @@ is not re-proposed.
 
 ---
 
-## Status at a glance (updated 2026-10-20)
+## Status at a glance (updated 2026-10-23)
 
 ✅ done · ◐ partly built · ▶ working on it · 🔺 priority · ⏸ parked (not working on it for now) · 📌 pinned (not started)
 
@@ -131,6 +131,25 @@ is not re-proposed.
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
+
+## By theme (added 2026-10-23)
+
+The same pins grouped by what they are about, so related work is found and built together. **Bold** = raised or changed in the 2026-10-23 session. A pin can appear under more than one theme. The table above stays the complete list.
+
+| Theme | Pins, in a sensible order to read or build | Notes |
+|---|---|---|
+| **WhatsApp reliability: sessions, "Waiting for this message", missing own messages** | **D-101** (waiting for this message) and **D-102** (phone and WhatsApp Web messages missing) share one root cause: Baileys 6.7.24 has no phone-number to LID session mapping (docs/45). Fix with **D-44 / D-5** (Baileys 7) or a mapping shim. **D-82** (a restart breaks the session) is the visibility and shutdown half. **D-94** (own-phone messages, history), **D-67** (save a name onto a LID chat), D-14 and D-45 (done, earlier LID work). | Build D-101, D-102 and D-82 together; test on the Linode spare number. |
+| **AI assistant: setup and clarity** | **D-97** (add a model first), **D-103** (guided walkthrough), **D-104** (pause without deleting the model), **D-98** (usage and limits), **D-110** (the orders box becomes a chat bubble; **replaces the "box moves to the bottom" part of D-86**), D-86 (templated orders, order history), D-9 (AI settings tab, done). | One pass over the AI tab: D-97 + D-103 + D-104 + D-110. |
+| **AI assistant: behaviour and safety** | **D-91** (nobody types into an AI chat, admins included; take over from the AI), D-42 (human takeover), D-81 (guardrails, approval mode), D-84 (the AI runs whole conversations), D-85 (AI templates), D-93 (a separate AI log), D-4 (done). | D-91 now includes "also while the AI is mid-reply". |
+| **Campaigns** | **D-52** (delete campaigns, PRIORITY, unparked), **D-100** (AI indicator), **D-109** (template picker and "Build a new template"), **D-112** (who sent each message; campaign recipient tracking), D-87 (rule: every mass message goes to a tag), D-27 (opt-out words), D-73 ("message these people" after import), D-59 (files in campaigns), D-68 and D-26 (done). | D-100 + D-109 + D-112 are one campaign-page pass. |
+| **Inbox and chat** | **D-106** (Mark as completed / Reopen chat), **D-112** (sender line under each message), **D-91**, D-10 (what belongs in the inbox), D-18 (snooze, shortcuts), D-23 (inbox search), D-51 (deleted-message tracking), D-54 and D-53 (done). | |
+| **Contacts and import** | **D-99** (add one or several by hand), **D-105** (Dates and order wording), **D-107** (the import check runs by itself), **D-108** (flag invalid numbers and emails; fix or drop), **D-111** (de-duplicate in the browser first), D-90 (import duplicates, "Needs review"), D-22 (diff-style de-duplication), D-21 (the import mapping wizard), D-57 (import as a background job), D-70, D-79, D-80 (the Contacts page, columns, edit page), D-40, D-35, D-36 (fields, exports, vCard). | D-107 + D-108 + D-111 (and D-90, D-22) are one import-review flow; D-111 is the same job as D-22 done in the browser. |
+| **Numbers and anti-ban** | **D-113** (Anti-ban protection On / Off instead of Advisory mode; D-29 is the original), D-75 (who a number belongs to), D-76 (number requests), D-77 (scopes and limits), D-37 (Meta tier and quality), D-43 (extra restriction alerts). | |
+| **People, sign-in and approvals** | **D-96** (forgot password, PRIORITY), **D-114** (the approval system with status pages and notifications; **D-76 becomes its first use**), D-77 (scopes and limits), D-78 (email invitations; D-96's emailed link needs the same email driver), D-47 (signup page, billing gate), D-55 (licence enforcement). | Build the email driver once for D-96 and D-78. |
+| **Speed, operations and deploy** | D-46 (laggy UI, HIGH PRIORITY), D-89 (speed: Contacts, sign out, production build), D-83 (`dev:fast` stale screens), D-56 (telemetry; logs are on the Linode already, docs/43), D-92 (feedback portal), D-65 (bugs from the VM run), D-58 (public site and launch checklist), **caching and extra data layers**: not faster today, revisit on a measured signal (docs/35 section 7; D-95 is pinned on PR #153's branch). | The beta Linode is documented in docs/43; findings in docs/44. |
+
+**Priorities right now (Kushal, 2026-10-22 and 2026-10-23):** D-46, D-94, D-96, D-101, D-102, D-52, D-85, plus D-91 raised again.
+
 
 ---
 
