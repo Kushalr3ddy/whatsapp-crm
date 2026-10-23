@@ -126,6 +126,7 @@ is not re-proposed.
 | D-110 | "Tell the assistant what to do" as a small chat bubble on the right side of every page, not a section of the AI tab | 📌 pinned (Kushal, 2026-10-23) |
 | D-111 | Import: de-duplicate in the browser first (progress bar, drop exact copies, ask which to keep when copies differ); server still enforces | 📌 pinned (Kushal, 2026-10-23) |
 | D-112 | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
+| D-113 | Linked numbers: rename "Advisory mode" to a plain Anti-ban protection On / Off switch (words only; maybe auto-expire) | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3179,3 +3180,19 @@ Inbound messages keep their current look.
 **Where:** the message list API already returns `sentBy` and `sentByName`; add `campaignId` and campaign name, and an `aiWritten` flag (an opening written by `ai-opening.ts` or a reply from `autoReply`; the `ai_run` row ties a message to its model and token use). Web: the bubble component in `apps/web/app/inbox/[id]/page.tsx`, the recipient list in `apps/web/app/broadcast/[id]`. No migration is needed for the label; a column recording "AI-written" may be, if `sent_by = 'agent'` is not enough (a person's message the AI polished would need it, but nothing does that today).
 
 **Tests:** an integration test that the message list tells AI, person, campaign and phone apart; a browser test of the four labels in one thread and of the recipient row showing the sent text.
+
+## D-113 · Linked numbers: replace "Advisory mode" with a plain anti-ban switch (On / Off) — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the Linked numbers page calls it **Advisory mode** (the control, the red banner "Advisory mode — anti-ban is NOT enforced on this number", the audit entry, the runbook), which nobody outside the code can decode. What it really does is **switch the anti-ban engine's blocking off for one number while still recording what it would have blocked**: pacing, daily caps, warm-up, health holds and the recovery pause are logged ("advisory mode: sending past an anti-ban hold") instead of obeyed (D-29, `sender_identity.enforcement` = `enforce` or `advisory`, `apps/web/app/link/page.tsx`).
+
+**Rename to what it is:** a switch per number, **Anti-ban protection: On / Off**, with these words everywhere the old name appears:
+- Control: **"Anti-ban protection"** with **On** (default) and **Off (testing only)**; turning it Off still needs a written reason (kept, audited) and an admin, as today.
+- Banner while off: **"Anti-ban protection is OFF for this number. Messages go out without pacing, caps or health holds. A ban here can be permanent."** plus the reason, how many times a hold was bypassed and when last (the counts that exist today).
+- Same wording in the audit log row, the number's list entry (a small "protection off" badge next to the name), `docs/14-runbooks.md`, `docs/36-workflows.md`, `docs/08-antiban.md`.
+- The stored value can stay `advisory` (no migration); only the words change.
+
+**What stays on even with it Off (say so on the page, in one line):** do-not-contact (only an admin can lift it, per message, with a reason), the own-number guard (#110), and WhatsApp's own limits. The page must not suggest "Off" makes everything allowed.
+
+**Why it matters:** this is the switch that was turned on to get past the 48-hour false quarantine (D-82) on a test number. People reach for it because it is named like a mild setting, not a ban-risk one. Also decide whether Off should **expire by itself** (for example after 24 hours, with a reminder), so it cannot be left on by accident.
+
+**Tests:** update the specs and tests that read "Advisory mode" (`team-and-numbers`, the integration tests on enforcement and the runbook strings); add one for the new banner text and the "protection off" badge on the list.
