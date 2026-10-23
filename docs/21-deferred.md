@@ -116,6 +116,8 @@ is not re-proposed.
 | D-100 | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
 | D-101 | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-102 | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| D-103 | The AI tab is confusing: a guided walkthrough of what to set up, in order | 📌 pinned (Kushal, 2026-10-23) |
+| D-104 | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3009,3 +3011,30 @@ Remaining work pinned as **high priority**.
 **Also (D-94 steps 2 and 3, still open):** older history from before linking is not imported; a message typed on a device that could not be decrypted is simply missing and cannot be recovered afterwards.
 
 **Done means:** with a linked spare number on the Linode, ten messages typed alternately on the phone and on WhatsApp Web all appear once, in order, as sent by "phone", with zero `No matching sessions` for the account's own LID in the gateway log; an integration test covers a `fromMe` message arriving under a LID address.
+
+## D-103 · The AI tab is confusing: a guided walkthrough of what has to be set up, in order — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the AI area has several parts (assistant settings, the model, templates, campaigns that use them, the queue) and nothing says what a new person must do first, or what depends on what. Add a short guided walkthrough, shown at the top of the AI tab until it is finished and reachable again from a "How this works" link:
+1. **Choose and test a model** (provider, key, model, Test). Nothing else works without it (D-97: say so beside Save).
+2. **Switch the assistant on and accept the data-sharing note** (customer chat text goes to the model's provider), and write the organisation-wide instructions.
+3. **Make a template** (describe what you want in plain words, the AI writes the instructions).
+4. **Message a group with it** (a campaign whose first messages the AI writes and whose replies it answers), or **hand one chat to the AI** from the inbox.
+5. **Watch it** (the warning banner in a chat; the AI indicator on campaigns, D-100; usage and limits, D-98).
+
+Each step shows done or not done (a tick), links to the right screen, and says in one sentence what it is for. A plain diagram on one screen: model → settings → template → campaign or chat → replies. Words, not jargon (explain "model", "key", "template", "token" in a line each).
+
+**Where:** `apps/web/app/ai/` (the AI page and `settings/`); the done/not-done state is already known from `GET /ai/llm` and the AI settings. Related user doc to add or update: `docs/36-workflows.md` (an "AI from start to finish" section) and the in-app tutorial.
+
+**Test:** a browser test that a fresh install shows the walkthrough with step 1 open and the later steps disabled with the reason, and that finishing a step ticks it.
+
+## D-104 · "Turn the AI model off" deletes the model settings; there is no way to pause the AI and keep them — 📌 pinned (Kushal, 2026-10-23)
+
+**What was found (Kushal asked):** the button **Turn the AI model off** on AI → Settings calls `DELETE /ai/llm` (`apps/api/src/routes/ai.ts`), which sets the driver to `none` and **erases the saved model, the key and the base URL** from the settings file (`LLM_DRIVER=none`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` unset). The page then shows "No AI model is set up yet. Choose a provider below, enter its key, pick a model and test it." and everything has to be entered again, including pasting the key. The confirmation does say "removes the key from the settings file", but the button is named "turn off" and a person reasonably expects a switch, not a delete.
+
+**Fix:** two different actions with honest names:
+- **Pause the AI** (or the existing assistant on/off switch used on its own): stops every AI reply and AI-written message but **keeps the provider, model and key**; one click to resume. Show the paused state on the AI tab and in the warning banner ("The AI is paused").
+- **Remove this model** (the current behaviour), a separate and clearly destructive button that says it deletes the key, behind the existing confirmation, audited as today.
+
+**Check the other switch too:** the assistant's own enabled flag (`ai_setting.enabled`) already pauses replies without touching the model; the pin should make sure the two are not confused on the page and that "pause" uses one of them consistently.
+
+**Test:** an integration test that pausing leaves `LLM_MODEL` and the key in place and stops `autoReply` and `writeOpenings`; a test that remove still clears them; a browser test of both buttons and their labels.
