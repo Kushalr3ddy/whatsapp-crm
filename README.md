@@ -117,6 +117,7 @@ One terminal, everything:
 
 ```bash
 npm run dev:all      # database, migrations, all three processes. Ctrl-C stops them
+npm run dev:all -- --fast-web   # same, but the UI is a production build: use this on a slower laptop
 ```
 
 It waits for each service to answer before reporting it ready, prints whether row-level
