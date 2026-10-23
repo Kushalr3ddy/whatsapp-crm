@@ -89,3 +89,32 @@ The number was linked on the Linode (`kushal_test`) by Kushal at about 11:04 UTC
 - **At 11:58:54 the branch was deployed (Baileys 7.0.0-rc14, migration 0038):** the stored session was restored and the connection opened with no 401. The gateway logged 7 `PreKeyError: Invalid PreKey ID` and 2 `No session record` in the first seconds: messages that had queued up while the old gateway was down, encrypted to keys that no longer exist or sessions that never existed; they roll back cleanly (`transaction failed, rolling back`, nothing half-written). Three messages typed on the owner's phone were then stored (`sent_by = 'phone'`), and the credential store holds 11 sessions, 36 pre-keys and **2 stored phone-number/LID pairs**: the new mapping is working on real traffic.
 - **Two corrections this showed up (fixed in the same branch):** failures marked `fromMe` (a message the owner typed, whose chat is the contact's LID) were counted as the contact's, now they are classed as own-device (`key.fromMe`, the frame's author or chat); and every retry request, including ones for messages the owner typed on the phone, logged a warning, now only a message this CRM sent does.
 - **Still to see on this number:** a CRM send (an AI reply or a campaign message) to a contact after the upgrade with **no `recv retry request` within a few seconds**, and a reply under the contact's LID read at once. The first such send after the redeploy is the acceptance test.
+
+---
+
+## Everything found, in one place (end of the 2026-10-23 night session)
+
+**State of the work**
+- Branch `fix/not-quitting-till-waiting-for-this-message-is-fixed`, PR #161 (open, **not** set to auto-merge), issue #160, registry R-013, pins D-101, D-102, D-82 updated. The Linode runs this branch as of the 11:58 UTC deploy (Baileys 7.0.0-rc14, migration 0038); the commits after that (own-device classification by `fromMe`, quieter retry logging) are pushed but **not deployed**.
+- Offline: 937 tests pass (14 new), typecheck clean, lint 0 errors, registry check ok. Smoke test: the 7.0.0-rc14 socket connects to the live WhatsApp servers through our adapter and is issued a QR in about a second.
+- **Not proven:** a CRM send (AI reply or campaign message) after the upgrade with no `recv retry request` within seconds. I was about to send one test message from the Linode to the test contact when I was told to stop, so **no live test message was sent**.
+
+**Findings, new tonight (besides everything above)**
+1. **Baileys' `latest` is 7.0.0-rc14; we were on the `legacy` 6.7.24.** The 7.x library stores the phone-number/LID pair and builds sessions under the LID from the first message (it asks WhatsApp for the LID when it looks up devices).
+2. **7.x restores sessions made by 6.x.** On the Linode the number linked under 6.7.24 reconnected under 7.0.0-rc14 with no 401. The laptop's 401 (11:50 UTC) is most likely because that companion had already been removed: the same account was linked on the Linode at about 11:04 UTC. So upgrading does not by itself force a relink.
+3. **The symptom was real on the Linode under 6.7.24:** 11:07:27 the AI's reply was delivered; 11:08:02 the tester told the AI they could not see the message and the AI handed the chat over.
+4. **After the upgrade, on real traffic:** 7 `PreKeyError: Invalid PreKey ID` and 2 `No session record` in the first seconds (messages that had queued while the old gateway was down; they roll back cleanly), then phone-typed messages were stored, and the store holds 11 sessions, 36 pre-keys and 2 stored phone-number/LID pairs.
+5. **A burst of failures flagged as the contact's were really the owner's own typed messages** (`key.fromMe`, chat = the contact's LID). Fixed: classified by `fromMe`, author or own address.
+6. **Retry requests for messages the owner typed on the phone are not ours to answer** and were logged as warnings. Fixed: only messages this CRM sent warn.
+7. **The ordered, flushed credential writer** removes a possible cause of "session behind what WhatsApp acknowledged" (D-82); it is unit-tested with a slow-first-write store.
+8. **Two commits had missed the merge of #153** (the D-95 caching pin and docs/42 plus docs/35 section 7, pushed after the PR merged). They are carried in PR #161.
+9. **`dev:all` no longer restarts the gateway on every saved edit** (`gateway:stable`; `--watch-gateway` restores it).
+10. **The thread now says when the other phone could not read a message, and when the encryption session is broken** (D-101, D-102): `message.retry_requests`, `channel_session.own_decrypt_burst_at`, the composer notice, own-device failures out of the ban score.
+11. **The WhatsApp library is a release candidate.** The migration guide the README links did not load from here; its notes on 6.x credentials are unread.
+
+**Housekeeping to do (needs a person)**
+- **An API key named `claude-live-test` (scopes `messages:send`, `conversations:read`) was created on the Linode** for the live test I did not run, and its secret was printed once in the working session. It must be revoked (the row is in the `api_key` table, org "Hiring Studios"). Its secret is also in `~/livekey.out` on the server (mode 600): delete the file.
+- The setup SSH key `claude-setup-linode` is still in `/root/.ssh/authorized_keys` and `/home/deploy/.ssh/authorized_keys`; remove it when setup is over, and change the root password that was typed in chat.
+- The laptop's dev database has `kushal_test` unlinked (credentials removed on the 401); nothing to do there unless it should be linked again.
+
+**To close this bug (acceptance, D-101):** on the Linode, send one message from the CRM to the test phone and check the app log (`docker logs whatsapp-crm-app-1`): no `recv retry request` within about 5 seconds, no `No session record` for the contact's LID, the thread shows "delivered" with no "could not read it yet" note. Then have the contact reply and watch the AI's answer; then type on the phone and on WhatsApp Web and see both in the inbox. Only then merge #161 and mark D-101 and D-102 done.
