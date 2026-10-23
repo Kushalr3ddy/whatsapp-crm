@@ -13,6 +13,9 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-23 (evening) — beta test on a Linode, RCA, forgot-password pinned
+- Linode (Mumbai, 4 GB) hardened and running the alpha container behind Caddy at a `<ip-dashed>.sslip.io` address with a trusted certificate (docs/43); findings in docs/44; RCA of "Waiting for this message" in docs/45 (Baileys 6.7.24 has no phone-number to LID session mapping; D-82 follow-ups). **D-96 pinned as PRIORITY: forgot password.**
+
 ### 2026-10-23 — hand one chat to the AI, from the inbox
 - A **Hand to AI** button in a chat's header (shown once the AI is switched on) assigns that chat to the assistant and has it answer the contact's waiting message; **Take back from AI** makes the chat the signed-in person's again. Assigning is the ordinary thread update; the new `POST /ai/conversations/:id/answer-now` only starts the answer, and the assistant still obeys every anti-ban and do-not-contact rule. `GET /users` now says which user is the assistant (`isBot`). 4 integration tests.
 

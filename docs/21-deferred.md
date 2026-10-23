@@ -109,6 +109,7 @@ is not re-proposed.
 | D-92 | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
 | D-93 | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
 | D-94 | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
+| D-96 | Forgot password: a way to reset your own password (no self-service reset today; the beta server has no operator at a keyboard) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2902,3 +2903,19 @@ Pinned to come back to; not started.
 
 Remaining work pinned as **high priority**.
 
+
+## D-96 · Forgot password: a way to reset your own password — 🔺 **PRIORITY** (Kushal, 2026-10-23)
+
+**What:** today there is no self-service reset. The sign-in page says "Ask an administrator to set a new password for you from the Team page", and the only other route is the command line (`npm run admin -- password --email …`, docs/23-auth.md). On the beta test server (a real instance other people use, no operator at a keyboard) someone who forgets their password, or the only admin who does, is locked out until a person with shell access acts.
+
+**Why now:** the Linode beta (docs/43) is the first install people other than Kushal sign in to. The first admin's password is generated and shown once; losing it, with no backups and no second admin, means data nobody can reach.
+
+**Options to choose from (not decided; ask Kushal first):**
+1. **Emailed reset link (the usual way).** A "Forgot password?" link on the sign-in page, a one-time link by email, a new-password page. Needs the email driver, which is an empty directory today (`packages/providers/email`), plus a sending account (SMTP or a provider's API) and a domain or at least a sender address that mail providers will accept. Biggest build, normal behaviour.
+2. **Admin-issued reset link, no email.** An admin on the Team page presses "Reset password" for a person and gets a one-time link (valid, say, 1 hour) to hand over by WhatsApp or in person. No email needed; does not help a lone admin.
+3. **Recovery codes.** At first sign-in the admin is shown a set of one-time recovery codes to keep; a code lets them set a new password. Works for a lone admin with no email, one more thing to lose.
+4. **Both 2 and 3** is the realistic beta answer; 1 can follow with a domain.
+
+**Rules that must hold whichever is chosen** (docs/23-auth.md): changing a password ends every session that person holds; the reset never says whether an email or account exists; links and codes are single-use, short-lived and stored only as hashes; attempts are rate-limited like sign-in (3 wrong tries locks for minutes); every use is in the audit log; a person who is disabled or do-not-use cannot reset.
+
+**Tests:** an integration test per route (link or code works once, expires, is refused on reuse, ends old sessions, is rate-limited, leaves an audit row) and a browser test of the forgot-password page. Per docs/39, none of this is a bug, so it goes straight to a feature PR.
