@@ -113,7 +113,7 @@ The number was linked on the Linode (`kushal_test`) by Kushal at about 11:04 UTC
 11. **The WhatsApp library is a release candidate.** The migration guide the README links did not load from here; its notes on 6.x credentials are unread.
 
 **Housekeeping to do (needs a person)**
-- **An API key named `claude-live-test` (scopes `messages:send`, `conversations:read`) was created on the Linode** for the live test I did not run, and its secret was printed once in the working session. It must be revoked (the row is in the `api_key` table, org "Hiring Studios"). Its secret is also in `~/livekey.out` on the server (mode 600): delete the file.
+- **An API key named `claude-live-test` was created on the Linode for the live test I did not run, and its secret was printed once in the working session. It has been revoked (`api_key.revoked_at` set) and its file `~/livekey.out` deleted from the server.** Nothing else uses it.
 - The setup SSH key `claude-setup-linode` is still in `/root/.ssh/authorized_keys` and `/home/deploy/.ssh/authorized_keys`; remove it when setup is over, and change the root password that was typed in chat.
 - The laptop's dev database has `kushal_test` unlinked (credentials removed on the 401); nothing to do there unless it should be linked again.
 
