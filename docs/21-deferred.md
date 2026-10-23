@@ -119,6 +119,7 @@ is not re-proposed.
 | D-103 | The AI tab is confusing: a guided walkthrough of what to set up, in order | 📌 pinned (Kushal, 2026-10-23) |
 | D-104 | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
 | D-105 | Contacts "Dates and order": the Date: Added / Last imported choice is unclear (rename, hint, show it as a sentence) | 📌 pinned (Kushal, 2026-10-23) |
+| D-106 | Inbox: rename Resolve / Reopen to Mark as completed / Reopen chat (and the Closed tab to Completed) | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3057,3 +3058,15 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 - Check "Order" wording the same way ("Newest first" is clearer than the raw sort names).
 
 **Test:** the existing browser test `contacts-dates.spec.ts` keeps working (labels change, `aria-label`s stay); add an assertion for the hint text.
+
+## D-106 · Inbox: "Resolve" / "Reopen" is confusing; say "Mark as completed" / "Reopen chat" — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the chat header has one button that reads **Resolve** on an open chat and **Reopen** on a closed one (`apps/web/app/inbox/[id]/thread-controls.tsx`, `status` open or closed). "Resolve" sounds like fixing a problem or a support ticket; this is a CRM chat, and the button only marks it finished.
+
+**Change (wording only, no change to what it does):**
+- Open chat: button **Mark as completed**. Closed chat: button **Reopen chat**.
+- The inbox list tab **Closed** becomes **Completed**, and the small `closed` badge on a row becomes **completed** (`apps/web/app/inbox/conversation-list.tsx`).
+- Say what completing does, once, in a tooltip or a line under the button: "Moves the chat out of Open. A new message from the contact opens it again." (**Check first** that a new inbound message reopens a closed chat; if it does not today, either make it so or leave that sentence out.)
+- The stored value stays `closed` (no migration, the API and audit log keep their names); only the labels change.
+
+**Tests to update:** `tests/e2e/seeded-pages.spec.ts` (clicks `Resolve` then `Reopen`) and any spec that opens the "Closed" tab; the AI Hand-to-AI behaviour and the assistant's own handling of closed chats (`autoReply` skips a chat that is not `open`) are unchanged.
