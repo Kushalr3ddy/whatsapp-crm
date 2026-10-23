@@ -14,7 +14,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Is there anything besides Markdown (.md) files in this pull request? If not, the slow jobs below are skipped. A skipped job counts as passing for branch protection
+  # (a workflow-level `paths-ignore` would not: the required checks would never report and the PR could not merge). The secret scan still runs on everything.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename')
+          echo "$files"
+          if echo "$files" | grep -qv '\.md$'; then echo "code=true" >> "$GITHUB_OUTPUT"; else echo "code=false" >> "$GITHUB_OUTPUT"; fi
+
   check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     services:
@@ -90,6 +110,8 @@ jobs:
   # The browser tests, split across 3 machines that run at the same time (each with its own database and stack). GitHub provides these machines:
   # free and parallel on a public repository. The job named `e2e` below is the single check that branch protection requires; it passes only if all 3 shards do.
   e2e-shard:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -204,7 +226,8 @@ jobs:
       - name: all shards must have passed
         run: |
           echo "shards: ${{ needs.e2e-shard.result }}"
-          [ "${{ needs.e2e-shard.result }}" = "success" ]
+          # "skipped" = a Markdown-only pull request (the `changes` job)
+          [ "${{ needs.e2e-shard.result }}" = "success" ] || [ "${{ needs.e2e-shard.result }}" = "skipped" ]
 
   # A pull request that fixes a bug must add or change a test with that bug's [R-nnn] tag, and the bug must be `guarded` in the registry
   # (tests/regression/bug-gate.mjs). Applies to fix/* branches and PRs labelled `bug`; the label `no-regression-test` is the explained escape hatch.
@@ -229,6 +252,8 @@ jobs:
   # The same browser tests, but on a PRODUCTION build of the web app, for the bugs that only exist there (R-001: forms hanging on "Creating…"
   # because Next's own gzip never finished a redirecting response). Only the @smoke set and the speed probe, so it stays short.
   regress-smoke:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
