@@ -69,7 +69,7 @@ is not re-proposed.
 | D-49 | Revamp the browser (e2e) suite to industry standard, covering every UI | 📌 pinned |
 | D-50 | Test the frontend and backend independently (modularity check) | 📌 pinned |
 | D-51 | Deleted-message tracking | 📌 pinned |
-| D-52 | Deleting previous campaigns | ⏸ parked |
+| D-52 | Deleting previous campaigns (unparked after Mikhil's feedback) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-53 | Assignment model and message authorship | ✅ done |
 | D-54 | Typing indicator and the "just replied, send anyway?" warning | ✅ done |
 | D-55 | Licence enforcement ("DRM"): usage is blocked when an org has not paid | 📌 pinned |
@@ -1814,7 +1814,7 @@ hide it as WhatsApp does for the recipient. Edited messages are the sibling case
 
 ---
 
-## D-52 · Deleting previous campaigns — **PARKED (Kushal, 2026-10-20): not working on this for now**
+## D-52 · Deleting previous campaigns — 🔺 **PRIORITY (Kushal, 2026-10-23, unparked after Mikhil's feedback)** (was PARKED 2026-10-20)
 
 **What:** campaigns can be cancelled but not deleted, so old drafts, cancelled runs and test campaigns pile up
 in the Broadcast list (the dev database holds dozens). Pinned (Kushal, 2026-10-10): an operator needs to
@@ -1827,9 +1827,19 @@ must not release the recipient-experience gates (a contact messaged by a deleted
 the 14-day cooldown), and it writes a `campaign.deleted` audit row. A "delete all cancelled" bulk action
 would also clean up test runs.
 
-**Why parked:** pinned, not scheduled.
+**Update 2026-10-23, unparked:** Mikhil's testing feedback fixed deletes for contacts, tags, numbers and custom fields (#105, with a reusable confirm dialog) but **not campaigns**, which still cannot be deleted, so every test run stays in the Campaigns list. Kushal raised it again: priority.
 
-**What brings it back:** Kushal's go-ahead.
+**Scope for the build (adds to the shape above):**
+- A **Delete** button on a campaign's page and a row action in the list, only for `draft`, `cancelled` and `completed`; for a running or paused one the button says "Cancel it first" instead of failing.
+- **Reuse the confirm dialog from #105** ("Delete campaign 'Welding drive'? Its messages stay in the chats; people stay in the book") and show what is kept: the sent messages, the per-recipient results (as an archived, read-only record), the audit trail and the 14-day cooldown.
+- **Bulk:** tick several campaigns, or "Delete all cancelled and drafts", with the same confirmation and the count.
+- **Soft delete first** (`deleted_at`, hidden from the list; an admin can view "Deleted campaigns" and restore), plus a **purge** for a draft that never ran. A message sent by a deleted campaign keeps its `campaign_id` (the FK is `ON DELETE SET NULL`, so a hard delete would orphan the sender line "Campaign <name>" of D-112; soft delete avoids that).
+- **Who:** admins; an agent's request goes through D-114 once that exists.
+- **AI campaigns (#157):** deleting one must not leave chats the AI took over stranded; the chats stay with the AI or are handed back, and the page says which (ties to D-100, D-112).
+- Audit row `campaign.deleted` (and `campaign.restored`), no message text in it.
+
+**Tests:** an integration test for each allowed status and the refusals for running and paused, that sent messages and results survive a soft delete, that the cooldown still applies, restore and purge; a browser test of delete, the confirmation and the bulk action.
+
 
 **2026-10-20:** parked again. Not working on it for now.
 
