@@ -689,7 +689,7 @@ export async function getSenderStatus(conversationId: string): Promise<SenderSta
 
 /** Why the AI assistant is stuck on a conversation. Mirrors `GET /api/v1/ai/conversations/:id/notice`. */
 export interface AiNotice {
-  code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error';
+  code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error' | 'no_answer';
   antiBan: boolean;
   reason: string;
   canOverride: boolean;

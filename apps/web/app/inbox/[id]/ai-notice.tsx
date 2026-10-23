@@ -19,6 +19,12 @@ function explain(n: AiNotice): { title: string; detail: string } {
       detail: 'It will answer again once the 24-hour window frees up. An admin can change the limit in AI assistant settings.'
     };
   }
+  if (n.code === 'no_answer') {
+    return {
+      title: 'The AI assistant sent no reply: the model gave an empty answer.',
+      detail: 'This happens when a model runs out of room while thinking. A person should answer this chat, and an admin can try another model in AI assistant settings.'
+    };
+  }
   if (n.code === 'model_error') {
     return {
       title: 'The AI assistant could not write a reply.',
