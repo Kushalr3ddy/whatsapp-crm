@@ -8,7 +8,7 @@ import { localKmsFromConfig } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { storeInboundMessage, storeOwnMessage, claimCampaignReply, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
-  DecryptFailureTracker, markDecryptBurst, EntropyScheduler, linkLidToPhone,
+  DecryptFailureTracker, markDecryptBurst, markOwnDecryptBurst, recordRetryRequest, EntropyScheduler, linkLidToPhone,
   markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText } from '@crm/core';
 import { LiveLlm } from '@crm/llm';
 import { createStorage } from '@crm/storage';
@@ -69,6 +69,9 @@ async function main(): Promise<void> {
   // place a diverged session shows. Three "Bad MAC" in a minute is recorded on the session row and
   // scored by the next health sweep, which degrades the number and later lets it recover.
   const decryptTracker = new DecryptFailureTracker();
+  // The same count for messages from this account's OWN other devices (the owner's phone, WhatsApp Web): not ban evidence, so it is
+  // kept apart and never scored, but the owner is told (D-102): those messages are missing from the inbox until the number is relinked.
+  const ownDecryptTracker = new DecryptFailureTracker();
   // `GATEWAY_CHANNEL=fake` swaps in the in-memory channel so CI and local UI tests can watch a
   // broadcast really go through the engine without touching WhatsApp. Config refuses it in production.
   const useFake = config.GATEWAY_CHANNEL === 'fake';
@@ -77,13 +80,32 @@ async function main(): Promise<void> {
     ? new FakeChannelProvider({ autoDeliverAfterMs: 1_000 })
     : new BaileysChannelProvider({
       authStore, logger,
-      onDecryptFailure: (senderId, at) => {
+      onDecryptFailure: (senderId, at, info) => {
+        if (info.own) {
+          if (!ownDecryptTracker.record(senderId, at)) return;
+          logger.warn({ senderId }, 'messages from the owner\'s own phone or WhatsApp Web cannot be decrypted: they will not reach the inbox until the number is relinked');
+          orgForSender(db, senderId)
+            .then((org) => (org === null ? undefined : markOwnDecryptBurst(inOrg(org), senderId, at)))
+            .catch((err: unknown) => {
+              logger.error({ err, senderId }, 'could not record own-device decrypt burst');
+            });
+          return;
+        }
         if (!decryptTracker.record(senderId, at)) return;
         logger.warn({ senderId }, 'decrypt-failure burst: companion session looks diverged');
         orgForSender(db, senderId)
           .then((org) => (org === null ? undefined : markDecryptBurst(inOrg(org), senderId, at)))
           .catch((err: unknown) => {
             logger.error({ err, senderId }, 'could not record decrypt-failure burst');
+          });
+      },
+      // A recipient's phone could not read a message we sent: note it on the message so the thread says so (their phone shows "Waiting for this message").
+      onRetryRequest: (senderId, messageId, at) => {
+        logger.warn({ senderId, messageId }, 'the recipient\'s phone could not decrypt a message and asked for it again');
+        orgForSender(db, senderId)
+          .then((org) => (org === null ? undefined : recordRetryRequest(inOrg(org), senderId, messageId, at)))
+          .catch((err: unknown) => {
+            logger.error({ err, senderId, messageId }, 'could not record a retry request');
           });
       },
       // A recipient could not decrypt something we sent and asks again: give the text back so it is re-sent (their phone shows

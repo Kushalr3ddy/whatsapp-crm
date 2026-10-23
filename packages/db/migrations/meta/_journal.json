@@ -267,6 +267,13 @@
       "when": 1792744192368,
       "tag": "0037_ai_opening_message",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792755987148,
+      "tag": "0038_message_retry_requests",
+      "breakpoints": true
     }
   ]
 }

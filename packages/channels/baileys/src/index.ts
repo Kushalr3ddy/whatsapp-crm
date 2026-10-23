@@ -37,7 +37,12 @@ export interface BaileysProviderOptions {
    * Called each time Baileys reports a frame it could not decrypt on this sender's socket. The
    * gateway turns a burst of these into a health signal (docs/08-antiban.md, Layer 5).
    */
-  readonly onDecryptFailure?: (senderId: string, at: Date) => void;
+  readonly onDecryptFailure?: (senderId: string, at: Date, info: { own: boolean }) => void;
+  /**
+   * Called when a recipient asks us to send a message again because their phone could not decrypt it (it shows "Waiting for this
+   * message"). `messageId` is WhatsApp's id for the message we sent. The gateway records it on the message so the thread can say so.
+   */
+  readonly onRetryRequest?: (senderId: string, messageId: string, at: Date) => void;
   /**
    * Gives back the text of a message this sender sent, by WhatsApp's id, when a recipient asks for it again.
    *
@@ -356,13 +361,22 @@ export class BaileysChannelProvider implements ChannelProvider {
     const { state, saveCreds, flush } = await loadAuthState(this.#options.authStore, senderId);
     const { version } = await fetchLatestBaileysVersion();
     const onFail = this.#options.onDecryptFailure;
+    const onRetry = this.#options.onRetryRequest;
     const resendText = this.#options.resendText;
+    // This account's own addresses (phone number and LID), known once the socket is open: a failure from one of them is the owner's
+    // other device (phone, WhatsApp Web), not a contact (D-102).
+    const ownUsers = new Set<string>();
+    const isOwn = (jid: string | null): boolean => jid !== null && ownUsers.has((jid.split('@')[0] ?? '').split(':')[0] ?? '');
 
     const socket = makeWASocket({
       version,
       auth: state,
-      logger: (onFail
-        ? tapDecryptFailures(this.#options.logger, () => { onFail(senderId, new Date()); })
+      logger: (onFail !== undefined || onRetry !== undefined
+        ? tapDecryptFailures(
+          this.#options.logger,
+          (info) => { onFail?.(senderId, new Date(), { own: isOwn(info.jid) }); },
+          onRetry === undefined ? undefined : (messageId) => { onRetry(senderId, messageId, new Date()); }
+        )
         : this.#options.logger) as never,
       // Identify as a desktop browser. A plausible, stable client fingerprint matters — the
       // detection heuristics notice inconsistency across sessions (docs/08-antiban.md).
@@ -386,8 +400,16 @@ export class BaileysChannelProvider implements ChannelProvider {
     };
     this.#connections.set(senderId, conn);
 
-    socket.ev.on('creds.update', () => { void saveCreds(); });
-    socket.ev.on('connection.update', (u) => { this.#onConnectionUpdate(senderId, conn, u, opts.expectQr); });
+    const learnOwnAddresses = (): void => {
+      const me = socket.user as { id?: string; lid?: string } | undefined;
+      for (const jid of [me?.id, me?.lid]) {
+        const user = (jid?.split('@')[0] ?? '').split(':')[0] ?? '';
+        if (user !== '') ownUsers.add(user);
+      }
+    };
+    learnOwnAddresses();
+    socket.ev.on('creds.update', () => { learnOwnAddresses(); void saveCreds(); });
+    socket.ev.on('connection.update', (u) => { learnOwnAddresses(); this.#onConnectionUpdate(senderId, conn, u, opts.expectQr); });
     socket.ev.on('messages.upsert', ({ messages, type }) => {
       if (type !== 'notify') return;   // 'append' is history sync, not new traffic
       for (const m of messages) this.#emitInbound(senderId, m);

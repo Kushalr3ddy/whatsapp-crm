@@ -50,3 +50,29 @@ export async function markDecryptBurst(db: Database, senderId: string, at: Date)
     UPDATE channel_session SET decrypt_burst_at = ${at.toISOString()}::timestamptz, updated_at = now()
     WHERE sender_identity_id = ${senderId}`);
 }
+
+/**
+ * Writes a burst of undecryptable messages from this account's OWN other devices (the owner's phone or WhatsApp Web) onto the session
+ * row. Kept apart from `markDecryptBurst` on purpose: it is not evidence that WhatsApp is penalising the number, so the health scorer
+ * ignores it; it is shown to the owner because those messages never reach the inbox (D-102) and relinking the number fixes it.
+ */
+export async function markOwnDecryptBurst(db: Database, senderId: string, at: Date): Promise<void> {
+  await db.execute(sql`
+    UPDATE channel_session SET own_decrypt_burst_at = ${at.toISOString()}::timestamptz, updated_at = now()
+    WHERE sender_identity_id = ${senderId}`);
+}
+
+/**
+ * Notes that a recipient's phone asked us to send one of our messages again because it could not decrypt it (it shows "Waiting for
+ * this message"). `providerMessageId` is WhatsApp's id for the message. Returns true when a message of this sender was found.
+ * The thread reads `retry_requests` to say the other phone could not read the message yet (D-101).
+ */
+export async function recordRetryRequest(db: Database, senderId: string, providerMessageId: string, at: Date): Promise<boolean> {
+  const rows = await db.execute(sql`
+    UPDATE message m SET retry_requests = m.retry_requests + 1, last_retry_at = ${at.toISOString()}::timestamptz
+    FROM conversation v
+    WHERE m.provider_message_id = ${providerMessageId} AND m.direction = 'outbound'
+      AND v.id = m.conversation_id AND v.sender_identity_id = ${senderId}
+    RETURNING m.id`);
+  return (rows as unknown as unknown[]).length > 0;
+}

@@ -306,6 +306,11 @@ export const channelSession = pgTable('channel_session', {
   // early sign of a diverged companion session (D-14). The scorer treats it as live for a while
   // and then lets it lapse, so the number recovers on its own once the burst stops.
   decryptBurstAt: timestamp('decrypt_burst_at', { withTimezone: true }),
+  /**
+   * A burst of undecryptable messages from this account's OWN other devices (the owner's phone or WhatsApp Web): they never reach the
+   * inbox (D-102). Kept apart from `decrypt_burst_at` so it is shown to the owner but not scored as ban risk.
+   */
+  ownDecryptBurstAt: timestamp('own_decrypt_burst_at', { withTimezone: true }),
 
   // The linking handshake. The API cannot call the provider directly — the gateway owns the
   // socket in a separate process — so a link request is left here and the challenge WhatsApp
@@ -456,6 +461,12 @@ export const message = pgTable('message', {
    * waiting and cleared when it sends, so the inbox can say "waiting: reason" instead of silence.
    */
   holdReason: text('hold_reason'),
+  /**
+   * How many times the recipient's phone asked us to send this message again because it could not decrypt it (the phone shows
+   * "Waiting for this message"). The thread says so while it is above zero and the message has not been read (D-101).
+   */
+  retryRequests: integer('retry_requests').notNull().default(0),
+  lastRetryAt: timestamp('last_retry_at', { withTimezone: true }),
   /**
    * An admin knowingly sent this to someone flagged do-not-contact (the override is a per-message,
    * audited decision with a reason). The gateway's last-line check refuses to send to a

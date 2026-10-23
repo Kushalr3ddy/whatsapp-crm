@@ -5,7 +5,7 @@ import {
   DecryptFailureTracker, markDecryptBurst, decryptBurstIsLive, computeRiskScore, riskBand,
   scoreSenderHealth, DECRYPT_BURST_LIVE_MS
 } from '@crm/core';
-import { isDecryptFailure, tapDecryptFailures } from '../../packages/channels/baileys/src/decrypt-tap.js';
+import { isDecryptFailure, tapDecryptFailures, failedFrameJid, retryRequestMessageId } from '../../packages/channels/baileys/src/decrypt-tap.js';
 
 /**
  * The decrypt-failure signal (Layer 5, docs/08-antiban.md): 3 "Bad MAC" in 60 s degrades a sender,
@@ -55,6 +55,42 @@ describe('recognising a decrypt failure in Baileys logging', () => {
     // a throwing callback must never break logging
     const unsafe = tapDecryptFailures(base, () => { throw new Error('boom'); });
     expect(() => unsafe.error({}, 'failed to decrypt message')).not.toThrow();
+  });
+});
+
+describe('what the tap reads out of Baileys logging (D-101, D-102)', () => {
+  const base = () => {
+    const b = { level: 'info', child: () => b, info: () => undefined, debug: () => undefined, trace: () => undefined, warn: () => undefined, error: () => undefined };
+    return b;
+  };
+
+  it('names who an undecryptable frame was from', () => {
+    expect(failedFrameJid({ key: { remoteJid: '78847127097458@lid' } })).toBe('78847127097458@lid');
+    expect(failedFrameJid({ key: { participant: '1@lid' } })).toBe('1@lid');
+    expect(failedFrameJid({})).toBeNull();
+    expect(failedFrameJid(undefined)).toBeNull();
+  });
+
+  it('recognises a recipient asking us to send a message again, and the id of the message', () => {
+    const attrs = { from: '110762928373833@lid', type: 'retry', id: '3EB08CBD57CDF8128854E1', t: '1792744677' };
+    expect(retryRequestMessageId({ attrs }, 'recv retry request')).toBe('3EB08CBD57CDF8128854E1');
+    expect(retryRequestMessageId({ attrs }, 'something else')).toBeNull();
+    expect(retryRequestMessageId({ attrs: {} }, 'recv retry request')).toBeNull();
+    expect(retryRequestMessageId(undefined, 'recv retry request')).toBeNull();
+  });
+
+  it('tells its callbacks who failed and which message was asked for again, and still passes the call through', () => {
+    const failures: Array<string | null> = [];
+    const retried: string[] = [];
+    const log = tapDecryptFailures(base(), (info) => failures.push(info.jid), (id) => retried.push(id));
+    log.child({}).error({ key: { remoteJid: '78847127097458@lid' }, err: { message: 'No matching sessions found for message' } }, 'failed to decrypt message');
+    log.debug({ attrs: { id: 'ABC', type: 'retry' } }, 'recv retry request');
+    log.debug({ attrs: { id: 'IGNORED' } }, 'sent ack');
+    expect(failures).toEqual(['78847127097458@lid']);
+    expect(retried).toEqual(['ABC']);
+    // a throwing retry callback must never break logging either
+    const unsafe = tapDecryptFailures(base(), () => undefined, () => { throw new Error('boom'); });
+    expect(() => unsafe.debug({ attrs: { id: 'X' } }, 'recv retry request')).not.toThrow();
   });
 });
 

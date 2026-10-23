@@ -75,6 +75,9 @@ export interface Message {
   errorCode: string | null;
   /** For a still-queued outbound message: why the gateway is holding it (`sender_not_connected`…). */
   holdReason: string | null;
+  /** How many times the recipient's phone asked for this message again because it could not decrypt it ("Waiting for this message"). */
+  retryRequests: number;
+  lastRetryAt: string | null;
   /** Decrypted by the API for display. Null when there is no body, or it could not be read. */
   body: string | null;
   /** True when the ciphertext would not decrypt — usually a changed encryption key. */
@@ -682,6 +685,8 @@ export interface SenderStatus {
   canSend: boolean;
   /** `not_connected`, `quarantined`, or null when it can send. */
   reason: string | null;
+  /** The encryption session is broken right now: `contacts` (their messages cannot be read), `own` (the owner's phone or Web messages cannot), or null. */
+  sessionTrouble?: 'contacts' | 'own' | null;
 }
 
 /** The thread's sender status, polled by the composer. */

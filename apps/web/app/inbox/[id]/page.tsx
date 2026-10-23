@@ -100,10 +100,14 @@ function DeliveryState({ message }: { message: Message }) {
   const stuckHours = message.status === 'sent' && message.sentAt !== null && message.sentBy !== 'phone'
     ? (Date.now() - new Date(message.sentAt).getTime()) / 3_600_000 : 0;
   const stuck = stuckHours >= 0.5;
+  // "delivered" only means WhatsApp's servers handed it to the recipient's device. A phone that could not decrypt it still shows
+  // "Waiting for this message" and asks us to send it again; say so until the message has been read (D-101).
+  const unreadable = !failed && !queued && message.status !== 'read' && message.retryRequests > 0;
   return (
-    <span className={failed || queued || stuck ? 'font-medium text-danger' : 'text-muted'}>
+    <span className={failed || queued || stuck || unreadable ? 'font-medium text-danger' : 'text-muted'}>
       {' · '}
       {queued ? `⚠ waiting: ${holdLabel(message.holdReason)}`
+        : unreadable ? `⚠ ${message.status}, but the other phone could not read it yet (it asked for it again ${String(message.retryRequests)} ${message.retryRequests === 1 ? 'time' : 'times'})`
         : stuck ? `sent · no delivery for ${stuckHours >= 1 ? `${String(Math.floor(stuckHours))}h` : `${String(Math.round(stuckHours * 60))}m`}`
         : message.status}
       {message.errorCode !== null && ` (${message.errorCode})`}
