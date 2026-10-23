@@ -1,0 +1,40 @@
+# Added on top of compose.yaml for a server that people reach over the internet (the beta test on a Linode).
+#
+#   docker compose -p whatsapp-crm -f infra/compose/compose.yaml -f infra/compose/compose.prod.yaml up -d --build
+#   (or: npm run prod:up)
+#
+# What it adds:
+#   - Caddy in front of the web UI, with a certificate it fetches and renews by itself. SITE_ADDRESS in
+#     infra/compose/.env is the hostname people type: with no domain, use the server's IP with dashes and ".sslip.io",
+#     e.g. 139-162-10-20.sslip.io (a public service that points that name at that IP). Only 80 and 443 are published.
+#   - Log rotation, so container logs cannot fill the disk, with plenty of history (50 MB x 10 per service).
+# Set API_BIND=127.0.0.1 and WEB_BIND=127.0.0.1 in infra/compose/.env as well (see prod.env.example), so the API and the
+# web port are not reachable except through Caddy.
+services:
+  db:
+    logging: &rotate
+      driver: json-file
+      options: { max-size: "50m", max-file: "10" }
+
+  app:
+    logging: *rotate
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in infra/compose/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    logging: *rotate
+
+volumes:
+  caddy_data:
+  caddy_config:
