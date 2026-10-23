@@ -120,6 +120,8 @@ is not re-proposed.
 | D-104 | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
 | D-105 | Contacts "Dates and order": the Date: Added / Last imported choice is unclear (rename, hint, show it as a sentence) | 📌 pinned (Kushal, 2026-10-23) |
 | D-106 | Inbox: rename Resolve / Reopen to Mark as completed / Reopen chat (and the Closed tab to Completed) | 📌 pinned (Kushal, 2026-10-23) |
+| D-107 | Import: the sample table and the Preview button are both called preview; run the check automatically and show Import straight away | 📌 pinned (Kushal, 2026-10-23) |
+| D-108 | Import: mark invalid phone numbers and emails in the preview; fix them inline or drop them with a confirmation | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3070,3 +3072,37 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 - The stored value stays `closed` (no migration, the API and audit log keep their names); only the labels change.
 
 **Tests to update:** `tests/e2e/seeded-pages.spec.ts` (clicks `Resolve` then `Reopen`) and any spec that opens the "Closed" tab; the AI Hand-to-AI behaviour and the assistant's own handling of closed chats (`autoReply` skips a chat that is not `open`) are unchanged.
+
+## D-107 · Import: two different things are both called "Preview"; the check should run by itself — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal saw:** the import page shows a table headed **"Preview of the columns and rows that will be imported"** (3 of 160 rows) and, further down, a **Preview** button whose text says "checks your file and shows who is new and who is already in your book… The Import button appears once you have run a preview." That reads as asking for the same thing twice.
+
+**They are different:**
+- The table is only a **sample of the raw file**: the first few rows as read from the sheet, before any checking (`apps/web/app/import/import-panel.tsx`, the sample table, `upload.sample`).
+- The **Preview button** is a dry run on the server: it normalises every phone number and email, matches people against the book, and reports how many are new, updated, skipped or have problems. It writes nothing.
+
+**Fix:**
+1. **Rename the sample** "A look at your file (first 3 of 160 rows, as written in the sheet)", so it is clearly not the result.
+2. **Run the check automatically** as soon as the columns are chosen (and again, debounced, when the person changes a mapping), instead of making them press a button. Show its result in place ("160 rows: 142 new, 11 already in your book, 7 with problems") and show **Import** straight away; keep a small **Check again** link. The server work is the same dry run (`runSheet(..., dryRun = true)`); it is cheap for a few hundred rows and should be skipped or paged for very large files (say above 20,000 rows, where it keeps the button and says why).
+3. The existing safety stays: nothing is written until **Import** is pressed, and a file whose check found problems says so before Import (D-108).
+
+**Tests:** update the import browser specs that click Preview before Import (`import-flow`, `import-keep-columns`, `import-problems`, `import-notice-and-reset`); add one that the result appears without pressing anything.
+
+## D-108 · Import: mark invalid phone numbers and emails in the preview, and make the person fix or drop them (with a confirmation) — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal saw:** a sheet whose first column holds values such as `8553912035, +9156006008553912035` (two numbers in one cell, the second one a run-together mistake, far too long to be a number) and plain 10-digit numbers with no country code. Nothing in the table marks them. Problems today only appear after the Preview button, in a separate "Rows to fix" box that lists rows (`ProblemBox`, `importProblems`, errors and warnings) and then imports the rest, with no way to correct or drop a row on the page.
+
+**Wanted:**
+1. **Flag them where the person is looking.** In the sample and in the checked result, mark each row with an **invalid phone** or **invalid email** badge (and a **second number dropped** note), with the reason in plain words ("too long to be a phone number", "no country code and not a valid Indian mobile", "email has no @").
+2. **A list of problem rows with two choices per row (and for all at once):**
+   - **Fix it** right there: edit the value in an inline box; the row is re-checked on the spot.
+   - **Drop it**: leave this person out of the import. Dropping asks **"Are you sure you want to drop N rows? They will not be imported."** with Drop / Keep, and says the original file is untouched.
+3. **The import button says what will happen:** "Import 153 people; 7 rows have problems (fix or drop them first)". Decide with Kushal whether rows with a problem **block** Import until each is fixed or dropped (recommended: yes, so nobody is silently skipped) or are skipped with a downloadable list (today's behaviour).
+4. **Tag them** (optional, if Kushal wants): people imported with a dropped second number or a repaired value get a tag such as `import: needs review`, so they can be found later (ties to D-90, "Needs review").
+5. A **Download the problem rows (CSV)** link stays, for fixing in a spreadsheet and re-uploading.
+
+**Where:** validation already exists server-side (`packages/core/src/ingestion.ts`, phone and email normalisation, warnings and errors per row, `importProblems`); the new work is returning per-row problems with the check (D-107), editing and dropping in `apps/web/app/import/import-panel.tsx`, and applying the fixes and drops as part of the run (a small list of row overrides sent with the import).
+
+**Rules:** never silently drop or change a person; a drop is confirmed; an edited value is shown as edited; phone numbers use the same normaliser as everywhere else (`DEFAULT_COUNTRY` IN); personal data stays out of logs.
+
+**Tests:** an integration test that rows with a bad number or email come back flagged with a reason, that an override fixes a row and a drop removes it from the run; a browser test of fix, drop and the drop confirmation.
