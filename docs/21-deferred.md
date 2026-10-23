@@ -113,6 +113,7 @@ is not re-proposed.
 | D-97 | AI settings say "add a model first" next to Save when no model is set up (and disable Hand to AI with that reason) | 📌 pinned (Kushal, 2026-10-23) |
 | D-98 | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
 | D-99 | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
+| D-100 | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2960,3 +2961,17 @@ Remaining work pinned as **high priority**.
 **Open question for Kushal:** "single/multiple contact option" was read as adding one or many contacts by hand. If it meant something else (for example choosing one or several contacts in the list to act on, which bulk tagging already does), say so and this pin is rewritten.
 
 **Test:** an integration test per mode (creates, de-duplicates, refuses a bad number with the reason, writes an audit row) and a browser test of the form and the paste box.
+
+## D-100 · Campaigns: an indicator on each campaign showing whether the AI is used — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** on the Campaigns list (`apps/web/app/broadcast/page.tsx`) and on each campaign's own page (`apps/web/app/broadcast/[id]`), show at a glance which campaigns use the AI and how:
+- A small **AI** badge on every campaign that has an AI template (`campaign.ai_template_id`), with the template's name on hover or beside it, linking to the template. No badge on a plain campaign.
+- On the campaign page, one plain sentence of what the badge means: "The AI writes each person's first message from the template X, and answers replies" (since #157 and R-011 both apply to such campaigns).
+- Useful states, if cheap: **AI off** (the organisation has switched the assistant off or has no model, so this campaign is waiting or its openings are not being written), **openings written** (for example "12 of 40 written", `campaign_recipient.opening_enc` set), **skipped: AI failed** (`ai_opening_failed` count), and **chats the AI has right now** (conversations assigned to the assistant that came from this campaign).
+- A filter on the list: All / AI campaigns / Plain.
+
+**Why:** since #157 an AI-template campaign no longer sends the typed text, and the AI takes over its replies. Nothing in the list says which campaigns behave that way, so a person can start one without knowing the AI will write to people. It also explains a campaign that "does nothing" because the AI is off or the model is out of room (see D-97, D-98).
+
+**Where:** the campaign list and detail API responses need `aiTemplateId` and the template name (`apps/api/src/routes/campaigns.ts`, `packages/core/src/campaigns.ts`), plus the opening counts per campaign; the web side is two components and the type in `apps/web/lib/crm.ts`.
+
+**Test:** an integration test that the list and detail responses carry the template and the counts; a browser test that an AI campaign shows the badge and a plain one does not.
