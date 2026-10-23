@@ -112,6 +112,7 @@ is not re-proposed.
 | D-96 | Forgot password: a way to reset your own password (no self-service reset today; the beta server has no operator at a keyboard) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-97 | AI settings say "add a model first" next to Save when no model is set up (and disable Hand to AI with that reason) | 📌 pinned (Kushal, 2026-10-23) |
 | D-98 | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
+| D-99 | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2947,3 +2948,15 @@ Remaining work pinned as **high priority**.
 **Test:** integration tests for the totals and the estimate with a fake model that returns rate-limit headers and one that returns none; a browser test that the panel shows "unknown" without headers.
 
 **The numbers in the model list (answer to Kushal's question):** the "131k", "4k", "1k" beside each model are its **context window**: the most text the model can read and write in one request, counted in tokens (a token is about three quarters of an English word, so 131k is roughly 100,000 words and 4k roughly 3,000). They come from the provider's own model list (`context_length`), shown in `apps/web/app/ai/settings/model-picker.tsx`. Bigger is not "better": our replies are short, so 4k is enough for a short chat and 131k only matters for long histories. "tested" is a separate badge: the model we have run our own check against.
+
+## D-99 · Contacts: add one contact, or several at once, by hand — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the Contacts page only lists people. The only ways in are the import wizard (a whole file) and people who message in. Add an **Add contact** option on Contacts with two modes:
+- **Single:** a small form: name, phone number (with country), optional email, optional tag, and a "also keep these columns" free field row if wanted. Same checks as an import row (the number is normalised and de-duplicated, a number already in the book says "already exists, open it").
+- **Multiple:** paste several lines (one person per line, `name, phone` or just phones) or type them into a small table, with a preview of how many will be created, updated or refused (and why) before anything is written, then the same result summary as an import.
+
+**Reuse, do not rebuild:** `POST /contacts` already exists (`apps/api/src/routes/contacts.ts`, scope `contacts:write`, schema `createContact`); the multiple mode should go through the import pipeline (`packages/core/src/ingestion.ts`, "newest name wins", phone and email matching, audit, the tag option, do-not-contact) as a small inline "import" so one code path decides who is a duplicate, not two. Works with the AI follow-up: a hand-added person can be put in a campaign like any other.
+
+**Open question for Kushal:** "single/multiple contact option" was read as adding one or many contacts by hand. If it meant something else (for example choosing one or several contacts in the list to act on, which bulk tagging already does), say so and this pin is rewritten.
+
+**Test:** an integration test per mode (creates, de-duplicates, refuses a bad number with the reason, writes an audit row) and a browser test of the form and the paste box.
