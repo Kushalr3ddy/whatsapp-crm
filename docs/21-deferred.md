@@ -125,6 +125,7 @@ is not re-proposed.
 | D-109 | Campaign form: "Build a new template" jumps to the AI tab, and picking a template there does not make the campaign an AI campaign | 📌 pinned (Kushal, 2026-10-23) |
 | D-110 | "Tell the assistant what to do" as a small chat bubble on the right side of every page, not a section of the AI tab | 📌 pinned (Kushal, 2026-10-23) |
 | D-111 | Import: de-duplicate in the browser first (progress bar, drop exact copies, ask which to keep when copies differ); server still enforces | 📌 pinned (Kushal, 2026-10-23) |
+| D-112 | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3157,3 +3158,24 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 **Ties to:** D-90 (duplicates and "Needs review"), D-107 (the check runs by itself), D-108 (fix or drop invalid rows, same confirmation), issue #117 (import duplicates).
 
 **Tests:** unit tests for the browser de-duplicator (phone and email forms, exact vs differing, merge), an integration test that the server still rejects a duplicate sent despite the browser, and a browser test with a file that has 3 exact copies and 2 differing copies: the loading bar appears, 3 are removed, the 2 are shown, and the chosen one is the one imported.
+
+## D-112 · Message and campaign tracking is poor: say who sent each message (AI or a person), and show it in campaigns too — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal said:** "campaign and message tracking sucks". Specifically: under every message in a chat, a **small line of text saying who sent it**. If the AI wrote it, say **"Sent by the AI assistant"**. If a regular user sent it, say **"Sent by <their name>"** instead. (Tracking in campaigns is the second half, below.)
+
+**Today:** the sender label in a chat thread is only the text above a bubble from `senderLabel()` (`apps/web/app/inbox/[id]/page.tsx`): the user's display name if there is one, "You, from your phone" for `sent_by = 'phone'`, "Campaign" for `system`, otherwise "API". The AI's messages are stored `sent_by = 'agent'` with the assistant's bot user, so they usually show as the assistant's name and are not clearly marked as AI. Nothing says which campaign a message belongs to, whether the AI wrote its text, or whether an AI answer was sent on the AI's own or after a person asked it to ("Hand to AI", D-94-style "allow reply anyway").
+
+**Wanted (small, at the bottom of each outgoing message, quiet text):**
+- **AI assistant** (`sent_by = 'agent'`): "Sent by the AI assistant". If it was an AI-written campaign opening: "Written by the AI for campaign <name>".
+- **A person** (`sent_by = 'user'`): "Sent by <display name>".
+- **A campaign message with typed text** (`system`): "Campaign <name>".
+- **From the owner's phone or WhatsApp Web** (`phone`): "Sent from the phone".
+- **An API caller**: "Sent through the API (<key name>)".
+- Also the delivery state next to it (sent, delivered, read, held and why, failed), which already exists as ticks.
+Inbound messages keep their current look.
+
+**Campaigns (the "tracking sucks" half), related open issues:** #141 (show the sent text on the campaign recipient row), #142 (AI message tracking), #139 (AI "waiting for message"). Wanted on the campaign page: per recipient, the text actually sent (for AI campaigns each person's own, since #157), who/what sent it, the delivery state, whether they replied, and who has the chat now (AI, a person, nobody) with a link to the chat; counts on top (sent, delivered, read, replied, AI is handling, handed to a person); and the AI indicator from D-100.
+
+**Where:** the message list API already returns `sentBy` and `sentByName`; add `campaignId` and campaign name, and an `aiWritten` flag (an opening written by `ai-opening.ts` or a reply from `autoReply`; the `ai_run` row ties a message to its model and token use). Web: the bubble component in `apps/web/app/inbox/[id]/page.tsx`, the recipient list in `apps/web/app/broadcast/[id]`. No migration is needed for the label; a column recording "AI-written" may be, if `sent_by = 'agent'` is not enough (a person's message the AI polished would need it, but nothing does that today).
+
+**Tests:** an integration test that the message list tells AI, person, campaign and phone apart; a browser test of the four labels in one thread and of the recipient row showing the sent text.
