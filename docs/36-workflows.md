@@ -111,17 +111,18 @@ flowchart TD
 
 ## 5 · Importing contacts
 
-(Code: `apps/web/app/import/`, `packages/core/src/ingestion.ts`.)
+(Code: `apps/web/app/import/`, `packages/core/src/ingestion.ts`.) The extra columns are stored as one JSON object on the contact (`contact.custom_fields`, a `jsonb` column with a search index, docs/35), not as a database column each, so any number of sheet columns fit.
 
 ```mermaid
 flowchart TD
   A([Choose a CSV or Excel file]) --> B[Upload at once; same bytes seen before is refused, with Upload anyway]
   B --> C[Profile each column by its values, suggest the phone column]
   C --> D[Match columns: tick every phone column, name or first plus last joined, email, columns to keep]
-  D --> E{Personal column?}
-  E -- yes, protected --> F[Cannot be ticked unless protection is switched off]
-  E -- no --> G[Preview: nothing written yet]
-  F --> G
+  D --> E{Columns to store}
+  E -- All columns, the default --> F[Every other column is stored on each person, personal ones too, up to 200]
+  E -- Choose columns --> F2[Tick the ones to keep; personal ones carry a label]
+  F --> G[Preview: nothing written yet]
+  F2 --> G
   G --> H[Import]
   H --> I[Row by row into the ledger: find the person by phone or email, else create]
   I --> J[Existing person: name only if empty, new numbers added, field values never overwritten]

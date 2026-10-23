@@ -30,7 +30,8 @@ test.describe('import: keep columns, default tag', () => {
     // The tag box is already filled with the file's name.
     await expect(page.getByLabel('Tag everyone in this file')).toHaveValue(`keep-${stamp}`);
 
-    // Only City is ticked, so Skills must not come across.
+    // Every column is stored by default; switching to "Choose columns" and ticking only City leaves Skills out.
+    await page.getByLabel('Choose columns').check();
     await page.getByLabel('City').check();
     await page.getByRole('button', { name: 'Preview' }).click();
     await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
@@ -45,5 +46,35 @@ test.describe('import: keep columns, default tag', () => {
 
     // And the file-named tag is on them.
     await expect(page.getByRole('link', { name: new RegExp(`keep-${stamp}`) }).first()).toBeVisible();
+  });
+
+  test('all columns are stored by default, personal-tagged ones included', async ({ page }) => {
+    const stamp = String(Date.now());
+    const city = `Allville${stamp}`;
+    // Inside the reserved block, at the end that the other test above does not use.
+    const n = Number(stamp.slice(-1));
+    const csv =
+      'Name,Mob,City,Gender\n' +
+      `All One,+1202555${String(290 + n).padStart(4, '0')},${city},female\n`;
+
+    await signIn(page);
+    await page.goto('/import');
+    await page.locator('input[type="file"]').setInputFiles({
+      name: `all-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv)
+    });
+    await expect(page.getByText(/rows ·/)).toBeVisible();
+    await expect(page.getByLabel('All columns (default)')).toBeChecked();
+    // No per-column tick boxes in the default mode.
+    await expect(page.getByLabel('City')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Preview' }).click();
+    await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(page.getByText(/✓ Imported/)).toBeVisible();
+
+    await page.goto(`/contacts?q=${encodeURIComponent(city)}`);
+    await page.locator('li > details').evaluateAll((els) => { for (const el of els) (el as unknown as { open: boolean }).open = true; });
+    await expect(page.locator('summary', { hasText: `City: ${city}` })).toHaveCount(1);
+    await expect(page.locator('summary', { hasText: 'Gender: female' })).toHaveCount(1);
   });
 });

@@ -29,8 +29,8 @@ const mappingSchema = z.object({
   })).min(1, 'at least one identity rule: a row with nothing to identify a person by cannot become a contact'),
   defaultCountry: z.string().length(2).optional(),
   unmapped: z.enum(['keep', 'drop']).optional(),
-  /** Columns to keep on each contact as custom fields (at most 40, so one file cannot flood the field list). */
-  fields: z.array(z.object({ from: z.string().min(1) })).max(40).optional()
+  /** Columns to keep on each contact as custom fields (at most 200, so one file cannot flood the field list). */
+  fields: z.array(z.object({ from: z.string().min(1) })).max(200).optional()
 });
 
 /** Body for executing a run. */
