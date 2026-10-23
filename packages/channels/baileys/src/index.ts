@@ -588,9 +588,7 @@ export class BaileysChannelProvider implements ChannelProvider {
       // the caller's job via contact_identity — it is simply another identity for one person.
       fromPhoneE164: phoneFromJid(jid),
       // For a privacy address, WhatsApp also says which number it is: `remoteJidAlt` in Baileys 7 (`senderPn` in 6.x).
-      linkedPhoneE164: jid.endsWith('@lid')
-        ? phoneFromJid(m.key.remoteJidAlt) ?? phoneFromJid(m.key.participantAlt) ?? phoneFromJid(m.key.senderPn ?? m.key.participantPn)
-        : null,
+      linkedPhoneE164: linkedPhoneFor(jid, m.key),
       fromProviderAddress: jid,
       body,
       contentType,
@@ -613,6 +611,18 @@ export class BaileysChannelProvider implements ChannelProvider {
     if (status === null) return;
     this.#status.push({ providerMessageId: id, senderId, status, errorCode: null, at: new Date() });
   }
+}
+
+/**
+ * For a message from a privacy (LID) address, the phone number WhatsApp says it belongs to: `remoteJidAlt` or `participantAlt` in
+ * Baileys 7, `senderPn` or `participantPn` in 6.x. Null for a phone-number address or when WhatsApp did not say.
+ */
+export function linkedPhoneFor(
+  jid: string,
+  key: { remoteJidAlt?: string; participantAlt?: string; senderPn?: string; participantPn?: string }
+): string | null {
+  if (!jid.endsWith('@lid')) return null;
+  return phoneFromJid(key.remoteJidAlt) ?? phoneFromJid(key.participantAlt) ?? phoneFromJid(key.senderPn ?? key.participantPn);
 }
 
 /** Baileys timestamps arrive as a number or a protobuf Long; both mean seconds. */
