@@ -198,3 +198,27 @@ These are **not** implemented; each is cheap to add when the data gets big.
 npm run db:docs          # rewrites docs/generated/schema.html and docs/generated/database-reference.md from the live database
 ```
 Run it after `npm run db:migrate`. A new table needs a note in `packages/db/src/table-notes.ts`.
+
+## 7 · Why there is no cache and no extra data layers (and when there should be)
+
+**What is actually there.** The API talks to Postgres through `drizzle-orm` (a thin query builder) over the `postgres` driver. That is the whole data path: **no Redis or Memcached, no in-process result cache, no materialized views, no read replica, no search server, no connection pooler (PgBouncer), no repository or service layer between a route and its SQL.** The only in-memory state is small and deliberate: the generation rate limit counter (`apps/api/src/rate-limit.ts`, one API process) and the per-campaign identical-body check in `dispatchCampaign`. The browser may keep media thumbnails for an hour (`Cache-Control: private, max-age=3600`); everything else is `no-store`.
+
+**Why that is right for now**
+1. **It is measured fast.** The calls the Contacts page makes take 20 to 40 ms each on a production build (docs/38). Postgres with the indexes in section 3 is already faster than the cost of asking a cache. Slowness people feel comes from the web side (a dev server compiling pages, a 1 MB Contacts page), not from SQL.
+2. **A cache here is a correctness risk, not just a speed-up.** Messages arrive all the time, tags change, a campaign's audience can change between preview and send (the commit refuses if it did, `routes/tags.ts`). A cached list is stale the moment any of that happens, and an empty or old answer is the one most likely to be wrong. Every cache needs an invalidation rule for each write; with one org and a few thousand contacts, that rule costs more than the query it saves.
+3. **Tenancy.** Row-level security decides what one org may see (section 2). A shared cache keyed wrongly would leak across orgs; there is nothing to get wrong when there is no shared cache.
+4. **Fewer moving parts to run.** The product is meant to run as one container plus Postgres (`infra/compose`). Redis would be a third thing to host, back up, secure and keep alive on a small server and on a tester's laptop.
+5. **Extra SQL layers hide the queries.** The queries in section 4 are written where they are used so that each can be read, timed and indexed on its own. A repository layer or ORM-style model classes would add code between the screen and the number we are trying to measure.
+
+**When each becomes worth adding (signals, not dates)**
+| Add | When | How, smallest first |
+|---|---|---|
+| The section 5 indexes and `pg_trgm` search | Contacts or search passes about 1 second in the server log, or an org passes roughly 50,000 contacts | One migration each; nothing else changes |
+| Less data per page (fetch a row's panel on demand, D-46) | Before any cache. The Contacts HTML is the heaviest thing we send | Change what the page asks for |
+| A short-lived in-memory cache | One specific read is repeated on every page and is slow (today `/auth/me` and `/senders`, 0.3 to 1 s in one log) | Per-request memo first; then a few seconds of cache keyed by org and user, emptied on that org's writes |
+| Redis | Two or more API processes (rate limits and sessions must be shared), or a realtime channel the API and web share (D-pins) | Move the rate-limit counter first; it is the first thing that breaks with a second process |
+| Materialized view or summary table | A dashboard count that scans a large table on each load | A counter table updated by the write, or a view refreshed on a schedule |
+| Read replica / PgBouncer | Many concurrent users, or the database CPU stays high with indexes already in place | Infrastructure change, no code change |
+| Search server | `ILIKE` and `pg_trgm` are not enough (typo tolerance, ranking, millions of rows) | Last; also the point where message bodies, which are encrypted, need a design (D-pin on search) |
+
+**How to decide.** Measure first (`npm run regress` speed probe, the API log's `responseTime`). If the time is in the browser or in the amount of data sent, a cache will not help. If it is one slow query, add an index before anything else. Add a cache only for a specific read with a known invalidation rule, and write that rule in this section.

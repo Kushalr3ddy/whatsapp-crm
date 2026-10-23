@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  extractBody, extractStatusCode, isNotAPerson, mapDisconnectReason, mapStatus, phoneFromJid, toDate
+  extractBody, extractStatusCode, isNotAPerson, linkedPhoneFor, mapDisconnectReason, mapStatus, phoneFromJid, toDate
 } from './index.js';
 
 describe('mapDisconnectReason', () => {
@@ -155,5 +155,23 @@ describe('isNotAPerson', () => {
     expect(isNotAPerson('919876543210@s.whatsapp.net')).toBe(false);
     expect(isNotAPerson('919876543210:12@s.whatsapp.net')).toBe(false);
     expect(isNotAPerson('44887374303340@lid')).toBe(false);
+  });
+});
+
+describe('linkedPhoneFor (which phone number a privacy address belongs to)', () => {
+  const lid = '110762928373833@lid';
+  it('reads Baileys 7\'s remoteJidAlt, then participantAlt, then the 6.x fields', () => {
+    expect(linkedPhoneFor(lid, { remoteJidAlt: '919964122631@s.whatsapp.net' })).toBe('+919964122631');
+    expect(linkedPhoneFor(lid, { participantAlt: '919964122631:12@s.whatsapp.net' })).toBe('+919964122631');
+    expect(linkedPhoneFor(lid, { senderPn: '919964122631@s.whatsapp.net' })).toBe('+919964122631');
+    expect(linkedPhoneFor(lid, { participantPn: '919964122631@s.whatsapp.net' })).toBe('+919964122631');
+  });
+  it('prefers the 7.x field when both are present', () => {
+    expect(linkedPhoneFor(lid, { remoteJidAlt: '911111111111@s.whatsapp.net', senderPn: '922222222222@s.whatsapp.net' })).toBe('+911111111111');
+  });
+  it('is null for a phone-number address, for an alternative that is not a phone number, and when nothing was said', () => {
+    expect(linkedPhoneFor('919964122631@s.whatsapp.net', { remoteJidAlt: '110762928373833@lid' })).toBeNull();
+    expect(linkedPhoneFor(lid, { remoteJidAlt: '55555@lid' })).toBeNull();
+    expect(linkedPhoneFor(lid, {})).toBeNull();
   });
 });

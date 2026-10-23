@@ -58,3 +58,63 @@ Mikhil's phone could not decrypt the AI's message. The message was sent fine and
 
 ## Filing
 GitHub issue and registry entry (R-013) not created yet; per `docs/39` the next step is the issue plus a failing test. Open question for Kushal: which of steps 2 and 3 first.
+
+
+---
+
+## The fix, built the same night (branch `fix/not-quitting-till-waiting-for-this-message-is-fixed`, issue #160, R-013)
+
+### What changed
+1. **Baileys 6.7.24 to 7.0.0-rc14** (`package.json`). npm's `latest` tag is the 7.x line; 6.7.24 is tagged `legacy`. The 7.x library keeps the phone-number to LID pair in the credential store (`lid-mapping` keys). It learns the pair in two ways: when it looks up a contact's devices to send to them it asks WhatsApp for the LID as well (the "usync" query with the LID protocol, `Socket/messages-send.js`), stores the pair and **builds the session under the LID address from the first message**; and when a pair shows up later (a message's `sender_pn`, a sync action, a shared number) it stores it and **moves any session that already exists under the phone number across** (`migrateSession`). So both sides of a chat use one session, and a reply under the LID finds it. Our adapter needed three small changes and no more: it reads the new `remoteJidAlt` / `participantAlt` fields for the contact's other address, it listens to `lid-mapping.update` and stores each pair as one of the contact's identities, and the login settings are unchanged. Typecheck, lint and all tests pass with it.
+2. **The credential store writes each key in order and flushes before the process exits** (`packages/channels/baileys/src/auth-adapter.ts`, D-82). Two overlapping writes to one session key could land out of order and leave our copy behind what WhatsApp had been told. Each key now has its own queue, and `disconnect`/`shutdown` wait (up to 10 s) for the queues to drain.
+3. **The thread says when the other phone could not read a message** (D-101). The gateway notices WhatsApp's retry request ("recv retry request") through its logger, records it on the message (`message.retry_requests`, `last_retry_at`, migration 0038), and the thread shows "delivered, but the other phone could not read it yet (it asked for it again N times)" until the message is read. "Delivered" alone no longer hides it.
+4. **A broken encryption session is said plainly** (D-82, D-102). A burst of undecryptable messages from contacts, or from the owner's own phone or WhatsApp Web, is recorded separately (`channel_session.decrypt_burst_at` and the new `own_decrypt_burst_at`); the composer shows "The encryption session of <number> looks broken ... Unlink the number and link it again". The amber "WhatsApp may be limiting" banner adds "this may be a result of the encryption problem above, not a judgement by WhatsApp" when both are true.
+5. **The ban score no longer counts the owner's own devices.** Failures from the account's own addresses are not evidence that WhatsApp is penalising the number (D-82 had recorded a false 48-hour quarantine from exactly this).
+
+### What was verified, and how
+- **R-013, `tests/integration/regression-r-013-a-reply-under-a-lid-address-finds-the-session.test.ts`**: the real library and the real Postgres credential store, two parties. (a) Control: without the mapping, a reply under the LID address fails with `No session record`: the production failure, reproduced. (b) With the pair stored and the session moved, the reply is read and our next message, sent under the LID address, is read by the contact: no retry, no "Waiting". (c) After a simulated restart the pair and the moved session come back from the encrypted store and keep working.
+- Unit and integration tests for the new log taps, the ordered writer, the retry-request recording, the thread notice and the scoring rule.
+- **Smoke test against the real WhatsApp servers** (no phone needed): the 7.0.0-rc14 socket through our adapter connects and is issued a QR in about one second.
+
+### Honest findings and what is NOT yet proven
+- **The number linked on the laptop under 6.7.24 was logged out (401) the first time it connected under 7.0.0-rc14** (2026-10-23 11:50 UTC, the old `kushal_test` sender there) and our code removed its credentials, as designed. At first the cause looked unknown. **Later the same night the real evidence came in from the Linode** (below): a number linked there under 6.7.24 was **restored and connected without a 401 under 7.0.0-rc14**. So 7.x accepts sessions made by 6.x, and the laptop's logout is most likely because that companion had already been removed (Kushal linked the same account on the Linode at about 11:04 UTC). Nothing needs relinking just because of the upgrade; a number whose session is already broken (RB-13) still does.
+- **Real-phone verification is still to do** and needs a person with a phone: link one spare number on the Linode (the first link under 7.x), message a second phone of Kushal's own, and check: no `recv retry request` within 5 s of a send, no `No session record` for the contact's LID, a reply arrives and is answered by the AI, and a message typed on the phone and on WhatsApp Web both reach the inbox (D-102). The acceptance list is in D-101.
+- 7.0.0-rc14 is a release candidate. It is what npm calls `latest`, but it should be watched during the day-or-two spare-number test.
+- Not done: holding AI and campaign sends while the session is broken (D-82's last item); a one-click relink button.
+- From the library's release notes (github.com/WhiskeySockets/Baileys/releases): rc10 is the ESM release with the LID to phone-number mapping work and a **new QR/companion-registration format** (a possible reason a session registered under 6.x is not accepted: not confirmed); rc11 moved `libsignal` from git to npm (no git needed to install) and says a move away from libsignal is planned for licensing reasons; rc12 is a security patch (GHSA-qvv5-jq5g-4cgg; 6.7.22 and later 6.x also carry it, so staying on 6.7.24 was not a security risk); rc13 fixes `fromMe` being set wrongly on protocol messages. The migration guide the README links (whiskey.so/migrate-latest) did not load from here, so any 6.x to 7.x credential notes in it are unread.
+
+### Evidence from the Linode (real number, real people), 2026-10-23
+The number was linked on the Linode (`kushal_test`) by Kushal at about 11:04 UTC while this work was going on.
+- **Under 6.7.24, the symptom, as the logs and database show it:** 11:06:44 a campaign opening to the other tester was sent and read; 11:07:27 the AI replied (delivered); 11:08:02 the tester wrote that they could not see the message and the AI handed the chat over ("User reports inability to see message"). Then Kushal's own API test sends (11:09 to 11:35) were delivered and read.
+- **At 11:58:54 the branch was deployed (Baileys 7.0.0-rc14, migration 0038):** the stored session was restored and the connection opened with no 401. The gateway logged 7 `PreKeyError: Invalid PreKey ID` and 2 `No session record` in the first seconds: messages that had queued up while the old gateway was down, encrypted to keys that no longer exist or sessions that never existed; they roll back cleanly (`transaction failed, rolling back`, nothing half-written). Three messages typed on the owner's phone were then stored (`sent_by = 'phone'`), and the credential store holds 11 sessions, 36 pre-keys and **2 stored phone-number/LID pairs**: the new mapping is working on real traffic.
+- **Two corrections this showed up (fixed in the same branch):** failures marked `fromMe` (a message the owner typed, whose chat is the contact's LID) were counted as the contact's, now they are classed as own-device (`key.fromMe`, the frame's author or chat); and every retry request, including ones for messages the owner typed on the phone, logged a warning, now only a message this CRM sent does.
+- **Still to see on this number:** a CRM send (an AI reply or a campaign message) to a contact after the upgrade with **no `recv retry request` within a few seconds**, and a reply under the contact's LID read at once. The first such send after the redeploy is the acceptance test.
+
+---
+
+## Everything found, in one place (end of the 2026-10-23 night session)
+
+**State of the work**
+- Branch `fix/not-quitting-till-waiting-for-this-message-is-fixed`, PR #161 (open, **not** set to auto-merge), issue #160, registry R-013, pins D-101, D-102, D-82 updated. The Linode runs this branch as of the 11:58 UTC deploy (Baileys 7.0.0-rc14, migration 0038); the commits after that (own-device classification by `fromMe`, quieter retry logging) are pushed but **not deployed**.
+- Offline: 937 tests pass (14 new), typecheck clean, lint 0 errors, registry check ok. Smoke test: the 7.0.0-rc14 socket connects to the live WhatsApp servers through our adapter and is issued a QR in about a second.
+- **Not proven:** a CRM send (AI reply or campaign message) after the upgrade with no `recv retry request` within seconds. I was about to send one test message from the Linode to the test contact when I was told to stop, so **no live test message was sent**.
+
+**Findings, new tonight (besides everything above)**
+1. **Baileys' `latest` is 7.0.0-rc14; we were on the `legacy` 6.7.24.** The 7.x library stores the phone-number/LID pair and builds sessions under the LID from the first message (it asks WhatsApp for the LID when it looks up devices).
+2. **7.x restores sessions made by 6.x.** On the Linode the number linked under 6.7.24 reconnected under 7.0.0-rc14 with no 401. The laptop's 401 (11:50 UTC) is most likely because that companion had already been removed: the same account was linked on the Linode at about 11:04 UTC. So upgrading does not by itself force a relink.
+3. **The symptom was real on the Linode under 6.7.24:** 11:07:27 the AI's reply was delivered; 11:08:02 the tester told the AI they could not see the message and the AI handed the chat over.
+4. **After the upgrade, on real traffic:** 7 `PreKeyError: Invalid PreKey ID` and 2 `No session record` in the first seconds (messages that had queued while the old gateway was down; they roll back cleanly), then phone-typed messages were stored, and the store holds 11 sessions, 36 pre-keys and 2 stored phone-number/LID pairs.
+5. **A burst of failures flagged as the contact's were really the owner's own typed messages** (`key.fromMe`, chat = the contact's LID). Fixed: classified by `fromMe`, author or own address.
+6. **Retry requests for messages the owner typed on the phone are not ours to answer** and were logged as warnings. Fixed: only messages this CRM sent warn.
+7. **The ordered, flushed credential writer** removes a possible cause of "session behind what WhatsApp acknowledged" (D-82); it is unit-tested with a slow-first-write store.
+8. **Two commits had missed the merge of #153** (the D-95 caching pin and docs/42 plus docs/35 section 7, pushed after the PR merged). They are carried in PR #161.
+9. **`dev:all` no longer restarts the gateway on every saved edit** (`gateway:stable`; `--watch-gateway` restores it).
+10. **The thread now says when the other phone could not read a message, and when the encryption session is broken** (D-101, D-102): `message.retry_requests`, `channel_session.own_decrypt_burst_at`, the composer notice, own-device failures out of the ban score.
+11. **The WhatsApp library is a release candidate.** The migration guide the README links did not load from here; its notes on 6.x credentials are unread.
+
+**Housekeeping to do (needs a person)**
+- **An API key named `claude-live-test` was created on the Linode for the live test I did not run, and its secret was printed once in the working session. It has been revoked (`api_key.revoked_at` set) and its file `~/livekey.out` deleted from the server.** Nothing else uses it.
+- The setup SSH key `claude-setup-linode` is still in `/root/.ssh/authorized_keys` and `/home/deploy/.ssh/authorized_keys`; remove it when setup is over, and change the root password that was typed in chat.
+- The laptop's dev database has `kushal_test` unlinked (credentials removed on the 401); nothing to do there unless it should be linked again.
+
+**To close this bug (acceptance, D-101):** on the Linode, send one message from the CRM to the test phone and check the app log (`docker logs whatsapp-crm-app-1`): no `recv retry request` within about 5 seconds, no `No session record` for the contact's LID, the thread shows "delivered" with no "could not read it yet" note. Then have the contact reply and watch the AI's answer; then type on the phone and on WhatsApp Web and see both in the inbox. Only then merge #161 and mark D-101 and D-102 done.

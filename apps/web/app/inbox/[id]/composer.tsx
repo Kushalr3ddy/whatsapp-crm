@@ -192,10 +192,21 @@ export function Composer(
         </div>
       )}
 
+      {!numberDown && senderStatus !== null && (senderStatus.sessionTrouble ?? null) !== null && (
+        <p role="alert" className="mb-2 notice notice-danger text-[13px]">
+          <strong>The encryption session of {senderStatus.label} looks broken.</strong>{' '}
+          {senderStatus.sessionTrouble === 'own'
+            ? 'Messages you type on your own phone or WhatsApp Web cannot be read by this number, so they will not appear here. '
+            : 'Messages from people to this number could not be decrypted, and the people you write to may see "Waiting for this message". '}
+          Unlink the number and link it again on the Numbers page to fix it.
+        </p>
+      )}
+
       {!numberDown && senderStatus !== null && senderStatus.restrictionState !== 'ok' && (
         <p role="status" className="mb-2 notice notice-warning text-[13px]">
           WhatsApp may be limiting <strong>{senderStatus.label}</strong> — messages from it could arrive
           late or not at all. You can still send; they are being paced more slowly.
+          {(senderStatus.sessionTrouble ?? null) !== null && ' This may be a result of the encryption problem above, not a judgement by WhatsApp.'}
         </p>
       )}
 

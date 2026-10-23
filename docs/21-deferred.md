@@ -99,7 +99,7 @@ is not re-proposed.
 | D-79 | Contacts: columns chosen by an admin for the whole team | 📌 pinned |
 | D-80 | Create and edit a contact page; save an unknown sender (org-neutral fields) | 📌 pinned |
 | D-81 | AI assistant guardrails (facts, opt-out words, approval mode, topics, spend) | 📌 pinned · Kushal: "later" |
-| D-82 | A gateway restart can break the WhatsApp session (decrypt failures, nothing received) | 📌 pinned · hit 2026-10-21 |
+| D-82 | A gateway restart can break the WhatsApp session (decrypt failures, nothing received) | ◐ partly built 2026-10-23 (ordered, flushed writes; visibility; see D-101) · 📌 pinned · hit 2026-10-21 |
 | D-83 | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
 | D-84 | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
 | D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
@@ -114,8 +114,8 @@ is not re-proposed.
 | D-98 | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
 | D-99 | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
 | D-100 | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
-| D-101 | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
-| D-102 | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| D-101 | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · ◐ built on a branch (Baileys 7.0.0-rc14), real-phone check pending |
+| D-102 | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · ◐ built with D-101, real-phone check pending |
 | D-103 | The AI tab is confusing: a guided walkthrough of what to set up, in order | 📌 pinned (Kushal, 2026-10-23) |
 | D-104 | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
 | D-105 | Contacts "Dates and order": the Date: Added / Last imported choice is unclear (rename, hint, show it as a sentence) | 📌 pinned (Kushal, 2026-10-23) |
@@ -128,6 +128,7 @@ is not re-proposed.
 | D-112 | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
 | D-113 | Linked numbers: rename "Advisory mode" to a plain Anti-ban protection On / Off switch (words only; maybe auto-expire) | 📌 pinned (Kushal, 2026-10-23) |
 | D-114 | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
+| D-95 | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2702,6 +2703,8 @@ before its last writes land. **To do:** flush the auth state on SIGTERM; refuse 
 "No matching sessions" and say so on the Linked numbers page with a "Reset" button (relink), instead of showing "Linked". **Until then:** do not
 restart the gateway while testing; `bash infra/scripts/dev-up.sh --no-gateway` restarts only the API and web. Runbook entry: `docs/14-runbooks.md`.
 
+**Update 2026-10-23 night, built on the D-101 branch:** the credential store now writes each key in order and flushes before exit (`auth-adapter.ts`), the scorer ignores failures from the account's own devices, and the thread says when a session is broken (docs/45). Still to do from this list: refuse to start a second gateway on the same number; hold AI and campaign sends while the session is broken; a "Reset" (relink) button on the Linked numbers page; flush also on SIGKILL is impossible, so keep `tsx watch` off the real gateway (use `dev-up.sh --no-gateway` and run it separately).
+
 **Also found (2026-10-21), same root:** the health scorer read our own decrypt failures and undelivered messages as a suspected soft ban and put the number in quarantine with a
 **48-hour pause** (risk 100), holding every send; it only cleared because Kushal turned **Advisory mode** on for that number (anti-ban enforcement off; turn it back after testing).
 The scorer should ignore decrypt failures for `fromMe` messages and for a burst right after a restart, and a message the recipient could not read should not count as undelivered.
@@ -3052,7 +3055,9 @@ Two things follow, and both belong to this pin:
 
 **Done means (acceptance):** on the Linode with a spare number, a campaign opening and an AI reply to a contact who has replied are read normally on the other phone; the log shows **no `recv retry request` within 5 s of a send and no `No session record` for the contact's LID**; and an integration test covers "a reply that arrives under a LID address finds the session made under the phone-number address".
 
-**Process:** per docs/39 this is a bug: issue, registry entry R-013 and a failing test first, then the fix PR. Not yet filed.
+**Process:** per docs/39 this is a bug: issue (#160), registry entry R-013 and a test first, then the fix PR.
+
+**Update 2026-10-23 night: BUILT, not yet proven on a real phone.** Option B was done (Baileys 7.0.0-rc14) together with C's visibility (the thread says when the other phone could not read a message; a broken encryption session is said on the thread) and the first half of D (ordered, flushed credential writes; own-device failures out of the ban score). Offline proof is the R-013 integration test (real library, real credential store); a smoke test against the live WhatsApp servers connects and gets a QR. See docs/45, "The fix". **Still open:** the real-phone acceptance above on the Linode with a spare number; a number whose session is already broken still needs a relink (the laptop's was logged out on first connect under 7.x, probably because it had been unlinked by then; a number linked under 6.x on the Linode restored and connected fine under 7.x); holding AI and campaign sends while the session is broken; a relink button. Branch `fix/not-quitting-till-waiting-for-this-message-is-fixed`.
 
 ## D-102 · Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox — 🔺 **PRIORITY** (Kushal, 2026-10-23; same root as D-101, follow-up to D-94)
 
@@ -3065,6 +3070,8 @@ Two things follow, and both belong to this pin:
 **Fix:** the same as D-101 (an address-aware session store, or Baileys 7 with LID mapping and session migration), checked for the owner's own devices as well as contacts. Then re-test D-94's end-to-end case on the Linode: type a message on the phone and on WhatsApp Web, see both in the thread within seconds.
 
 **Also (D-94 steps 2 and 3, still open):** older history from before linking is not imported; a message typed on a device that could not be decrypted is simply missing and cannot be recovered afterwards.
+
+**Update 2026-10-23 night:** the same fix as D-101 (Baileys 7.0.0-rc14, docs/45) covers the owner's own devices; failures from the account's own addresses are now counted apart (`own_decrypt_burst_at`), kept out of the ban score, and the composer says so ("Messages you type on your own phone or WhatsApp Web cannot be read by this number ... link it again"). Real-phone check still to do.
 
 **Done means:** with a linked spare number on the Linode, ten messages typed alternately on the phone and on WhatsApp Web all appear once, in order, as sent by "phone", with zero `No matching sessions` for the account's own LID in the gateway log; an integration test covers a `fromMe` message arriving under a LID address.
 
@@ -3270,3 +3277,8 @@ Inbound messages keep their current look.
 **Design notes so it is not re-derived:** one generic `approval_request` table (id, org, kind, payload JSON, requested_by, note, status, decided_by, decided_at, decision_reason, expires_at) instead of one table per kind (D-76's `sender_access_request` becomes `kind = 'number'`); a registry mapping each kind to its `apply()` function and the role allowed to approve; the approver's session, not the requester's, performs the action; idempotent (approving twice does nothing); an org setting per kind says "needs approval" or "agents may do this alone" (so a small team can leave it off). Scopes (D-77) decide who may *ask*; roles decide who may *approve*.
 
 **Tests:** an integration test per kind (request, approve, decline, cancel, expire, cannot self-approve, audit rows, the underlying action runs only once and only on approve) and the do-not-contact and anti-ban rules still holding after approval; browser tests of "My requests", the Approvals inbox and the bell.
+## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (Kushal, 2026-10-23)
+
+**Question asked:** would adding them make it faster? **Answer today: no.** The measured API calls take 20 to 40 ms; the slowness people feel is the dev server compiling pages on first visit (fixed by `--fast-web`, PR #153) and the size of the Contacts page (D-46). A cache does not touch either, and it adds stale-data and cross-org-leak risks plus a third thing to host. So nothing is built.
+
+**Revisit when** a number says so: a query over about 1 s in the API log, an org past roughly 50,000 contacts, a second API process (rate limits and sessions must then be shared, so Redis), or `/auth/me` and `/senders` (0.3 to 1 s in one log) still slow after fetching less data per page. Order: indexes, then send less data (D-46), then a short cache for one named read, then Redis. The full table of signals and first steps is in [`35-database-and-queries.md`](35-database-and-queries.md) section 7.

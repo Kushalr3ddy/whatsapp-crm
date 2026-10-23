@@ -40,3 +40,6 @@ Linked numbers → Unlink → link again from the phone (WhatsApp → Settings �
 
 ## Not done on purpose
 Backups, log shipping, alerts, a domain (swap `SITE_ADDRESS` and `PUBLIC_URL` in `.env`, then `prod:up`; Caddy re-issues the certificate). Telemetry is D-56.
+
+## After the Baileys 7 upgrade (2026-10-23)
+The WhatsApp library is 7.0.0-rc14 (docs/45). **A number linked under the older library has to be linked again** (the one on the laptop was logged out on its first connect). On the Linode nothing was linked yet, so the first link is already on the new library. Things to watch on the first day: `recv retry request` in the app log within seconds of a send (the other phone could not read it; the thread now says so too), `No session record`, `decrypt-failure burst`, and the composer notice "The encryption session ... looks broken".

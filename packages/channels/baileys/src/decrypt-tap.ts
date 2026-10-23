@@ -17,24 +17,73 @@ export function isDecryptFailure(obj: unknown, msg?: string): boolean {
   return false;
 }
 
+/** Who an undecryptable frame was from (`key.remoteJid`, or the participant of a group frame), or null when the log call does not say. */
+export function failedFrameJid(obj: unknown): string | null {
+  if (obj === null || typeof obj !== 'object') return null;
+  const key = (obj as { key?: { remoteJid?: unknown; participant?: unknown } }).key;
+  const jid = key?.remoteJid ?? key?.participant;
+  return typeof jid === 'string' ? jid : null;
+}
+
 /**
- * Wraps a logger so every decrypt-failure report also calls `onFailure`, then passes everything
- * through unchanged. Child loggers are wrapped too, because Baileys logs from children, not the
- * root. The callback must not throw — a broken tap must never break logging.
+ * The id of the message a recipient asked us to send again, when a Baileys log call is that request ("recv retry request"), else null.
+ * A recipient sends one when it could not decrypt what we sent: its phone shows "Waiting for this message" until we answer (D-101).
  */
-export function tapDecryptFailures(logger: BaileysLogger, onFailure: () => void): BaileysLogger {
+export function retryRequestMessageId(obj: unknown, msg?: string): string | null {
+  if (msg !== 'recv retry request' || obj === null || typeof obj !== 'object') return null;
+  const id = (obj as { attrs?: { id?: unknown } }).attrs?.id;
+  return typeof id === 'string' && id !== '' ? id : null;
+}
+
+/** Who wrote an undecryptable frame (`author` in Baileys' log context), or null when the log call does not say. */
+export function failedFrameAuthor(obj: unknown): string | null {
+  if (obj === null || typeof obj !== 'object') return null;
+  const author = (obj as { author?: unknown }).author;
+  return typeof author === 'string' ? author : null;
+}
+
+/** True when the frame is marked as sent from this account itself (`key.fromMe`): the owner's own phone or WhatsApp Web. */
+export function failedFrameIsFromMe(obj: unknown): boolean {
+  if (obj === null || typeof obj !== 'object') return false;
+  return (obj as { key?: { fromMe?: unknown } }).key?.fromMe === true;
+}
+
+/** What the tap tells its callbacks about one undecryptable frame. */
+export interface DecryptFailureInfo {
+  /** The chat the frame belongs to, when the log call named one (for a message the owner typed, this is the contact's address). */
+  readonly jid: string | null;
+  /** Who wrote it, when the log call named one. */
+  readonly author: string | null;
+  /** The frame is marked as sent by this account's own other device. */
+  readonly fromMe: boolean;
+}
+
+/**
+ * Wraps a logger so every decrypt-failure report also calls `onFailure`, and every recipient retry request calls `onRetryRequest`,
+ * then passes everything through unchanged. Child loggers are wrapped too, because Baileys logs from children, not the root. The
+ * callbacks must not throw — a broken tap must never break logging.
+ */
+export function tapDecryptFailures(
+  logger: BaileysLogger, onFailure: (info: DecryptFailureInfo) => void, onRetryRequest?: (messageId: string) => void
+): BaileysLogger {
   /** Fires the tap for a matching call, swallowing any error the callback raises. */
   const check = (obj: unknown, msg?: string): void => {
     if (!isDecryptFailure(obj, msg)) return;
-    try { onFailure(); } catch { /* the tap is best-effort */ }
+    try { onFailure({ jid: failedFrameJid(obj), author: failedFrameAuthor(obj), fromMe: failedFrameIsFromMe(obj) }); } catch { /* the tap is best-effort */ }
+  };
+  const retry = (obj: unknown, msg?: string): void => {
+    if (onRetryRequest === undefined) return;
+    const id = retryRequestMessageId(obj, msg);
+    if (id === null) return;
+    try { onRetryRequest(id); } catch { /* the tap is best-effort */ }
   };
   return {
     get level() { return logger.level; },
     set level(v: string) { logger.level = v; },
-    child: (bindings) => tapDecryptFailures(logger.child(bindings), onFailure),
-    info: (o, m) => { logger.info(o, m); },
-    debug: (o, m) => { logger.debug(o, m); },
-    trace: (o, m) => { logger.trace(o, m); },
+    child: (bindings) => tapDecryptFailures(logger.child(bindings), onFailure, onRetryRequest),
+    info: (o, m) => { retry(o, m); logger.info(o, m); },
+    debug: (o, m) => { retry(o, m); logger.debug(o, m); },
+    trace: (o, m) => { retry(o, m); logger.trace(o, m); },
     warn: (o, m) => { check(o, m); logger.warn(o, m); },
     error: (o, m) => { check(o, m); logger.error(o, m); }
   };

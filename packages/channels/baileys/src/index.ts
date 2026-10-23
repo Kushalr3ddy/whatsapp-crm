@@ -37,7 +37,12 @@ export interface BaileysProviderOptions {
    * Called each time Baileys reports a frame it could not decrypt on this sender's socket. The
    * gateway turns a burst of these into a health signal (docs/08-antiban.md, Layer 5).
    */
-  readonly onDecryptFailure?: (senderId: string, at: Date) => void;
+  readonly onDecryptFailure?: (senderId: string, at: Date, info: { own: boolean }) => void;
+  /**
+   * Called when a recipient asks us to send a message again because their phone could not decrypt it (it shows "Waiting for this
+   * message"). `messageId` is WhatsApp's id for the message we sent. The gateway records it on the message so the thread can say so.
+   */
+  readonly onRetryRequest?: (senderId: string, messageId: string, at: Date) => void;
   /**
    * Gives back the text of a message this sender sent, by WhatsApp's id, when a recipient asks for it again.
    *
@@ -85,6 +90,8 @@ const BAILEYS_CAPABILITIES: ChannelCapabilities = {
 /** One live WhatsApp connection plus the state we track alongside it. */
 interface Connection {
   socket: WASocket;
+  /** Waits for every credential and key write asked for so far (see `loadAuthState`). */
+  flush: () => Promise<void>;
   state: ProviderHealth['state'];
   lastConnectedAt: Date | null;
   disconnectReason: DisconnectReason | null;
@@ -182,6 +189,9 @@ export class BaileysChannelProvider implements ChannelProvider {
     conn.socket.end(undefined);
     conn.state = 'closed';
     this.#connections.delete(senderId);
+    // Let the last session writes land before the process may exit: a session behind what WhatsApp has acknowledged is what breaks
+    // the number after a restart (D-82). Bounded, so a stuck database cannot hold a shutdown forever.
+    await Promise.race([conn.flush(), new Promise<void>((resolve) => { setTimeout(resolve, 10_000).unref(); })]);
   }
 
   /**
@@ -348,16 +358,26 @@ export class BaileysChannelProvider implements ChannelProvider {
     const existing = this.#connections.get(senderId);
     if (existing) return existing;
 
-    const { state, saveCreds } = await loadAuthState(this.#options.authStore, senderId);
+    const { state, saveCreds, flush } = await loadAuthState(this.#options.authStore, senderId);
     const { version } = await fetchLatestBaileysVersion();
     const onFail = this.#options.onDecryptFailure;
+    const onRetry = this.#options.onRetryRequest;
     const resendText = this.#options.resendText;
+    // This account's own addresses (phone number and LID), known once the socket is open: a failure from one of them is the owner's
+    // other device (phone, WhatsApp Web), not a contact (D-102).
+    const ownUsers = new Set<string>();
+    const isOwn = (jid: string | null): boolean => jid !== null && ownUsers.has((jid.split('@')[0] ?? '').split(':')[0] ?? '');
 
     const socket = makeWASocket({
       version,
       auth: state,
-      logger: (onFail
-        ? tapDecryptFailures(this.#options.logger, () => { onFail(senderId, new Date()); })
+      logger: (onFail !== undefined || onRetry !== undefined
+        ? tapDecryptFailures(
+          this.#options.logger,
+          // Own device: the frame says it is from this account (`fromMe`), or its author, or its chat, is this account's own address.
+          (info) => { onFail?.(senderId, new Date(), { own: info.fromMe || isOwn(info.author) || isOwn(info.jid) }); },
+          onRetry === undefined ? undefined : (messageId) => { onRetry(senderId, messageId, new Date()); }
+        )
         : this.#options.logger) as never,
       // Identify as a desktop browser. A plausible, stable client fingerprint matters — the
       // detection heuristics notice inconsistency across sessions (docs/08-antiban.md).
@@ -377,12 +397,20 @@ export class BaileysChannelProvider implements ChannelProvider {
     });
 
     const conn: Connection = {
-      socket, state: 'connecting', lastConnectedAt: null, disconnectReason: null, pendingQr: null
+      socket, flush, state: 'connecting', lastConnectedAt: null, disconnectReason: null, pendingQr: null
     };
     this.#connections.set(senderId, conn);
 
-    socket.ev.on('creds.update', () => { void saveCreds(); });
-    socket.ev.on('connection.update', (u) => { this.#onConnectionUpdate(senderId, conn, u, opts.expectQr); });
+    const learnOwnAddresses = (): void => {
+      const me = socket.user as { id?: string; lid?: string } | undefined;
+      for (const jid of [me?.id, me?.lid]) {
+        const user = (jid?.split('@')[0] ?? '').split(':')[0] ?? '';
+        if (user !== '') ownUsers.add(user);
+      }
+    };
+    learnOwnAddresses();
+    socket.ev.on('creds.update', () => { learnOwnAddresses(); void saveCreds(); });
+    socket.ev.on('connection.update', (u) => { learnOwnAddresses(); this.#onConnectionUpdate(senderId, conn, u, opts.expectQr); });
     socket.ev.on('messages.upsert', ({ messages, type }) => {
       if (type !== 'notify') return;   // 'append' is history sync, not new traffic
       for (const m of messages) this.#emitInbound(senderId, m);
@@ -390,6 +418,17 @@ export class BaileysChannelProvider implements ChannelProvider {
     socket.ev.on('messages.update', (updates) => {
       for (const u of updates) this.#emitStatus(senderId, u);
     });
+    // Baileys 7 learns which phone number a privacy (LID) address belongs to whenever WhatsApp shows them together, keeps the pair in
+    // the credential store and moves the encryption session across (this is what stops "Waiting for this message", docs/45). We
+    // also keep the pair as one of the contact's identities.
+    (socket.ev as unknown as { on: (e: string, h: (p: unknown) => void) => void })
+      .on('lid-mapping.update', (p) => {
+        const pair = p as { lid?: string; pn?: string };
+        const phone = phoneFromJid(pair.pn);
+        if (!this.#shuttingDown && typeof pair.lid === 'string' && pair.lid.endsWith('@lid') && phone !== null) {
+          this.#links.push({ senderId, providerAddress: pair.lid, phoneE164: phone });
+        }
+      });
     // A person sharing their number reveals which phone a privacy address is. Baileys 6.x emits it
     // as `{ lid, jid }`; the shape is read defensively because it is not part of the typed events.
     (socket.ev as unknown as { on: (e: string, h: (p: unknown) => void) => void })
@@ -519,7 +558,11 @@ export class BaileysChannelProvider implements ChannelProvider {
   #emitInbound(senderId: string, raw: unknown): void {
     if (this.#shuttingDown) return;
     const m = raw as {
-      key?: { id?: string; remoteJid?: string; fromMe?: boolean; senderPn?: string; participantPn?: string };
+      key?: {
+        id?: string; remoteJid?: string; fromMe?: boolean; senderPn?: string; participantPn?: string;
+        /** Baileys 7: the same person's other address (the phone number when `remoteJid` is a LID, and the other way round). */
+        remoteJidAlt?: string; participantAlt?: string;
+      };
       message?: Record<string, unknown> | null;
       messageTimestamp?: number | Long;
     };
@@ -545,8 +588,8 @@ export class BaileysChannelProvider implements ChannelProvider {
       // A "@lid" address is WhatsApp's privacy id and carries no phone number. Resolving it is
       // the caller's job via contact_identity — it is simply another identity for one person.
       fromPhoneE164: phoneFromJid(jid),
-      // For a privacy address, WhatsApp sometimes also says which number it is (`senderPn`).
-      linkedPhoneE164: jid.endsWith('@lid') ? phoneFromJid(m.key.senderPn ?? m.key.participantPn) : null,
+      // For a privacy address, WhatsApp also says which number it is: `remoteJidAlt` in Baileys 7 (`senderPn` in 6.x).
+      linkedPhoneE164: linkedPhoneFor(jid, m.key),
       fromProviderAddress: jid,
       body,
       contentType,
@@ -569,6 +612,18 @@ export class BaileysChannelProvider implements ChannelProvider {
     if (status === null) return;
     this.#status.push({ providerMessageId: id, senderId, status, errorCode: null, at: new Date() });
   }
+}
+
+/**
+ * For a message from a privacy (LID) address, the phone number WhatsApp says it belongs to: `remoteJidAlt` or `participantAlt` in
+ * Baileys 7, `senderPn` or `participantPn` in 6.x. Null for a phone-number address or when WhatsApp did not say.
+ */
+export function linkedPhoneFor(
+  jid: string,
+  key: { remoteJidAlt?: string; participantAlt?: string; senderPn?: string; participantPn?: string }
+): string | null {
+  if (!jid.endsWith('@lid')) return null;
+  return phoneFromJid(key.remoteJidAlt) ?? phoneFromJid(key.participantAlt) ?? phoneFromJid(key.senderPn ?? key.participantPn);
 }
 
 /** Baileys timestamps arrive as a number or a protobuf Long; both mean seconds. */

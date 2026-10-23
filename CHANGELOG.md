@@ -13,11 +13,25 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-23 (night) — "Waiting for this message" fixed at the root (R-013, #160, D-101, D-102, D-82)
+- **Cause:** Baileys 6.7.24 had no link between a person's phone-number address and their LID address (docs/45). **Fix:** Baileys **7.0.0-rc14** (stores the pair, moves the session, sends under the LID); the adapter reads `remoteJidAlt` and `lid-mapping.update`; credential writes are ordered per key and flushed before exit; the thread says when the other phone could not read a message (migration 0038, `message.retry_requests`); a broken encryption session is said in the composer; own-device failures no longer count towards the ban score. R-013 integration test (real library + real Postgres credential store) reproduces the old failure and proves the new behaviour; a smoke test against the live WhatsApp servers connects and gets a QR.
+- **Evidence from the Linode (docs/45):** under 6.7.24 the other tester could not see the AI's reply (11:08 UTC, the AI handed the chat over); after the redeploy the session made under 6.7.24 restored under 7.0.0-rc14 with no 401, two phone-number/LID pairs are stored, and phone-typed messages arrive. **Not proven yet:** a CRM send after the upgrade with no `recv retry request`. The laptop's number was logged out (401) on first connect under 7.x, most likely because that companion had already been removed.
+
 ### 2026-10-23 (evening) — beta test on a Linode, RCA, forgot-password pinned
 - Linode (Mumbai, 4 GB) hardened and running the alpha container behind Caddy at a `<ip-dashed>.sslip.io` address with a trusted certificate (docs/43); findings in docs/44; RCA of "Waiting for this message" in docs/45 (Baileys 6.7.24 has no phone-number to LID session mapping; D-82 follow-ups). **D-96 pinned as PRIORITY: forgot password.**
 
 ### 2026-10-23 — hand one chat to the AI, from the inbox
 - A **Hand to AI** button in a chat's header (shown once the AI is switched on) assigns that chat to the assistant and has it answer the contact's waiting message; **Take back from AI** makes the chat the signed-in person's again. Assigning is the ordinary thread update; the new `POST /ai/conversations/:id/answer-now` only starts the answer, and the assistant still obeys every anti-ban and do-not-contact rule. `GET /users` now says which user is the assistant (`isBot`). 4 integration tests.
+
+### 2026-10-23 — slow on Mikhil's laptop: it is dev mode; gateway restarted; local database wiped; commit prefix retired
+- **Cause found:** Mikhil runs `npm run dev:all`, which is `next dev`: every page compiles on first visit (a chat took 4 to 5 s) and memory grows to ~3 GB. Revisits are fast. A production build is the fix (`npm run dev:all -- --fast-web`, measured 0.2 to 0.8 s per screen on Kushal's laptop, 176 MB). **PR #153:** `dev:all` now prints a hint to use `--fast-web` on a slow laptop; dev mode stays the default; README lists the fast command.
+- **Nothing is deployed.** "Mikhil's prod" means his own laptop. A Linode instance is the plan for a real deployment: not started (needs a plan first; see docs/29).
+- **Gateway restarted** with Kushal's yes (R-011 AI campaign takeover and D-94 phone messages are live in that process). One `MessageCounterError` on one old message at start-up; nothing else. A second sender (`b8f0faae…`) is `closed` with 22 messages queued and retried every minute: needs relinking or clearing.
+- **Local database wiped at Kushal's request** (`db:dev:reset`, then `db:setup`): dev and test databases empty and migrated; every WhatsApp number must be linked again.
+- **Rule:** the `ai-speedrun:` commit/PR prefix is retired from 2026-10-23 (#153 keeps it).
+- **Docs:** new [`docs/42`](docs/42-speedrun-and-feedback-file-index.md) lists every file from the speedrun and the feedback; [`docs/35`](docs/35-database-and-queries.md) section 7 explains why there is no cache or extra data layer and when to add one.
+
+To do next (top = next): Kushal's yes on a Linode deployment plan; Contacts page weight (D-46: fetch the row panel on demand); skeleton only in slow routes; relink or clear sender `b8f0faae…`; nightly regression run once by hand; issues #139 to #142, #127, #118, #117.
 
 ### 2026-10-22 (night, overnight run) — R-008 solved, Google Doc → markdown tool, R-011
 

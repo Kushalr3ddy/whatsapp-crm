@@ -18,8 +18,26 @@ const CREDS_KEY = 'creds';
 export async function loadAuthState(
   store: AuthStateStore,
   senderId: string
-): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> {
+): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void>; flush: () => Promise<void> }> {
   const creds = (await readKey<AuthenticationCreds>(store, senderId, CREDS_KEY)) ?? initAuthCreds();
+
+  /**
+   * One queue per key. The encryption session for a contact is rewritten on every message in either direction, and two overlapping
+   * writes to the same key could land out of order (an older state replacing a newer one), which leaves our copy behind what WhatsApp
+   * already acknowledged: the "session diverged" fault of D-82. Writes to one key therefore run one after another, in the order asked.
+   */
+  const queues = new Map<string, Promise<void>>();
+  const enqueue = (key: string, job: () => Promise<void>): Promise<void> => {
+    const run = (queues.get(key) ?? Promise.resolve()).catch(() => undefined).then(job);
+    queues.set(key, run);
+    const done = (): void => { if (queues.get(key) === run) queues.delete(key); };
+    run.then(done, done);
+    return run;
+  };
+  /** Resolves when every write asked for so far has landed (or failed). Called before the process exits. */
+  const flush = async (): Promise<void> => {
+    while (queues.size > 0) await Promise.allSettled([...queues.values()]);
+  };
 
   const state: AuthenticationState = {
     creds,
@@ -49,7 +67,7 @@ export async function loadAuthState(
         for (const [type, entries] of Object.entries(data)) {
           for (const [id, value] of Object.entries(entries ?? {})) {
             const key = `${type}-${id}`;
-            writes.push(value ? writeKey(store, senderId, key, value) : store.remove(senderId, key));
+            writes.push(enqueue(key, () => (value ? writeKey(store, senderId, key, value) : store.remove(senderId, key))));
           }
         }
         await Promise.all(writes);
@@ -60,7 +78,8 @@ export async function loadAuthState(
   return {
     state,
     /** Persists the root credentials. Baileys calls this whenever they change mid-session. */
-    saveCreds: () => writeKey(store, senderId, CREDS_KEY, creds)
+    saveCreds: () => enqueue(CREDS_KEY, () => writeKey(store, senderId, CREDS_KEY, creds)),
+    flush
   };
 }
 

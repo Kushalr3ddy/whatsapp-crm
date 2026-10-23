@@ -19,6 +19,7 @@
     "dev:all": "bash infra/scripts/dev-up.sh",
     "dev:fast": "bash infra/scripts/dev-up.sh --fast-web",
     "gateway": "tsx watch --env-file-if-exists=.env apps/gateway/src/main.ts",
+    "gateway:stable": "tsx --env-file-if-exists=.env apps/gateway/src/main.ts",
     "web": "NEXT_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env node_modules/next/dist/bin/next dev apps/web --port 3001",
     "web:prod": "NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env node_modules/next/dist/bin/next build apps/web && NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env node_modules/next/dist/bin/next start apps/web --port 3001",
     "web:build": "NEXT_TELEMETRY_DISABLED=1 npm --workspace @crm/web run build",
@@ -91,7 +92,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1152.0",
     "@node-rs/argon2": "^2.2.1",
-    "baileys": "6.7.24",
+    "baileys": "7.0.0-rc14",
     "drizzle-orm": "^0.36.4",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",

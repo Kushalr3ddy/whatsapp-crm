@@ -232,7 +232,7 @@ sends then go out and the gateway logs `advisory mode: sending past an anti-ban 
 **"Waiting for this message" on the other phone:** the recipient could not decrypt something we sent and asks for it again. The gateway answers that for text (`resending a message the recipient could not decrypt`). Before the resend hook the log
 said `recv retry request, but message not available` and the placeholder never cleared.
 
-**Prevent:** do not restart the gateway while testing (under `tsx watch` every saved edit to a file it imports restarts it). Restart only the API
+**Prevent:** `dev-up.sh` no longer runs the gateway under `tsx watch` (since 2026-10-23; `--watch-gateway` brings the old behaviour back for a laptop with no real number linked). Do not restart the gateway while testing real numbers; after changing gateway or `packages/core` code, stop and start the script. (Before that, under `tsx watch` every saved edit to a file it imports restarted it.) Restart only the API
 and web with `bash infra/scripts/dev-up.sh --no-gateway`. Never run two gateways on one number. Tracked as D-82 (flush auth state on shutdown; detect the burst and say so on the page).
 
 ## A number is delayed, stuck or silently restricted

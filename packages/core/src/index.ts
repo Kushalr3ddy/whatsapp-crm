@@ -100,7 +100,7 @@ export {
 } from './health.js';
 
 export {
-  DecryptFailureTracker, markDecryptBurst, decryptBurstIsLive,
+  DecryptFailureTracker, markDecryptBurst, markOwnDecryptBurst, recordRetryRequest, decryptBurstIsLive,
   DECRYPT_BURST_COUNT, DECRYPT_BURST_WINDOW_MS, DECRYPT_BURST_LIVE_MS
 } from './decrypt-failures.js';
 

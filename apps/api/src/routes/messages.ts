@@ -763,14 +763,17 @@ export function messagesRouter(
     async (req: Request, res: Response) => {
       const rows = await req.tenant!((tx) => tx.execute(sql`
         SELECT si.label, si.status, si.enforcement, si.restriction_state AS "restrictionState",
-               cs.connection_state AS "connectionState"
+               cs.connection_state AS "connectionState",
+               -- A burst of undecryptable messages in the last 15 minutes: the encryption session is broken (D-101, D-102).
+               coalesce(cs.decrypt_burst_at > now() - interval '15 minutes', false) AS "contactBurst",
+               coalesce(cs.own_decrypt_burst_at > now() - interval '15 minutes', false) AS "ownBurst"
         FROM conversation v
         JOIN sender_identity si ON si.id = v.sender_identity_id
         LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
         WHERE v.id = ${String(req.params.id)} AND v.org_id = ${req.crm!.orgId}`));
       const s = (rows as unknown as Array<{
         label: string; status: string; enforcement: string; restrictionState: string;
-        connectionState: string | null;
+        connectionState: string | null; contactBurst: boolean; ownBurst: boolean;
       }>)[0];
       if (!s) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.')); return; }
       const connected = s.connectionState === 'open';
@@ -778,6 +781,9 @@ export function messagesRouter(
       res.json({ data: {
         label: s.label, connectionState: s.connectionState, status: s.status,
         restrictionState: s.restrictionState,
+        // `contacts`: people's messages to this number cannot be decrypted; `own`: the owner's own phone or WhatsApp Web messages cannot.
+        // Either way the encryption session is broken and the fix is to link the number again (docs/14 RB-13).
+        sessionTrouble: s.contactBurst ? 'contacts' : s.ownBurst ? 'own' : null,
         canSend: reason === null || s.enforcement === 'advisory' && connected, reason
       } });
     });
@@ -791,6 +797,7 @@ export function messagesRouter(
       const found = await tx.execute(sql`
         SELECT m.id, m.direction, m.content_type AS "contentType", m.status,
                m.error_code AS "errorCode", m.hold_reason AS "holdReason",
+               m.retry_requests AS "retryRequests", m.last_retry_at AS "lastRetryAt",
                m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
                m.sent_by_user_id AS "sentByUserId", u.display_name AS "sentByName",
                m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt",

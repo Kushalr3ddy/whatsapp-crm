@@ -12,8 +12,10 @@
 # socket, and `npm run dev` reloads on every file save (docs/04-architecture.md). This script
 # only removes the need for three terminals — it does not merge them.
 #
-# Usage: dev-up.sh [--no-web] [--no-gateway] [--fast-web]
+# Usage: dev-up.sh [--no-web] [--no-gateway] [--fast-web] [--watch-gateway]
 #
+#   --watch-gateway   restart the gateway on every saved edit, as the API does. OFF by default: each restart of a gateway that has a real
+#                number linked risks its encryption session (D-82, docs/45); a code change to the gateway needs a manual restart instead.
 #   --fast-web   serve the UI from a production build (`next build` then `next start`) instead of `next dev`.
 #                Pages open in well under a second instead of compiling on first visit (1-7 s each), which is what
 #                you want for demos and for someone else testing. The cost: about 30 s to build at start, and no
@@ -24,13 +26,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 WITH_WEB=1
 WITH_GATEWAY=1
+GATEWAY_SCRIPT=gateway:stable
 WEB_SCRIPT=web
 for arg in "$@"; do
   case "$arg" in
     --no-web)     WITH_WEB=0 ;;
     --no-gateway) WITH_GATEWAY=0 ;;
     --fast-web)   WEB_SCRIPT=web:prod ;;
-    *) echo "unknown option: $arg"; echo "usage: dev-up.sh [--no-web] [--no-gateway] [--fast-web]"; exit 2 ;;
+    --watch-gateway) GATEWAY_SCRIPT=gateway ;;
+    *) echo "unknown option: $arg"; echo "usage: dev-up.sh [--no-web] [--no-gateway] [--fast-web] [--watch-gateway]"; exit 2 ;;
   esac
 done
 
@@ -105,7 +109,7 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-[ "$WITH_GATEWAY" = 1 ] && start gateway npm run gateway
+[ "$WITH_GATEWAY" = 1 ] && start gateway npm run "$GATEWAY_SCRIPT"
 [ "$WITH_WEB" = 1 ] && start web npm run "$WEB_SCRIPT"
 
 if [ "$WITH_WEB" = 1 ]; then
@@ -133,6 +137,8 @@ cat <<BANNER
 
   Testing it by hand: docs/24-local-testing.md
   Ctrl-C stops everything this script started.
+  The gateway is NOT restarted when you save a file (that can break a linked number's encryption session): after changing gateway
+  or packages/core code that it uses, stop this script and start it again. Use --watch-gateway only with no real number linked.
 
 BANNER
 
