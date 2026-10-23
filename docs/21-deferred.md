@@ -105,7 +105,7 @@ is not re-proposed.
 | D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
 | D-89 | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
 | D-90 | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
-| D-91 | A chat the AI is handling cannot be typed into until a person overrides and stops the AI | 📌 pinned (Kushal, 2026-10-22) |
+| D-91 | A chat the AI is handling cannot be typed into (admins and participants too) until a person takes over from the AI; also while the AI is mid-reply | 📌 pinned (Kushal, 2026-10-22; raised again 2026-10-23) |
 | D-92 | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
 | D-93 | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
 | D-94 | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
@@ -2859,7 +2859,7 @@ Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
 
 ---
 
-## D-91 · A chat the AI is handling cannot be typed into until a person overrides and stops the AI — pinned (Kushal, 2026-10-22)
+## D-91 · A chat the AI is handling cannot be typed into until a person overrides and stops the AI — pinned (Kushal, 2026-10-22; raised again 2026-10-23)
 
 **What:** while a conversation is **assigned to the AI assistant** (its assignee is the assistant's bot user, `app_user.is_bot`), the chat's text box is **blocked for people**. A person takes the chat by pressing **Override and stop the AI** first; only after that does the text box work. If they try to type or send before overriding, show a clear warning instead of letting it through:
 
@@ -2871,6 +2871,18 @@ Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
 - **Screen** (`apps/web/app/inbox/[id]/composer.tsx`, `ai-notice.tsx`, `thread-controls.tsx`): the box is disabled and shows the warning when the person clicks or focuses it or presses send; one button, **Override and stop the AI**, does the take-over.
 - **Server** (`apps/api/src/routes/messages.ts`, which already refuses with `THREAD_ASSIGNED` when another human owns a thread): refuse a person's message to an AI-assigned chat with a clear `AI_ASSIGNED` code, so the rule holds for the API and not only the screen.
 - **Override** = assign the chat to the person, which stops the assistant for this chat (it only answers chats assigned to it, `packages/core/src/ai-reply.ts`), and cancels any AI reply still queued for it. Audited like other assignment changes. The AI does not resume by itself; a person hands the chat back on purpose.
+
+**Update 2026-10-23 (raised again: "block the user from texting if the chat is assigned to the AI or the AI is texting in the chat"). What is true today, checked in the code:**
+- There is already a lock, but it is the *general* "another agent owns this thread" rule (`lockedByOther` in `apps/web/app/inbox/[id]/page.tsx`, mirrored by `THREAD_ASSIGNED` in `apps/api/src/routes/messages.ts`). It treats the AI's bot user like any colleague, so an agent sees "Assigned to AI assistant, reassign it to yourself, or ask an admin, to reply" and cannot send.
+- **But admins and participants bypass it** (`me.role !== 'admin'`, `participants.some(...)`), so an admin, which is what Kushal is, can type straight into a chat the AI is answering, and the AI and the person can both reply. That is the gap this pin closes.
+- There is no check for the moment between "the AI has been assigned" and "its reply goes out": an AI reply that is being written (the model call takes seconds) or is queued/held (`queued`, `hold_reason`) can land after a person's message.
+
+**Wanted (add to the shape above):**
+1. **The block applies to everyone, admins included, whenever the chat is assigned to the AI** (assignee `is_bot`), on the screen and in the API (`AI_ASSIGNED`, 409). Participants too. The only way through is the override.
+2. **The override is the "Take back from AI" action that now exists (#158)**, shown right inside the composer as the one button "Take over from the AI", with the warning text above. It assigns the chat to the person, cancels any AI reply still queued for the chat, and is audited.
+3. **While the AI is mid-reply** (a run in progress, or a reply of its own queued or held), say so in the composer: "The AI is writing a reply here", keep the box blocked, and on take-over cancel that queued reply so it is not sent after the person's message.
+4. **A person's message and the AI never both go out for one inbound message:** if a person's message is sent first (after take-over), the AI's run for that message is dropped (`autoReply` already skips when a newer outbound exists and when the chat is no longer the AI's; add the same check at the gateway just before the send).
+5. Internal notes stay allowed while the AI has the chat.
 
 **To decide when we build it:** may any agent override, or admins only; whether the AI may be handed the chat back with one click; what the banner says to a second person looking at the same chat.
 
