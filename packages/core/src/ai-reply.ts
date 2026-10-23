@@ -18,8 +18,12 @@ export interface AutoReplyResult {
 
 /** How many recent messages the model sees. Enough for context, small enough to stay cheap. */
 const HISTORY_LIMIT = 20;
-/** A WhatsApp reply should be short; this also caps what one answer can cost. */
-const MAX_REPLY_TOKENS = 400;
+/**
+ * The most output one answer may use, thinking included. A reasoning model (e.g. gpt-oss-20b) spends tokens on hidden thinking before any
+ * text, so 400 left it with nothing to say (R-012: an empty answer, no follow-up). How short the reply is comes from `MAX_REPLY_CHARS` and
+ * the instructions, not from starving the model.
+ */
+const MAX_REPLY_TOKENS = 3000;
 /** The longest reply that is queued, in characters. */
 const MAX_REPLY_CHARS = 1500;
 
@@ -224,7 +228,7 @@ export function systemText(orgName: string, instructions: string): string {
 /** Why the assistant has not answered (or its answer has not gone out), for the thread to show. */
 export interface AiNotice {
   /** `held` = queued but waiting on the number; the rest are why the assistant did not write or send. */
-  readonly code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error';
+  readonly code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error' | 'no_answer';
   /** True when the anti-ban engine is what is holding it back (so the warning names the ban risk). */
   readonly antiBan: boolean;
   /** The hold or failure reason as recorded (e.g. `paced:per_minute`). */
@@ -268,5 +272,7 @@ export async function getAiNotice(db: Database, orgId: string, conversationId: s
   if (last.outcome === 'blocked' && last.reason === 'do_not_contact') return { code: 'do_not_contact', antiBan: true, reason: last.reason, canOverride: true };
   if (last.outcome === 'blocked' && last.reason === 'daily_cap') return { code: 'daily_cap', antiBan: false, reason: last.reason, canOverride: false };
   if (last.outcome === 'failed') return { code: 'model_error', antiBan: false, reason: last.reason ?? 'model_error', canOverride: false };
+  // The model answered but with no text (R-012): nothing was sent, so say so instead of leaving the chat looking quiet.
+  if (last.outcome === 'skipped' && last.reason === 'empty_answer') return { code: 'no_answer', antiBan: false, reason: last.reason, canOverride: false };
   return null;
 }
