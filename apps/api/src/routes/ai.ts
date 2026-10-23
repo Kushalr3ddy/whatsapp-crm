@@ -108,6 +108,35 @@ export function aiRouter(
   });
 
   /**
+   * After a person hands a chat to the assistant: have it answer the contact's latest message now, if that message is still
+   * waiting for an answer. Assigning is the ordinary thread update; this only starts the answer, so it never changes who owns
+   * the chat, and `autoReply` itself refuses unless the chat really is assigned to the assistant and every anti-ban rule holds.
+   * Returns at once; the answer arrives in the thread like any other.
+   */
+  router.post('/conversations/:id/answer-now', requireUuidParam('id'), requireScope('conversations:write'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const conversationId = String(req.params.id);
+    const llm = getLlm();
+    if (llm.name === 'none') {
+      res.status(409).json(problem(req, 409, 'AI_NOT_CONFIGURED', 'No AI model is configured on this server.'));
+      return;
+    }
+    const latest = await db.transaction(async (tx) => {
+      await setTenant(tx, orgId);
+      return (await tx.execute(sql`
+        SELECT id, direction FROM message WHERE org_id = ${orgId} AND conversation_id = ${conversationId}
+        ORDER BY created_at DESC LIMIT 1`) as unknown as Array<{ id: string; direction: string }>)[0];
+    });
+    // Nothing waiting: the last word was ours, or the chat is empty. The assistant answers the contact's next message on its own.
+    if (latest === undefined || latest.direction !== 'inbound') {
+      res.json({ data: { answering: false } });
+      return;
+    }
+    void autoReply({ db: tenantDatabase(db, orgId, tenantRole), kms, llm }, orgId, conversationId, latest.id).catch(() => undefined);
+    res.json({ data: { answering: true } });
+  });
+
+  /**
    * Tells the assistant, in plain language, to run campaigns: create one, pause, resume or edit. A signed-in admin, or an
    * API key that may send messages (which could create and start campaigns directly anyway). The assistant goes through
    * the same checks as a person, can never lift an anti-ban or do-not-contact gate, and only starts a campaign if the org

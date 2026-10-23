@@ -52,6 +52,8 @@ export interface OrgUser {
   id: string;
   displayName: string;
   role: string;
+  /** True for the AI assistant's own user, which a chat can be handed to. */
+  isBot: boolean;
 }
 
 /** The signed-in principal. Mirrors `GET /api/v1/auth/me`. */
@@ -847,6 +849,11 @@ export interface AiCommandResult {
 /** The warning for a conversation the assistant owns, or null when nothing is wrong. */
 export async function getAiNotice(conversationId: string): Promise<AiNotice | null> {
   return request<AiNotice | null>(`/ai/conversations/${encodeURIComponent(conversationId)}/notice`);
+}
+
+/** Asks the assistant to answer the contact's latest message now (after a chat was handed to it). */
+export async function aiAnswerNow(conversationId: string): Promise<{ answering: boolean }> {
+  return request<{ answering: boolean }>(`/ai/conversations/${encodeURIComponent(conversationId)}/answer-now`, { method: 'POST' });
 }
 
 /** An admin lets the assistant answer a do-not-contact contact's latest message, with a reason. */

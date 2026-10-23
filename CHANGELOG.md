@@ -13,6 +13,9 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-23 — hand one chat to the AI, from the inbox
+- A **Hand to AI** button in a chat's header (shown once the AI is switched on) assigns that chat to the assistant and has it answer the contact's waiting message; **Take back from AI** makes the chat the signed-in person's again. Assigning is the ordinary thread update; the new `POST /ai/conversations/:id/answer-now` only starts the answer, and the assistant still obeys every anti-ban and do-not-contact rule. `GET /users` now says which user is the assistant (`isBot`). 4 integration tests.
+
 ### 2026-10-22 (night, overnight run) — R-008 solved, Google Doc → markdown tool, R-011
 
 Done: #146 the AI takes over a campaign's replies (R-011); #147/#149 Google Doc to markdown (runs in his own browser, no credentials; `npm run feedback:latest`); #148 CI skips the flaky Microsoft apt source; #150 the root `loading.tsx` removed because it stalled same-page redirects on production builds (R-008 guarded by a real test, speed probe fixed); #151 overnight doc outcome. Checkpoint tag `checkpoint-2026-10-22-night`; revert #150 with `git revert -m 1 000d54b`.

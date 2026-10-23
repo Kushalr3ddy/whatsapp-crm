@@ -284,7 +284,7 @@ export function messagesRouter(
    */
   router.get('/users', requireScope('conversations:read'), async (req: Request, res: Response) => {
     const rows = await req.tenant!((tx) => tx.execute(sql`
-      SELECT u.id, u.display_name AS "displayName", m.role
+      SELECT u.id, u.display_name AS "displayName", m.role, u.is_bot AS "isBot"
       FROM org_membership m
       JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${req.crm!.orgId} AND u.status = 'active'

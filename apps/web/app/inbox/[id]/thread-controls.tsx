@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { updateThread, setParticipant } from '@/app/actions';
+import { handChatToAiAction, takeChatBackAction } from '@/app/ai/actions';
 import type { OrgUser } from '@/lib/crm';
 
 /**
@@ -13,10 +14,10 @@ import type { OrgUser } from '@/lib/crm';
  * list and this header agree afterwards.
  */
 export function ThreadControls(
-  { conversationId, users, assigneeUserId, status, participants, isAdmin }:
+  { conversationId, users, assigneeUserId, status, participants, isAdmin, myUserId }:
   {
     conversationId: string; users: OrgUser[]; assigneeUserId: string | null; status: string;
-    participants: Array<{ userId: string; name: string }>; isAdmin: boolean;
+    participants: Array<{ userId: string; name: string }>; isAdmin: boolean; myUserId: string | null;
   }
 ) {
   const [pending, startTransition] = useTransition();
@@ -40,6 +41,22 @@ export function ThreadControls(
     });
   }
 
+  // The AI assistant is a user in the list (when it has been switched on): handing a chat over assigns it to that user.
+  const bot = users.find((u) => u.isBot) ?? null;
+  const withAi = bot !== null && assigneeUserId === bot.id;
+
+  /** Hands the chat to the assistant, or takes it back for the signed-in person. */
+  function toggleAi() {
+    if (bot === null) return;
+    setError(null);
+    startTransition(async () => {
+      const result = withAi
+        ? (myUserId === null ? { ok: false, error: 'Sign in again to take this chat.' } : await takeChatBackAction(conversationId, myUserId))
+        : await handChatToAiAction(conversationId, bot.id);
+      if (!result.ok) setError(result.error ?? 'Could not change who has this chat.');
+    });
+  }
+
   const onThread = new Set(participants.map((p) => p.userId));
   // Anyone who could still be added: not the owner and not already on it.
   const addable = users.filter((u) => u.id !== assigneeUserId && !onThread.has(u.id));
@@ -59,6 +76,12 @@ export function ThreadControls(
             <option key={u.id} value={u.id}>{u.displayName}</option>
           ))}
         </select>
+
+        {bot !== null && (
+          <button type="button" disabled={pending} onClick={toggleAi} className="btn btn-sm" aria-label={withAi ? 'Take back from the AI' : 'Hand to the AI'}>
+            {pending ? 'Working…' : withAi ? 'Take back from AI' : 'Hand to AI'}
+          </button>
+        )}
 
         <button
           type="button"

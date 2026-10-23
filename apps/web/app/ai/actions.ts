@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  saveAiSettings, allowAiReply, listAiJobs, enqueueAiJob, cancelAiJob, generateAiTemplate, saveAiTemplate, useAiTemplate, deleteAiTemplate,
+  saveAiSettings, allowAiReply, updateConversation, aiAnswerNow, listAiJobs, enqueueAiJob, cancelAiJob, generateAiTemplate, saveAiTemplate, useAiTemplate, deleteAiTemplate,
   createTag, bulkTagContacts, createCampaign, countContacts, listLlmModels, testLlm, saveLlm, removeLlm, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
 import type { AiJob, AiTemplate, GeneratedAiTemplate, LlmChoice, LlmModel, LlmProbe, LlmSettings } from '@/lib/crm';
@@ -37,6 +37,38 @@ export async function allowAiReplyAction(conversationId: string, reason: string)
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     throw error;
   }
+  revalidatePath(`/inbox/${conversationId}`);
+  return { ok: true };
+}
+
+/**
+ * Hands one chat to the AI assistant (assigns it to the assistant's user) and asks it to answer the contact's latest message
+ * if that is still waiting. Assigning is the ordinary thread update, so every rule about who may assign applies.
+ */
+export async function handChatToAiAction(conversationId: string, botUserId: string): Promise<AiResult> {
+  try {
+    await updateConversation(conversationId, { assigneeUserId: botUserId });
+    await aiAnswerNow(conversationId);
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+  revalidatePath('/inbox');
+  revalidatePath(`/inbox/${conversationId}`);
+  return { ok: true };
+}
+
+/** Takes a chat back from the assistant: it becomes the signed-in person's own. */
+export async function takeChatBackAction(conversationId: string, myUserId: string): Promise<AiResult> {
+  try {
+    await updateConversation(conversationId, { assigneeUserId: myUserId });
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+  revalidatePath('/inbox');
   revalidatePath(`/inbox/${conversationId}`);
   return { ok: true };
 }
