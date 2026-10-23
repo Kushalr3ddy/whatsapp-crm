@@ -14,7 +14,7 @@ is not re-proposed.
 
 ---
 
-## Status at a glance (updated 2026-10-20)
+## Status at a glance (updated 2026-10-23)
 
 ✅ done · ◐ partly built · ▶ working on it · 🔺 priority · ⏸ parked (not working on it for now) · 📌 pinned (not started)
 
@@ -69,7 +69,7 @@ is not re-proposed.
 | D-49 | Revamp the browser (e2e) suite to industry standard, covering every UI | 📌 pinned |
 | D-50 | Test the frontend and backend independently (modularity check) | 📌 pinned |
 | D-51 | Deleted-message tracking | 📌 pinned |
-| D-52 | Deleting previous campaigns | ⏸ parked |
+| D-52 | Deleting previous campaigns (unparked after Mikhil's feedback) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-53 | Assignment model and message authorship | ✅ done |
 | D-54 | Typing indicator and the "just replied, send anyway?" warning | ✅ done |
 | D-55 | Licence enforcement ("DRM"): usage is blocked when an org has not paid | 📌 pinned |
@@ -93,7 +93,7 @@ is not re-proposed.
 | D-73 | "Message these people" right after an import | ◐ partly built (buttons) · ⏸ parked |
 | D-74 | Add-number form: country-code dropdown and a numbers-only phone field | ✅ done |
 | D-75 | Number assignment: who each WhatsApp number belongs to | 📌 pinned |
-| D-76 | Notifications tab, number requests and approvals | 📌 pinned |
+| D-76 | Notifications tab, number requests and approvals (to be built on the D-114 approval system) | 📌 pinned |
 | D-77 | Admin controls: user scopes and number limits | 📌 pinned |
 | D-78 | Email: invitations to join an organisation, via SMTP or an email API ( | 📌 pinned |
 | D-79 | Contacts: columns chosen by an admin for the whole team | 📌 pinned |
@@ -105,13 +105,51 @@ is not re-proposed.
 | D-85 | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
 | D-89 | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
 | D-90 | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
-| D-91 | A chat the AI is handling cannot be typed into until a person overrides and stops the AI | 📌 pinned (Kushal, 2026-10-22) |
+| D-91 | A chat the AI is handling cannot be typed into (admins and participants too) until a person takes over from the AI; also while the AI is mid-reply | 📌 pinned (Kushal, 2026-10-22; raised again 2026-10-23) |
 | D-92 | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
 | D-93 | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
 | D-94 | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
+| D-96 | Forgot password: a way to reset your own password (no self-service reset today; the beta server has no operator at a keyboard) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| D-97 | AI settings say "add a model first" next to Save when no model is set up (and disable Hand to AI with that reason) | 📌 pinned (Kushal, 2026-10-23) |
+| D-98 | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
+| D-99 | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
+| D-100 | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
+| D-101 | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| D-102 | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| D-103 | The AI tab is confusing: a guided walkthrough of what to set up, in order | 📌 pinned (Kushal, 2026-10-23) |
+| D-104 | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
+| D-105 | Contacts "Dates and order": the Date: Added / Last imported choice is unclear (rename, hint, show it as a sentence) | 📌 pinned (Kushal, 2026-10-23) |
+| D-106 | Inbox: rename Resolve / Reopen to Mark as completed / Reopen chat (and the Closed tab to Completed) | 📌 pinned (Kushal, 2026-10-23) |
+| D-107 | Import: the sample table and the Preview button are both called preview; run the check automatically and show Import straight away | 📌 pinned (Kushal, 2026-10-23) |
+| D-108 | Import: mark invalid phone numbers and emails in the preview; fix them inline or drop them with a confirmation | 📌 pinned (Kushal, 2026-10-23) |
+| D-109 | Campaign form: "Build a new template" jumps to the AI tab, and picking a template there does not make the campaign an AI campaign | 📌 pinned (Kushal, 2026-10-23) |
+| D-110 | "Tell the assistant what to do" as a small chat bubble on the right side of every page, not a section of the AI tab | 📌 pinned (Kushal, 2026-10-23) |
+| D-111 | Import: de-duplicate in the browser first (progress bar, drop exact copies, ask which to keep when copies differ); server still enforces | 📌 pinned (Kushal, 2026-10-23) |
+| D-112 | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
+| D-113 | Linked numbers: rename "Advisory mode" to a plain Anti-ban protection On / Off switch (words only; maybe auto-expire) | 📌 pinned (Kushal, 2026-10-23) |
+| D-114 | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
+
+## By theme (added 2026-10-23)
+
+The same pins grouped by what they are about, so related work is found and built together. **Bold** = raised or changed in the 2026-10-23 session. A pin can appear under more than one theme. The table above stays the complete list.
+
+| Theme | Pins, in a sensible order to read or build | Notes |
+|---|---|---|
+| **WhatsApp reliability: sessions, "Waiting for this message", missing own messages** | **D-101** (waiting for this message) and **D-102** (phone and WhatsApp Web messages missing) share one root cause: Baileys 6.7.24 has no phone-number to LID session mapping (docs/45). Fix with **D-44 / D-5** (Baileys 7) or a mapping shim. **D-82** (a restart breaks the session) is the visibility and shutdown half. **D-94** (own-phone messages, history), **D-67** (save a name onto a LID chat), D-14 and D-45 (done, earlier LID work). | Build D-101, D-102 and D-82 together; test on the Linode spare number. |
+| **AI assistant: setup and clarity** | **D-97** (add a model first), **D-103** (guided walkthrough), **D-104** (pause without deleting the model), **D-98** (usage and limits), **D-110** (the orders box becomes a chat bubble; **replaces the "box moves to the bottom" part of D-86**), D-86 (templated orders, order history), D-9 (AI settings tab, done). | One pass over the AI tab: D-97 + D-103 + D-104 + D-110. |
+| **AI assistant: behaviour and safety** | **D-91** (nobody types into an AI chat, admins included; take over from the AI), D-42 (human takeover), D-81 (guardrails, approval mode), D-84 (the AI runs whole conversations), D-85 (AI templates), D-93 (a separate AI log), D-4 (done). | D-91 now includes "also while the AI is mid-reply". |
+| **Campaigns** | **D-52** (delete campaigns, PRIORITY, unparked), **D-100** (AI indicator), **D-109** (template picker and "Build a new template"), **D-112** (who sent each message; campaign recipient tracking), D-87 (rule: every mass message goes to a tag), D-27 (opt-out words), D-73 ("message these people" after import), D-59 (files in campaigns), D-68 and D-26 (done). | D-100 + D-109 + D-112 are one campaign-page pass. |
+| **Inbox and chat** | **D-106** (Mark as completed / Reopen chat), **D-112** (sender line under each message), **D-91**, D-10 (what belongs in the inbox), D-18 (snooze, shortcuts), D-23 (inbox search), D-51 (deleted-message tracking), D-54 and D-53 (done). | |
+| **Contacts and import** | **D-99** (add one or several by hand), **D-105** (Dates and order wording), **D-107** (the import check runs by itself), **D-108** (flag invalid numbers and emails; fix or drop), **D-111** (de-duplicate in the browser first), D-90 (import duplicates, "Needs review"), D-22 (diff-style de-duplication), D-21 (the import mapping wizard), D-57 (import as a background job), D-70, D-79, D-80 (the Contacts page, columns, edit page), D-40, D-35, D-36 (fields, exports, vCard). | D-107 + D-108 + D-111 (and D-90, D-22) are one import-review flow; D-111 is the same job as D-22 done in the browser. |
+| **Numbers and anti-ban** | **D-113** (Anti-ban protection On / Off instead of Advisory mode; D-29 is the original), D-75 (who a number belongs to), D-76 (number requests), D-77 (scopes and limits), D-37 (Meta tier and quality), D-43 (extra restriction alerts). | |
+| **People, sign-in and approvals** | **D-96** (forgot password, PRIORITY), **D-114** (the approval system with status pages and notifications; **D-76 becomes its first use**), D-77 (scopes and limits), D-78 (email invitations; D-96's emailed link needs the same email driver), D-47 (signup page, billing gate), D-55 (licence enforcement). | Build the email driver once for D-96 and D-78. |
+| **Speed, operations and deploy** | D-46 (laggy UI, HIGH PRIORITY), D-89 (speed: Contacts, sign out, production build), D-83 (`dev:fast` stale screens), D-56 (telemetry; logs are on the Linode already, docs/43), D-92 (feedback portal), D-65 (bugs from the VM run), D-58 (public site and launch checklist), **caching and extra data layers**: not faster today, revisit on a measured signal (docs/35 section 7; D-95 is pinned on PR #153's branch). | The beta Linode is documented in docs/43; findings in docs/44. |
+
+**Priorities right now (Kushal, 2026-10-22 and 2026-10-23):** D-46, D-94, D-96, D-101, D-102, D-52, D-85, plus D-91 raised again.
+
 
 ---
 
@@ -1795,7 +1833,7 @@ hide it as WhatsApp does for the recipient. Edited messages are the sibling case
 
 ---
 
-## D-52 · Deleting previous campaigns — **PARKED (Kushal, 2026-10-20): not working on this for now**
+## D-52 · Deleting previous campaigns — 🔺 **PRIORITY (Kushal, 2026-10-23, unparked after Mikhil's feedback)** (was PARKED 2026-10-20)
 
 **What:** campaigns can be cancelled but not deleted, so old drafts, cancelled runs and test campaigns pile up
 in the Broadcast list (the dev database holds dozens). Pinned (Kushal, 2026-10-10): an operator needs to
@@ -1808,9 +1846,19 @@ must not release the recipient-experience gates (a contact messaged by a deleted
 the 14-day cooldown), and it writes a `campaign.deleted` audit row. A "delete all cancelled" bulk action
 would also clean up test runs.
 
-**Why parked:** pinned, not scheduled.
+**Update 2026-10-23, unparked:** Mikhil's testing feedback fixed deletes for contacts, tags, numbers and custom fields (#105, with a reusable confirm dialog) but **not campaigns**, which still cannot be deleted, so every test run stays in the Campaigns list. Kushal raised it again: priority.
 
-**What brings it back:** Kushal's go-ahead.
+**Scope for the build (adds to the shape above):**
+- A **Delete** button on a campaign's page and a row action in the list, only for `draft`, `cancelled` and `completed`; for a running or paused one the button says "Cancel it first" instead of failing.
+- **Reuse the confirm dialog from #105** ("Delete campaign 'Welding drive'? Its messages stay in the chats; people stay in the book") and show what is kept: the sent messages, the per-recipient results (as an archived, read-only record), the audit trail and the 14-day cooldown.
+- **Bulk:** tick several campaigns, or "Delete all cancelled and drafts", with the same confirmation and the count.
+- **Soft delete first** (`deleted_at`, hidden from the list; an admin can view "Deleted campaigns" and restore), plus a **purge** for a draft that never ran. A message sent by a deleted campaign keeps its `campaign_id` (the FK is `ON DELETE SET NULL`, so a hard delete would orphan the sender line "Campaign <name>" of D-112; soft delete avoids that).
+- **Who:** admins; an agent's request goes through D-114 once that exists.
+- **AI campaigns (#157):** deleting one must not leave chats the AI took over stranded; the chats stay with the AI or are handed back, and the page says which (ties to D-100, D-112).
+- Audit row `campaign.deleted` (and `campaign.restored`), no message text in it.
+
+**Tests:** an integration test for each allowed status and the refusals for running and paused, that sent messages and results survive a soft delete, that the cooldown still applies, restore and purge; a browser test of delete, the confirmation and the bulk action.
+
 
 **2026-10-20:** parked again. Not working on it for now.
 
@@ -2830,7 +2878,7 @@ Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
 
 ---
 
-## D-91 · A chat the AI is handling cannot be typed into until a person overrides and stops the AI — pinned (Kushal, 2026-10-22)
+## D-91 · A chat the AI is handling cannot be typed into until a person overrides and stops the AI — pinned (Kushal, 2026-10-22; raised again 2026-10-23)
 
 **What:** while a conversation is **assigned to the AI assistant** (its assignee is the assistant's bot user, `app_user.is_bot`), the chat's text box is **blocked for people**. A person takes the chat by pressing **Override and stop the AI** first; only after that does the text box work. If they try to type or send before overriding, show a clear warning instead of letting it through:
 
@@ -2842,6 +2890,18 @@ Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
 - **Screen** (`apps/web/app/inbox/[id]/composer.tsx`, `ai-notice.tsx`, `thread-controls.tsx`): the box is disabled and shows the warning when the person clicks or focuses it or presses send; one button, **Override and stop the AI**, does the take-over.
 - **Server** (`apps/api/src/routes/messages.ts`, which already refuses with `THREAD_ASSIGNED` when another human owns a thread): refuse a person's message to an AI-assigned chat with a clear `AI_ASSIGNED` code, so the rule holds for the API and not only the screen.
 - **Override** = assign the chat to the person, which stops the assistant for this chat (it only answers chats assigned to it, `packages/core/src/ai-reply.ts`), and cancels any AI reply still queued for it. Audited like other assignment changes. The AI does not resume by itself; a person hands the chat back on purpose.
+
+**Update 2026-10-23 (raised again: "block the user from texting if the chat is assigned to the AI or the AI is texting in the chat"). What is true today, checked in the code:**
+- There is already a lock, but it is the *general* "another agent owns this thread" rule (`lockedByOther` in `apps/web/app/inbox/[id]/page.tsx`, mirrored by `THREAD_ASSIGNED` in `apps/api/src/routes/messages.ts`). It treats the AI's bot user like any colleague, so an agent sees "Assigned to AI assistant, reassign it to yourself, or ask an admin, to reply" and cannot send.
+- **But admins and participants bypass it** (`me.role !== 'admin'`, `participants.some(...)`), so an admin, which is what Kushal is, can type straight into a chat the AI is answering, and the AI and the person can both reply. That is the gap this pin closes.
+- There is no check for the moment between "the AI has been assigned" and "its reply goes out": an AI reply that is being written (the model call takes seconds) or is queued/held (`queued`, `hold_reason`) can land after a person's message.
+
+**Wanted (add to the shape above):**
+1. **The block applies to everyone, admins included, whenever the chat is assigned to the AI** (assignee `is_bot`), on the screen and in the API (`AI_ASSIGNED`, 409). Participants too. The only way through is the override.
+2. **The override is the "Take back from AI" action that now exists (#158)**, shown right inside the composer as the one button "Take over from the AI", with the warning text above. It assigns the chat to the person, cancels any AI reply still queued for the chat, and is audited.
+3. **While the AI is mid-reply** (a run in progress, or a reply of its own queued or held), say so in the composer: "The AI is writing a reply here", keep the box blocked, and on take-over cancel that queued reply so it is not sent after the person's message.
+4. **A person's message and the AI never both go out for one inbound message:** if a person's message is sent first (after take-over), the AI's run for that message is dropped (`autoReply` already skips when a newer outbound exists and when the chat is no longer the AI's; add the same check at the gateway just before the send).
+5. Internal notes stay allowed while the AI has the chat.
 
 **To decide when we build it:** may any agent override, or admins only; whether the AI may be handed the chat back with one click; what the banner says to a second person looking at the same chat.
 
@@ -2902,3 +2962,311 @@ Pinned to come back to; not started.
 
 Remaining work pinned as **high priority**.
 
+
+## D-96 · Forgot password: a way to reset your own password — 🔺 **PRIORITY** (Kushal, 2026-10-23)
+
+**What:** today there is no self-service reset. The sign-in page says "Ask an administrator to set a new password for you from the Team page", and the only other route is the command line (`npm run admin -- password --email …`, docs/23-auth.md). On the beta test server (a real instance other people use, no operator at a keyboard) someone who forgets their password, or the only admin who does, is locked out until a person with shell access acts.
+
+**Why now:** the Linode beta (docs/43) is the first install people other than Kushal sign in to. The first admin's password is generated and shown once; losing it, with no backups and no second admin, means data nobody can reach.
+
+**Options to choose from (not decided; ask Kushal first):**
+1. **Emailed reset link (the usual way).** A "Forgot password?" link on the sign-in page, a one-time link by email, a new-password page. Needs the email driver, which is an empty directory today (`packages/providers/email`), plus a sending account (SMTP or a provider's API) and a domain or at least a sender address that mail providers will accept. Biggest build, normal behaviour.
+2. **Admin-issued reset link, no email.** An admin on the Team page presses "Reset password" for a person and gets a one-time link (valid, say, 1 hour) to hand over by WhatsApp or in person. No email needed; does not help a lone admin.
+3. **Recovery codes.** At first sign-in the admin is shown a set of one-time recovery codes to keep; a code lets them set a new password. Works for a lone admin with no email, one more thing to lose.
+4. **Both 2 and 3** is the realistic beta answer; 1 can follow with a domain.
+
+**Rules that must hold whichever is chosen** (docs/23-auth.md): changing a password ends every session that person holds; the reset never says whether an email or account exists; links and codes are single-use, short-lived and stored only as hashes; attempts are rate-limited like sign-in (3 wrong tries locks for minutes); every use is in the audit log; a person who is disabled or do-not-use cannot reset.
+
+**Tests:** an integration test per route (link or code works once, expires, is refused on reuse, ends old sessions, is rate-limited, leaves an audit row) and a browser test of the forgot-password page. Per docs/39, none of this is a bug, so it goes straight to a feature PR.
+
+## D-97 · AI settings: say "add a model first" next to the Save button when no model is set up — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** on a fresh install nothing tells a new user that the AI assistant needs a model before it can do anything: the AI settings, the template builder and "Hand to AI" all quietly do nothing useful. Put a plain line at the bottom of the AI settings, next to the Save button: **"Add a model first to start using the AI assistant"** (shown while no provider, key and model are saved; gone once a model is saved and tested). The same short line, linking to the settings, wherever the AI is offered but cannot work yet (the AI page, "Message a group", the thread's Hand to AI button, which should be disabled with that reason instead of failing later).
+
+**Where in the code:** `apps/web/app/ai/settings/llm-form.tsx` (the Save button), the AI page and `apps/web/app/inbox/[id]/thread-controls.tsx`. The server already knows (`GET /ai/llm` says whether a model is configured; `answer-now` answers `AI_NOT_CONFIGURED`).
+
+**Test:** a browser test that a fresh install shows the line beside Save and that saving a model removes it.
+
+## D-98 · A usage and limits check for the chosen AI model: used, remaining, and roughly how many messages it can still handle — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** for whichever model the organisation set up, show on the AI settings page how much it has used and how much is left, and in plain words roughly how many more replies or campaign openings that is ("about 400 more replies today"), so the AI does not run out in the middle of a campaign without warning.
+
+**What can be known, and from where**
+- **Ours, always available:** every AI run already records its model and input and output tokens (`ai_run`), so tokens used today, this week and per kind (reply, opening, template) can be shown for any provider. The daily message cap (`ai_setting.daily_message_cap`) is already ours too.
+- **The provider's, only when it says:** some providers (Groq and other OpenAI-compatible ones) return rate-limit headers on each call (requests and tokens remaining, and when they reset); others expose a usage or credit endpoint; some say nothing. Plan: read the headers on every real call and keep the last values, show "unknown" honestly where a provider gives none, never guess a balance.
+- **The estimate:** average tokens per reply from our own recent runs (a reply today is about 650 in and a few hundred out; a reasoning model can use far more, R-012) divided into the remaining tokens or requests. Shown as a rounded range with the caveat "an estimate from your recent use".
+- **The model's own size** is the number already shown next to each model in the picker: its context window (see below), which is not the same thing as usage.
+
+**Warnings:** when the estimate drops under a threshold, or the provider answers 429 (rate limited) or a quota error, show the existing AI warning banner (`AiNoticeBanner`) with the cause, and hold AI-written campaign openings (D-97 neighbours: `ai-opening.ts`) rather than failing every recipient into `ai_opening_failed`.
+
+**Where:** `packages/providers/llm` (capture headers in `openai-compatible.ts` and `anthropic.ts`), a small `ai_usage` read in `packages/core/src/ai-settings.ts`, the API (`/ai/llm`) and `apps/web/app/ai/settings/`.
+
+**Test:** integration tests for the totals and the estimate with a fake model that returns rate-limit headers and one that returns none; a browser test that the panel shows "unknown" without headers.
+
+**The numbers in the model list (answer to Kushal's question):** the "131k", "4k", "1k" beside each model are its **context window**: the most text the model can read and write in one request, counted in tokens (a token is about three quarters of an English word, so 131k is roughly 100,000 words and 4k roughly 3,000). They come from the provider's own model list (`context_length`), shown in `apps/web/app/ai/settings/model-picker.tsx`. Bigger is not "better": our replies are short, so 4k is enough for a short chat and 131k only matters for long histories. "tested" is a separate badge: the model we have run our own check against.
+
+## D-99 · Contacts: add one contact, or several at once, by hand — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the Contacts page only lists people. The only ways in are the import wizard (a whole file) and people who message in. Add an **Add contact** option on Contacts with two modes:
+- **Single:** a small form: name, phone number (with country), optional email, optional tag, and a "also keep these columns" free field row if wanted. Same checks as an import row (the number is normalised and de-duplicated, a number already in the book says "already exists, open it").
+- **Multiple:** paste several lines (one person per line, `name, phone` or just phones) or type them into a small table, with a preview of how many will be created, updated or refused (and why) before anything is written, then the same result summary as an import.
+
+**Reuse, do not rebuild:** `POST /contacts` already exists (`apps/api/src/routes/contacts.ts`, scope `contacts:write`, schema `createContact`); the multiple mode should go through the import pipeline (`packages/core/src/ingestion.ts`, "newest name wins", phone and email matching, audit, the tag option, do-not-contact) as a small inline "import" so one code path decides who is a duplicate, not two. Works with the AI follow-up: a hand-added person can be put in a campaign like any other.
+
+**Open question for Kushal:** "single/multiple contact option" was read as adding one or many contacts by hand. If it meant something else (for example choosing one or several contacts in the list to act on, which bulk tagging already does), say so and this pin is rewritten.
+
+**Test:** an integration test per mode (creates, de-duplicates, refuses a bad number with the reason, writes an audit row) and a browser test of the form and the paste box.
+
+## D-100 · Campaigns: an indicator on each campaign showing whether the AI is used — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** on the Campaigns list (`apps/web/app/broadcast/page.tsx`) and on each campaign's own page (`apps/web/app/broadcast/[id]`), show at a glance which campaigns use the AI and how:
+- A small **AI** badge on every campaign that has an AI template (`campaign.ai_template_id`), with the template's name on hover or beside it, linking to the template. No badge on a plain campaign.
+- On the campaign page, one plain sentence of what the badge means: "The AI writes each person's first message from the template X, and answers replies" (since #157 and R-011 both apply to such campaigns).
+- Useful states, if cheap: **AI off** (the organisation has switched the assistant off or has no model, so this campaign is waiting or its openings are not being written), **openings written** (for example "12 of 40 written", `campaign_recipient.opening_enc` set), **skipped: AI failed** (`ai_opening_failed` count), and **chats the AI has right now** (conversations assigned to the assistant that came from this campaign).
+- A filter on the list: All / AI campaigns / Plain.
+
+**Why:** since #157 an AI-template campaign no longer sends the typed text, and the AI takes over its replies. Nothing in the list says which campaigns behave that way, so a person can start one without knowing the AI will write to people. It also explains a campaign that "does nothing" because the AI is off or the model is out of room (see D-97, D-98).
+
+**Where:** the campaign list and detail API responses need `aiTemplateId` and the template name (`apps/api/src/routes/campaigns.ts`, `packages/core/src/campaigns.ts`), plus the opening counts per campaign; the web side is two components and the type in `apps/web/lib/crm.ts`.
+
+**Test:** an integration test that the list and detail responses carry the template and the counts; a browser test that an AI campaign shows the badge and a plain one does not.
+
+## D-101 · "Waiting for this message" on the recipient's phone, even when the AI sends it — 🔺 **PRIORITY** (Kushal, 2026-10-23, raised again after it kept happening)
+
+**Symptom:** the contact's phone shows "Waiting for this message" instead of the text. Seen from the campaign's first message onward, now also on the AI's reply. Reported by the other dev on 2026-10-22 and again 2026-10-23.
+
+**What was fixed before, and why it did not fix this:** #96 (answer a recipient's resend request, so a placeholder can clear), #110 (never message the sending number itself), #103 (a gateway crash left resend requests unanswered), relinking after a restart (D-82). Each removed one cause. None touched the cause below, so the symptom came back. Saying "traced" and "relink fixes it" was not a fix.
+
+**Root cause (docs/45, high confidence, not yet reproduced in isolation):** Baileys 6.7.24 stores each Signal session under `user.device` with no link between a person's phone-number address (`919964122631`) and their LID address (`110762928373833@lid`), and WhatsApp now addresses the same person both ways. We send under the phone-number address; the recipient's device answers and retries under the LID address; our store has no session for it (`No session record`, then `No matching sessions found`), and the recipient cannot decrypt ours (retry request 0.5 s after the AI's message, 08:37:57). A retry and placeholder-resend storm follows, which churns sessions further.
+
+**More evidence, screenshot 2026-10-23 (thread with `+919964122631`, number `kushal_test`):** two outgoing messages, "halo?" and "reply with "niga" if you can see this message" (a manual test that the other phone can read us), both labelled **delivered**, with no reply; above the composer the amber banner **"WhatsApp may be limiting kushal_test — messages from it could arrive late or not at all. You can still send; they are being paced more slowly."**
+Two things follow, and both belong to this pin:
+1. **"delivered" does not mean readable.** It is only WhatsApp's acknowledgement that the message reached the recipient's device; a message the device could not decrypt is still "delivered" while the phone shows "Waiting for this message". The thread gives the person no way to tell. Wanted: a state of its own when a **retry request** arrives for a message (the recipient could not read it): **"The other phone could not read this yet (retrying)"**, turning to "delivered" only when the retry succeeds or a read receipt arrives, and to "could not be read" after N retries. The gateway already logs `recv retry request` and `resending a message the recipient could not decrypt`; it only has to record it on the message.
+2. **The amber banner is likely a false alarm caused by the same fault.** The restriction tracker (docs/27) and the health scorer read our own decrypt failures and unreadable messages as a suspected soft ban (D-82 recorded this: a 48-hour quarantine, risk 100), then **pace sends more slowly**, which makes a test look worse and delays the AI's replies. The banner must say what it is based on ("because 133 messages from your own phone could not be decrypted", not just "WhatsApp may be limiting"), must **not count decrypt failures and retry requests towards a ban score**, and should link to the relink fix. Add to D-82's list: "the scorer ignores decrypt failures and recipient retry requests".
+
+**Options (smallest first; ask Kushal which to start, or do A then C):**
+- **A. Send to the LID address when we know it.** Every inbound message tells us the contact's LID (`remoteJid`, with `senderPn`). Store it on the contact's identity and address replies, the AI's messages and resends to the LID JID, so both sides use the same session. Small, testable, no library upgrade; needs a check that 6.7.24 sends to `@lid` JIDs cleanly.
+- **B. Upgrade Baileys to the 7.x line,** which has LID mapping and session migration. The proper fix, with the usual risk of a library upgrade (API changes, re-pairing); needs its own plan and a spare number on the Linode for a day or two.
+- **C. Make it visible and safe (D-82):** when a decrypt-failure burst or a recipient retry request is recorded, show it on the Linked numbers page and the thread, hold AI and campaign sends for that number, and offer a one-click relink. Stops the AI sending into a broken session.
+- **D. Also (D-82):** flush the auth state on SIGTERM, order key writes, run the gateway without `tsx watch` by default in `dev:all`, and make the health scorer ignore our own-account decrypt failures.
+
+**Done means (acceptance):** on the Linode with a spare number, a campaign opening and an AI reply to a contact who has replied are read normally on the other phone; the log shows **no `recv retry request` within 5 s of a send and no `No session record` for the contact's LID**; and an integration test covers "a reply that arrives under a LID address finds the session made under the phone-number address".
+
+**Process:** per docs/39 this is a bug: issue, registry entry R-013 and a failing test first, then the fix PR. Not yet filed.
+
+## D-102 · Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox — 🔺 **PRIORITY** (Kushal, 2026-10-23; same root as D-101, follow-up to D-94)
+
+**Symptom:** messages the owner sends from their phone or from WhatsApp Web to a contact often do not appear in the CRM thread. Some do (16 phone-sent messages are stored in the dev database from 08:09 to 09:16 UTC on 2026-10-23), many do not.
+
+**What D-94 did and did not do:** D-94 (#144) stores a message typed on the phone as an outbound message (`sent_by = 'phone'`) **once the gateway receives and decrypts it**. That part works for the messages that arrive readable. It cannot help a message the gateway never manages to decrypt, and the log shows exactly that.
+
+**Evidence (docs/45):** in the first gateway run of the day 251 decrypt failures are addressed from the owner's **own account's LID address** (`78847127097458@lid`): `SessionError: No matching sessions found for message`. Those are the owner's other devices (the phone and WhatsApp Web, each its own device on the account) writing to the linked number; our companion has no session under their LID address, the same phone-number-vs-LID session mismatch as D-101, here between the account's own devices. A message that fails to decrypt is never stored, so it never reaches the D-94 code.
+
+**Fix:** the same as D-101 (an address-aware session store, or Baileys 7 with LID mapping and session migration), checked for the owner's own devices as well as contacts. Then re-test D-94's end-to-end case on the Linode: type a message on the phone and on WhatsApp Web, see both in the thread within seconds.
+
+**Also (D-94 steps 2 and 3, still open):** older history from before linking is not imported; a message typed on a device that could not be decrypted is simply missing and cannot be recovered afterwards.
+
+**Done means:** with a linked spare number on the Linode, ten messages typed alternately on the phone and on WhatsApp Web all appear once, in order, as sent by "phone", with zero `No matching sessions` for the account's own LID in the gateway log; an integration test covers a `fromMe` message arriving under a LID address.
+
+## D-103 · The AI tab is confusing: a guided walkthrough of what has to be set up, in order — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the AI area has several parts (assistant settings, the model, templates, campaigns that use them, the queue) and nothing says what a new person must do first, or what depends on what. Add a short guided walkthrough, shown at the top of the AI tab until it is finished and reachable again from a "How this works" link:
+1. **Choose and test a model** (provider, key, model, Test). Nothing else works without it (D-97: say so beside Save).
+2. **Switch the assistant on and accept the data-sharing note** (customer chat text goes to the model's provider), and write the organisation-wide instructions.
+3. **Make a template** (describe what you want in plain words, the AI writes the instructions).
+4. **Message a group with it** (a campaign whose first messages the AI writes and whose replies it answers), or **hand one chat to the AI** from the inbox.
+5. **Watch it** (the warning banner in a chat; the AI indicator on campaigns, D-100; usage and limits, D-98).
+
+Each step shows done or not done (a tick), links to the right screen, and says in one sentence what it is for. A plain diagram on one screen: model → settings → template → campaign or chat → replies. Words, not jargon (explain "model", "key", "template", "token" in a line each).
+
+**Where:** `apps/web/app/ai/` (the AI page and `settings/`); the done/not-done state is already known from `GET /ai/llm` and the AI settings. Related user doc to add or update: `docs/36-workflows.md` (an "AI from start to finish" section) and the in-app tutorial.
+
+**Test:** a browser test that a fresh install shows the walkthrough with step 1 open and the later steps disabled with the reason, and that finishing a step ticks it.
+
+## D-104 · "Turn the AI model off" deletes the model settings; there is no way to pause the AI and keep them — 📌 pinned (Kushal, 2026-10-23)
+
+**What was found (Kushal asked):** the button **Turn the AI model off** on AI → Settings calls `DELETE /ai/llm` (`apps/api/src/routes/ai.ts`), which sets the driver to `none` and **erases the saved model, the key and the base URL** from the settings file (`LLM_DRIVER=none`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` unset). The page then shows "No AI model is set up yet. Choose a provider below, enter its key, pick a model and test it." and everything has to be entered again, including pasting the key. The confirmation does say "removes the key from the settings file", but the button is named "turn off" and a person reasonably expects a switch, not a delete.
+
+**Fix:** two different actions with honest names:
+- **Pause the AI** (or the existing assistant on/off switch used on its own): stops every AI reply and AI-written message but **keeps the provider, model and key**; one click to resume. Show the paused state on the AI tab and in the warning banner ("The AI is paused").
+- **Remove this model** (the current behaviour), a separate and clearly destructive button that says it deletes the key, behind the existing confirmation, audited as today.
+
+**Check the other switch too:** the assistant's own enabled flag (`ai_setting.enabled`) already pauses replies without touching the model; the pin should make sure the two are not confused on the page and that "pause" uses one of them consistently.
+
+**Test:** an integration test that pausing leaves `LLM_MODEL` and the key in place and stops `autoReply` and `writeOpenings`; a test that remove still clears them; a browser test of both buttons and their labels.
+
+## D-105 · Contacts "Dates and order": the "Date: Added / Last imported" choice is unclear — 📌 pinned (Kushal, 2026-10-23)
+
+**What it is today (`apps/web/app/contacts/page.tsx`, "Dates and order"):** the **Date** dropdown does not filter anything by itself. It chooses **which date** the **From** and **To** boxes (and the "Order" choice beside them) are about:
+- **Added** = the day the person first entered the CRM (their `created_at`, whatever the route: import, a message from them, by hand).
+- **Last imported** = the day of the most recent import that created or updated them (`last_imported_at`; shown on the row as "Last imported"). A person can be added in March and re-imported in October, so the two dates differ.
+
+So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the CRM that week", and "Date: Last imported" means "people touched by an import that week".
+
+**Why it is confusing:** a lone dropdown labelled "Date" with two bare words, no hint what it controls, placed before From and To, so it reads like a separate filter. The row label "Last imported" is also the first place the word appears.
+
+**Fix (small, wording and layout):**
+- Rename the group **"Filter by date"** and the dropdown options **"Date the person was added"** and **"Date of their last import"**, and put a one-line hint under it: "Pick which date the From and To boxes use."
+- Show the choice as the sentence it makes: "People **added** between [From] and [To], newest first", updating as the boxes change; keep the existing "Showing people added …" line.
+- Make From and To visibly belong to the dropdown (one row, the dropdown first, a short label such as "between").
+- Check "Order" wording the same way ("Newest first" is clearer than the raw sort names).
+
+**Test:** the existing browser test `contacts-dates.spec.ts` keeps working (labels change, `aria-label`s stay); add an assertion for the hint text.
+
+## D-106 · Inbox: "Resolve" / "Reopen" is confusing; say "Mark as completed" / "Reopen chat" — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the chat header has one button that reads **Resolve** on an open chat and **Reopen** on a closed one (`apps/web/app/inbox/[id]/thread-controls.tsx`, `status` open or closed). "Resolve" sounds like fixing a problem or a support ticket; this is a CRM chat, and the button only marks it finished.
+
+**Change (wording only, no change to what it does):**
+- Open chat: button **Mark as completed**. Closed chat: button **Reopen chat**.
+- The inbox list tab **Closed** becomes **Completed**, and the small `closed` badge on a row becomes **completed** (`apps/web/app/inbox/conversation-list.tsx`).
+- Say what completing does, once, in a tooltip or a line under the button: "Moves the chat out of Open. A new message from the contact opens it again." (**Check first** that a new inbound message reopens a closed chat; if it does not today, either make it so or leave that sentence out.)
+- The stored value stays `closed` (no migration, the API and audit log keep their names); only the labels change.
+
+**Tests to update:** `tests/e2e/seeded-pages.spec.ts` (clicks `Resolve` then `Reopen`) and any spec that opens the "Closed" tab; the AI Hand-to-AI behaviour and the assistant's own handling of closed chats (`autoReply` skips a chat that is not `open`) are unchanged.
+
+## D-107 · Import: two different things are both called "Preview"; the check should run by itself — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal saw:** the import page shows a table headed **"Preview of the columns and rows that will be imported"** (3 of 160 rows) and, further down, a **Preview** button whose text says "checks your file and shows who is new and who is already in your book… The Import button appears once you have run a preview." That reads as asking for the same thing twice.
+
+**They are different:**
+- The table is only a **sample of the raw file**: the first few rows as read from the sheet, before any checking (`apps/web/app/import/import-panel.tsx`, the sample table, `upload.sample`).
+- The **Preview button** is a dry run on the server: it normalises every phone number and email, matches people against the book, and reports how many are new, updated, skipped or have problems. It writes nothing.
+
+**Fix:**
+1. **Rename the sample** "A look at your file (first 3 of 160 rows, as written in the sheet)", so it is clearly not the result.
+2. **Run the check automatically** as soon as the columns are chosen (and again, debounced, when the person changes a mapping), instead of making them press a button. Show its result in place ("160 rows: 142 new, 11 already in your book, 7 with problems") and show **Import** straight away; keep a small **Check again** link. The server work is the same dry run (`runSheet(..., dryRun = true)`); it is cheap for a few hundred rows and should be skipped or paged for very large files (say above 20,000 rows, where it keeps the button and says why).
+3. The existing safety stays: nothing is written until **Import** is pressed, and a file whose check found problems says so before Import (D-108).
+
+**Tests:** update the import browser specs that click Preview before Import (`import-flow`, `import-keep-columns`, `import-problems`, `import-notice-and-reset`); add one that the result appears without pressing anything.
+
+## D-108 · Import: mark invalid phone numbers and emails in the preview, and make the person fix or drop them (with a confirmation) — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal saw:** a sheet whose first column holds values such as `8553912035, +9156006008553912035` (two numbers in one cell, the second one a run-together mistake, far too long to be a number) and plain 10-digit numbers with no country code. Nothing in the table marks them. Problems today only appear after the Preview button, in a separate "Rows to fix" box that lists rows (`ProblemBox`, `importProblems`, errors and warnings) and then imports the rest, with no way to correct or drop a row on the page.
+
+**Wanted:**
+1. **Flag them where the person is looking.** In the sample and in the checked result, mark each row with an **invalid phone** or **invalid email** badge (and a **second number dropped** note), with the reason in plain words ("too long to be a phone number", "no country code and not a valid Indian mobile", "email has no @").
+2. **A list of problem rows with two choices per row (and for all at once):**
+   - **Fix it** right there: edit the value in an inline box; the row is re-checked on the spot.
+   - **Drop it**: leave this person out of the import. Dropping asks **"Are you sure you want to drop N rows? They will not be imported."** with Drop / Keep, and says the original file is untouched.
+3. **The import button says what will happen:** "Import 153 people; 7 rows have problems (fix or drop them first)". Decide with Kushal whether rows with a problem **block** Import until each is fixed or dropped (recommended: yes, so nobody is silently skipped) or are skipped with a downloadable list (today's behaviour).
+4. **Tag them** (optional, if Kushal wants): people imported with a dropped second number or a repaired value get a tag such as `import: needs review`, so they can be found later (ties to D-90, "Needs review").
+5. A **Download the problem rows (CSV)** link stays, for fixing in a spreadsheet and re-uploading.
+
+**Where:** validation already exists server-side (`packages/core/src/ingestion.ts`, phone and email normalisation, warnings and errors per row, `importProblems`); the new work is returning per-row problems with the check (D-107), editing and dropping in `apps/web/app/import/import-panel.tsx`, and applying the fixes and drops as part of the run (a small list of row overrides sent with the import).
+
+**Rules:** never silently drop or change a person; a drop is confirmed; an edited value is shown as edited; phone numbers use the same normaliser as everywhere else (`DEFAULT_COUNTRY` IN); personal data stays out of logs.
+
+**Tests:** an integration test that rows with a bad number or email come back flagged with a reason, that an override fixes a row and a drop removes it from the run; a browser test of fix, drop and the drop confirmation.
+
+## D-109 · Campaign form: "Build a new template" jumps to the AI tab, and the template picker does not make the campaign an AI campaign — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal asked:** why does "Build a new template →" on the new-campaign page open the AI assistant tab?
+
+**Why it does today:** the saved templates in the campaign form are **AI templates** (D-85): a person describes in plain words what they want, the AI writes the instructions and a first message, and the result is saved. The only place to make one is the AI tab, so the link in `apps/web/app/broadcast/new/template-picker.tsx` goes to `/ai`. In a campaign form the word "template" suggests a plain saved message, and nothing says it is leaving for another tab.
+
+**A second, bigger confusion in the same place:** picking a template in this form only **copies its first message into the message box** (`choose()` in the same file). It does **not** attach the template to the campaign, so the campaign is a plain campaign: the AI does not write each person's opening (#157) and does not take over the replies (R-011). Those only happen for a campaign made from the AI tab with **Message a group with this** (`aiTemplateId` is set only there, `apps/web/app/ai/actions.ts`). So the same template gives two different behaviours depending on which screen it was used from, and nothing tells the person.
+
+**Fix (pick one, ask Kushal):**
+- **A. Make the picker honest and consistent (recommended):** the picker becomes **"Use an AI template"**; choosing one attaches it (`aiTemplateId`), shows the AI badge and the explanation from D-100 ("The AI writes each person's first message and answers replies"), and turns the message box into the outline (as the AI tab's form already does). A separate small link, **"Just copy its first message"**, keeps today's behaviour for anyone who wants plain text.
+- **B. Keep it as copy-only but say so:** label it "Copy the first message from a saved AI template (the campaign stays a normal one)" and the link "Create an AI template (opens the AI tab)".
+- **Either way:** the link says where it goes and returns to the campaign form afterwards (`?next=/broadcast/new`), and a person with no templates and no model sees the D-97 hint instead of an empty dropdown.
+
+**Tests:** a browser test that picking a template in the campaign form results in a campaign with the AI badge (A) or an explicit copy-only note (B); an integration test that the create-campaign call carries `aiTemplateId` when the picker attached one.
+
+## D-110 · "Tell the assistant what to do" as a small chat bubble on the right side of the page, not a section in the AI tab — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** today the box that tells the AI what to do ("pause that campaign", "start the welding one", a plain-language instruction for the AI to carry out, plus the queue of requests) is a full section of the AI tab (`apps/web/app/ai/ai-queue.tsx`, heading "Tell the assistant what to do"), which makes the tab long and confusing (D-103). Replace it with a **small assistant chat bubble on the right side of the page**:
+- A round button fixed at the bottom-right of every signed-in page (added in the root layout, `apps/web/app/layout.tsx`, only for admins and only once the AI is set up; hidden or showing the D-97 hint otherwise).
+- Clicking it opens a narrow panel on the right, in the style of a chat: the person's instruction as one bubble, the assistant's answer as another ("Paused 'Welding drive'. I did not start the other campaign: the organisation has not allowed the assistant to start campaigns."), with each action it took or refused listed under the answer. A text box at the bottom, Enter to send, Escape or a close button to hide it. It remembers the conversation while the page is open and survives moving between pages (kept in the layout, not in one page).
+- The queue is shown inside the panel as a small "working on it / waiting / done / failed" line per request, with Cancel for a queued one (the existing queue rules stay: one request runs at a time per organisation, jobs are pruned after a day).
+- The AI tab keeps only what belongs to setting up: model, instructions, templates (and the walkthrough, D-103). A line there says "Give it orders from the chat bubble on the right".
+
+**Reuse, do not rebuild:** `POST /ai/commands`, the job queue (`enqueueAiJob`, `listAiJobs`, `cancelAiJob`, the `ai_job` table, `apps/api/src/ai-runner.ts`) and `AiCommandError` all stay as they are; the bubble is a new client component calling the same actions in `apps/web/app/ai/actions.ts`. Same rules as today: admin only (or an API key allowed to send), the assistant goes through the same checks as a person and can never lift an anti-ban or do-not-contact gate.
+
+**Phones:** on a narrow screen the panel opens full width from the bottom; the bubble must not cover the chat composer (move it above it on the inbox thread page).
+
+**Tests:** a browser test that the bubble is present for an admin once the AI is on, absent for an agent and when no model is set, that a sent instruction appears as a bubble and its answer follows, and that the panel stays open across a page change; the existing integration tests for commands and the queue are untouched.
+
+## D-111 · Import: de-duplicate in the browser before upload, with a progress bar; drop exact copies, ask which to keep when copies differ — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** when someone imports a file with repeated people, or the same Excel file again, the duplicates should be dealt with **on the person's own computer, before anything is uploaded**, in three steps:
+1. **A loading bar** while the file is read and checked in the browser ("Reading 160 rows… Finding duplicates… 60%"), so a large sheet does not look frozen.
+2. **Exact duplicates are removed automatically** (the same person, with every kept column identical, appearing again in the file), and the page says how many: "Removed 14 exact copies."
+3. **Duplicates that differ are shown to the person**, one group at a time or as a table: the copies side by side with the differing cells highlighted (a different name, a different second number, a different city), and a choice per group: **keep this one**, **keep the newest**, **keep all as separate people** (rare), or **merge** (take the non-empty value from each). Nothing is chosen for them, and "Keep the newest for every group" is a button, not a default. Dropping asks "Are you sure?" (as D-108) and says the original file is untouched.
+
+**Two kinds of duplicate, both wanted:**
+- **Inside the file:** the same phone number (any form: `+91 98765 43210`, `9876543210`, `09876543210` are one number) or the same email on several rows.
+- **Against the book (the same Excel imported again):** people already in the CRM. Today the server refuses an identical file ("Upload anyway") and otherwise applies "newest name wins" (D-90, #107) and `npm run dedup:cleanup` for old copies. Here the browser should also fetch the keys of the people the file mentions (phone numbers and emails only, hashed or normalised, never the whole book) and show "27 of these people are already in your book" with the same keep / replace / skip choices.
+
+**Why in the browser:** the person sees and decides before anything is stored, nothing half-clean is uploaded, and the data does not travel until it is clean. **But the server must still enforce it** (never trust the browser): the final import keeps the existing server-side matching (`packages/core/src/ingestion.ts`, unique phone and email per person), so a mistake or a changed page cannot create duplicate people; the browser only makes the choice earlier and visible.
+
+**Cost and risks to settle when this is built:** reading `.xlsx` in the browser needs a spreadsheet library on the page (size, speed on big files and slow laptops: do the work in a Web Worker so the page stays responsive, and cap or warn above about 50,000 rows); the normalised phone rules must be the **same** as the server's (share one function or test them against each other, `DEFAULT_COUNTRY` IN); the choices must be sent to the server as explicit row decisions (a list of row numbers to drop and merge instructions), not as a rewritten file, so the audit trail shows what the person chose; the original upload stays as received.
+
+**Ties to:** D-90 (duplicates and "Needs review"), D-107 (the check runs by itself), D-108 (fix or drop invalid rows, same confirmation), issue #117 (import duplicates).
+
+**Tests:** unit tests for the browser de-duplicator (phone and email forms, exact vs differing, merge), an integration test that the server still rejects a duplicate sent despite the browser, and a browser test with a file that has 3 exact copies and 2 differing copies: the loading bar appears, 3 are removed, the 2 are shown, and the chosen one is the one imported.
+
+## D-112 · Message and campaign tracking is poor: say who sent each message (AI or a person), and show it in campaigns too — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal said:** "campaign and message tracking sucks". Specifically: under every message in a chat, a **small line of text saying who sent it**. If the AI wrote it, say **"Sent by the AI assistant"**. If a regular user sent it, say **"Sent by <their name>"** instead. (Tracking in campaigns is the second half, below.)
+
+**Today:** the sender label in a chat thread is only the text above a bubble from `authorLabel()` (`apps/web/app/inbox/[id]/page.tsx`): the user's display name if there is one, "You, from your phone" for `sent_by = 'phone'`, "Campaign" for `system`, otherwise "API". The AI's messages are stored `sent_by = 'agent'` with the assistant's bot user, so they usually show as the assistant's name and are not clearly marked as AI. Nothing says which campaign a message belongs to, whether the AI wrote its text, or whether an AI answer was sent on the AI's own or after a person asked it to ("Hand to AI", D-94-style "allow reply anyway").
+
+**Wanted (small, at the bottom of each outgoing message, quiet text):**
+- **AI assistant** (`sent_by = 'agent'`): "Sent by the AI assistant". If it was an AI-written campaign opening: "Written by the AI for campaign <name>".
+- **A person** (`sent_by = 'user'`): "Sent by <display name>".
+- **A campaign message with typed text** (`system`): "Campaign <name>".
+- **From the owner's phone or WhatsApp Web** (`phone`): "Sent from the phone".
+- **An API caller**: "Sent through the API (<key name>)".
+- Also the delivery state next to it (sent, delivered, read, held and why, failed), which already exists as ticks.
+Inbound messages keep their current look.
+
+**Also seen in the same screenshot (2026-10-23): the sender line and the time under an outgoing message are almost invisible** (dark text on the dark-green bubble in the dark theme). Fix the contrast of the author line, time and delivery state in outgoing bubbles in both themes (this is where the new "Sent by …" line will live, so it must be readable) and check against the WCAG contrast ratio (4.5:1) in `apps/web/app/inbox/[id]/page.tsx` and the bubble styles.
+
+**Campaigns (the "tracking sucks" half), related open issues:** #141 (show the sent text on the campaign recipient row), #142 (AI message tracking), #139 (AI "waiting for message"). Wanted on the campaign page: per recipient, the text actually sent (for AI campaigns each person's own, since #157), who/what sent it, the delivery state, whether they replied, and who has the chat now (AI, a person, nobody) with a link to the chat; counts on top (sent, delivered, read, replied, AI is handling, handed to a person); and the AI indicator from D-100.
+
+**Where:** the message list API already returns `sentBy` and `sentByName`; add `campaignId` and campaign name, and an `aiWritten` flag (an opening written by `ai-opening.ts` or a reply from `autoReply`; the `ai_run` row ties a message to its model and token use). Web: the bubble component in `apps/web/app/inbox/[id]/page.tsx`, the recipient list in `apps/web/app/broadcast/[id]`. No migration is needed for the label; a column recording "AI-written" may be, if `sent_by = 'agent'` is not enough (a person's message the AI polished would need it, but nothing does that today).
+
+**Tests:** an integration test that the message list tells AI, person, campaign and phone apart; a browser test of the four labels in one thread and of the recipient row showing the sent text.
+
+## D-113 · Linked numbers: replace "Advisory mode" with a plain anti-ban switch (On / Off) — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** the Linked numbers page calls it **Advisory mode** (the control, the red banner "Advisory mode — anti-ban is NOT enforced on this number", the audit entry, the runbook), which nobody outside the code can decode. What it really does is **switch the anti-ban engine's blocking off for one number while still recording what it would have blocked**: pacing, daily caps, warm-up, health holds and the recovery pause are logged ("advisory mode: sending past an anti-ban hold") instead of obeyed (D-29, `sender_identity.enforcement` = `enforce` or `advisory`, `apps/web/app/link/page.tsx`).
+
+**Rename to what it is:** a switch per number, **Anti-ban protection: On / Off**, with these words everywhere the old name appears:
+- Control: **"Anti-ban protection"** with **On** (default) and **Off (testing only)**; turning it Off still needs a written reason (kept, audited) and an admin, as today.
+- Banner while off: **"Anti-ban protection is OFF for this number. Messages go out without pacing, caps or health holds. A ban here can be permanent."** plus the reason, how many times a hold was bypassed and when last (the counts that exist today).
+- Same wording in the audit log row, the number's list entry (a small "protection off" badge next to the name), `docs/14-runbooks.md`, `docs/36-workflows.md`, `docs/08-antiban.md`.
+- The stored value can stay `advisory` (no migration); only the words change.
+
+**What stays on even with it Off (say so on the page, in one line):** do-not-contact (only an admin can lift it, per message, with a reason), the own-number guard (#110), and WhatsApp's own limits. The page must not suggest "Off" makes everything allowed.
+
+**Why it matters:** this is the switch that was turned on to get past the 48-hour false quarantine (D-82) on a test number. People reach for it because it is named like a mild setting, not a ban-risk one. Also decide whether Off should **expire by itself** (for example after 24 hours, with a reminder), so it cannot be left on by accident.
+
+**Tests:** update the specs and tests that read "Advisory mode" (`team-and-numbers`, the integration tests on enforcement and the runbook strings); add one for the new banner text and the "protection off" badge on the list.
+
+## D-114 · An approval system: requests from agents to admins, with status pages and notifications — 📌 pinned (Kushal, 2026-10-23)
+
+**Is it pinned already? Only in part.** D-76 covers one request type (a request for a **WhatsApp number**) and a Notifications tab, marked "not now". D-81 has an AI "approval mode" (the assistant drafts, a person approves). D-77 is admin controls (scopes, number limits). `docs/17-roadmap.md` lists "approval workflow" for campaigns as a later feature. **Nothing pins a general approval system** across everything an agent cannot do alone, nor a page where a requester sees the status of their request, nor notifications for the whole flow. This pin is that system; D-76 becomes its first use and should be built on it, not separately.
+
+**Who:** *agents* (regular, non-admin users, and API keys with limited scopes) ask; *admins* decide. Today an agent who hits "only an admin can do this" just gets a refusal and has to ask in person.
+
+**What can be requested (each one a "kind"; start with the first three):**
+1. **A WhatsApp number** (D-76): "give me access to number X" or "any".
+2. **Start or schedule a campaign** (an agent builds it, an admin releases it; with the audience size and the first message or AI template shown to the approver).
+3. **Lift a do-not-contact block for one message** (today only an admin can, per message with a reason): the agent asks with a reason, the admin sees the chat and decides.
+4. Later: import a large file, delete contacts or a tag in bulk, change AI settings, turn anti-ban protection off for a number (D-113), export contacts, invite or approve a new user (the signup approval queue in docs/32).
+
+**The flow:** a request is created by the agent (what, why, a note) -> status **pending** -> an admin sees it in an **Approvals** inbox with the full detail and **Approve / Decline** (a reason is required on decline, optional on approve) -> status **approved** or **declined**; the requester can **cancel** while pending; a pending request **expires** (say after 7 days). On approve the action is carried out by the same code path as if an admin had done it (so every existing check still applies; approving never bypasses the anti-ban rules, which nobody can lift, and nobody can approve their own request). Every step is in the audit log.
+
+**Status pages:**
+- **My requests** (every user): a list with kind, what, when, status (pending / approved / declined / cancelled / expired), who decided and their reason; click for detail; cancel while pending.
+- **Approvals** (admins): pending first, with counts, filters by kind and requester, history below; bulk Approve for the same kind with a confirmation.
+- A **status chip** where the request came from (for example the campaign page says "Waiting for admin approval, requested 2 h ago").
+
+**Notifications for the whole flow (D-76's tab, extended):** a bell with an unread count in the nav and a Notifications page: the admin gets "Asha requested number X" / "Campaign 'Welding drive' is waiting for approval"; the requester gets "Approved by Kushal" / "Declined: <reason>" / "Your request expired". In-app first (a per-user `notification` table written in the same transaction as the change; polling refresh like `inbox/auto-refresh.tsx`, no push); then optional **email** once the email driver exists (D-96) and optional WhatsApp or other channels (D-43). Notifications never contain message text or phone numbers, only names and counts.
+
+**Design notes so it is not re-derived:** one generic `approval_request` table (id, org, kind, payload JSON, requested_by, note, status, decided_by, decided_at, decision_reason, expires_at) instead of one table per kind (D-76's `sender_access_request` becomes `kind = 'number'`); a registry mapping each kind to its `apply()` function and the role allowed to approve; the approver's session, not the requester's, performs the action; idempotent (approving twice does nothing); an org setting per kind says "needs approval" or "agents may do this alone" (so a small team can leave it off). Scopes (D-77) decide who may *ask*; roles decide who may *approve*.
+
+**Tests:** an integration test per kind (request, approve, decline, cancel, expire, cannot self-approve, audit rows, the underlying action runs only once and only on approve) and the do-not-contact and anti-ban rules still holding after approval; browser tests of "My requests", the Approvals inbox and the bell.

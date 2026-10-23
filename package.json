@@ -84,6 +84,8 @@
     "alpha:up": "bash infra/scripts/compose.sh up -d --build",
     "alpha:tunnel": "bash infra/scripts/compose.sh --profile tunnel up -d --build",
     "alpha:down": "bash infra/scripts/compose.sh --profile tunnel down",
+    "prod:up": "bash infra/scripts/compose.sh -f infra/compose/compose.prod.yaml up -d --build",
+    "prod:down": "bash infra/scripts/compose.sh -f infra/compose/compose.prod.yaml down",
     "alpha:logs": "bash infra/scripts/compose.sh logs -f app"
   },
   "dependencies": {

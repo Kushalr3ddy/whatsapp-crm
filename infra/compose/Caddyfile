@@ -1,0 +1,6 @@
+# Only the web UI is proxied; the API stays private (the web server talks to it inside the container).
+# A hostname such as 139-162-10-20.sslip.io gets a trusted certificate automatically. `localhost` gets Caddy's own
+# self-signed one (the browser warns once; use it only to try this on a laptop).
+{$SITE_ADDRESS} {
+	reverse_proxy app:3001
+}

@@ -71,8 +71,10 @@ services:
       - storage:/app/storage
       - state:/app/state
     ports:
-      - "${API_HOST_PORT:-3000}:3000"
-      - "${WEB_HOST_PORT:-3001}:3001"
+      # API_BIND / WEB_BIND default to every interface (the laptop case). On a server, set both to 127.0.0.1 so
+      # that only the Caddy in compose.prod.yaml can reach them: Docker-published ports go around the firewall.
+      - "${API_BIND:-0.0.0.0}:${API_HOST_PORT:-3000}:3000"
+      - "${WEB_BIND:-0.0.0.0}:${WEB_HOST_PORT:-3001}:3001"
 
   # Optional: publishes the web UI through a Cloudflare Tunnel (docs/30-cloudflare-tunnel.md).
   # Off by default; `npm run alpha:tunnel` turns it on. Create the tunnel in the Cloudflare
