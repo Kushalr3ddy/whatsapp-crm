@@ -122,6 +122,7 @@ is not re-proposed.
 | D-106 | Inbox: rename Resolve / Reopen to Mark as completed / Reopen chat (and the Closed tab to Completed) | 📌 pinned (Kushal, 2026-10-23) |
 | D-107 | Import: the sample table and the Preview button are both called preview; run the check automatically and show Import straight away | 📌 pinned (Kushal, 2026-10-23) |
 | D-108 | Import: mark invalid phone numbers and emails in the preview; fix them inline or drop them with a confirmation | 📌 pinned (Kushal, 2026-10-23) |
+| D-109 | Campaign form: "Build a new template" jumps to the AI tab, and picking a template there does not make the campaign an AI campaign | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3106,3 +3107,18 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 **Rules:** never silently drop or change a person; a drop is confirmed; an edited value is shown as edited; phone numbers use the same normaliser as everywhere else (`DEFAULT_COUNTRY` IN); personal data stays out of logs.
 
 **Tests:** an integration test that rows with a bad number or email come back flagged with a reason, that an override fixes a row and a drop removes it from the run; a browser test of fix, drop and the drop confirmation.
+
+## D-109 · Campaign form: "Build a new template" jumps to the AI tab, and the template picker does not make the campaign an AI campaign — 📌 pinned (Kushal, 2026-10-23)
+
+**What Kushal asked:** why does "Build a new template →" on the new-campaign page open the AI assistant tab?
+
+**Why it does today:** the saved templates in the campaign form are **AI templates** (D-85): a person describes in plain words what they want, the AI writes the instructions and a first message, and the result is saved. The only place to make one is the AI tab, so the link in `apps/web/app/broadcast/new/template-picker.tsx` goes to `/ai`. In a campaign form the word "template" suggests a plain saved message, and nothing says it is leaving for another tab.
+
+**A second, bigger confusion in the same place:** picking a template in this form only **copies its first message into the message box** (`choose()` in the same file). It does **not** attach the template to the campaign, so the campaign is a plain campaign: the AI does not write each person's opening (#157) and does not take over the replies (R-011). Those only happen for a campaign made from the AI tab with **Message a group with this** (`aiTemplateId` is set only there, `apps/web/app/ai/actions.ts`). So the same template gives two different behaviours depending on which screen it was used from, and nothing tells the person.
+
+**Fix (pick one, ask Kushal):**
+- **A. Make the picker honest and consistent (recommended):** the picker becomes **"Use an AI template"**; choosing one attaches it (`aiTemplateId`), shows the AI badge and the explanation from D-100 ("The AI writes each person's first message and answers replies"), and turns the message box into the outline (as the AI tab's form already does). A separate small link, **"Just copy its first message"**, keeps today's behaviour for anyone who wants plain text.
+- **B. Keep it as copy-only but say so:** label it "Copy the first message from a saved AI template (the campaign stays a normal one)" and the link "Create an AI template (opens the AI tab)".
+- **Either way:** the link says where it goes and returns to the campaign form afterwards (`?next=/broadcast/new`), and a person with no templates and no model sees the D-97 hint instead of an empty dropdown.
+
+**Tests:** a browser test that picking a template in the campaign form results in a campaign with the AI badge (A) or an explicit copy-only note (B); an integration test that the create-campaign call carries `aiTemplateId` when the picker attached one.
