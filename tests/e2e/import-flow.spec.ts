@@ -34,7 +34,8 @@ test.describe('import: flow', () => {
     await expect(page.getByText(file).first()).toBeVisible();
 
     // The columns step says what its controls are for.
-    await expect(page.getByRole('heading', { name: 'Select the columns to be stored' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Columns to be stored' })).toBeVisible();
+    await page.getByLabel('Choose columns').check();
     await page.getByLabel('City').check();
     await expect(page.getByText(`From ${file}.`)).toBeVisible();
 
@@ -75,11 +76,11 @@ test.describe('import: flow', () => {
     await page.getByRole('checkbox', { name: /^[–\d] Alt Phone/ }).check();
     await expect(page.getByRole('columnheader', { name: 'Phone 2' })).toBeVisible();
 
-    // A personal-looking column cannot be ticked while the protection is on, and can once it is switched off.
+    // A personal-looking column is labelled but is no longer locked: it can be ticked in "Choose columns" mode.
+    await page.getByLabel('Choose columns').check();
     const dob = page.getByRole('checkbox', { name: /Date of Birth/ });
-    await expect(dob).toBeDisabled();
-    await page.getByLabel(/Never store columns marked personal/).uncheck();
     await expect(dob).toBeEnabled();
+    await dob.check();
 
     await page.getByRole('button', { name: 'Preview' }).click();
     await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
