@@ -852,7 +852,11 @@ export const campaignRecipient = pgTable('campaign_recipient', {
    */
   skipReason: text('skip_reason'),
   messageId: uuid('message_id').references(() => message.id, { onDelete: 'set null' }),
-  attemptedAt: timestamp('attempted_at', { withTimezone: true })
+  attemptedAt: timestamp('attempted_at', { withTimezone: true }),
+  /** For a campaign with an AI template: this person's opening message as the AI wrote it (encrypted like any message body). */
+  openingEnc: bytea('opening_enc'),
+  /** How many times the AI has tried to write this opening and failed; after three the recipient is skipped and reported. */
+  openingTries: integer('opening_tries').notNull().default(0)
 }, (t) => [
   // One row per person per campaign. Also what makes a re-run idempotent.
   uniqueIndex('campaign_recipient_uidx').on(t.campaignId, t.contactId),
