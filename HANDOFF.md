@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-23 (morning)
+# Handoff — state as of 2026-10-23 (night)
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -14,7 +14,7 @@ load automatically): plain language, define jargon, never talk down; ask before 
 one question at a time with options and a recommendation; keep a task list (`update_plan`) and close each turn with
 `wrap_up`; never offer to merge (he merges and says "merged"); never start or stop his dev stack without asking.
 
-1. **Read, in order:** this file (especially *Latest session (2026-10-22 night)*, then *2026-10-22*, then *2026-10-21 night*), `CHANGELOG.md` (top "Latest" and
+1. **Read, in order:** this file (especially *Latest session (2026-10-23, day into night)*, then *2026-10-22 night*, then *2026-10-22*), `CHANGELOG.md` (top "Latest" and
    "To do"), `docs/21-deferred.md` (start at **"Status at a glance"**, then the pins marked WORK ON NOW / PRIORITY), then
    `docs/README.md` for the index. Docs written this stretch: **32** (setup, signup, teams, billing plan),
    **33** (payment providers compared), **34** (licensing and enforcement). The older reading list (20 orientation, 01,
@@ -74,7 +74,41 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
-## ▶ Latest session (2026-10-23, daytime): read this first
+## ▶ Latest session (2026-10-23, day into night): read this first
+
+### State in one paragraph
+`main` is at **`9fa41f5`** and holds everything merged today: #153 (the `dev:all` fast-web hint), #154 (import stores all columns), #156 (the AI reasoning-model fix, R-012), #157 (the AI writes each campaign opening), #158 (Hand to AI / Take back), #159 (Linode deploy files, docs 43 to 45, pins) and **#161 (the "Waiting for this message" fix at the root, R-013)**. **No PR is open** apart from this handoff. A **beta server is running on a Linode** (Shared 4 GB, Mumbai): https://172-232-84-234.sslip.io/login, `main` at `9fa41f5`, Baileys 7.0.0-rc14, number `kushal_test` linked and connected. The laptop has no stack running (only the dev Postgres container, empty after the wipe).
+
+### What happened, in order
+1. **Slowness on Mikhil's laptop = dev mode** (`next dev` compiles each page on first visit; memory grows). Fix is `npm run dev:all -- --fast-web`; `dev:all` now prints that hint (#153). The "Signing in…" stuck button did not reproduce on a production build.
+2. **Local database wiped** at his request (`db:dev:reset`, `db:setup`); org "Hiring Studios" recreated with `developer@hiringstudios.com`; `.env`'s test account is `e2e@test.local` (not that email).
+3. **AI fixes:** R-012 (a reasoning model used its 400-token budget thinking, the reply was empty: budget 3000 and a warning banner when a model returns nothing); **the AI now writes each campaign opening per person** (#157, migration 0037; waits if the AI is off); **Hand to AI / Take back from AI** in the chat header (#158); import stores **all columns by default**, cap 200 (#154).
+4. **Linode set up end to end:** hardened (key-only SSH, `ufw` 22/80/443, auto updates, Docker, 2 GB swap), Caddy HTTPS with a trusted certificate for an `<ip-with-dashes>.sslip.io` name, API and web bound to `127.0.0.1` (Docker bypasses `ufw`), log rotation 50 MB x 10. Docs: `docs/43` (run, update, logs, relink), `docs/44` (test results and findings).
+5. **Local tests (this laptop):** typecheck clean, lint 0 errors, vitest 937 passed after the fix, browser suite 48 passed / 1 failed (R-008 spec run against a dev server; it is written for a production build and passes in CI).
+6. **RCA and fix of "Waiting for this message"** (`docs/45`, issue #160, R-013, D-101, D-102, D-82): Baileys 6.7.24 had no phone-number to LID session mapping. Fixed with **Baileys 7.0.0-rc14**, plus ordered and flushed credential writes, retry-request recording (migration 0038), a composer notice when the encryption session is broken, own-device failures kept out of the ban score, and `dev:all` no longer restarting the gateway on every edit (`gateway:stable`).
+7. **Evidence from the Linode:** under 6.7.24 the other tester could not see the AI's reply (11:08 UTC, the AI handed the chat over); after the upgrade the session made under 6.7.24 **restored and connected without a 401** and two phone-number/LID pairs were stored. The laptop's number got a 401 on first connect under 7.x (probably already unlinked) and its credentials were removed.
+8. **Pins D-96 to D-114** (forgot password PRIORITY, add-a-model hint, usage and limits, add contacts by hand, AI badge on campaigns, AI tab walkthrough, pause vs delete the model, Dates and order wording, Mark as completed, import check runs by itself, invalid rows fix or drop, template picker, assistant chat bubble, client-side de-duplication, who sent each message, Anti-ban protection On/Off, approval system), **D-52 (delete campaigns) unparked as PRIORITY**, D-91 updated (block admins too, and while the AI is mid-reply), a **By theme** table in `docs/21-deferred.md`, D-95 (caching: not faster today).
+9. **Branches cleaned** at his yes: local copies of the merged branches deleted and `feat/fast-web-hint` deleted on GitHub; kept `main`, the 3 newest merged (`fix/not-quitting-till-waiting-for-this-message-is-fixed`, `feat/linode-beta-deploy`, `feat/hand-chat-to-ai`) and `checkpoint/2026-10-22-night`.
+
+### Not done, and what the next session should ask first
+- **The bug is not closed.** The acceptance for D-101 and D-102 is a real phone: from the Linode, send one CRM message to the test phone and see in `docker logs whatsapp-crm-app-1` **no `recv retry request` within about 5 s and no `No session record` for the contact's LID**; then a contact reply answered by the AI, and a message typed on the phone and on WhatsApp Web both reaching the inbox. A live test message was **not** sent (he stopped it). **Ask him for this result first.**
+- **Housekeeping only he can do:** remove the setup SSH key (`claude-setup-linode`) from `/root/.ssh/authorized_keys` and `/home/deploy/.ssh/authorized_keys`; **change the root password** that was typed into the chat; keep `/home/kushal/linode-beta-credentials.txt` (first-admin password and the four encryption keys, mode 600, outside the repo) somewhere safe and then delete it. **There are no backups** (his decision): losing the keys or the volume loses all data.
+- Decisions waiting: which forgot-password option (D-96: admin link, recovery codes, or both); whether `dev:all` should keep the gateway out of `tsx watch` (done by default now); the datacenter-IP risk (WhatsApp may drop messages from a cloud address; proxy support is not built); a real domain for the Linode.
+- Mikhil should try `npm run dev:all -- --fast-web` on his laptop. There is no repo-level "Actions notification list": he sets that in his own GitHub notification settings.
+
+### Rules given today (all in memory)
+No `ai-speedrun:` prefix on commits or PR titles (#153 keeps it). "Mikhil's prod" is his laptop, never say "deployed". No Co-Authored-By trailer. I never type a password to log in (use keys). Never `pkill -f` on a pattern in my own command (it killed my shell). Pin mode was on and is **off**. When he says run "the whole thing", stop the running stack by PID first and run `dev:all`.
+
+### Gotchas learned the hard way
+- **Commits pushed to a PR's branch after it merged never reach `main`** (this happened again with #153: the D-95 pin and docs 42 / 35 were recovered into #161). After he says "merged", check `git show origin/main:<path>`.
+- `docker exec` into the app container does not have the generated secrets: run admin scripts with `sh -c 'set -a; . /app/state/secrets.env; set +a; npx tsx scripts/admin.ts ...'`.
+- This laptop has Docker 29 but only the old `docker-compose` 1.29; `infra/scripts/compose.sh` picks whichever exists.
+- `npm run dev:all` no longer restarts the gateway on edits: after changing gateway or `packages/core` code, stop and start it (`--watch-gateway` brings the old behaviour back for a laptop with no real number).
+- Baileys 7.0.0-rc14 is a release candidate; watch the first days on the spare number.
+
+---
+
+## ▶ Earlier the same day (2026-10-23, daytime; superseded by the section above: the Linode now exists)
 
 - **Slowness solved by explanation, not code:** Mikhil's laptop runs the dev server. Fix = `npm run dev:all -- --fast-web` (a production build). **PR #153** adds a hint to `dev:all`; open, CI watched. Dev mode is still the default (his call).
 - **Nothing is deployed anywhere.** "Mikhil's prod" = his own laptop. Do not say "prod" or "deployed" for it. Next big step he named: **prepare for a Linode instance.** Not started; make it a plan first (docs/29, `infra/compose`, alpha container).
