@@ -110,6 +110,8 @@ is not re-proposed.
 | D-93 | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
 | D-94 | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
 | D-96 | Forgot password: a way to reset your own password (no self-service reset today; the beta server has no operator at a keyboard) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| D-97 | AI settings say "add a model first" next to Save when no model is set up (and disable Hand to AI with that reason) | 📌 pinned (Kushal, 2026-10-23) |
+| D-98 | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2919,3 +2921,29 @@ Remaining work pinned as **high priority**.
 **Rules that must hold whichever is chosen** (docs/23-auth.md): changing a password ends every session that person holds; the reset never says whether an email or account exists; links and codes are single-use, short-lived and stored only as hashes; attempts are rate-limited like sign-in (3 wrong tries locks for minutes); every use is in the audit log; a person who is disabled or do-not-use cannot reset.
 
 **Tests:** an integration test per route (link or code works once, expires, is refused on reuse, ends old sessions, is rate-limited, leaves an audit row) and a browser test of the forgot-password page. Per docs/39, none of this is a bug, so it goes straight to a feature PR.
+
+## D-97 · AI settings: say "add a model first" next to the Save button when no model is set up — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** on a fresh install nothing tells a new user that the AI assistant needs a model before it can do anything: the AI settings, the template builder and "Hand to AI" all quietly do nothing useful. Put a plain line at the bottom of the AI settings, next to the Save button: **"Add a model first to start using the AI assistant"** (shown while no provider, key and model are saved; gone once a model is saved and tested). The same short line, linking to the settings, wherever the AI is offered but cannot work yet (the AI page, "Message a group", the thread's Hand to AI button, which should be disabled with that reason instead of failing later).
+
+**Where in the code:** `apps/web/app/ai/settings/llm-form.tsx` (the Save button), the AI page and `apps/web/app/inbox/[id]/thread-controls.tsx`. The server already knows (`GET /ai/llm` says whether a model is configured; `answer-now` answers `AI_NOT_CONFIGURED`).
+
+**Test:** a browser test that a fresh install shows the line beside Save and that saving a model removes it.
+
+## D-98 · A usage and limits check for the chosen AI model: used, remaining, and roughly how many messages it can still handle — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** for whichever model the organisation set up, show on the AI settings page how much it has used and how much is left, and in plain words roughly how many more replies or campaign openings that is ("about 400 more replies today"), so the AI does not run out in the middle of a campaign without warning.
+
+**What can be known, and from where**
+- **Ours, always available:** every AI run already records its model and input and output tokens (`ai_run`), so tokens used today, this week and per kind (reply, opening, template) can be shown for any provider. The daily message cap (`ai_setting.daily_message_cap`) is already ours too.
+- **The provider's, only when it says:** some providers (Groq and other OpenAI-compatible ones) return rate-limit headers on each call (requests and tokens remaining, and when they reset); others expose a usage or credit endpoint; some say nothing. Plan: read the headers on every real call and keep the last values, show "unknown" honestly where a provider gives none, never guess a balance.
+- **The estimate:** average tokens per reply from our own recent runs (a reply today is about 650 in and a few hundred out; a reasoning model can use far more, R-012) divided into the remaining tokens or requests. Shown as a rounded range with the caveat "an estimate from your recent use".
+- **The model's own size** is the number already shown next to each model in the picker: its context window (see below), which is not the same thing as usage.
+
+**Warnings:** when the estimate drops under a threshold, or the provider answers 429 (rate limited) or a quota error, show the existing AI warning banner (`AiNoticeBanner`) with the cause, and hold AI-written campaign openings (D-97 neighbours: `ai-opening.ts`) rather than failing every recipient into `ai_opening_failed`.
+
+**Where:** `packages/providers/llm` (capture headers in `openai-compatible.ts` and `anthropic.ts`), a small `ai_usage` read in `packages/core/src/ai-settings.ts`, the API (`/ai/llm`) and `apps/web/app/ai/settings/`.
+
+**Test:** integration tests for the totals and the estimate with a fake model that returns rate-limit headers and one that returns none; a browser test that the panel shows "unknown" without headers.
+
+**The numbers in the model list (answer to Kushal's question):** the "131k", "4k", "1k" beside each model are its **context window**: the most text the model can read and write in one request, counted in tokens (a token is about three quarters of an English word, so 131k is roughly 100,000 words and 4k roughly 3,000). They come from the provider's own model list (`context_length`), shown in `apps/web/app/ai/settings/model-picker.tsx`. Bigger is not "better": our replies are short, so 4k is enough for a short chat and 131k only matters for long histories. "tested" is a separate badge: the model we have run our own check against.
