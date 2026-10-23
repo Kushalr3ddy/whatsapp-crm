@@ -74,6 +74,17 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
+## ▶ Latest session (2026-10-23, daytime): read this first
+
+- **Slowness solved by explanation, not code:** Mikhil's laptop runs the dev server. Fix = `npm run dev:all -- --fast-web` (a production build). **PR #153** adds a hint to `dev:all`; open, CI watched. Dev mode is still the default (his call).
+- **Nothing is deployed anywhere.** "Mikhil's prod" = his own laptop. Do not say "prod" or "deployed" for it. Next big step he named: **prepare for a Linode instance.** Not started; make it a plan first (docs/29, `infra/compose`, alpha container).
+- **Gateway restarted** (his yes), then the whole stack was **stopped and the local database wiped** at his request. State now: Postgres container up on 5434 and empty (migrated); API, gateway and web are down. He starts them himself with `npm run dev:all`. Every WhatsApp number needs linking again. Sender `b8f0faae…` had 22 messages queued while `closed`; the wipe removed them.
+- **Rules given today:** drop the `ai-speedrun:` prefix (kept on #153, do not retitle); always say "Mikhil's laptop", never "prod"; when he wants the stack run "the whole thing", that means API + gateway + web via `dev:all`, which needs the running stack stopped first (by PID, never `pkill -f`: it killed my own shell once today).
+- **Docs added:** `docs/42` (index of all speedrun and feedback files), `docs/35` section 7 (why no cache or extra data layers, and when to add them).
+- **Ask him first next time:** the Linode plan (size, region, how he pays given the card problem in docs/29); whether to try a skeleton in slow routes; whether Mikhil should be told to use `--fast-web` now.
+
+---
+
 ## ▶ Latest session (2026-10-22 night, the overnight run): read this first
 
 Kushal slept; the session ran in bypass mode with a written mandate ([`docs/41-overnight-automation-run-2026-10-22.md`](docs/41-overnight-automation-run-2026-10-22.md): mandate, rules, log, outcome).
