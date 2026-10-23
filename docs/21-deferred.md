@@ -128,6 +128,7 @@ is not re-proposed.
 | D-112 | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
 | D-113 | Linked numbers: rename "Advisory mode" to a plain Anti-ban protection On / Off switch (words only; maybe auto-expire) | 📌 pinned (Kushal, 2026-10-23) |
 | D-114 | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
+| D-95 | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3276,3 +3277,8 @@ Inbound messages keep their current look.
 **Design notes so it is not re-derived:** one generic `approval_request` table (id, org, kind, payload JSON, requested_by, note, status, decided_by, decided_at, decision_reason, expires_at) instead of one table per kind (D-76's `sender_access_request` becomes `kind = 'number'`); a registry mapping each kind to its `apply()` function and the role allowed to approve; the approver's session, not the requester's, performs the action; idempotent (approving twice does nothing); an org setting per kind says "needs approval" or "agents may do this alone" (so a small team can leave it off). Scopes (D-77) decide who may *ask*; roles decide who may *approve*.
 
 **Tests:** an integration test per kind (request, approve, decline, cancel, expire, cannot self-approve, audit rows, the underlying action runs only once and only on approve) and the do-not-contact and anti-ban rules still holding after approval; browser tests of "My requests", the Approvals inbox and the bell.
+## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (Kushal, 2026-10-23)
+
+**Question asked:** would adding them make it faster? **Answer today: no.** The measured API calls take 20 to 40 ms; the slowness people feel is the dev server compiling pages on first visit (fixed by `--fast-web`, PR #153) and the size of the Contacts page (D-46). A cache does not touch either, and it adds stale-data and cross-org-leak risks plus a third thing to host. So nothing is built.
+
+**Revisit when** a number says so: a query over about 1 s in the API log, an org past roughly 50,000 contacts, a second API process (rate limits and sessions must then be shared, so Redis), or `/auth/me` and `/senders` (0.3 to 1 s in one log) still slow after fetching less data per page. Order: indexes, then send less data (D-46), then a short cache for one named read, then Redis. The full table of signals and first steps is in [`35-database-and-queries.md`](35-database-and-queries.md) section 7.
