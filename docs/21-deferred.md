@@ -124,6 +124,7 @@ is not re-proposed.
 | D-108 | Import: mark invalid phone numbers and emails in the preview; fix them inline or drop them with a confirmation | 📌 pinned (Kushal, 2026-10-23) |
 | D-109 | Campaign form: "Build a new template" jumps to the AI tab, and picking a template there does not make the campaign an AI campaign | 📌 pinned (Kushal, 2026-10-23) |
 | D-110 | "Tell the assistant what to do" as a small chat bubble on the right side of every page, not a section of the AI tab | 📌 pinned (Kushal, 2026-10-23) |
+| D-111 | Import: de-duplicate in the browser first (progress bar, drop exact copies, ask which to keep when copies differ); server still enforces | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3137,3 +3138,22 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 **Phones:** on a narrow screen the panel opens full width from the bottom; the bubble must not cover the chat composer (move it above it on the inbox thread page).
 
 **Tests:** a browser test that the bubble is present for an admin once the AI is on, absent for an agent and when no model is set, that a sent instruction appears as a bubble and its answer follows, and that the panel stays open across a page change; the existing integration tests for commands and the queue are untouched.
+
+## D-111 · Import: de-duplicate in the browser before upload, with a progress bar; drop exact copies, ask which to keep when copies differ — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** when someone imports a file with repeated people, or the same Excel file again, the duplicates should be dealt with **on the person's own computer, before anything is uploaded**, in three steps:
+1. **A loading bar** while the file is read and checked in the browser ("Reading 160 rows… Finding duplicates… 60%"), so a large sheet does not look frozen.
+2. **Exact duplicates are removed automatically** (the same person, with every kept column identical, appearing again in the file), and the page says how many: "Removed 14 exact copies."
+3. **Duplicates that differ are shown to the person**, one group at a time or as a table: the copies side by side with the differing cells highlighted (a different name, a different second number, a different city), and a choice per group: **keep this one**, **keep the newest**, **keep all as separate people** (rare), or **merge** (take the non-empty value from each). Nothing is chosen for them, and "Keep the newest for every group" is a button, not a default. Dropping asks "Are you sure?" (as D-108) and says the original file is untouched.
+
+**Two kinds of duplicate, both wanted:**
+- **Inside the file:** the same phone number (any form: `+91 98765 43210`, `9876543210`, `09876543210` are one number) or the same email on several rows.
+- **Against the book (the same Excel imported again):** people already in the CRM. Today the server refuses an identical file ("Upload anyway") and otherwise applies "newest name wins" (D-90, #107) and `npm run dedup:cleanup` for old copies. Here the browser should also fetch the keys of the people the file mentions (phone numbers and emails only, hashed or normalised, never the whole book) and show "27 of these people are already in your book" with the same keep / replace / skip choices.
+
+**Why in the browser:** the person sees and decides before anything is stored, nothing half-clean is uploaded, and the data does not travel until it is clean. **But the server must still enforce it** (never trust the browser): the final import keeps the existing server-side matching (`packages/core/src/ingestion.ts`, unique phone and email per person), so a mistake or a changed page cannot create duplicate people; the browser only makes the choice earlier and visible.
+
+**Cost and risks to settle when this is built:** reading `.xlsx` in the browser needs a spreadsheet library on the page (size, speed on big files and slow laptops: do the work in a Web Worker so the page stays responsive, and cap or warn above about 50,000 rows); the normalised phone rules must be the **same** as the server's (share one function or test them against each other, `DEFAULT_COUNTRY` IN); the choices must be sent to the server as explicit row decisions (a list of row numbers to drop and merge instructions), not as a rewritten file, so the audit trail shows what the person chose; the original upload stays as received.
+
+**Ties to:** D-90 (duplicates and "Needs review"), D-107 (the check runs by itself), D-108 (fix or drop invalid rows, same confirmation), issue #117 (import duplicates).
+
+**Tests:** unit tests for the browser de-duplicator (phone and email forms, exact vs differing, merge), an integration test that the server still rejects a duplicate sent despite the browser, and a browser test with a file that has 3 exact copies and 2 differing copies: the loading bar appears, 3 are removed, the 2 are shown, and the chosen one is the one imported.
