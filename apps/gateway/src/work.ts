@@ -1,3 +1,4 @@
+import type { LlmDriver } from '@crm/llm';
 import { sql } from 'drizzle-orm';
 import { setTenant, type Database, type Transaction } from '@crm/db';
 import { tenantDatabase } from './tenant.js';
@@ -6,7 +7,7 @@ import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
 import {
   classifyLinkFailure, encodeLinkError,
   markMessageFailed, markMessageSent, checkSendAllowance, checkContactGraph,
-  scoreConnectedSenders, dispatchCampaign, reconcileCampaign, dailyCeiling, typingDelayMs,
+  scoreConnectedSenders, dispatchCampaign, reconcileCampaign, writeOpenings, dailyCeiling, typingDelayMs,
   recoveryState, beginRecovery, deliveryDelayMultiplier, type RecoveryIncident,
   type ReplyFloorConfig, readIsDue, circadianActivity, localHour, entropyPlan, type EntropyScheduler,
   timezoneForPhone, circadianDelayMs, CIRCADIAN_QUIET_THRESHOLD, checkRestriction, recordHealthEvent,
@@ -71,6 +72,8 @@ export interface WorkContext {
    * dispatch a campaign, which is most tests.
    */
   readonly kms?: KmsDriver;
+  /** The AI model, for campaigns whose first messages the AI writes. Absent = such campaigns wait. */
+  readonly llm?: LlmDriver;
   readonly provider: ChannelProvider;
   readonly logger: Logger;
   /** Decrypts a stored message body back to text for sending. */
@@ -915,6 +918,11 @@ async function dispatchCampaignsInOrg(ctx: WorkContext): Promise<number> {
       : Math.max(0, ceiling - u.sentToday - u.alreadyQueued);
 
     if (room > 0) {
+      // A campaign with an AI template sends what the AI writes for each person: write the next few openings first (no-op otherwise).
+      if (ctx.llm !== undefined && ctx.llm.name !== 'none') {
+        try { await writeOpenings({ db: ctx.db, kms: ctx.kms, llm: ctx.llm }, { orgId: campaign.orgId, campaignId: campaign.id, limit: Math.min(room, 5) }); }
+        catch (error) { ctx.logger.error({ campaignId: campaign.id, err: error instanceof Error ? error.message : String(error) }, 'could not write AI openings'); }
+      }
       queued += await dispatchCampaign(tenant, ctx.kms, {
         orgId: campaign.orgId, campaignId: campaign.id,
         senderIdentityId: campaign.senderIdentityId, body: campaign.body, limit: room,

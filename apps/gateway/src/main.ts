@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     // Idle-time presence noise every 2–6 h per number, in active hours.
     ...(config.SEND_BACKGROUND_ENTROPY ? { entropy: new EntropyScheduler() } : {}),
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
-    kms,
+    kms, llm,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   };
 

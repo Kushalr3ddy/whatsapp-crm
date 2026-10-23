@@ -288,17 +288,20 @@ export async function dispatchCampaign(
 
     const rows = await tx.execute(sql`
       SELECT cr.id, cr.contact_id AS "contactId", c.display_name AS "contactName",
-             c.custom_fields AS "customFields"
+             c.custom_fields AS "customFields", cr.opening_enc AS "openingEnc"
       FROM campaign_recipient cr
       JOIN contact c ON c.id = cr.contact_id AND c.org_id = cr.org_id
       WHERE cr.campaign_id = ${input.campaignId} AND cr.org_id = ${input.orgId}
         AND cr.status = 'pending'
+        -- A campaign with an AI template sends what the AI wrote for each person (writeOpenings); a person without one yet waits.
+        AND (cr.opening_enc IS NOT NULL OR NOT EXISTS (
+          SELECT 1 FROM campaign cp WHERE cp.id = cr.campaign_id AND cp.org_id = cr.org_id AND cp.ai_template_id IS NOT NULL))
       ORDER BY cr.id
       LIMIT ${input.limit}
       FOR UPDATE OF cr SKIP LOCKED`);
     const batch = rows as unknown as Array<{
       id: string; contactId: string; contactName: string | null;
-      customFields: Record<string, unknown> | null;
+      customFields: Record<string, unknown> | null; openingEnc: Uint8Array | null;
     }>;
 
     // Identical-body backstop (docs/08-antiban.md, Layer 3 / D-26): cap how many messages with the
@@ -326,7 +329,10 @@ export async function dispatchCampaign(
       // {{name}} plus any of the org's custom fields ({{city}}, {{stage}}…); an unset one is blank.
       const vars: Record<string, string> = {};
       for (const [k, v] of Object.entries(recipient.customFields ?? {})) vars[k.toLowerCase()] = String(v);
-      const body = renderBody(input.body, { ...vars, name: recipient.contactName ?? '' });
+      // The AI's own opening for this person, when the campaign has an AI template; otherwise the campaign's wording.
+      const body = recipient.openingEnc !== null
+        ? new TextDecoder().decode(kms.decrypt(recipient.openingEnc))
+        : renderBody(input.body, { ...vars, name: recipient.contactName ?? '' });
       const hmac = kms.blindIndex(body);
 
       let already = identicalSeen.get(hmac);

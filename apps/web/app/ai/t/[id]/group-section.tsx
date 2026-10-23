@@ -78,7 +78,8 @@ export function GroupSection({ template, tags, senders }: { template: AiTemplate
         <input className="field font-normal" value={name} maxLength={200} onChange={(e) => { setName(e.target.value); }} />
       </label>
       <label className="mt-3 flex flex-col gap-1 text-sm font-medium">
-        First message
+        First message (an outline)
+        <span className="text-xs font-normal text-muted">The AI writes each person&rsquo;s own first message from this template, using this text as the outline. The wording here is not sent as it is.</span>
         <textarea className="field font-normal" rows={4} value={body} maxLength={4096} onChange={(e) => { setBody(e.target.value); }} />
         <span className="text-xs font-normal text-muted">{'{{name}}'} fills the contact’s name. Replies will follow this template once per-campaign templates are switched on.</span>
       </label>

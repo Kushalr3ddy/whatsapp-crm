@@ -158,3 +158,4 @@ export {
   type KeyVersionCounts, type ReencryptResult, type VerifyResult, type SqlExecutor
 } from './key-rotation.js';
 export { claimCampaignReply, campaignTemplateFor } from './campaign-reply.js';
+export { writeOpenings, campaignWritesOpenings } from './ai-opening.js';

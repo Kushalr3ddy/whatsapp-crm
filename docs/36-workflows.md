@@ -188,3 +188,7 @@ flowchart TD
   N --> O[API and gateway see the changed file on their next model call: no restart]
   O --> P([The assistant, templates and campaign wording now use it])
 ```
+
+## AI campaigns: who writes the first message
+
+A campaign made from an AI template (AI page → "Message a group") does not send its typed text. The gateway asks the AI to write one opening per person from the template's instructions, the person's name and stored columns, and the typed text as an outline. Only people with an opening are queued, and the AI's text is what goes out; the rest of the pipeline (pacing, caps, do-not-contact, identical-body check) is unchanged. If the AI is off, or no model is set, those campaigns wait. After three failed writes a person is skipped as `ai_opening_failed`. Code: `packages/core/src/ai-opening.ts`, `dispatchCampaign`, `apps/gateway/src/work.ts`.
