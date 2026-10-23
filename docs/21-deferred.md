@@ -115,6 +115,7 @@ is not re-proposed.
 | D-99 | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
 | D-100 | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
 | D-101 | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| D-102 | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2994,3 +2995,17 @@ Remaining work pinned as **high priority**.
 **Done means (acceptance):** on the Linode with a spare number, a campaign opening and an AI reply to a contact who has replied are read normally on the other phone; the log shows **no `recv retry request` within 5 s of a send and no `No session record` for the contact's LID**; and an integration test covers "a reply that arrives under a LID address finds the session made under the phone-number address".
 
 **Process:** per docs/39 this is a bug: issue, registry entry R-013 and a failing test first, then the fix PR. Not yet filed.
+
+## D-102 · Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox — 🔺 **PRIORITY** (Kushal, 2026-10-23; same root as D-101, follow-up to D-94)
+
+**Symptom:** messages the owner sends from their phone or from WhatsApp Web to a contact often do not appear in the CRM thread. Some do (16 phone-sent messages are stored in the dev database from 08:09 to 09:16 UTC on 2026-10-23), many do not.
+
+**What D-94 did and did not do:** D-94 (#144) stores a message typed on the phone as an outbound message (`sent_by = 'phone'`) **once the gateway receives and decrypts it**. That part works for the messages that arrive readable. It cannot help a message the gateway never manages to decrypt, and the log shows exactly that.
+
+**Evidence (docs/45):** in the first gateway run of the day 251 decrypt failures are addressed from the owner's **own account's LID address** (`78847127097458@lid`): `SessionError: No matching sessions found for message`. Those are the owner's other devices (the phone and WhatsApp Web, each its own device on the account) writing to the linked number; our companion has no session under their LID address, the same phone-number-vs-LID session mismatch as D-101, here between the account's own devices. A message that fails to decrypt is never stored, so it never reaches the D-94 code.
+
+**Fix:** the same as D-101 (an address-aware session store, or Baileys 7 with LID mapping and session migration), checked for the owner's own devices as well as contacts. Then re-test D-94's end-to-end case on the Linode: type a message on the phone and on WhatsApp Web, see both in the thread within seconds.
+
+**Also (D-94 steps 2 and 3, still open):** older history from before linking is not imported; a message typed on a device that could not be decrypted is simply missing and cannot be recovered afterwards.
+
+**Done means:** with a linked spare number on the Linode, ten messages typed alternately on the phone and on WhatsApp Web all appear once, in order, as sent by "phone", with zero `No matching sessions` for the account's own LID in the gateway log; an integration test covers a `fromMe` message arriving under a LID address.
