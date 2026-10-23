@@ -93,7 +93,7 @@ is not re-proposed.
 | D-73 | "Message these people" right after an import | ◐ partly built (buttons) · ⏸ parked |
 | D-74 | Add-number form: country-code dropdown and a numbers-only phone field | ✅ done |
 | D-75 | Number assignment: who each WhatsApp number belongs to | 📌 pinned |
-| D-76 | Notifications tab, number requests and approvals | 📌 pinned |
+| D-76 | Notifications tab, number requests and approvals (to be built on the D-114 approval system) | 📌 pinned |
 | D-77 | Admin controls: user scopes and number limits | 📌 pinned |
 | D-78 | Email: invitations to join an organisation, via SMTP or an email API ( | 📌 pinned |
 | D-79 | Contacts: columns chosen by an admin for the whole team | 📌 pinned |
@@ -127,6 +127,7 @@ is not re-proposed.
 | D-111 | Import: de-duplicate in the browser first (progress bar, drop exact copies, ask which to keep when copies differ); server still enforces | 📌 pinned (Kushal, 2026-10-23) |
 | D-112 | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
 | D-113 | Linked numbers: rename "Advisory mode" to a plain Anti-ban protection On / Off switch (words only; maybe auto-expire) | 📌 pinned (Kushal, 2026-10-23) |
+| D-114 | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3196,3 +3197,28 @@ Inbound messages keep their current look.
 **Why it matters:** this is the switch that was turned on to get past the 48-hour false quarantine (D-82) on a test number. People reach for it because it is named like a mild setting, not a ban-risk one. Also decide whether Off should **expire by itself** (for example after 24 hours, with a reminder), so it cannot be left on by accident.
 
 **Tests:** update the specs and tests that read "Advisory mode" (`team-and-numbers`, the integration tests on enforcement and the runbook strings); add one for the new banner text and the "protection off" badge on the list.
+
+## D-114 · An approval system: requests from agents to admins, with status pages and notifications — 📌 pinned (Kushal, 2026-10-23)
+
+**Is it pinned already? Only in part.** D-76 covers one request type (a request for a **WhatsApp number**) and a Notifications tab, marked "not now". D-81 has an AI "approval mode" (the assistant drafts, a person approves). D-77 is admin controls (scopes, number limits). `docs/17-roadmap.md` lists "approval workflow" for campaigns as a later feature. **Nothing pins a general approval system** across everything an agent cannot do alone, nor a page where a requester sees the status of their request, nor notifications for the whole flow. This pin is that system; D-76 becomes its first use and should be built on it, not separately.
+
+**Who:** *agents* (regular, non-admin users, and API keys with limited scopes) ask; *admins* decide. Today an agent who hits "only an admin can do this" just gets a refusal and has to ask in person.
+
+**What can be requested (each one a "kind"; start with the first three):**
+1. **A WhatsApp number** (D-76): "give me access to number X" or "any".
+2. **Start or schedule a campaign** (an agent builds it, an admin releases it; with the audience size and the first message or AI template shown to the approver).
+3. **Lift a do-not-contact block for one message** (today only an admin can, per message with a reason): the agent asks with a reason, the admin sees the chat and decides.
+4. Later: import a large file, delete contacts or a tag in bulk, change AI settings, turn anti-ban protection off for a number (D-113), export contacts, invite or approve a new user (the signup approval queue in docs/32).
+
+**The flow:** a request is created by the agent (what, why, a note) -> status **pending** -> an admin sees it in an **Approvals** inbox with the full detail and **Approve / Decline** (a reason is required on decline, optional on approve) -> status **approved** or **declined**; the requester can **cancel** while pending; a pending request **expires** (say after 7 days). On approve the action is carried out by the same code path as if an admin had done it (so every existing check still applies; approving never bypasses the anti-ban rules, which nobody can lift, and nobody can approve their own request). Every step is in the audit log.
+
+**Status pages:**
+- **My requests** (every user): a list with kind, what, when, status (pending / approved / declined / cancelled / expired), who decided and their reason; click for detail; cancel while pending.
+- **Approvals** (admins): pending first, with counts, filters by kind and requester, history below; bulk Approve for the same kind with a confirmation.
+- A **status chip** where the request came from (for example the campaign page says "Waiting for admin approval, requested 2 h ago").
+
+**Notifications for the whole flow (D-76's tab, extended):** a bell with an unread count in the nav and a Notifications page: the admin gets "Asha requested number X" / "Campaign 'Welding drive' is waiting for approval"; the requester gets "Approved by Kushal" / "Declined: <reason>" / "Your request expired". In-app first (a per-user `notification` table written in the same transaction as the change; polling refresh like `inbox/auto-refresh.tsx`, no push); then optional **email** once the email driver exists (D-96) and optional WhatsApp or other channels (D-43). Notifications never contain message text or phone numbers, only names and counts.
+
+**Design notes so it is not re-derived:** one generic `approval_request` table (id, org, kind, payload JSON, requested_by, note, status, decided_by, decided_at, decision_reason, expires_at) instead of one table per kind (D-76's `sender_access_request` becomes `kind = 'number'`); a registry mapping each kind to its `apply()` function and the role allowed to approve; the approver's session, not the requester's, performs the action; idempotent (approving twice does nothing); an org setting per kind says "needs approval" or "agents may do this alone" (so a small team can leave it off). Scopes (D-77) decide who may *ask*; roles decide who may *approve*.
+
+**Tests:** an integration test per kind (request, approve, decline, cancel, expire, cannot self-approve, audit rows, the underlying action runs only once and only on approve) and the do-not-contact and anti-ban rules still holding after approval; browser tests of "My requests", the Approvals inbox and the bell.
