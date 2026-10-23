@@ -374,7 +374,8 @@ export class BaileysChannelProvider implements ChannelProvider {
       logger: (onFail !== undefined || onRetry !== undefined
         ? tapDecryptFailures(
           this.#options.logger,
-          (info) => { onFail?.(senderId, new Date(), { own: isOwn(info.jid) }); },
+          // Own device: the frame says it is from this account (`fromMe`), or its author, or its chat, is this account's own address.
+          (info) => { onFail?.(senderId, new Date(), { own: info.fromMe || isOwn(info.author) || isOwn(info.jid) }); },
           onRetry === undefined ? undefined : (messageId) => { onRetry(senderId, messageId, new Date()); }
         )
         : this.#options.logger) as never,

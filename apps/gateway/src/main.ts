@@ -101,9 +101,13 @@ async function main(): Promise<void> {
       },
       // A recipient's phone could not read a message we sent: note it on the message so the thread says so (their phone shows "Waiting for this message").
       onRetryRequest: (senderId, messageId, at) => {
-        logger.warn({ senderId, messageId }, 'the recipient\'s phone could not decrypt a message and asked for it again');
         orgForSender(db, senderId)
           .then((org) => (org === null ? undefined : recordRetryRequest(inOrg(org), senderId, messageId, at)))
+          .then((found) => {
+            // Only a message this CRM sent is worth a warning. A retry request for one the owner typed on their phone is not ours to answer.
+            if (found === true) logger.warn({ senderId, messageId }, 'the recipient\'s phone could not decrypt a message and asked for it again');
+            else logger.debug({ senderId, messageId }, 'a retry request for a message this CRM did not send');
+          })
           .catch((err: unknown) => {
             logger.error({ err, senderId, messageId }, 'could not record a retry request');
           });

@@ -35,10 +35,27 @@ export function retryRequestMessageId(obj: unknown, msg?: string): string | null
   return typeof id === 'string' && id !== '' ? id : null;
 }
 
+/** Who wrote an undecryptable frame (`author` in Baileys' log context), or null when the log call does not say. */
+export function failedFrameAuthor(obj: unknown): string | null {
+  if (obj === null || typeof obj !== 'object') return null;
+  const author = (obj as { author?: unknown }).author;
+  return typeof author === 'string' ? author : null;
+}
+
+/** True when the frame is marked as sent from this account itself (`key.fromMe`): the owner's own phone or WhatsApp Web. */
+export function failedFrameIsFromMe(obj: unknown): boolean {
+  if (obj === null || typeof obj !== 'object') return false;
+  return (obj as { key?: { fromMe?: unknown } }).key?.fromMe === true;
+}
+
 /** What the tap tells its callbacks about one undecryptable frame. */
 export interface DecryptFailureInfo {
-  /** The address the frame came from, when the log call named one. */
+  /** The chat the frame belongs to, when the log call named one (for a message the owner typed, this is the contact's address). */
   readonly jid: string | null;
+  /** Who wrote it, when the log call named one. */
+  readonly author: string | null;
+  /** The frame is marked as sent by this account's own other device. */
+  readonly fromMe: boolean;
 }
 
 /**
@@ -52,7 +69,7 @@ export function tapDecryptFailures(
   /** Fires the tap for a matching call, swallowing any error the callback raises. */
   const check = (obj: unknown, msg?: string): void => {
     if (!isDecryptFailure(obj, msg)) return;
-    try { onFailure({ jid: failedFrameJid(obj) }); } catch { /* the tap is best-effort */ }
+    try { onFailure({ jid: failedFrameJid(obj), author: failedFrameAuthor(obj), fromMe: failedFrameIsFromMe(obj) }); } catch { /* the tap is best-effort */ }
   };
   const retry = (obj: unknown, msg?: string): void => {
     if (onRetryRequest === undefined) return;
