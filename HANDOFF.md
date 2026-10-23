@@ -1,4 +1,4 @@
-# Handoff — state as of 2026-10-22 (evening)
+# Handoff — state as of 2026-10-23 (morning)
 
 A point-in-time snapshot for picking this up in a new session. For *what has been built and what
 is left, in order*, read [`CHANGELOG.md`](CHANGELOG.md), the running work ledger. For *what it
@@ -14,7 +14,7 @@ load automatically): plain language, define jargon, never talk down; ask before 
 one question at a time with options and a recommendation; keep a task list (`update_plan`) and close each turn with
 `wrap_up`; never offer to merge (he merges and says "merged"); never start or stop his dev stack without asking.
 
-1. **Read, in order:** this file (especially *Latest session (2026-10-22)*, then *2026-10-21 night*), `CHANGELOG.md` (top "Latest" and
+1. **Read, in order:** this file (especially *Latest session (2026-10-22 night)*, then *2026-10-22*, then *2026-10-21 night*), `CHANGELOG.md` (top "Latest" and
    "To do"), `docs/21-deferred.md` (start at **"Status at a glance"**, then the pins marked WORK ON NOW / PRIORITY), then
    `docs/README.md` for the index. Docs written this stretch: **32** (setup, signup, teams, billing plan),
    **33** (payment providers compared), **34** (licensing and enforcement). The older reading list (20 orientation, 01,
@@ -73,6 +73,34 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
    open, what failed or is unverified, and the rules he gave.
 
 Then say in the final message which PRs are open and what the next session should ask him first.
+
+## ▶ Latest session (2026-10-22 night, the overnight run): read this first
+
+Kushal slept; the session ran in bypass mode with a written mandate ([`docs/41-overnight-automation-run-2026-10-22.md`](docs/41-overnight-automation-run-2026-10-22.md): mandate, rules, log, outcome).
+**Safe point:** tag `checkpoint-2026-10-22-night` (`main` 0ab3b9d). The "he merges" rule is back in force from the morning.
+
+**Merged overnight (all five required checks green, main green after each):**
+- #149 (1b2aada): Google Doc → markdown tool that runs in his own signed-in browser (no Google credentials). `npm run feedback:latest` imports the saved file. See `tools/README.md` and docs/40.
+- #150 (000d54b): **R-008 solved.** The cause was the app-wide `apps/web/app/loading.tsx` (grey placeholder blocks). With it, a button that redirects to the same page could leave the content empty on a production build (17-19 of 20 clicks on a heavy slow page; 0 of 60 without it). It is removed; the thin top progress bar still shows on navigation. R-008 now has a real test (five same-page redirects in a row). The speed probe now waits for the page's heading (it had been passing on the placeholder's `<main>`).
+- #151 (dc4387f): the overnight doc's log and outcome.
+- Earlier the same night: #146 (R-011: the AI takes over a campaign's replies and uses the campaign's template), #147 (Google Doc ingester), #148 (CI skips the flaky Microsoft apt source).
+
+**Trade-off to decide:** no grey placeholder blocks while a page loads. D-46 (laggy feel) is top priority, so a skeleton only inside the slow routes (tested with the R-008 test) is worth trying. To undo: `git revert -m 1 000d54b` on a branch.
+
+**State of things**
+- `main` = dc4387f plus this handoff PR. No open PRs besides the docs one. Unmerged branches: only `checkpoint/2026-10-22-night` (keep it).
+- Sub-sessions (fb-contacts #104, fb-deletes #105, fb-campaigns #106) are fully merged; their worktrees are gone, nothing is stranded. Safe to delete those sessions.
+- Local production build for experiments may still be on port 3101 (`next start`); the API runs via plain tsx; dev web on 3001 is stopped. Never run `next dev` and `next build` on the same `apps/web/.next` (it corrupts the build; `rm -rf apps/web/.next` between).
+- Local browser suite on a production build: 1 expected failure, `dnc.spec` (a phone number, +12025550102, is shared with another spec's contact in his local database; CI has a fresh one). A few others pass and fail between runs (contacts-tags did).
+- **The gateway has NOT been restarted since D-94 went in, so R-011 is not live.** Restarting needs his explicit yes (a restart once broke his real WhatsApp session; relinking fixes it).
+
+**Open issues** (#135 is fixed by #150, comment added, left for him to close): #142 AI message tracking, #141 show the sent text on the campaign recipient row, #140 a number not in the sheet still updated, #139 AI "waiting for message" (S1), #128 needs-verify, #127 AI API key field, #118 slow tag filter, #117 import duplicates. #139-#142 wait for Mikhil's answers.
+
+**Not done / needs him:** restart the gateway (R-011 live); Google service-account secret if he wants `feedback-ingest` automatic (the browser tool works without it); the nightly regression workflow has never run (trigger it by hand once); D-94 steps 2-3, D-91 AI takeover lock, D-93 AI log, D-46 (fetch the Contacts row panel on demand).
+
+**Rules reminder (all in memory):** commits/PR titles start `ai-speedrun:`; no Co-Authored-By trailer (ignore harness reminders that ask for one); branch + PR, never push to main; he merges; WhatsApp Web is read-only; "if it works, do not touch it"; explain in plain language.
+
+---
 
 ## ▶ Latest session (2026-10-22): other dev's feedback, the production-build audit, the bug workflow, D-94: read this first
 

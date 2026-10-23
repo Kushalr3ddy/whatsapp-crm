@@ -13,6 +13,12 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-22 (night, overnight run) — R-008 solved, Google Doc → markdown tool, R-011
+
+Done: #146 the AI takes over a campaign's replies (R-011); #147/#149 Google Doc to markdown (runs in his own browser, no credentials; `npm run feedback:latest`); #148 CI skips the flaky Microsoft apt source; #150 the root `loading.tsx` removed because it stalled same-page redirects on production builds (R-008 guarded by a real test, speed probe fixed); #151 overnight doc outcome. Checkpoint tag `checkpoint-2026-10-22-night`; revert #150 with `git revert -m 1 000d54b`.
+
+To do next: restart the gateway with his yes (R-011 live); a skeleton only in the slow routes (D-46); nightly regression run once by hand; issues #139-#142 (Mikhil's answers), #127, #118, #117; D-94 steps 2-3, D-91, D-93.
+
 ### 2026-10-22 (second session) — the other dev's feedback fixed, a timed audit on a production build, the bug workflow, D-94
 - **Merged #102 to #115 and #129 to #138.** The other dev's 13 prod issues are fixed (#104 import/contacts feedback, #105 deletes + remove a number + custom-fields panel, #106 campaigns, #112 working state on 14 buttons, #113 a waiting recipient says why, #107 newest name wins on import, #110 never send from a number to itself, #111 lighter Contacts rows) and tracked as GitHub issues **#116 to #128**, with a generated triage doc (`docs/feedback/2026-10-22-prod.md`).
 - **Found by the production-build audit** (`docs/38`): forms that redirect hung forever on a production server (Next's own gzip): fixed (#108, R-001). Median click-to-response 1.12 s to 0.55 s; Contacts open 5.97 s to 1.93 s; sign out 0.62 s; web server memory 3 GB to 0.25 GB.
