@@ -390,6 +390,17 @@ export class BaileysChannelProvider implements ChannelProvider {
     socket.ev.on('messages.update', (updates) => {
       for (const u of updates) this.#emitStatus(senderId, u);
     });
+    // Baileys 7 learns which phone number a privacy (LID) address belongs to whenever WhatsApp shows them together, keeps the pair in
+    // the credential store and moves the encryption session across (this is what stops "Waiting for this message", docs/45). We
+    // also keep the pair as one of the contact's identities.
+    (socket.ev as unknown as { on: (e: string, h: (p: unknown) => void) => void })
+      .on('lid-mapping.update', (p) => {
+        const pair = p as { lid?: string; pn?: string };
+        const phone = phoneFromJid(pair.pn);
+        if (!this.#shuttingDown && typeof pair.lid === 'string' && pair.lid.endsWith('@lid') && phone !== null) {
+          this.#links.push({ senderId, providerAddress: pair.lid, phoneE164: phone });
+        }
+      });
     // A person sharing their number reveals which phone a privacy address is. Baileys 6.x emits it
     // as `{ lid, jid }`; the shape is read defensively because it is not part of the typed events.
     (socket.ev as unknown as { on: (e: string, h: (p: unknown) => void) => void })
@@ -519,7 +530,11 @@ export class BaileysChannelProvider implements ChannelProvider {
   #emitInbound(senderId: string, raw: unknown): void {
     if (this.#shuttingDown) return;
     const m = raw as {
-      key?: { id?: string; remoteJid?: string; fromMe?: boolean; senderPn?: string; participantPn?: string };
+      key?: {
+        id?: string; remoteJid?: string; fromMe?: boolean; senderPn?: string; participantPn?: string;
+        /** Baileys 7: the same person's other address (the phone number when `remoteJid` is a LID, and the other way round). */
+        remoteJidAlt?: string; participantAlt?: string;
+      };
       message?: Record<string, unknown> | null;
       messageTimestamp?: number | Long;
     };
@@ -545,8 +560,10 @@ export class BaileysChannelProvider implements ChannelProvider {
       // A "@lid" address is WhatsApp's privacy id and carries no phone number. Resolving it is
       // the caller's job via contact_identity — it is simply another identity for one person.
       fromPhoneE164: phoneFromJid(jid),
-      // For a privacy address, WhatsApp sometimes also says which number it is (`senderPn`).
-      linkedPhoneE164: jid.endsWith('@lid') ? phoneFromJid(m.key.senderPn ?? m.key.participantPn) : null,
+      // For a privacy address, WhatsApp also says which number it is: `remoteJidAlt` in Baileys 7 (`senderPn` in 6.x).
+      linkedPhoneE164: jid.endsWith('@lid')
+        ? phoneFromJid(m.key.remoteJidAlt) ?? phoneFromJid(m.key.participantAlt) ?? phoneFromJid(m.key.senderPn ?? m.key.participantPn)
+        : null,
       fromProviderAddress: jid,
       body,
       contentType,
