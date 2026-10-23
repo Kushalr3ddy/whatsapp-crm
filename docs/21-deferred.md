@@ -118,6 +118,7 @@ is not re-proposed.
 | D-102 | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-103 | The AI tab is confusing: a guided walkthrough of what to set up, in order | 📌 pinned (Kushal, 2026-10-23) |
 | D-104 | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
+| D-105 | Contacts "Dates and order": the Date: Added / Last imported choice is unclear (rename, hint, show it as a sentence) | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3038,3 +3039,21 @@ Each step shows done or not done (a tick), links to the right screen, and says i
 **Check the other switch too:** the assistant's own enabled flag (`ai_setting.enabled`) already pauses replies without touching the model; the pin should make sure the two are not confused on the page and that "pause" uses one of them consistently.
 
 **Test:** an integration test that pausing leaves `LLM_MODEL` and the key in place and stops `autoReply` and `writeOpenings`; a test that remove still clears them; a browser test of both buttons and their labels.
+
+## D-105 · Contacts "Dates and order": the "Date: Added / Last imported" choice is unclear — 📌 pinned (Kushal, 2026-10-23)
+
+**What it is today (`apps/web/app/contacts/page.tsx`, "Dates and order"):** the **Date** dropdown does not filter anything by itself. It chooses **which date** the **From** and **To** boxes (and the "Order" choice beside them) are about:
+- **Added** = the day the person first entered the CRM (their `created_at`, whatever the route: import, a message from them, by hand).
+- **Last imported** = the day of the most recent import that created or updated them (`last_imported_at`; shown on the row as "Last imported"). A person can be added in March and re-imported in October, so the two dates differ.
+
+So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the CRM that week", and "Date: Last imported" means "people touched by an import that week".
+
+**Why it is confusing:** a lone dropdown labelled "Date" with two bare words, no hint what it controls, placed before From and To, so it reads like a separate filter. The row label "Last imported" is also the first place the word appears.
+
+**Fix (small, wording and layout):**
+- Rename the group **"Filter by date"** and the dropdown options **"Date the person was added"** and **"Date of their last import"**, and put a one-line hint under it: "Pick which date the From and To boxes use."
+- Show the choice as the sentence it makes: "People **added** between [From] and [To], newest first", updating as the boxes change; keep the existing "Showing people added …" line.
+- Make From and To visibly belong to the dropdown (one row, the dropdown first, a short label such as "between").
+- Check "Order" wording the same way ("Newest first" is clearer than the raw sort names).
+
+**Test:** the existing browser test `contacts-dates.spec.ts` keeps working (labels change, `aria-label`s stay); add an assertion for the hint text.
