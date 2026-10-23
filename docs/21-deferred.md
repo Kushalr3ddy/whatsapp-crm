@@ -114,6 +114,7 @@ is not re-proposed.
 | D-98 | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
 | D-99 | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
 | D-100 | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
+| D-101 | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -2975,3 +2976,21 @@ Remaining work pinned as **high priority**.
 **Where:** the campaign list and detail API responses need `aiTemplateId` and the template name (`apps/api/src/routes/campaigns.ts`, `packages/core/src/campaigns.ts`), plus the opening counts per campaign; the web side is two components and the type in `apps/web/lib/crm.ts`.
 
 **Test:** an integration test that the list and detail responses carry the template and the counts; a browser test that an AI campaign shows the badge and a plain one does not.
+
+## D-101 · "Waiting for this message" on the recipient's phone, even when the AI sends it — 🔺 **PRIORITY** (Kushal, 2026-10-23, raised again after it kept happening)
+
+**Symptom:** the contact's phone shows "Waiting for this message" instead of the text. Seen from the campaign's first message onward, now also on the AI's reply. Reported by the other dev on 2026-10-22 and again 2026-10-23.
+
+**What was fixed before, and why it did not fix this:** #96 (answer a recipient's resend request, so a placeholder can clear), #110 (never message the sending number itself), #103 (a gateway crash left resend requests unanswered), relinking after a restart (D-82). Each removed one cause. None touched the cause below, so the symptom came back. Saying "traced" and "relink fixes it" was not a fix.
+
+**Root cause (docs/45, high confidence, not yet reproduced in isolation):** Baileys 6.7.24 stores each Signal session under `user.device` with no link between a person's phone-number address (`919964122631`) and their LID address (`110762928373833@lid`), and WhatsApp now addresses the same person both ways. We send under the phone-number address; the recipient's device answers and retries under the LID address; our store has no session for it (`No session record`, then `No matching sessions found`), and the recipient cannot decrypt ours (retry request 0.5 s after the AI's message, 08:37:57). A retry and placeholder-resend storm follows, which churns sessions further.
+
+**Options (smallest first; ask Kushal which to start, or do A then C):**
+- **A. Send to the LID address when we know it.** Every inbound message tells us the contact's LID (`remoteJid`, with `senderPn`). Store it on the contact's identity and address replies, the AI's messages and resends to the LID JID, so both sides use the same session. Small, testable, no library upgrade; needs a check that 6.7.24 sends to `@lid` JIDs cleanly.
+- **B. Upgrade Baileys to the 7.x line,** which has LID mapping and session migration. The proper fix, with the usual risk of a library upgrade (API changes, re-pairing); needs its own plan and a spare number on the Linode for a day or two.
+- **C. Make it visible and safe (D-82):** when a decrypt-failure burst or a recipient retry request is recorded, show it on the Linked numbers page and the thread, hold AI and campaign sends for that number, and offer a one-click relink. Stops the AI sending into a broken session.
+- **D. Also (D-82):** flush the auth state on SIGTERM, order key writes, run the gateway without `tsx watch` by default in `dev:all`, and make the health scorer ignore our own-account decrypt failures.
+
+**Done means (acceptance):** on the Linode with a spare number, a campaign opening and an AI reply to a contact who has replied are read normally on the other phone; the log shows **no `recv retry request` within 5 s of a send and no `No session record` for the contact's LID**; and an integration test covers "a reply that arrives under a LID address finds the session made under the phone-number address".
+
+**Process:** per docs/39 this is a bug: issue, registry entry R-013 and a failing test first, then the fix PR. Not yet filed.
