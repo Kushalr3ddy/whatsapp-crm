@@ -18,9 +18,15 @@ function guess(headers: string[], patterns: RegExp): string | null {
 /** Where an unfinished import is kept, so switching to another tab and back does not lose it. */
 const DRAFT_KEY = 'crm.import.draft';
 
+/** The most extra columns one contact keeps; the API enforces the same ceiling. */
+const MAX_KEPT = 200;
+
+/** Which extra columns are stored on each contact: every one of them (the default), or only the ones ticked. */
+type KeepMode = 'all' | 'choose';
+
 /** What is remembered of an import in progress. The file itself lives on the server, referred to by `upload.id`. */
 interface Draft {
-  upload: ImportUpload; phone: string; phones?: string[]; name: string; first?: string; last?: string; skipPersonal?: boolean; email: string; tagName: string; keep?: string[]; fileName?: string;
+  upload: ImportUpload; phone: string; phones?: string[]; name: string; first?: string; last?: string; email: string; tagName: string; keep?: string[]; keepMode?: KeepMode; fileName?: string;
   summary: { result: ImportSummary; committed: boolean } | null;
   /** Set while a commit is running, cleared when its answer arrives. */
   committing: boolean;
@@ -102,13 +108,12 @@ export function ImportPanel() {
   const [name, setName] = useState<string>('');
   const [first, setFirst] = useState<string>('');
   const [last, setLast] = useState<string>('');
-  // While on, columns that look like personal data cannot be kept on a contact.
-  const [skipPersonal, setSkipPersonal] = useState(true);
   const [email, setEmail] = useState<string>('');
   const [summary, setSummary] = useState<{ result: ImportSummary; committed: boolean } | null>(null);
   // Optional: tag everyone this file creates or updates (the tag is created if new).
   const [tagName, setTagName] = useState('');
-  // Extra columns to keep on each contact (as fields). None are ticked until the person chooses.
+  // Extra columns to keep on each contact (as fields). By default every column is stored; 'choose' lets the person tick which.
+  const [keepMode, setKeepMode] = useState<KeepMode>('all');
   const [keep, setKeep] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Set when Import is pressed before Preview; shown right under the buttons, where the person is looking.
@@ -131,7 +136,7 @@ export function ImportPanel() {
     // A finished import is done: coming back to this page starts clean, not on the old result.
     if (draft.summary?.committed === true) { saveDraft(null); return; }
     setUpload(draft.upload); setPhones(draft.phones ?? (draft.phone === '' ? [] : [draft.phone])); setName(draft.name);
-    setFirst(draft.first ?? ''); setLast(draft.last ?? ''); setSkipPersonal(draft.skipPersonal ?? true); setEmail(draft.email);
+    setFirst(draft.first ?? ''); setLast(draft.last ?? ''); setKeepMode(draft.keepMode ?? 'all'); setEmail(draft.email);
     setTagName(draft.tagName); setKeep(draft.keep ?? []); setFileName(draft.fileName ?? ''); setSummary(draft.summary);
     if (draft.committing) setResumed(true);
     // The rows-to-fix box is not remembered, it is asked for again.
@@ -144,8 +149,8 @@ export function ImportPanel() {
   // Remember each change. Runs only once there is an upload to remember.
   useEffect(() => {
     if (upload === null) return;
-    saveDraft({ upload, phone, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary, committing: false });
-  }, [upload, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary]);
+    saveDraft({ upload, phone, phones, name, first, last, keepMode, email, tagName, keep, fileName, summary, committing: false });
+  }, [upload, phones, name, first, last, keepMode, email, tagName, keep, fileName, summary]);
 
   // A hard reload or closing the tab mid-run would lose the answer: ask first.
   useEffect(() => {
@@ -195,8 +200,10 @@ export function ImportPanel() {
     });
   }
 
-  /** The kept columns that will really be saved: personal-looking ones are dropped while the protection is on. */
-  const keepStored = keep.filter((h) => !(skipPersonal && isPersonalColumn(h)));
+  /** The sheet's other columns: everything that is not the phone, name or email mapping. */
+  const otherColumns = upload === null ? [] : upload.headers.filter((h) => !phones.includes(h) && h !== name && h !== first && h !== last && h !== email);
+  /** The columns that will really be saved on each contact. */
+  const keepStored = (keepMode === 'all' ? otherColumns : keep).slice(0, MAX_KEPT);
 
   /** Previews (dry run) or commits the mapping. */
   function go(dryRun: boolean) {
@@ -205,7 +212,7 @@ export function ImportPanel() {
     setNeedPreview(false);
     setResumed(false);
     // Note a commit as running, so coming back mid-run can say so.
-    if (!dryRun) saveDraft({ upload, phone, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary, committing: true });
+    if (!dryRun) saveDraft({ upload, phone, phones, name, first, last, keepMode, email, tagName, keep, fileName, summary, committing: true });
     startTransition(async () => {
       const result = await runSheet(
         upload.id,
@@ -225,7 +232,7 @@ export function ImportPanel() {
       }
       setSummary({ result: result.summary, committed: !dryRun });
       // Written directly as well: if the person left the page, this answer still lands in the draft.
-      saveDraft({ upload, phone, phones, name, first, last, skipPersonal, email, tagName, keep, fileName, summary: { result: result.summary, committed: !dryRun }, committing: false });
+      saveDraft({ upload, phone, phones, name, first, last, keepMode, email, tagName, keep, fileName, summary: { result: result.summary, committed: !dryRun }, committing: false });
       // Anything that failed or lost a number is listed so it can be fixed in the sheet.
       const found = (result.summary.errors > 0 || (result.summary.warnings ?? 0) > 0)
         ? await importProblems(upload.id) : null;
@@ -366,18 +373,30 @@ export function ImportPanel() {
 
           <hr className="border-border" />
           <section className="py-4" aria-label="Columns to store">
-            <h2 className="text-lg font-semibold">Select the columns to be stored</h2>
-            <p className="mb-2 text-sm text-muted">
-              Tick what you want saved on each person. Columns you leave unticked are not stored on the contact.
-            </p>
-            <KeepColumns
-              headers={upload.headers.filter((h) => !phones.includes(h) && h !== name && h !== first && h !== last && h !== email)}
-              keep={keep} onChange={setKeep} skipPersonal={skipPersonal}
-            />
-            <label className="mt-3 flex items-center gap-2 text-sm text-muted">
-              <input type="checkbox" checked={skipPersonal} onChange={(e) => { setSkipPersonal(e.target.checked); }} />
-              Never store columns marked personal (you can untick this)
-            </label>
+            <h2 className="text-lg font-semibold">Columns to be stored</h2>
+            <div className="mb-2 flex gap-4 text-sm" role="radiogroup" aria-label="Which columns to store">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="keep-mode" checked={keepMode === 'all'} onChange={() => { setKeepMode('all'); }} />
+                All columns (default)
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="keep-mode" checked={keepMode === 'choose'} onChange={() => { setKeepMode('choose'); }} />
+                Choose columns
+              </label>
+            </div>
+            {keepMode === 'all' ? (
+              <p className="text-sm text-muted">
+                Every other column in the sheet ({otherColumns.length}) is saved on each person, personal ones included. Pick
+                &ldquo;Choose columns&rdquo; to leave some out.
+              </p>
+            ) : (
+              <>
+                <p className="mb-2 text-sm text-muted">
+                  Tick what you want saved on each person. Columns you leave unticked are not stored on the contact.
+                </p>
+                <KeepColumns headers={otherColumns} keep={keep} onChange={setKeep} />
+              </>
+            )}
           </section>
 
           <hr className="border-border" />
@@ -491,32 +510,27 @@ export function ImportPanel() {
 }
 
 /**
- * Tick boxes for the other columns in the sheet. A ticked column becomes a field on every contact in the file,
- * shown on the contact's details and searchable; nothing is ticked until the person chooses, so personal data
- * nobody needs is not copied.
+ * Tick boxes for the other columns in the sheet, shown in 'Choose columns' mode. A ticked column becomes a field on every
+ * contact in the file, shown on the contact's details and searchable. Personal-looking columns carry a label but can be ticked.
  */
 function KeepColumns(
-  { headers, keep, onChange, skipPersonal }:
-  { headers: string[]; keep: string[]; onChange: (next: string[]) => void; skipPersonal: boolean }
+  { headers, keep, onChange }:
+  { headers: string[]; keep: string[]; onChange: (next: string[]) => void }
 ) {
   if (headers.length === 0) return null;
-  // Personal-looking columns cannot be ticked while the protection is on.
-  const locked = (h: string): boolean => skipPersonal && isPersonalColumn(h);
-  const tickable = headers.filter((h) => !locked(h));
-  const ticked = keep.filter((h) => !locked(h));
-  const toggle = (h: string) => { onChange(keep.includes(h) ? keep.filter((k) => k !== h) : [...keep, h].slice(0, 40)); };
+  const toggle = (h: string) => { onChange(keep.includes(h) ? keep.filter((k) => k !== h) : [...keep, h].slice(0, MAX_KEPT)); };
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
-        <button type="button" className="underline underline-offset-2" onClick={() => { onChange(tickable.slice(0, 40)); }}>Tick all</button>
+        <button type="button" className="underline underline-offset-2" onClick={() => { onChange(headers.slice(0, MAX_KEPT)); }}>Tick all</button>
         <button type="button" className="underline underline-offset-2" onClick={() => { onChange([]); }}>Clear</button>
-        <span className="text-muted">{ticked.length} of {headers.length} ticked, up to 40. Scroll for more.</span>
+        <span className="text-muted">{keep.length} of {headers.length} ticked. Scroll for more.</span>
       </div>
       {/* A box of fixed height with its own scrollbar, so a sheet with 80 columns does not push the page down. */}
       <div className="grid max-h-40 grid-cols-1 content-start gap-x-4 gap-y-1.5 overflow-y-auto rounded-md border border-border px-3 py-2 text-[15px] sm:grid-cols-2 lg:grid-cols-3">
         {headers.map((h) => (
-          <label key={h} className={`flex items-center gap-2 ${locked(h) ? 'text-muted' : ''}`}>
-            <input type="checkbox" checked={!locked(h) && keep.includes(h)} disabled={locked(h)} onChange={() => { toggle(h); }} />
+          <label key={h} className="flex items-center gap-2">
+            <input type="checkbox" checked={keep.includes(h)} onChange={() => { toggle(h); }} />
             <span className="truncate" title={h}>{h}</span>
             {isPersonalColumn(h) && <span className="shrink-0 rounded bg-warning-soft px-1.5 py-0.5 text-xs text-warning">personal</span>}
           </label>

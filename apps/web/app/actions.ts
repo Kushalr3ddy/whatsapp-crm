@@ -217,7 +217,7 @@ export async function runSheet(
     unmapped: 'keep',
     // Columns the person ticked to keep on each contact. Never the three already used above.
     fields: keep.filter((h) => !cols.phones.includes(h) && h !== cols.name && h !== cols.nameParts?.first && h !== cols.nameParts?.last && h !== cols.email)
-      .slice(0, 40).map((from) => ({ from }))
+      .slice(0, 200).map((from) => ({ from }))
   };
   try {
     const summary = await runImportMapping(id, mapping, dryRun, tagName?.trim() || undefined);
