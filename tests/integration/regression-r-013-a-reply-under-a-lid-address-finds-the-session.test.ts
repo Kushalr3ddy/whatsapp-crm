@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import {
-  addTransactionCapability, Curve, generateRegistrationId, generateSignalPubKey, initAuthCreds, signedKeyPair,
+  addTransactionCapability, Curve, generateSignalPubKey, initAuthCreds,
   type AuthenticationCreds, type SignalKeyStore
 } from 'baileys';
 import { makeLibSignalRepository } from 'baileys/lib/Signal/libsignal.js';
