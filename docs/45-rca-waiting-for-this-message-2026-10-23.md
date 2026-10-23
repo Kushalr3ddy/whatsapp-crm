@@ -58,3 +58,26 @@ Mikhil's phone could not decrypt the AI's message. The message was sent fine and
 
 ## Filing
 GitHub issue and registry entry (R-013) not created yet; per `docs/39` the next step is the issue plus a failing test. Open question for Kushal: which of steps 2 and 3 first.
+
+
+---
+
+## The fix, built the same night (branch `fix/not-quitting-till-waiting-for-this-message-is-fixed`, issue #160, R-013)
+
+### What changed
+1. **Baileys 6.7.24 to 7.0.0-rc14** (`package.json`). npm's `latest` tag is the 7.x line; 6.7.24 is tagged `legacy`. The 7.x library keeps the phone-number to LID pair in the credential store (`lid-mapping` keys), looks it up when a message arrives under a LID, and **moves the existing session across** (`migrateSession`) so the reply finds the session we made under the phone number. It also sends under the LID once it is known, so both sides use one session. Our adapter needed three small changes and no more: it reads the new `remoteJidAlt` / `participantAlt` fields for the contact's other address, it listens to `lid-mapping.update` and stores each pair as one of the contact's identities, and the login settings are unchanged. Typecheck, lint and all tests pass with it.
+2. **The credential store writes each key in order and flushes before the process exits** (`packages/channels/baileys/src/auth-adapter.ts`, D-82). Two overlapping writes to one session key could land out of order and leave our copy behind what WhatsApp had been told. Each key now has its own queue, and `disconnect`/`shutdown` wait (up to 10 s) for the queues to drain.
+3. **The thread says when the other phone could not read a message** (D-101). The gateway notices WhatsApp's retry request ("recv retry request") through its logger, records it on the message (`message.retry_requests`, `last_retry_at`, migration 0038), and the thread shows "delivered, but the other phone could not read it yet (it asked for it again N times)" until the message is read. "Delivered" alone no longer hides it.
+4. **A broken encryption session is said plainly** (D-82, D-102). A burst of undecryptable messages from contacts, or from the owner's own phone or WhatsApp Web, is recorded separately (`channel_session.decrypt_burst_at` and the new `own_decrypt_burst_at`); the composer shows "The encryption session of <number> looks broken ... Unlink the number and link it again". The amber "WhatsApp may be limiting" banner adds "this may be a result of the encryption problem above, not a judgement by WhatsApp" when both are true.
+5. **The ban score no longer counts the owner's own devices.** Failures from the account's own addresses are not evidence that WhatsApp is penalising the number (D-82 had recorded a false 48-hour quarantine from exactly this).
+
+### What was verified, and how
+- **R-013, `tests/integration/regression-r-013-a-reply-under-a-lid-address-finds-the-session.test.ts`**: the real library and the real Postgres credential store, two parties. (a) Control: without the mapping, a reply under the LID address fails with `No session record`: the production failure, reproduced. (b) With the pair stored and the session moved, the reply is read and our next message, sent under the LID address, is read by the contact: no retry, no "Waiting". (c) After a simulated restart the pair and the moved session come back from the encrypted store and keep working.
+- Unit and integration tests for the new log taps, the ordered writer, the retry-request recording, the thread notice and the scoring rule.
+- **Smoke test against the real WhatsApp servers** (no phone needed): the 7.0.0-rc14 socket through our adapter connects and is issued a QR in about one second.
+
+### Honest findings and what is NOT yet proven
+- **The one number linked under 6.7.24 was logged out (401) the first time it connected under 7.0.0-rc14** (2026-10-23 11:50 UTC, this laptop, the `kushal_test` sender). Our code treats 401 as terminal and, as designed, removed the stored credentials, so that number must be linked again with a QR. **The cause is not known**: WhatsApp may already have unlinked that companion after hours of decrypt failures, or 7.x may not accept sessions created by 6.x. A fresh link under 7.x is the only way to tell. **Plan: every number linked before this change is relinked once** (they all needed it anyway, RB-13).
+- **Real-phone verification is still to do** and needs a person with a phone: link one spare number on the Linode (the first link under 7.x), message a second phone of Kushal's own, and check: no `recv retry request` within 5 s of a send, no `No session record` for the contact's LID, a reply arrives and is answered by the AI, and a message typed on the phone and on WhatsApp Web both reach the inbox (D-102). The acceptance list is in D-101.
+- 7.0.0-rc14 is a release candidate. It is what npm calls `latest`, but it should be watched during the day-or-two spare-number test.
+- Not done: holding AI and campaign sends while the session is broken (D-82's last item); a one-click relink button.
