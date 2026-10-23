@@ -271,6 +271,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
               status={conversation.status}
               participants={conversation.participants}
               isAdmin={me?.role === 'admin'}
+              myUserId={me?.userId ?? null}
             />
           )}
         </header>
