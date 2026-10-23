@@ -123,6 +123,7 @@ is not re-proposed.
 | D-107 | Import: the sample table and the Preview button are both called preview; run the check automatically and show Import straight away | 📌 pinned (Kushal, 2026-10-23) |
 | D-108 | Import: mark invalid phone numbers and emails in the preview; fix them inline or drop them with a confirmation | 📌 pinned (Kushal, 2026-10-23) |
 | D-109 | Campaign form: "Build a new template" jumps to the AI tab, and picking a template there does not make the campaign an AI campaign | 📌 pinned (Kushal, 2026-10-23) |
+| D-110 | "Tell the assistant what to do" as a small chat bubble on the right side of every page, not a section of the AI tab | 📌 pinned (Kushal, 2026-10-23) |
 | D-88 | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | D-87 | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
 | D-86 | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
@@ -3122,3 +3123,17 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 - **Either way:** the link says where it goes and returns to the campaign form afterwards (`?next=/broadcast/new`), and a person with no templates and no model sees the D-97 hint instead of an empty dropdown.
 
 **Tests:** a browser test that picking a template in the campaign form results in a campaign with the AI badge (A) or an explicit copy-only note (B); an integration test that the create-campaign call carries `aiTemplateId` when the picker attached one.
+
+## D-110 · "Tell the assistant what to do" as a small chat bubble on the right side of the page, not a section in the AI tab — 📌 pinned (Kushal, 2026-10-23)
+
+**What:** today the box that tells the AI what to do ("pause that campaign", "start the welding one", a plain-language instruction for the AI to carry out, plus the queue of requests) is a full section of the AI tab (`apps/web/app/ai/ai-queue.tsx`, heading "Tell the assistant what to do"), which makes the tab long and confusing (D-103). Replace it with a **small assistant chat bubble on the right side of the page**:
+- A round button fixed at the bottom-right of every signed-in page (added in the root layout, `apps/web/app/layout.tsx`, only for admins and only once the AI is set up; hidden or showing the D-97 hint otherwise).
+- Clicking it opens a narrow panel on the right, in the style of a chat: the person's instruction as one bubble, the assistant's answer as another ("Paused 'Welding drive'. I did not start the other campaign: the organisation has not allowed the assistant to start campaigns."), with each action it took or refused listed under the answer. A text box at the bottom, Enter to send, Escape or a close button to hide it. It remembers the conversation while the page is open and survives moving between pages (kept in the layout, not in one page).
+- The queue is shown inside the panel as a small "working on it / waiting / done / failed" line per request, with Cancel for a queued one (the existing queue rules stay: one request runs at a time per organisation, jobs are pruned after a day).
+- The AI tab keeps only what belongs to setting up: model, instructions, templates (and the walkthrough, D-103). A line there says "Give it orders from the chat bubble on the right".
+
+**Reuse, do not rebuild:** `POST /ai/commands`, the job queue (`enqueueAiJob`, `listAiJobs`, `cancelAiJob`, the `ai_job` table, `apps/api/src/ai-runner.ts`) and `AiCommandError` all stay as they are; the bubble is a new client component calling the same actions in `apps/web/app/ai/actions.ts`. Same rules as today: admin only (or an API key allowed to send), the assistant goes through the same checks as a person and can never lift an anti-ban or do-not-contact gate.
+
+**Phones:** on a narrow screen the panel opens full width from the bottom; the bubble must not cover the chat composer (move it above it on the inbox thread page).
+
+**Tests:** a browser test that the bubble is present for an admin once the AI is on, absent for an agent and when no model is set, that a sent instruction appears as a bubble and its answer follows, and that the panel stays open across a page change; the existing integration tests for commands and the queue are untouched.
