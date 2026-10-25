@@ -62,6 +62,68 @@ GitHub issue and registry entry (R-013) not created yet; per `docs/39` the next 
 
 ---
 
+## Code-level analysis: why it happened
+
+Paths are in `node_modules/baileys/lib` unless they start with `packages/` or `apps/`. The 6.7.24 lines are from the earlier read of that version (it is no longer installed); the 7.0.0-rc14 lines were checked against the installed copy.
+
+### 1. How WhatsApp end-to-end encryption keeps state (the part that broke)
+Each pair of devices has a *session*: a running key state (a "ratchet") that moves forward with every message. A session is stored under a **Signal address**, which is just a name plus a device number. Both sides must use the same address for the same person, or the receiver cannot find the key state that matches the message. Baileys turns a WhatsApp address (`jid`) into a Signal address in `jidToSignalProtocolAddress` (`Signal/libsignal.js:311`).
+
+WhatsApp now gives one person **two addresses**: a phone-number address (`919964122631@s.whatsapp.net`, "PN") and a privacy address (`110762928373833@lid`, "LID"). Which one appears depends on the message and the direction.
+
+### 2. What 6.7.24 did (the bug)
+- **`lib/Signal/libsignal.js` stored every session under `new ProtocolAddress(user, device)`**: the user part of the address, with the domain (`s.whatsapp.net` or `lid`) thrown away. `919964122631` and `110762928373833` are two different strings, so they became **two unrelated people**.
+- **There was no mapping and no migration anywhere in 6.7.24** (searched for `lid-mapping` and `migrateSession`: neither existed). Nothing ever told the library that those two strings are one person, and nothing moved a session from one to the other.
+- **Our adapter did not fix that.** `packages/channels/baileys/src/index.ts` (`#emitInbound`) read `key.senderPn` / `key.participantPn` and wrote the pair into `contact_identity` (so *our database* knew they were one person), but that never reached the library's own session store, which is where decryption looks.
+
+### 3. The failing sequence, in order (from the timeline above)
+1. **08:11:31, we send the campaign opening.** Baileys looks up Mikhil's devices by phone number and encrypts for `919964122631:0`, `:84`, `:88`. Three sessions are created, all under phone-number addresses.
+2. **08:14:32, Mikhil replies.** WhatsApp delivers the reply from `110762928373833@lid`. Baileys asks the store for a session at address `110762928373833.0`. None exists (we built ours under `919964122631`). Decryption throws `SessionError: No session record`. The message is dropped before `messages.upsert`, so the app never sees it and nothing is stored.
+3. **Baileys answers a decrypt failure with a retry receipt**, asking the sender to encrypt again. Each retry rewrites or creates session state on both sides under whichever address each side believes, so the two copies **drift further apart** (`MessageCounterError: Key used already or never filled`).
+4. **08:37:56, the AI replies.** We encrypt under the phone-number sessions again. Mikhil's phone now expects the LID-keyed one and cannot decrypt, so it sends a *retry request* 0.5 s later (`recv retry request` in the log) and shows **"Waiting for this message"** until a resend works.
+5. **The same fault on our own account** produced the 389-failure storm: the owner's phone and WhatsApp Web write to the linked number from the account's own LID (`78847127097458@lid`), and we had no session under that address either.
+
+### 4. Why nothing in our code noticed
+- `packages/channels/baileys/src/decrypt-tap.ts` already saw decrypt failures (it taps Baileys' logger, because failed frames never reach `messages.upsert`), and `DecryptFailureTracker` + `markDecryptBurst` recorded a burst on `channel_session.decrypt_burst_at`.
+- But that signal was only read by the ban-health scorer. **The thread, the composer and the Linked numbers page never read it**, so the number showed "Linked" and the AI and campaigns kept sending into a broken session. Worse, the scorer counted the owner's own devices as evidence that WhatsApp was penalising the number, which produced a false 48-hour quarantine.
+- **Writes to the credential store were unordered and not flushed.** `loadAuthState` (`packages/channels/baileys/src/auth-adapter.ts`) wrote every changed key with `Promise.all`. A session key is rewritten on every message in both directions, so two writes to one key could finish in the wrong order (an old state overwriting a newer one), and a process killed mid-write lost the newest state. That is a second, independent way to the same symptom ("our copy is behind what WhatsApp was told"); it is **not shown by this log** and is treated as a hardening fix.
+
+## Code-level analysis: how the fix works
+
+### 1. Baileys 7.0.0-rc14 (`package.json`: `"baileys": "7.0.0-rc14"`)
+This is the real fix; everything else is visibility. The 7.x library does three things 6.x did not:
+- **A pair store.** `Signal/lid-mapping.js` (`LIDMappingStore`): `storeLIDPNMappings(pairs)` writes `lid-mapping` keys into the credential store, and `getLIDForPN(pn)` reads them, asking WhatsApp (a "usync" query) when the pair is not known yet.
+- **Sessions are built under the LID from the first message.** When it looks up a contact's devices to send (`Socket/messages-send.js:~190`), it runs `new USyncQuery().withDeviceProtocol().withLIDProtocol()`, stores every returned pair with `storeLIDPNMappings`, then force-refreshes the sessions for the newly mapped LIDs. So the session is made under the address WhatsApp will later use.
+- **Existing sessions are moved across.** `Utils/decode-wa-message.js:5-24` (`getDecryptionJid`, `storeMappingFromEnvelope`): on a message whose sender is a phone number but whose envelope carries the LID (`senderAlt`), it stores the pair and calls `repository.migrateSession(sender, senderAlt)` (`Signal/libsignal.js:204`), which finds every device session under the phone-number address and copies it to the LID address. `getDecryptionJid` (`decode-wa-message.js:5`) maps a phone-number sender to its LID before looking up the session, so a reply under either address finds the same state.
+
+Net effect: one person, one session, whichever address WhatsApp uses.
+
+### 2. Our adapter changes (`packages/channels/baileys/src/index.ts`)
+- **`linkedPhoneFor(jid, key)`** reads the new Baileys 7 fields `remoteJidAlt` and `participantAlt` first, then the 6.x `senderPn` / `participantPn`, so a message from a LID still tells us the phone number (used by `#emitInbound`).
+- **`lid-mapping.update` listener:** each pair Baileys learns is pushed to `#links` as `{ senderId, providerAddress: lid, phoneE164 }`, so `contact_identity` (our database) learns the same pair the library did, even when no message carried it.
+- **`learnOwnAddresses()` / `ownUsers` / `isOwn(jid)`:** from `socket.user` (`id` and `lid`) we know the account's own phone-number and LID addresses, refreshed on every `creds.update` and `connection.update`. A failed frame is **own-device** when `info.fromMe`, its author, or its chat is one of those, so `onDecryptFailure(senderId, at, { own })` can tell the owner's phone from a contact. (First version used the chat only; a message typed on the phone has the *contact's* LID as chat, so the check was extended to `fromMe` and the author after the Linode evidence.)
+
+### 3. The credential store (`packages/channels/baileys/src/auth-adapter.ts`)
+- `enqueue(key, job)` keeps **one promise chain per key** (`queues: Map<string, Promise<void>>`): a write starts only after the previous write to the *same* key finished, in the order asked. Different keys still write in parallel. Both `keys.set` and `saveCreds` go through it.
+- `flush()` loops on `Promise.allSettled` until the map is empty. `disconnect()` awaits `Promise.race([conn.flush(), 10 s timer])`, so the last session writes land before the process may exit but a stuck database cannot hold a shutdown forever. `loadAuthState` now returns `{ state, saveCreds, flush }`.
+
+### 4. Visibility (so a broken session is never silent again)
+- **Retry requests:** `tapDecryptFailures` (`decrypt-tap.ts`) now also recognises Baileys' `recv retry request` log line (`retryRequestMessageId`, reads `attrs.id`) and calls `onRetryRequest(senderId, messageId, at)`. The gateway (`apps/gateway/src/main.ts`) calls `recordRetryRequest` (`packages/core/src/decrypt-failures.ts`): `UPDATE message SET retry_requests = retry_requests + 1, last_retry_at = ...` for the outbound message with that `provider_message_id` in a conversation of that sender (migration `0038_message_retry_requests.sql`). It returns whether a CRM-sent message matched; only then is a warning logged (a retry request for a message the owner typed on the phone is not ours to answer).
+- **Two bursts, kept apart:** `onDecryptFailure` branches on `info.own`. Contacts: `decryptTracker` -> `markDecryptBurst` -> `channel_session.decrypt_burst_at` (scored for ban health, as before). Own devices: `ownDecryptTracker` -> `markOwnDecryptBurst` -> new column `own_decrypt_burst_at` (**never scored**).
+- **API:** `GET /conversations/:id/sender-status` (`apps/api/src/routes/messages.ts`) now returns `sessionTrouble`: `'contacts'` or `'own'` when the matching burst is within 15 minutes, else `null`. The message list returns `retryRequests` and `lastRetryAt`.
+- **Web:** the composer shows "The encryption session of <number> looks broken ... Unlink the number and link it again" for `sessionTrouble`, the thread shows "delivered, but the other phone could not read it yet (it asked for it again N times)" until read, and the "WhatsApp may be limiting" banner adds that it may be this problem and not a judgement.
+- **`dev:all`** no longer restarts the gateway on every saved edit (`gateway:stable` is `tsx` without `watch`; `--watch-gateway` brings the old behaviour back). The three restarts in 18 minutes on 2026-10-23 each re-requested every undecryptable message.
+
+### 5. The test that guards it (R-013)
+`tests/integration/regression-r-013-a-reply-under-a-lid-address-finds-the-session.test.ts` runs the real Baileys signal code against the real Postgres credential store with two parties: (a) **control**, no mapping stored: the reply under the LID address fails with `No session record` (the production failure, reproduced); (b) pair stored and session moved: the reply decrypts and our next message, sent under the LID, is read by the contact; (c) after a simulated restart the pair and the moved session come back from the store and keep working. Also: `auth-adapter.test.ts` (ordered writes with a slow first write, flush), `decrypt-failures.test.ts`, `message-retry-requests.test.ts`, `mapping.test.ts`.
+
+### 6. What the code does NOT fix
+- A session that is **already diverged** is not repaired by the upgrade; unlink and link again (RB-13).
+- **Holding AI and campaign sends while the session is broken** is not built (the last item of D-82), and there is no one-click relink button.
+- Whether a **new CRM send gets no retry request** on 7.0.0-rc14 has not been proven on a real phone (D-101, D-102 acceptance). The unit and integration tests prove the library and our store; they cannot prove WhatsApp's servers.
+
+---
+
 ## The fix, built the same night (branch `fix/not-quitting-till-waiting-for-this-message-is-fixed`, issue #160, R-013)
 
 ### What changed
