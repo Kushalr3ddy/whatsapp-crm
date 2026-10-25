@@ -158,8 +158,6 @@ The same pins grouped by what they are about, so related work is found and built
 
 ---
 
-<a id="d-1"></a>
-
 ## D-1 · A lightweight database browser (Drizzle Studio or similar)
 
 **What:** a web UI for running SQL against the live database from any device — a phone, a
@@ -191,8 +189,6 @@ needs — that is a distributed-query problem, and this is one Postgres instance
 application. `psql` and DBeaver cover the day-to-day case now.
 
 ---
-
-<a id="d-1b"></a>
 
 ## D-1b · Drizzle's query builder (as opposed to Drizzle itself)
 
@@ -250,8 +246,6 @@ alive are already built or pinned as anti-ban work.
 
 ---
 
-<a id="d-3"></a>
-
 ## D-3 · Licence
 
 **Why parked:** it changes nothing technical.
@@ -263,8 +257,6 @@ contribution — whichever comes first.
 licence then needs every contributor's agreement. Decide before, not after.
 
 ---
-
-<a id="d-4"></a>
 
 ## D-4 · The AI agent (F12) — ✅ built 2026-10-21 (Kushal's "AI speedrun"; guardrails left for D-81)
 
@@ -290,8 +282,6 @@ just another producer writing into the same outbox, so every safety gate already
 
 ---
 
-<a id="d-5"></a>
-
 ## D-5 · Baileys 7.x
 
 **Update 2026-10-23:** the project now runs **7.0.0-rc14** (PR #161, the "Waiting for this message" fix, `docs/45`), because 6.7.24 had no phone-number to LID session mapping. Still a release candidate; watch it on the spare number. The original text below is why it was parked.
@@ -310,8 +300,6 @@ means evaluating 7.x is: write the adapter against the new version, run the same
 
 ---
 
-<a id="d-6"></a>
-
 ## D-6 · UUIDv7 primary keys
 
 **Why parked:** Postgres 16 has no native `uuidv7()`; it arrives in PG18. Keys currently use
@@ -325,8 +313,6 @@ new coexist — workable, but it makes the ordering property unreliable until ev
 out.
 
 ---
-
-<a id="d-7"></a>
 
 ## D-7 · Turborepo, and splitting the queue driver
 
@@ -352,8 +338,6 @@ horizontally, at which point `pg-boss` stops being appropriate and BullMQ on Red
 **Cost of deferring:** none. Both sit behind interfaces already.
 
 ---
-
-<a id="d-8"></a>
 
 ## D-8 · Self-serve setup wizard, guided walkthrough, whitelabelling — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
@@ -394,8 +378,6 @@ is what keeps this cheap.
 **Added 2026-10-20 (Kushal):** a **tutorial / walkthrough for first-time users after they sign up** (step-by-step tips on the first visit to each page, dismissible, with a way to replay it). Part of the guided flow listed here.
 
 ---
-
-<a id="d-9"></a>
 
 ## D-9 · Generating `.env`, and a secrets driver — ✅ **AI settings tab built 2026-10-22 (was Kushal's priority)**
 
@@ -464,8 +446,6 @@ a backup of plaintext.
 
 ---
 
-<a id="d-10"></a>
-
 ## D-10 · What belongs in the inbox — broadcast output, and unknown senders
 
 > **2026-10-21:** unknown senders are defined and will be marked and offered "Save as contact" under D-67 and D-80. The separate tray below is still undecided.
@@ -508,8 +488,6 @@ later without a migration. The cost is only that the first campaign run will be 
 arrives before this is decided.
 
 ---
-
-<a id="d-11"></a>
 
 ## D-11 · Media at rest — encryption, retention, scanning, compliance · ✅ serving built, the rest parked
 
@@ -598,8 +576,6 @@ contact it came from. Nothing more.
 
 ---
 
-<a id="d-13"></a>
-
 ## D-13 · Access auditing — who *read* what · ✅ **LANDED**
 
 **What:** recording reads, not just changes. Who opened this conversation, who downloaded this
@@ -656,8 +632,6 @@ a WORM bucket or an external log sink — and is a different problem.
 
 ---
 
-<a id="d-14"></a>
-
 ## D-14 · The linked number receives nothing — `Bad MAC` on every inbound · ✅ **CLOSED 2026-09-28**
 
 > **Closed.** The number was re-linked, inbound was verified and media was proven end to end against a real
@@ -711,8 +685,6 @@ session; and this gateway appears to see traffic only in reconnect flushes, sinc
 `markOnlineOnConnect: false` has WhatsApp notify the phone and queue for the companion.
 
 ---
-
-<a id="d-15"></a>
 
 ## D-15 · A documentation site
 
@@ -778,8 +750,6 @@ ban-risk disclosure — is already surfaced everywhere it needs to be.
 
 ---
 
-<a id="d-17"></a>
-
 ## D-17 · Presence, typing indicators and collision detection (F3 realtime) — ✅ **BUILT** (viewing: PR #28, 2026-10-12; typing and the send-anyway warning: D-54, PR #32, 2026-10-13)
 
 > **Built:** who has a chat open, by a 12 s heartbeat polled with the inbox (no websockets), shown in the thread
@@ -836,8 +806,6 @@ same contact, which polling's 5 s window narrows but does not close.
 
 ---
 
-<a id="d-18"></a>
-
 ## D-18 · 🔵 **META** Inbox niceties: snooze, the Meta 24-hour window UI, ~~keyboard shortcuts~~
 
 **What:** three F3 acceptance criteria deferred as not-needed-now.
@@ -866,8 +834,6 @@ rest of the inbox); keyboard shortcuts are **small** and pure front-end; the Met
 **Cost of deferring:** none — all three are additive and touch no existing behaviour.
 
 ---
-
-<a id="d-19"></a>
 
 ## D-19 · 🔵 **META** Rich message templates — user-managed, Meta-aligned, with media and import — deferred (priority withdrawn 2026-10-16)
 
@@ -925,8 +891,6 @@ are fine as they are; this is additive on top, not a rewrite of them.
 
 ---
 
-<a id="d-20"></a>
-
 ## D-20 · SQLite support for single-machine deployments
 
 > **See D-64** for the measured inventory of what depends on Postgres, and the shape a portable layer would take.
@@ -970,8 +934,6 @@ capability without a fallback in mind — so new isolation/notify logic should s
 helpers that already wrap it (`setTenant`, the gateway command channel), not spread raw.
 
 ---
-
-<a id="d-21"></a>
 
 ## D-21 · The full import mapping wizard — **WORK ON NOW (Kushal, 2026-10-20)**
 
@@ -1128,8 +1090,6 @@ fields is built (PR #56); the size and layout of this step are what is left.
 
 ---
 
-<a id="d-22"></a>
-
 ## D-22 · Row-level de-duplication with a diff-style review
 
 **What:** de-duplication *within and against* an import, resolved by a person — not just the
@@ -1154,8 +1114,6 @@ the data to diff is already produced; this is the review UI and the merge-choice
 M9) is a safe default; this replaces "safe default" with "user's explicit choice".
 
 ---
-
-<a id="d-23"></a>
 
 ## D-23 · Inbox search (F3 AC-7) — **PINNED, research later (Kushal, 2026-10-20)**
 
@@ -1232,8 +1190,6 @@ the encrypted-body question.
 
 ---
 
-<a id="d-24"></a>
-
 ## D-24 · Typing simulation (P6 anti-ban layer 3) — ✅ **LANDED 2026-09-29**
 
 > **In plain terms.** When a person messages on WhatsApp, the other side briefly sees "typing…" before the
@@ -1287,8 +1243,6 @@ already provide the actual burst protection.
 
 ---
 
-<a id="d-25"></a>
-
 ## D-25 · Outbound media (sending files) — ✅ **LANDED 2026-10-05**
 
 > **Built.** `POST /api/v1/conversations/:id/attachments?filename=&caption=` takes the file as the raw
@@ -1333,8 +1287,6 @@ capability, not a defect.
 
 ---
 
-<a id="d-26"></a>
-
 ## D-26 · Campaign body variation (spintax + per-recipient) — ✅ **LANDED (both halves)**
 
 > **Built (2026-09-29):** the per-recipient rendering is done. `renderBody` in `@crm/core`
@@ -1368,8 +1320,6 @@ yet**, so this is a known soft spot, not a solved one.
 
 ---
 
-<a id="d-27"></a>
-
 ## D-27 · Opt-out keyword handling (STOP / unsubscribe) — OUT OF ALPHA SCOPE (Kushal, 2026-10-06)
 
 **What:** an inbound `STOP` / `UNSUBSCRIBE` (multi-language) that **automatically and irreversibly**
@@ -1395,8 +1345,6 @@ infrastructure.
 a missed opt-out becomes a block/report and a ban signal.
 
 ---
-
-<a id="d-28"></a>
 
 ## D-28 · Dynamic audience segments ("segregation") — ✅ **MINIMAL SLICE LANDED 2026-09-30**
 
@@ -1455,8 +1403,6 @@ earn its place with filters on custom fields such as city and skills (D-40, D-70
 
 ---
 
-<a id="d-29"></a>
-
 ## D-29 · An anti-ban "advisory mode" — warn but do not enforce — ✅ **BUILT 2026-10-06**
 
 > **Update 2026-10-09:** do-not-contact is now actually enforced on every send path, and an admin can lift it per message or campaign (audited, with a reason); advisory mode still does not bypass it. The line below saying it stays hard is superseded.
@@ -1502,8 +1448,6 @@ campaign results show *why* a number is quiet without turning enforcement off.
 
 ---
 
-<a id="d-30"></a>
-
 ## D-30 · Media that fails to store is invisible to the operator
 
 **What:** when a received file's bytes cannot be stored, the message is kept and marked
@@ -1519,8 +1463,6 @@ message text survives — it is a missing signal, not a defect in what is stored
 and add a retry that re-downloads through the live socket while WhatsApp still has the file.
 
 ---
-
-<a id="d-31"></a>
 
 ## D-31 · Per-org encryption keys (the DEK/KEK design), and key rotation — ✅ **ROTATION BUILT 2026-10-13**; per-org keys still pinned (was **PRIORITY, Kushal, 2026-10-06**)
 
@@ -1548,8 +1490,6 @@ history to re-encrypt (22-encryption.md, "Not built yet").
 
 ---
 
-<a id="d-32"></a>
-
 ## D-32 · Encrypting contact identifiers (phone numbers and emails)
 
 **What:** `contact_identity.value_normalized` holds phone numbers and emails in clear. `09-security.md`
@@ -1563,8 +1503,6 @@ encrypt-plus-blind-index pattern message bodies use, with the UNIQUE constraint 
 acceptable, or any D-2 data-residency obligation.
 
 ---
-
-<a id="d-33"></a>
 
 ## D-33 · P1 close-out and deployment
 
@@ -1594,8 +1532,6 @@ test run (`infra/docker` and `infra/compose` are empty). Nothing is deployed.
 
 ---
 
-<a id="d-34"></a>
-
 ## D-34 · 🔵 **META** The Meta Cloud API adapter (P8) and the real-number pilot
 
 **What:** the official, paid transport (templates, the 24-hour window, tier and quality tracking) and the
@@ -1609,8 +1545,6 @@ the decision to take the engine from the simulation to a real number (the pilot)
 
 ---
 
-<a id="d-35"></a>
-
 ## D-35 · Contact export to Excel (.xlsx) · ✅ CSV and vCard export built (2026-10-06); `.xlsx` not
 
 **What:** the admin contact export (built 2026-10-06 as CSV and vCard) as an `.xlsx` too. Pinned by Kushal
@@ -1621,8 +1555,6 @@ the decision to take the engine from the simulation to a real number (the pilot)
 
 ---
 
-<a id="d-36"></a>
-
 ## D-36 · Contact import from a vCard (.vcf)
 
 **What:** loading contacts from a phone's `.vcf` export (names, numbers, emails). Pinned by Kushal. The
@@ -1632,8 +1564,6 @@ converted to CSV, so duplicates and phone normalisation behave identically.
 **What brings it back:** the first operator with their contacts on a phone rather than in a spreadsheet.
 
 ---
-
-<a id="d-37"></a>
 
 ## D-37 · 🔵 **META** Meta tier and quality tracking, feeding the health engine
 
@@ -1650,8 +1580,6 @@ goes over Baileys, which has no tiers or quality ratings.
 
 ---
 
-<a id="d-38"></a>
-
 ## D-38 · 🔵 **META** Meta template submission, approval status, and the template-only window
 
 **What:** the Meta-specific half of D-19 and D-18: submit a template to Meta for approval, sync its status
@@ -1664,8 +1592,6 @@ templates once it closes (`conversation.window_expires_at` already exists for th
 **What brings it back:** D-34 and D-19.
 
 ---
-
-<a id="d-39"></a>
 
 ## D-39 · 🔵 **META** Per-transport pacing policy and the Meta inbound/status webhooks
 
@@ -1680,8 +1606,6 @@ template updates into the same ingestion and receipt paths Baileys events use to
 
 ---
 
-<a id="d-40"></a>
-
 ## D-40 · Custom fields in imports, segments, and exports
 
 **What:** custom fields (defined per org, built 2026-10-06) work on the contact screen, over the API, and as
@@ -1694,8 +1618,6 @@ JSON cell). Also: renaming a field's label or editing a select's options after c
 **What brings it back:** the first import that carries columns an operator wants as fields.
 
 ---
-
-<a id="d-41"></a>
 
 ## D-41 · The gateway runs outside row-level security — ✅ **BUILT 2026-10-13** (was **PRIORITY, Kushal, 2026-10-06**)
 
@@ -1718,8 +1640,6 @@ the moment unrelated customers share one. Pinned as priority by Kushal.
 **What brings it back:** now, as priority; certainly before any multi-customer hosting.
 
 ---
-
-<a id="d-42"></a>
 
 ## D-42 · Human takeover from an AI agent, inside a conversation — ◐ partly built 2026-10-21
 
@@ -1744,8 +1664,6 @@ conversation model, thread lock and audit log it would build on all exist.
 
 ---
 
-<a id="d-43"></a>
-
 ## D-43 · Extra restriction-alert channels (webhook, email, canary self-test)
 
 **What:** the silent-restriction tracker (docs/27, built 2026-10) alerts **in the app only**: a banner, a timeline and
@@ -1759,9 +1677,9 @@ an otherwise idle number.
 
 ---
 
-<a id="d-44"></a>
-
 ## D-44 · Baileys 7 upgrade
+
+> **Duplicate of D-5 (Baileys 7.x), noted 2026-10-25.** Both pins describe the same upgrade. The project has run 7.0.0-rc14 since 2026-10-23 (PR #161, docs/45); track the rest (a stable 7.0.0, the release-candidate watch) under D-5. This section is kept for its history.
 
 **What:** moving from `baileys` 6.7.24 to the 7.x line. **Not required** (assessed 2026-10-09): npm `latest` is
 7.0.0-rc14, still a release candidate, and 6.7.24 is the `legacy` tag, not deprecated and already patched for the known
@@ -1779,8 +1697,6 @@ touch Baileys.
 
 ---
 
-<a id="d-45"></a>
-
 ## D-45 · Link a `@lid` address to its phone number — ✅ **BUILT 2026-10-10 (PR #6)**
 
 > **Built:** the adapter reads `key.senderPn` / `participantPn` and `chats.phoneNumberShare`, the gateway links the
@@ -1797,8 +1713,6 @@ resolve), and 6.x has no on-demand lookup.
 D-44 would force, so doing it first de-risks the upgrade.
 
 ---
-
-<a id="d-46"></a>
 
 ## D-46 · UI responsiveness — the app feels laggy when used fast — **HIGH PRIORITY (Kushal, 2026-10-22)**
 
@@ -1835,8 +1749,6 @@ auth forwarding (the UI forwards the user's session) and every server action.
 
 ---
 
-<a id="d-47"></a>
-
 ## D-47 · Signup page, billing gate and beta-tester override — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
 > **2026-10-17:** a **front-end-only** sign-up page exists at `/signup` (PR #53): it checks the fields in the browser and says nothing
@@ -1863,8 +1775,6 @@ email verification (email is an optional driver, so a non-email path is needed);
 
 ---
 
-<a id="d-48"></a>
-
 ## D-48 · Security test suite (OWASP)
 
 **What:** a deliberate, repeatable security test pass against the running app, mapped to the **OWASP Top 10** and
@@ -1882,8 +1792,6 @@ spec (P9) first.
 
 ---
 
-<a id="d-49"></a>
-
 ## D-49 · Revamp the browser (e2e) suite to industry standard, covering every UI element
 
 **What:** the Playwright suite grew feature by feature. Rebuild it on current best practice: **page objects /
@@ -1900,8 +1808,6 @@ smoke / full split so PRs stay fast. The live walkthrough (`tests/live/`) stays 
 
 ---
 
-<a id="d-50"></a>
-
 ## D-50 · Test the frontend and backend independently (modularity check)
 
 **What:** prove the two halves really are separable. **Backend alone:** exercise the API purely over HTTP with no
@@ -1916,8 +1822,6 @@ rules) that fails if `apps/web` imports server code from `packages/*`/`apps/api`
 **What brings it back:** P9, or the day a second client (JobPortal, a mobile app) consumes the API.
 
 ---
-
-<a id="d-51"></a>
 
 ## D-51 · Deleted-message tracking
 
@@ -1937,8 +1841,6 @@ hide it as WhatsApp does for the recipient. Edited messages are the sibling case
 **What brings it back:** Kushal's go-ahead, or the first "where did that message go?" from an agent.
 
 ---
-
-<a id="d-52"></a>
 
 ## D-52 · Deleting previous campaigns — 🔺 **PRIORITY (Kushal, 2026-10-23, unparked after Mikhil's feedback)** (was PARKED 2026-10-20)
 
@@ -1970,8 +1872,6 @@ would also clean up test runs.
 **2026-10-20:** parked again. Not working on it for now.
 
 ---
-
-<a id="d-53"></a>
 
 ## D-53 · Assignment model and message authorship — ✅ **BUILT** (authorship PR #26; owner + participants PR #27; 2026-10-11)
 
@@ -2008,8 +1908,6 @@ small first slice that needs no realtime and can ship alone.
 
 ---
 
-<a id="d-54"></a>
-
 ## D-54 · Typing indicator and the "just replied, send anyway?" warning — ✅ **BUILT 2026-10-13** (PR #32)
 
 > **Built:** typing pings from a reply box with text (every 3 s, 8 s lifetime); "Priya is typing…" in the header
@@ -2037,8 +1935,6 @@ wrong. The reply lock stays the hard rule; this stays a soft warning.
 **What brings it back:** Kushal's go-ahead. Raised to priority with D-17 and D-53.
 
 ---
-
-<a id="d-55"></a>
 
 ## D-55 · Licence enforcement ("DRM"): usage is blocked when an org has not paid — pinned, **to be revisited last** (Kushal, 2026-10-13: "will come to it in the end") — **PINNED, research later (Kushal, 2026-10-20)**
 
@@ -2075,8 +1971,6 @@ hosted-versus-self-hosted call before any design is honest.
 
 ---
 
-<a id="d-56"></a>
-
 ## D-56 · Telemetry: metrics, tracing and error tracking beyond logs — pinned (Kushal, 2026-10-13)
 
 **Decision:** logging is enough for now; telemetry is pinned, not scheduled. Kushal's rule (2026-10-13): "if
@@ -2104,8 +1998,6 @@ cannot explain.
 
 ---
 
-<a id="d-57"></a>
-
 ## D-57 · Run the import commit as a background job — pinned (2026-10-15)
 
 **What:** `POST /imports/:id/run` does the whole import inside the HTTP request. Behind a Cloudflare tunnel
@@ -2130,8 +2022,6 @@ that makes a killed run resumable from the last committed batch.
 - *Not decided.* Recommended first step when it comes back: the server job, since it keeps one parser; add the browser-side preview only if the wait before the preview becomes a complaint.
 
 ---
-
-<a id="d-58"></a>
 
 ## D-58 · Public site and launch-readiness checklist — pinned (Kushal, 2026-10-15)
 
@@ -2161,8 +2051,6 @@ with D-16, which was struck out as not this repository's to ship; they come back
 **Why parked:** pinned, not scheduled. Nothing here blocks the alpha.
 
 **What brings it back:** a public landing or signup page (D-47), or the hosted offering (D-33).
-
-<a id="d-59"></a>
 
 ## D-59 · File support in chat (Kushal, 2026-10-16) — 🔺 **PRIORITY AGAIN (Kushal, 2026-10-21): files in campaigns first** (was pinned, research later, 2026-10-20)
 
@@ -2248,8 +2136,6 @@ RAM); which of the gaps in the table above to build first.
 
 ---
 
-<a id="d-60"></a>
-
 ## D-60 · Number fallback: message the first number that has a WhatsApp account — ✅ **BUILT 2026-10-16**
 
 > **Built.** A contact can hold several phone numbers (the importer now reads cells like `98…, +91…`, D-21). The
@@ -2286,8 +2172,6 @@ fallback"): the `onWhatsApp` path has **not** been run against the real linked n
 
 ---
 
-<a id="d-61"></a>
-
 ## D-61 · Lighter web tier: plain React with refresh buttons instead of Next everywhere — pinned (Kushal, 2026-10-16)
 
 **What:** replace the server-rendered Next.js app with a plain React single-page app on most screens, and keep
@@ -2323,8 +2207,6 @@ asked for: a production build is already about 0.8 s on the heaviest page.
 
 ---
 
-<a id="d-62"></a>
-
 ## D-62 · Ship as a single executable, if possible — pinned (Kushal, 2026-10-16)
 
 **What:** one file that runs the app, instead of a Docker image plus a process supervisor. Today the alpha is one
@@ -2355,8 +2237,6 @@ are exactly what packagers trip on.
 needs.
 
 **What brings it back:** D-61 landing, or a target that cannot run Docker.
-
-<a id="d-63"></a>
 
 ## D-63 · Centralised file store: S3-compatible storage alongside local (SMB pinned too) — ✅ driver built 2026-10-16, default stays local (Kushal, 2026-10-16)
 
@@ -2430,8 +2310,6 @@ For any customer-owned cloud the design is the same: files are **served through 
 
 ---
 
-<a id="d-64"></a>
-
 ## D-64 · Database portability: move the database-side logic into the app so other databases can work — pinned (Kushal, 2026-10-16)
 
 **The question asked:** was the code written only for Postgres, and should every function, trigger and bit of
@@ -2475,8 +2353,6 @@ helpers that already wrap it (`setTenant`, the gateway command channel) rather t
 
 ---
 
-<a id="d-65"></a>
-
 ## D-65 · Bugs found running the alpha container on a VM (2026-10-17), not fixed — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
 Found by using the app for real (sign in, link a number, import, Team, Numbers) on a throwaway VM. Fixed and merged
@@ -2509,8 +2385,6 @@ multi-email cells (#46, #47). **Still open:**
 
 ---
 
-<a id="d-66"></a>
-
 ## D-66 · Motion on most pages, not just the sign-in screen — pinned (Kushal, 2026-10-17)
 
 The sign-in screen has an animated background and Kushal likes it. He wants the same life across **most pages**: quick,
@@ -2533,8 +2407,6 @@ a disabled button, so nobody thinks it froze. D-57 (import as a background job) 
 - **The "N" badge in the bottom corner** (the Next.js development indicator, shown only while running `next dev`): hide it, or confirm it does not appear in a production build (`devIndicators` in `apps/web/next.config.ts`).
 
 ---
-
-<a id="d-67"></a>
 
 ## D-67 · Save a number or name onto a `@lid` chat, like "add contact" in WhatsApp — **pinned again (Kushal, 2026-10-21; it was the priority on 2026-10-20)**
 
@@ -2591,8 +2463,6 @@ Together about **3 to 5 working days** for all three, one PR each. The `@newslet
 
 ---
 
-<a id="d-68"></a>
-
 ## D-68 · Campaign with no tagged people: tell the user to tag them first — ✅ built in PR #56 (Kushal, 2026-10-17)
 
 When someone starts a new campaign and no contact has the tag they would pick (or no tags exist at all), the page should
@@ -2602,8 +2472,6 @@ Naukri file only brings in name, phone and email, so its other columns (location
 Contacts; that is D-21 (map a column to a custom field), already a priority.
 
 ---
-
-<a id="d-69"></a>
 
 ## D-69 · Chats available inside the job portal (and any other web app) — pinned (Kushal, 2026-10-17)
 
@@ -2626,8 +2494,6 @@ which actions show; and how this fits D-61 (plain React instead of Next) and D-6
 Pinned to come back to; not started.
 
 ---
-
-<a id="d-70"></a>
 
 ## D-70 · Contacts page: refresh, admin-chosen columns, tidier layout, sort and search by date — **WORK ON NOW (Kushal, 2026-10-20)**
 
@@ -2661,8 +2527,6 @@ Pinned to come back to; not started.
 
 ---
 
-<a id="d-71"></a>
-
 ## D-71 · A big background picture for each tab — pinned (Kushal, 2026-10-19)
 
 Each main page gets a **huge, faint illustration (an SVG) behind its content** that shows what the page is about: a contact
@@ -2675,8 +2539,6 @@ Questions for later: one illustration per page or a shared set, and whether the 
 Pinned to come back to; not started.
 
 ---
-
-<a id="d-72"></a>
 
 ## D-72 · Mobile-friendly UI — pinned (Kushal, 2026-10-20)
 
@@ -2695,8 +2557,6 @@ should get a phone-width look as part of it.
 Pinned to come back to; not started.
 
 ---
-
-<a id="d-73"></a>
 
 ## D-73 · "Message these people" right after an import — pinned (Kushal, 2026-10-20) — **PARKED (Kushal, 2026-10-20): not working on this for now**
 
@@ -2719,8 +2579,6 @@ Pinned to come back to; not started.
 
 ---
 
-<a id="d-74"></a>
-
 ## D-74 · Add-number form: country-code dropdown and a numbers-only phone field — ✅ **BUILT 2026-10-20**
 
 **Note: this came up while the other dev (Mikhil) was alpha testing** (2026-10-20). His words, the screenshots and Kushal's decisions are in [`dev-feedback-issues.md`](../dev-feedback-issues.md), issue-8 ([#70](https://github.com/Kushalr3ddy/whatsapp-crm/issues/70)). The optional phone field on Add a number makes people type the country code themselves, and
@@ -2734,8 +2592,6 @@ field does; the field accepts digits only and asks phones for the numeric keypad
 **Update 2026-10-20 (PR for the second alpha-test round):** Add a number now asks for a **name only**, and its QR opens straight away; the number is saved when the QR is scanned. The country list and digits-only box moved to the **Type a code** linking method, where WhatsApp needs the number up front (`apps/web/app/link/phone-field.tsx`). Sign-in also got a Show/Hide button.
 
 ---
-
-<a id="d-75"></a>
 
 ## D-75 · Number assignment: who each WhatsApp number belongs to — pinned (Kushal, 2026-10-20): not building it now
 
@@ -2751,8 +2607,6 @@ alpha test and Kushal's own (the Team tab had no way to give a teammate a number
 
 ---
 
-<a id="d-76"></a>
-
 ## D-76 · Notifications tab, number requests and approvals — pinned (Kushal, 2026-10-20)
 
 An in-app **Notifications** tab for each user: when a number is assigned, reassigned or removed, when a request for a number is sent, approved or
@@ -2763,8 +2617,6 @@ written in the same transaction as the change, an unread count in the nav comput
 `inbox/auto-refresh.tsx` (there is no push). Related: D-43 (other alert channels), D-75, D-77.
 
 ---
-
-<a id="d-77"></a>
 
 ## D-77 · Admin controls: user scopes and number limits — pinned (Kushal, 2026-10-20)
 
@@ -2778,15 +2630,11 @@ any signed-in person can). Related: D-75, D-76, D-53, D-47 (limits per organisat
 
 ---
 
-<a id="d-78"></a>
-
 ## D-78 · Email: invitations to join an organisation, via SMTP or an email API (decide later) — pinned (Kushal, 2026-10-20)
 
 Email is **optional** and the choice is **not made yet**: either plain **SMTP** (any mail server the operator already has) or an **email API** (a hosted sending service). What it would unlock: an **invite sent from the Team tab** (today an admin creates the account and hands over the password), a self-service password reset, and email verification at signup. Until a choice is made the product works without email, and the admin-created-account flow stays. Today there is no email code at all (`packages/providers/email` is empty, no email settings in `packages/shared/src/config.ts`). To decide: SMTP vs an API provider, who pays for sending, and what an invite looks like (a single-use link). Related: D-8, D-33 (the unbuilt email driver), D-43 (email alerts), D-47, and docs [`32`](32-onboarding-and-billing.md).
 
 ---
-
-<a id="d-79"></a>
 
 ## D-79 · Contacts: columns chosen by an admin for the whole team — pinned (Kushal, 2026-10-21)
 
@@ -2798,8 +2646,6 @@ already exist (D-40, PR #56); sorting by a chosen column is the follow-on from D
 Pinned to come back to; not started.
 
 ---
-
-<a id="d-80"></a>
 
 ## D-80 · Create and edit a contact page; save an unknown sender; org-neutral fields — pinned (Kushal, 2026-10-21)
 
@@ -2831,8 +2677,6 @@ Pinned to come back to; not started.
 
 ---
 
-<a id="d-81"></a>
-
 ## D-81 · AI assistant guardrails — pinned (Kushal, 2026-10-21: "it needs to just work for now, we can set up guardrails later")
 
 **What:** today the assistant has only the safety that every send already has (do-not-contact, pacing, the anti-ban gates, the daily
@@ -2855,8 +2699,6 @@ much experience was needed, it answered "2 to 5 years", which no one had told it
 
 ---
 
-<a id="d-82"></a>
-
 ## D-82 · A gateway restart can break the WhatsApp session — pinned (found 2026-10-21)
 
 **What happened:** after many restarts of the gateway in one afternoon (each saved edit restarts it under `tsx watch`), the saved encryption
@@ -2878,8 +2720,6 @@ The scorer should ignore decrypt failures for `fromMe` messages and for a burst 
 
 ---
 
-<a id="d-83"></a>
-
 ## D-83 · `npm run dev:fast` leaves some screens stale after an action — pinned (found 2026-10-21)
 
 **What:** against the production build (`next start`) six browser specs fail that pass against `next dev` and in CI: `broadcast-flow`,
@@ -2888,8 +2728,6 @@ refresh": a removed custom field or tag stays on screen until a reload. Probably
 use `dev:fast` to look at pages and demo, and `dev:all` to test flows.**
 
 ---
-
-<a id="d-84"></a>
 
 ## D-84 · The AI runs whole conversations — pinned (Kushal, 2026-10-21: it "should take over the entire conversation")
 
@@ -2902,8 +2740,6 @@ person looks); a summary note at hand-over that is a real field, not text in the
 Pinned to come back to; not started.
 
 ---
-
-<a id="d-85"></a>
 
 ## D-85 · AI templates: pick a template, fill its blanks, get the script — **PRIORITY (Kushal, 2026-10-21); mockup first, then build**
 
@@ -2960,8 +2796,6 @@ Pinned as a priority; **mockup first** (Kushal, 2026-10-21), then build.
 
 ---
 
-<a id="d-86"></a>
-
 ## D-86 · AI page: the one-off orders box moves to the bottom; templated orders and order history — pinned (Kushal, 2026-10-21)
 
 On the AI assistant page the **"Tell the assistant what to do"** box (one-off orders such as "message Asha and ask if she can start Monday", "pause the Diwali campaign") goes **below the settings and the script**, with the queue under it, as part of D-85. Its further implementation is pinned here, not started:
@@ -2975,8 +2809,6 @@ Pinned to come back to; not started.
 
 ---
 
-<a id="d-87"></a>
-
 ## D-87 · Rule: every mass message goes to a tag, so no one is messaged untagged — pinned as a RULE (Kushal, 2026-10-21)
 
 **The rule:** a campaign (a message to many people, whoever starts it: a person, the AI assistant, an import's "Message these people") must have a **tag** as its audience, and everyone it reaches carries that tag. Nothing is sent to an untagged group. The reason is to keep the database and the backend simple: one way to say who got a message, one thing to look up, filter, re-send to or report on.
@@ -2989,8 +2821,6 @@ Related: D-68 (tag people first), D-73, D-85 (templates choose a tag audience).
 Pinned as a rule; not built.
 
 ---
-
-<a id="d-88"></a>
 
 ## D-88 · An OpenAPI spec and a Swagger page for the API — pinned (Kushal, 2026-10-22)
 
@@ -3028,8 +2858,6 @@ Pinned to come back to; not started.
 
 ---
 
-<a id="d-89"></a>
-
 ## D-89 · Speed: the Contacts page, sign out, and measuring in production mode — pinned (session audit, 2026-10-22)
 
 Findings are in [`37-session-audit-findings.md`](37-session-audit-findings.md). In short, a timed pass over every screen found **one real bottleneck, one unexplained delay, and a measuring problem**:
@@ -3042,8 +2870,6 @@ Findings are in [`37-session-audit-findings.md`](37-session-audit-findings.md). 
 Related: D-46 (UI lag), D-61 (lighter web tier), D-70 (the Contacts page), D-83, D-72 (phone width).
 
 Pinned to come back to; not started.
-<a id="d-90"></a>
-
 ## D-90 · Import duplicates: newest name wins now; a "Needs review" list later; a cleanup script for old copies — pinned (Kushal, 2026-10-22)
 
 **Why:** Mikhil imported two Excel files with the same phone number and different names; the contact kept the first name and nothing said so.
@@ -3062,8 +2888,6 @@ Pinned to come back to; not started.
 Related: D-89 / D-46 (the Contacts page), D-45 (`@lid` linking).
 
 ---
-
-<a id="d-91"></a>
 
 ## D-91 · A chat the AI is handling cannot be typed into until a person overrides and stops the AI — pinned (Kushal, 2026-10-22; raised again 2026-10-23)
 
@@ -3098,8 +2922,6 @@ Pinned to come back to; not started.
 
 ---
 
-<a id="d-92"></a>
-
 ## D-92 · A separate feedback portal: testers' Google Doc into GitHub issues, with AI help and follow-up questions later — pinned (Kushal, 2026-10-22)
 
 **What:** feedback intake lives **apart from the CRM**: not in its app, API or database. Decided so far: **no new server for now.** A **scheduled GitHub Actions worker** (every 5 to 10 minutes, or on demand) reads the shared Google Doc where Mikhil and the alpha testers paste their screenshots and describe each problem in their own words, and turns each problem into a GitHub issue (`bug`, `alpha-feedback`, `needs-triage`), never twice (a hidden marker per heading), and adds a comment when a problem is edited later. It feeds the same flow as `npm run feedback:import` (docs/39).
@@ -3118,8 +2940,6 @@ Pinned to come back to; the AI parts and the questions are what is left.
 
 ---
 
-<a id="d-93"></a>
-
 ## D-93 · A separate log for the AI assistant, through the whole process — pinned (Kushal, 2026-10-22)
 
 **What:** the AI assistant gets **its own log**, apart from the gateway's and the API's, so one chat's AI reply can be followed from start to finish without searching a mixed stream: *inbound message received → is the chat assigned to the assistant → consent, on/off and daily-cap checks → do-not-contact check → the instructions and the rules used (template id, version) → model call (provider, model, how long, tokens) → any tool call (hand-over, start a campaign) → the reply queued → gateway pacing and send → delivered/read*. Each line carries the same ids (organisation, conversation, message, assistant run), so a person can filter one chat. **No message text and no phone numbers in the log** (the conversation is private data): ids, decisions, reasons and timings only.
@@ -3131,8 +2951,6 @@ Pinned to come back to; the AI parts and the questions are what is left.
 Pinned to come back to; not started.
 
 ---
-
-<a id="d-94"></a>
 
 ## D-94 · Messages the owner sends from their own phone, and older chat history, are missing from the inbox — **HIGH PRIORITY** (Kushal, 2026-10-22)
 
@@ -3156,8 +2974,6 @@ Pinned to come back to; not started.
 Remaining work pinned as **high priority**.
 
 
-<a id="d-96"></a>
-
 ## D-96 · Forgot password: a way to reset your own password — 🔺 **PRIORITY** (Kushal, 2026-10-23)
 
 **What:** today there is no self-service reset. The sign-in page says "Ask an administrator to set a new password for you from the Team page", and the only other route is the command line (`npm run admin -- password --email …`, docs/23-auth.md). On the beta test server (a real instance other people use, no operator at a keyboard) someone who forgets their password, or the only admin who does, is locked out until a person with shell access acts.
@@ -3174,8 +2990,6 @@ Remaining work pinned as **high priority**.
 
 **Tests:** an integration test per route (link or code works once, expires, is refused on reuse, ends old sessions, is rate-limited, leaves an audit row) and a browser test of the forgot-password page. Per docs/39, none of this is a bug, so it goes straight to a feature PR.
 
-<a id="d-97"></a>
-
 ## D-97 · AI settings: say "add a model first" next to the Save button when no model is set up — 📌 pinned (Kushal, 2026-10-23)
 
 **What:** on a fresh install nothing tells a new user that the AI assistant needs a model before it can do anything: the AI settings, the template builder and "Hand to AI" all quietly do nothing useful. Put a plain line at the bottom of the AI settings, next to the Save button: **"Add a model first to start using the AI assistant"** (shown while no provider, key and model are saved; gone once a model is saved and tested). The same short line, linking to the settings, wherever the AI is offered but cannot work yet (the AI page, "Message a group", the thread's Hand to AI button, which should be disabled with that reason instead of failing later).
@@ -3183,8 +2997,6 @@ Remaining work pinned as **high priority**.
 **Where in the code:** `apps/web/app/ai/settings/llm-form.tsx` (the Save button), the AI page and `apps/web/app/inbox/[id]/thread-controls.tsx`. The server already knows (`GET /ai/llm` says whether a model is configured; `answer-now` answers `AI_NOT_CONFIGURED`).
 
 **Test:** a browser test that a fresh install shows the line beside Save and that saving a model removes it.
-
-<a id="d-98"></a>
 
 ## D-98 · A usage and limits check for the chosen AI model: used, remaining, and roughly how many messages it can still handle — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3204,8 +3016,6 @@ Remaining work pinned as **high priority**.
 
 **The numbers in the model list (answer to Kushal's question):** the "131k", "4k", "1k" beside each model are its **context window**: the most text the model can read and write in one request, counted in tokens (a token is about three quarters of an English word, so 131k is roughly 100,000 words and 4k roughly 3,000). They come from the provider's own model list (`context_length`), shown in `apps/web/app/ai/settings/model-picker.tsx`. Bigger is not "better": our replies are short, so 4k is enough for a short chat and 131k only matters for long histories. "tested" is a separate badge: the model we have run our own check against.
 
-<a id="d-99"></a>
-
 ## D-99 · Contacts: add one contact, or several at once, by hand — 📌 pinned (Kushal, 2026-10-23)
 
 **What:** the Contacts page only lists people. The only ways in are the import wizard (a whole file) and people who message in. Add an **Add contact** option on Contacts with two modes:
@@ -3217,8 +3027,6 @@ Remaining work pinned as **high priority**.
 **Open question for Kushal:** "single/multiple contact option" was read as adding one or many contacts by hand. If it meant something else (for example choosing one or several contacts in the list to act on, which bulk tagging already does), say so and this pin is rewritten.
 
 **Test:** an integration test per mode (creates, de-duplicates, refuses a bad number with the reason, writes an audit row) and a browser test of the form and the paste box.
-
-<a id="d-100"></a>
 
 ## D-100 · Campaigns: an indicator on each campaign showing whether the AI is used — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3233,8 +3041,6 @@ Remaining work pinned as **high priority**.
 **Where:** the campaign list and detail API responses need `aiTemplateId` and the template name (`apps/api/src/routes/campaigns.ts`, `packages/core/src/campaigns.ts`), plus the opening counts per campaign; the web side is two components and the type in `apps/web/lib/crm.ts`.
 
 **Test:** an integration test that the list and detail responses carry the template and the counts; a browser test that an AI campaign shows the badge and a plain one does not.
-
-<a id="d-101"></a>
 
 ## D-101 · "Waiting for this message" on the recipient's phone, even when the AI sends it — 🔺 **PRIORITY** (Kushal, 2026-10-23, raised again after it kept happening)
 
@@ -3261,8 +3067,6 @@ Two things follow, and both belong to this pin:
 
 **Update 2026-10-23 night: BUILT, not yet proven on a real phone.** Option B was done (Baileys 7.0.0-rc14) together with C's visibility (the thread says when the other phone could not read a message; a broken encryption session is said on the thread) and the first half of D (ordered, flushed credential writes; own-device failures out of the ban score). Offline proof is the R-013 integration test (real library, real credential store); a smoke test against the live WhatsApp servers connects and gets a QR. See docs/45, "The fix". **Still open:** the real-phone acceptance above on the Linode with a spare number; a number whose session is already broken still needs a relink (the laptop's was logged out on first connect under 7.x, probably because it had been unlinked by then; a number linked under 6.x on the Linode restored and connected fine under 7.x); holding AI and campaign sends while the session is broken; a relink button. Branch `fix/not-quitting-till-waiting-for-this-message-is-fixed`.
 
-<a id="d-102"></a>
-
 ## D-102 · Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox — 🔺 **PRIORITY** (Kushal, 2026-10-23; same root as D-101, follow-up to D-94)
 
 **Symptom:** messages the owner sends from their phone or from WhatsApp Web to a contact often do not appear in the CRM thread. Some do (16 phone-sent messages are stored in the dev database from 08:09 to 09:16 UTC on 2026-10-23), many do not.
@@ -3279,8 +3083,6 @@ Two things follow, and both belong to this pin:
 
 **Done means:** with a linked spare number on the Linode, ten messages typed alternately on the phone and on WhatsApp Web all appear once, in order, as sent by "phone", with zero `No matching sessions` for the account's own LID in the gateway log; an integration test covers a `fromMe` message arriving under a LID address.
 
-<a id="d-103"></a>
-
 ## D-103 · The AI tab is confusing: a guided walkthrough of what has to be set up, in order — 📌 pinned (Kushal, 2026-10-23)
 
 **What:** the AI area has several parts (assistant settings, the model, templates, campaigns that use them, the queue) and nothing says what a new person must do first, or what depends on what. Add a short guided walkthrough, shown at the top of the AI tab until it is finished and reachable again from a "How this works" link:
@@ -3296,8 +3098,6 @@ Each step shows done or not done (a tick), links to the right screen, and says i
 
 **Test:** a browser test that a fresh install shows the walkthrough with step 1 open and the later steps disabled with the reason, and that finishing a step ticks it.
 
-<a id="d-104"></a>
-
 ## D-104 · "Turn the AI model off" deletes the model settings; there is no way to pause the AI and keep them — 📌 pinned (Kushal, 2026-10-23)
 
 **What was found (Kushal asked):** the button **Turn the AI model off** on AI → Settings calls `DELETE /ai/llm` (`apps/api/src/routes/ai.ts`), which sets the driver to `none` and **erases the saved model, the key and the base URL** from the settings file (`LLM_DRIVER=none`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL` unset). The page then shows "No AI model is set up yet. Choose a provider below, enter its key, pick a model and test it." and everything has to be entered again, including pasting the key. The confirmation does say "removes the key from the settings file", but the button is named "turn off" and a person reasonably expects a switch, not a delete.
@@ -3309,8 +3109,6 @@ Each step shows done or not done (a tick), links to the right screen, and says i
 **Check the other switch too:** the assistant's own enabled flag (`ai_setting.enabled`) already pauses replies without touching the model; the pin should make sure the two are not confused on the page and that "pause" uses one of them consistently.
 
 **Test:** an integration test that pausing leaves `LLM_MODEL` and the key in place and stops `autoReply` and `writeOpenings`; a test that remove still clears them; a browser test of both buttons and their labels.
-
-<a id="d-105"></a>
 
 ## D-105 · Contacts "Dates and order": the "Date: Added / Last imported" choice is unclear — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3330,8 +3128,6 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 
 **Test:** the existing browser test `contacts-dates.spec.ts` keeps working (labels change, `aria-label`s stay); add an assertion for the hint text.
 
-<a id="d-106"></a>
-
 ## D-106 · Inbox: "Resolve" / "Reopen" is confusing; say "Mark as completed" / "Reopen chat" — 📌 pinned (Kushal, 2026-10-23)
 
 **What:** the chat header has one button that reads **Resolve** on an open chat and **Reopen** on a closed one (`apps/web/app/inbox/[id]/thread-controls.tsx`, `status` open or closed). "Resolve" sounds like fixing a problem or a support ticket; this is a CRM chat, and the button only marks it finished.
@@ -3343,8 +3139,6 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 - The stored value stays `closed` (no migration, the API and audit log keep their names); only the labels change.
 
 **Tests to update:** `tests/e2e/seeded-pages.spec.ts` (clicks `Resolve` then `Reopen`) and any spec that opens the "Closed" tab; the AI Hand-to-AI behaviour and the assistant's own handling of closed chats (`autoReply` skips a chat that is not `open`) are unchanged.
-
-<a id="d-107"></a>
 
 ## D-107 · Import: two different things are both called "Preview"; the check should run by itself — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3360,8 +3154,6 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 3. The existing safety stays: nothing is written until **Import** is pressed, and a file whose check found problems says so before Import (D-108).
 
 **Tests:** update the import browser specs that click Preview before Import (`import-flow`, `import-keep-columns`, `import-problems`, `import-notice-and-reset`); add one that the result appears without pressing anything.
-
-<a id="d-108"></a>
 
 ## D-108 · Import: mark invalid phone numbers and emails in the preview, and make the person fix or drop them (with a confirmation) — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3382,8 +3174,6 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 
 **Tests:** an integration test that rows with a bad number or email come back flagged with a reason, that an override fixes a row and a drop removes it from the run; a browser test of fix, drop and the drop confirmation.
 
-<a id="d-109"></a>
-
 ## D-109 · Campaign form: "Build a new template" jumps to the AI tab, and the template picker does not make the campaign an AI campaign — 📌 pinned (Kushal, 2026-10-23)
 
 **What Kushal asked:** why does "Build a new template →" on the new-campaign page open the AI assistant tab?
@@ -3399,8 +3189,6 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 
 **Tests:** a browser test that picking a template in the campaign form results in a campaign with the AI badge (A) or an explicit copy-only note (B); an integration test that the create-campaign call carries `aiTemplateId` when the picker attached one.
 
-<a id="d-110"></a>
-
 ## D-110 · "Tell the assistant what to do" as a small chat bubble on the right side of the page, not a section in the AI tab — 📌 pinned (Kushal, 2026-10-23)
 
 **What:** today the box that tells the AI what to do ("pause that campaign", "start the welding one", a plain-language instruction for the AI to carry out, plus the queue of requests) is a full section of the AI tab (`apps/web/app/ai/ai-queue.tsx`, heading "Tell the assistant what to do"), which makes the tab long and confusing (D-103). Replace it with a **small assistant chat bubble on the right side of the page**:
@@ -3414,8 +3202,6 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 **Phones:** on a narrow screen the panel opens full width from the bottom; the bubble must not cover the chat composer (move it above it on the inbox thread page).
 
 **Tests:** a browser test that the bubble is present for an admin once the AI is on, absent for an agent and when no model is set, that a sent instruction appears as a bubble and its answer follows, and that the panel stays open across a page change; the existing integration tests for commands and the queue are untouched.
-
-<a id="d-111"></a>
 
 ## D-111 · Import: de-duplicate in the browser before upload, with a progress bar; drop exact copies, ask which to keep when copies differ — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3435,8 +3221,6 @@ So "Date: Added, From 1 Oct, To 7 Oct" means "people who first appeared in the C
 **Ties to:** D-90 (duplicates and "Needs review"), D-107 (the check runs by itself), D-108 (fix or drop invalid rows, same confirmation), issue #117 (import duplicates).
 
 **Tests:** unit tests for the browser de-duplicator (phone and email forms, exact vs differing, merge), an integration test that the server still rejects a duplicate sent despite the browser, and a browser test with a file that has 3 exact copies and 2 differing copies: the loading bar appears, 3 are removed, the 2 are shown, and the chosen one is the one imported.
-
-<a id="d-112"></a>
 
 ## D-112 · Message and campaign tracking is poor: say who sent each message (AI or a person), and show it in campaigns too — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3461,8 +3245,6 @@ Inbound messages keep their current look.
 
 **Tests:** an integration test that the message list tells AI, person, campaign and phone apart; a browser test of the four labels in one thread and of the recipient row showing the sent text.
 
-<a id="d-113"></a>
-
 ## D-113 · Linked numbers: replace "Advisory mode" with a plain anti-ban switch (On / Off) — 📌 pinned (Kushal, 2026-10-23)
 
 **What:** the Linked numbers page calls it **Advisory mode** (the control, the red banner "Advisory mode — anti-ban is NOT enforced on this number", the audit entry, the runbook), which nobody outside the code can decode. What it really does is **switch the anti-ban engine's blocking off for one number while still recording what it would have blocked**: pacing, daily caps, warm-up, health holds and the recovery pause are logged ("advisory mode: sending past an anti-ban hold") instead of obeyed (D-29, `sender_identity.enforcement` = `enforce` or `advisory`, `apps/web/app/link/page.tsx`).
@@ -3478,8 +3260,6 @@ Inbound messages keep their current look.
 **Why it matters:** this is the switch that was turned on to get past the 48-hour false quarantine (D-82) on a test number. People reach for it because it is named like a mild setting, not a ban-risk one. Also decide whether Off should **expire by itself** (for example after 24 hours, with a reminder), so it cannot be left on by accident.
 
 **Tests:** update the specs and tests that read "Advisory mode" (`team-and-numbers`, the integration tests on enforcement and the runbook strings); add one for the new banner text and the "protection off" badge on the list.
-
-<a id="d-114"></a>
 
 ## D-114 · An approval system: requests from agents to admins, with status pages and notifications — 📌 pinned (Kushal, 2026-10-23)
 
@@ -3505,8 +3285,6 @@ Inbound messages keep their current look.
 **Design notes so it is not re-derived:** one generic `approval_request` table (id, org, kind, payload JSON, requested_by, note, status, decided_by, decided_at, decision_reason, expires_at) instead of one table per kind (D-76's `sender_access_request` becomes `kind = 'number'`); a registry mapping each kind to its `apply()` function and the role allowed to approve; the approver's session, not the requester's, performs the action; idempotent (approving twice does nothing); an org setting per kind says "needs approval" or "agents may do this alone" (so a small team can leave it off). Scopes (D-77) decide who may *ask*; roles decide who may *approve*.
 
 **Tests:** an integration test per kind (request, approve, decline, cancel, expire, cannot self-approve, audit rows, the underlying action runs only once and only on approve) and the do-not-contact and anti-ban rules still holding after approval; browser tests of "My requests", the Approvals inbox and the bell.
-<a id="d-115"></a>
-
 ## D-115 · Campaigns: a timeout for messages the AI sends — 📌 pinned (Kushal, 2026-10-23), meaning mostly clear
 
 **Purpose (Kushal, same day): "so the AI doesn't keep waiting on it."** After the AI sends a message in a campaign, it must not wait on that message forever (for a reply, or for it to be sent or delivered). After a set time it gives up on that message and moves on (next recipient, or hands the chat back), and the campaign page says so.
@@ -3522,8 +3300,6 @@ Inbound messages keep their current look.
 
 **Ties to:** D-100 (AI indicator), D-112 (campaign recipient tracking), D-91, R-012, #157, #158.
 
-<a id="d-116"></a>
-
 ## D-116 · Chats: a button to jump to the bottom (the latest message) — 📌 pinned (Kushal, 2026-10-23)
 
 **What:** in a long chat, a small round **down-arrow button** appears at the bottom right of the message list once the person has scrolled up, and one press scrolls to the newest message. It hides again when they are at the bottom.
@@ -3531,8 +3307,6 @@ Inbound messages keep their current look.
 **Shape (to confirm when built):** a count on the button when new messages arrived while they were scrolled up (for example "3 new"); a chat opens at the bottom by default; a new message only pulls the view down if they were already at the bottom, so reading older messages is never interrupted (the inbox refreshes on a timer, `inbox/auto-refresh.tsx`). Small and front-end only. Keep it simple: a CRM chat view, not a WhatsApp clone.
 
 **Ties to:** D-46 (lag), D-112 (the sender line under each message).
-
-<a id="d-95"></a>
 
 ## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (Kushal, 2026-10-23)
 
