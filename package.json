@@ -2,6 +2,7 @@
   "name": "whatsapp-crm",
   "version": "0.0.1",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "description": "Generic, self-hostable WhatsApp CRM. See docs/ for the design.",
   "engines": {
