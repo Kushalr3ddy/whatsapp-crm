@@ -1,0 +1,23 @@
+---
+title: WhatsApp CRM documentation
+description: Setup guides, how-tos and the safety rules for the WhatsApp CRM.
+template: splash
+hero:
+  tagline: A shared WhatsApp inbox, bulk campaigns and an AI assistant, with ban protection built in.
+  actions:
+    - text: Start here
+      link: ./start/what-is-it/
+      icon: right-arrow
+    - text: Install it
+      link: ./setup/install/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Set it up" icon="rocket">Install with Docker, set the keys, link a number with a QR code, and choose the AI model.</Card>
+  <Card title="Use it every day" icon="open-book">Import contacts, answer customers, run campaigns, hand a chat to the AI.</Card>
+  <Card title="Keep your numbers safe" icon="approve-check">How warm-up, pacing and health checks protect a number from a ban, in plain words.</Card>
+  <Card title="Build on it" icon="seti:json">Sign in with an API key and see every endpoint.</Card>
+</CardGrid>

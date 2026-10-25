@@ -1,0 +1,59 @@
+# Builds the documentation site (site/, Astro Starlight) and publishes it to GitHub Pages at
+# https://kushalr3ddy.github.io/whatsapp-crm/ . One-time setup in the repository: Settings > Pages > Source: "GitHub Actions".
+# A pull request that touches the site only builds it (to catch a broken page); the publish step runs on main.
+# This is not a required check: it cannot block a merge.
+name: docs-site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'docs/generated/api-reference.md', '.github/workflows/docs-site.yml']
+  pull_request:
+    paths: ['site/**', 'docs/generated/api-reference.md', '.github/workflows/docs-site.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: install
+        working-directory: site
+        run: npm ci
+      - name: refresh the endpoint reference from the generated file
+        working-directory: site
+        run: node scripts/sync-generated.mjs
+      - name: build
+        working-directory: site
+        run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
