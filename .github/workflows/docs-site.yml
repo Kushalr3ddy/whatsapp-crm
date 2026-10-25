@@ -1,22 +1,20 @@
 # Builds the documentation site (site/, Astro Starlight) and publishes it to GitHub Pages at
 # https://kushalr3ddy.github.io/whatsapp-crm/ . One-time setup in the repository: Settings > Pages > Source: "GitHub Actions".
-# A pull request that touches the site only builds it (to catch a broken page); the publish step runs on main.
+# Runs only every night (and on demand from the Actions tab: "Run workflow"), never on a push or a pull request, so it uses no
+# build minutes while you work. Merging a change to the site shows up at the next night's run, or immediately if you run it by hand.
 # This is not a required check: it cannot block a merge.
 name: docs-site
 
 on:
-  push:
-    branches: [main]
-    paths: ['site/**', 'docs/generated/api-reference.md', '.github/workflows/docs-site.yml']
-  pull_request:
-    paths: ['site/**', 'docs/generated/api-reference.md', '.github/workflows/docs-site.yml']
+  schedule:
+    - cron: '30 21 * * *'   # 03:00 in India (UTC+5:30); a scheduled run uses the main branch
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -40,12 +38,10 @@ jobs:
         working-directory: site
         run: npm run build
       - uses: actions/upload-pages-artifact@v3
-        if: github.event_name != 'pull_request'
         with:
           path: site/dist
 
   deploy:
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:
