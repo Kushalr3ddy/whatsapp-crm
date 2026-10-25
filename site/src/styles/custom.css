@@ -1,0 +1,11 @@
+/* One green accent, to match the app (green primary), over Starlight's restrained default. */
+:root {
+  --sl-color-accent-low: #dcfce7;
+  --sl-color-accent: #16a34a;
+  --sl-color-accent-high: #14532d;
+}
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #052e16;
+  --sl-color-accent: #22c55e;
+  --sl-color-accent-high: #bbf7d0;
+}
