@@ -1,0 +1,39 @@
+# Static security scan (D-48): Semgrep's free community rules read the TypeScript for risky patterns (injection, unsafe redirects, weak crypto,
+# hard-coded secrets, missing checks). Runs on pull requests that touch code. It is NOT a required check: a red mark here tells a person to look,
+# it does not block a merge. Only findings of severity ERROR fail the job; warnings are printed in the log.
+name: security-semgrep
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install semgrep==1.100.0
+      - name: scan (community rules, no account needed)
+        run: |
+          semgrep scan --config p/typescript --config p/nodejs --config p/owasp-top-ten --config p/secrets \
+            --exclude node_modules --exclude '*.test.ts' --exclude tests --exclude docs \
+            --metrics off --severity ERROR --error
