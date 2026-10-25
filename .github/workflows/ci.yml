@@ -247,7 +247,8 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-        run: node tests/regression/bug-gate.mjs "origin/${{ github.base_ref }}"
+          BASE_REF: ${{ github.base_ref }}
+        run: node tests/regression/bug-gate.mjs "origin/$BASE_REF"
 
   # The same browser tests, but on a PRODUCTION build of the web app, for the bugs that only exist there (R-001: forms hanging on "Creating…"
   # because Next's own gzip never finished a redirecting response). Only the @smoke set and the speed probe, so it stays short.
@@ -336,7 +337,9 @@ jobs:
       - name: which bugs does this PR touch?
         id: ids
         if: github.event_name == 'pull_request'
-        run: echo "ids=$(node tests/regression/changed-ids.mjs "origin/${{ github.base_ref }}" HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: echo "ids=$(node tests/regression/changed-ids.mjs "origin/$BASE_REF" HEAD)" >> "$GITHUB_OUTPUT"
       - name: regression (registry, production build, smoke tests, speed probe, this PR's own bugs)
         run: npm run regress:ci -- --ids "${{ steps.ids.outputs.ids }}"
       - name: the report

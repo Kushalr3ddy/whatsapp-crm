@@ -112,7 +112,7 @@ export class LocalKms implements KmsDriver {
 
     const iv = buf.subarray(2, 2 + IV_BYTES);
     const tag = buf.subarray(2 + IV_BYTES, HEADER_BYTES);
-    const decipher = createDecipheriv('aes-256-gcm', key, iv);
+    const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES });
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(buf.subarray(HEADER_BYTES)), decipher.final()]);
   }
