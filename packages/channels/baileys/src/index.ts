@@ -51,6 +51,10 @@ export interface BaileysProviderOptions {
    * placeholder never clears. Text only: return `undefined` for anything else.
    */
   readonly resendText?: (senderId: string, messageId: string) => Promise<string | undefined>;
+  /** Builds the socket. Defaults to Baileys' `makeWASocket`; a test passes a fake to drive the lifecycle without WhatsApp. */
+  readonly makeSocket?: (config: Parameters<typeof makeWASocket>[0]) => WASocket;
+  /** The WhatsApp Web version to present. Defaults to asking WhatsApp for the latest; a test sets it to stay off the network. */
+  readonly waVersion?: [number, number, number];
 }
 
 /**
@@ -359,7 +363,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     if (existing) return existing;
 
     const { state, saveCreds, flush } = await loadAuthState(this.#options.authStore, senderId);
-    const { version } = await fetchLatestBaileysVersion();
+    const version = this.#options.waVersion ?? (await fetchLatestBaileysVersion()).version;
     const onFail = this.#options.onDecryptFailure;
     const onRetry = this.#options.onRetryRequest;
     const resendText = this.#options.resendText;
@@ -368,7 +372,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     const ownUsers = new Set<string>();
     const isOwn = (jid: string | null): boolean => jid !== null && ownUsers.has((jid.split('@')[0] ?? '').split(':')[0] ?? '');
 
-    const socket = makeWASocket({
+    const socket = (this.#options.makeSocket ?? makeWASocket)({
       version,
       auth: state,
       logger: (onFail !== undefined || onRetry !== undefined
@@ -479,6 +483,13 @@ export class BaileysChannelProvider implements ChannelProvider {
       // Logged out is terminal: the number was unlinked on the phone, so reconnecting cannot
       // work and retrying would only look like abuse. Everything else stays reconnectable.
       conn.state = reason === 'logged_out' ? 'logged_out' : 'closed';
+      // A socket this number has already moved on from (logged out before a new link) can close after the new socket is open. Its close
+      // is not about the number any more: deleting the entry would orphan the live socket and the next open would make a second one,
+      // and the two then log each other out as the same device forever (R-014). Nor is it a logout or a reason to reconnect.
+      if (this.#connections.get(senderId) !== conn) {
+        this.#options.logger.info({ senderId, statusCode, reason }, 'an old socket closed after the number moved on; ignored');
+        return;
+      }
       this.#connections.delete(senderId);
       this.#options.logger.warn({ senderId, statusCode, reason }, 'whatsapp connection closed');
       this.#connectionEvents.push({
