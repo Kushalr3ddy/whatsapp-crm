@@ -23,7 +23,7 @@ is not re-proposed.
 | Pin | What | Status |
 |---|---|---|
 | [D-1](#d-1--a-lightweight-database-browser-drizzle-studio-or-similar) | A lightweight database browser (Drizzle Studio or similar) | 📌 pinned |
-| [D-1b](#d-1b--drizzles-query-builder-as-opposed-to-drizzle-itself) | Drizzle's query builder (as opposed to Drizzle itself) | 📌 pinned |
+| [D-1b](#d-1b--drizzles-query-builder-as-opposed-to-drizzle-itself) | Drizzle's query builder (as opposed to Drizzle itself) | ⏸ later · not required for now (Kushal, 2026-10-25) |
 | [D-3](#d-3--licence) | Licence | 📌 pinned |
 | [D-4](#d-4--the-ai-agent-f12---built-2026-10-21-kushals-ai-speedrun-guardrails-left-for-d-81) | The AI agent (F12) | ✅ built 2026-10-21 (settings, auto-reply, campaign tools, queue); its guardrails are D-81 |
 | [D-5](#d-5--baileys-7x) | Baileys 7.x | ◐ on 7.0.0-rc14 since 2026-10-23 (#161) · 📌 stable 7.0.0 still awaited |
@@ -192,6 +192,8 @@ application. `psql` and DBeaver cover the day-to-day case now.
 ---
 
 ## D-1b · Drizzle's query builder (as opposed to Drizzle itself)
+
+> **2026-10-25 (Kushal): later, not required for now.** Nothing depends on it; revisit only when the trigger at the bottom happens.
 
 **Worth separating three things that all get called "Drizzle":**
 
