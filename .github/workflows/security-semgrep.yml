@@ -31,7 +31,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install semgrep==1.100.0
+      # semgrep 1.100.0 imports pkg_resources, which Python 3.12 no longer ships; setuptools provides it (and 81+ removed it)
+      - run: pip install "setuptools<81" semgrep==1.100.0
       - name: scan (community rules, no account needed)
         run: |
           semgrep scan --config p/typescript --config p/nodejs --config p/owasp-top-ten --config p/secrets \
