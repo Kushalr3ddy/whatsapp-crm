@@ -74,7 +74,19 @@ feature PR you are on (a docs-only PR is fine **only when no feature PR is open*
 
 Then say in the final message which PRs are open and what the next session should ask him first.
 
+## ✅ ALPHA COMPLETE: checkpoint (2026-10-25)
+
+Kushal's call: the alpha is complete. `main` at **`f69870b`** (PR #163 merged) is the checkpoint, plus the docs in this PR. It holds the P2 to P7 spine (docs/17) and everything merged through #163: AI assistant and templates, AI-written campaign openings, Hand to AI / Take back, import of all columns, the "Waiting for this message" fix at the root (Baileys 7.0.0-rc14, R-013), and the Markdown-only CI skip.
+
+**Known open at the checkpoint (not blockers for calling it complete):** the real-phone acceptance for D-101 and D-102 (no server to run it on: the Linode was deleted), D-96 forgot password (PRIORITY), D-52 delete campaigns (PRIORITY), D-46 lag, and Baileys is a release candidate. Everything else is pinned in `docs/21-deferred.md` (clickable list at the top).
+
+**Rule from here:** no onboarding, signup, billing or licensing work was allowed until the alpha test ended (docs 32, 33, 34); that gate is now Kushal's to open. A branch and tag `checkpoint-2026-10-25-alpha-complete` mark this point once he merges (the previous one is `checkpoint-2026-10-22-night`).
+
+---
+
 ## ▶ Latest session (2026-10-23, day into night): read this first
+
+> **Update 2026-10-24: the Linode beta was deleted by Kushal.** Everything below that says it is running, or asks for a check on it (the real-phone acceptance for D-101 and D-102, the SSH key and root password housekeeping), is out of date. Its local credentials file and known_hosts entries were removed. The real-phone check still has to be done, on the laptop or a new server.
 
 ### State in one paragraph
 `main` is at **`9fa41f5`** and holds everything merged today: #153 (the `dev:all` fast-web hint), #154 (import stores all columns), #156 (the AI reasoning-model fix, R-012), #157 (the AI writes each campaign opening), #158 (Hand to AI / Take back), #159 (Linode deploy files, docs 43 to 45, pins) and **#161 (the "Waiting for this message" fix at the root, R-013)**. **No PR is open** apart from this handoff. A **beta server is running on a Linode** (Shared 4 GB, Mumbai): https://172-232-84-234.sslip.io/login, `main` at `9fa41f5`, Baileys 7.0.0-rc14, number `kushal_test` linked and connected. The laptop has no stack running (only the dev Postgres container, empty after the wipe).
