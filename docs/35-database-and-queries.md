@@ -178,6 +178,31 @@ FROM ai_template WHERE org_id = $1 ORDER BY last_used_at DESC NULLS LAST, update
 UPDATE ai_template SET use_count = use_count + 1, last_used_at = now() WHERE id = $1 AND org_id = $2;
 ```
 
+**Who still needs an AI-written opening (campaigns with an AI template).** `packages/core/src/ai-opening.ts`. Runs before the campaign's recipients are released; one model call per person, oldest first. An empty answer counts a try; after `MAX_TRIES` the person is skipped with `ai_opening_failed` instead of waiting forever (see D-115).
+```sql
+SELECT cr.id, c.display_name, c.custom_fields
+FROM campaign_recipient cr JOIN contact c ON c.id = cr.contact_id AND c.org_id = cr.org_id
+WHERE cr.campaign_id = $1 AND cr.org_id = $2 AND cr.status = 'pending' AND cr.opening_enc IS NULL
+ORDER BY cr.id LIMIT $3;
+-- success: UPDATE campaign_recipient SET opening_enc = <encrypted text> WHERE id = $1 AND org_id = $2 AND status = 'pending'
+-- empty:   opening_tries = opening_tries + 1; at MAX_TRIES status = 'skipped', skip_reason = 'ai_opening_failed'
+```
+
+**A recipient's phone could not read our message ("Waiting for this message").** `recordRetryRequest`, `packages/core/src/decrypt-failures.ts`. Matches only a message this CRM sent from that number; the thread reads `retry_requests` until the message is read.
+```sql
+UPDATE message m SET retry_requests = m.retry_requests + 1, last_retry_at = $at
+FROM conversation v
+WHERE m.provider_message_id = $id AND m.direction = 'outbound'
+  AND v.id = m.conversation_id AND v.sender_identity_id = $sender
+RETURNING m.id;
+```
+
+**Is this number's encryption session broken?** `GET /conversations/:id/sender-status` (`apps/api/src/routes/messages.ts`). A burst within 15 minutes is "broken"; contacts' bursts and the owner's own devices are kept apart.
+```sql
+coalesce(cs.decrypt_burst_at     > now() - interval '15 minutes', false) AS "contactBurst",
+coalesce(cs.own_decrypt_burst_at > now() - interval '15 minutes', false) AS "ownBurst"
+```
+
 ## 5 · Known gaps, so nobody assumes they are done
 
 These are **not** implemented; each is cheap to add when the data gets big.
@@ -190,7 +215,7 @@ These are **not** implemented; each is cheap to add when the data gets big.
 | Contact list paging by cursor only for "newest first" | Other orders show the first 50. | Keyset on the chosen order, or offset for small books |
 | No index on `message (campaign_id)` | Campaign-level message queries scan by conversation. | Add if campaign pages get slow |
 | Generation rate limit is in memory, per API process | Resets on restart; not shared across two API processes. | Move the counter into Postgres or Redis when there are two API hosts |
-| `ai_template` is not yet linked to chats | Only campaigns carry `ai_template_id` so far (D-85, P4 pending). | Add `conversation.ai_template_id` |
+| `ai_template` is not yet linked to chats | Only campaigns carry `ai_template_id` so far; a single chat is handed to the AI with Hand to AI (assignee = the bot user) but without its own template (D-85). | Add `conversation.ai_template_id` |
 
 ## 6 · How to refresh this
 

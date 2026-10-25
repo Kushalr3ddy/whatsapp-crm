@@ -13,6 +13,10 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-10-25 — tooling and docs (local branch `docs/refresh-data-api-tutorial`, not pushed)
+- **CodeGraph installed** on the repo (`.codegraph/`, git-ignored): code questions go through `codegraph_explore` first; repo `CLAUDE.md` and the handoff say so.
+- Data docs regenerated and extended (migrations 0028 to 0038), a generated API reference (`npm run api:docs`, 104 endpoints), the user tutorial PDF rebuilt with fresh screenshots and the newer features, and `docs/46-learning-path.md`.
+
 ### 2026-10-23 (night, end of session) — handoff
 - Everything above is merged (#153 to #159, #161) and `main` (`9fa41f5`) is deployed on the Linode. Branches cleaned (kept `main`, the 3 newest merged, `checkpoint/2026-10-22-night`). **To do next (top = next):** the real-phone acceptance for D-101 and D-102 on the Linode; remove the setup SSH key and change the root password; D-96 forgot password (choose the option); D-52 delete campaigns; D-91 block typing into an AI chat; D-46 laggy UI; the By theme table in `docs/21-deferred.md` has the rest. Full state in `HANDOFF.md`.
 

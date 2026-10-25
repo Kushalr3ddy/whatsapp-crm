@@ -14,6 +14,7 @@ load automatically): plain language, define jargon, never talk down; ask before 
 one question at a time with options and a recommendation; keep a task list (`update_plan`) and close each turn with
 `wrap_up`; never offer to merge (he merges and says "merged"); never start or stop his dev stack without asking.
 
+0. **Code questions: use CodeGraph first.** A local index (`.codegraph/`, git-ignored) answers "where is X / how does X work / who calls X" in one call: `codegraph_explore` (or `codegraph explore "<names or question>"` in a shell). It indexes code only, so read the docs and pins normally. A new git worktree or clone has no index until `codegraph init` is run there. The rule is also in the repo `CLAUDE.md`.
 1. **Read, in order:** this file (especially *Latest session (2026-10-23, day into night)*, then *2026-10-22 night*, then *2026-10-22*), `CHANGELOG.md` (top "Latest" and
    "To do"), `docs/21-deferred.md` (start at **"Status at a glance"**, then the pins marked WORK ON NOW / PRIORITY), then
    `docs/README.md` for the index. Docs written this stretch: **32** (setup, signup, teams, billing plan),

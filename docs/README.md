@@ -3,6 +3,8 @@
 **Just want to run it? → [Getting started](../GETTING_STARTED.md)** (at the repo root) takes a
 fresh clone to a working, signed-in instance.
 
+**Want a guided tour of the code? Follow [46 · Learning path](46-learning-path.md), stage by stage.**
+
 **New here? Start with [20 · Orientation](20-orientation.md).** It explains the project, the
 technology and every piece of jargon from zero — no knowledge of TypeScript, Node, Postgres or
 WhatsApp's API assumed. It also decodes the `M`, `P`, `F` and `FR` codes used throughout.

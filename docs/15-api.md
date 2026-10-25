@@ -74,6 +74,16 @@ replicas the effective ceiling is the limit times the replica count (the shared 
 
 Branch on `code`, never on `detail`.
 
+> **The complete, always-current list of endpoints is generated from the code:** [`generated/api-reference.md`](generated/api-reference.md)
+> (104 endpoints in 14 groups, with who may call each one). Regenerate with `npm run api:docs`. This file explains how the API behaves
+> (sign-in, errors, limits, examples); the generated one says what exists. A machine-readable OpenAPI file and a Swagger page are pinned as D-88.
+>
+> **Added since the sections below were written (2026-10-25):** the AI assistant (`/api/v1/ai/*`: status, settings, model test, queue of
+> instructions and wording requests, saved templates, and per-chat controls: answer now, allow a reply, why it is stuck; handing a chat to the AI and taking it back is the ordinary assign-conversation call with the assistant's user), campaign pictures and GIFs
+> (`/api/v1/campaigns/media`), pausing a campaign (starting it again resumes it), key rotation and verification (`/api/v1/encryption/*`: pause, resume, new key, verify), conversation
+> participants, presence and typing, a member password reset by an admin, removing a number, and `GET /api/v1/conversations/:id/sender-status`
+> (now also says when the encryption session looks broken: `sessionTrouble`) and message rows with `retryRequests` and `lastRetryAt`.
+
 ## What exists today
 
 **About fifty endpoints, plus two unauthenticated health checks.** Everything marked ⬜ elsewhere in this

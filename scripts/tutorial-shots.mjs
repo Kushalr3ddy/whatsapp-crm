@@ -171,6 +171,10 @@ await mark([
   [5, page.getByRole('tab', { name: 'Build a filter' })]
 ]);
 await shot('12-campaign-new');
+// Save it as a draft, so the next shot has a campaign to open (a fresh demo org has none).
+await page.locator('select[name="senderIdentityId"]').selectOption({ index: 1 });
+await page.getByRole('button', { name: 'Create draft' }).click();
+await page.waitForTimeout(2500);
 
 await go('/broadcast', 760);
 await page.locator('a[href^="/broadcast/"]').filter({ hasText: 'Friday walk-in reminder' }).first().click();

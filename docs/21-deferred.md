@@ -14,11 +14,24 @@ is not re-proposed.
 
 ---
 
-## Status at a glance (updated 2026-10-23)
+## Status at a glance (updated 2026-10-25)
+
+<!-- stats:start -->
+**Scoreboard (2026-10-25, `npm run dlist:stats`): 115 live pins** (struck-out pins such as D-2, D-12 and D-16 belong to another project and are not counted).
+
+| | Pins | Share |
+|---|---|---|
+| ✅ **Done** | **16** | 14% |
+| ◐ **Partly built** | **24** | 21% |
+| 📌 **Not started** (pinned) | **75** | 65% |
+| **Remaining** (partly built + not started) | **99** | 86% |
+
+Overlapping flags (a pin can be in a row above and one of these): 🔺 **priority 7** (D-46, D-52, D-85, D-94, D-96, D-101, D-102) · ▶ **being worked on 2** (D-21, D-70) · ⏸ **parked 4** (D-8, D-47, D-65, D-73).
+<!-- stats:end -->
 
 ✅ done · ◐ partly built · ▶ working on it · 🔺 priority · ⏸ parked (not working on it for now) · 📌 pinned (not started)
 
-**Click a pin number to jump to it.** Done: 16 of 114 (the ✅ rows).
+**Click a pin number to jump to it.**
 
 | Pin | What | Status |
 |---|---|---|
@@ -132,6 +145,7 @@ is not re-proposed.
 | [D-114](#d-114) | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
 | [D-115](#d-115) | Campaigns: a timeout for AI-sent messages (how long the AI may wait or keep trying before giving up or handing the chat back) | 📌 pinned (Kushal, 2026-10-23): so the AI never waits forever on a message it sent |
 | [D-116](#d-116) | Chats: a "go to the latest message" button that scrolls a long chat to the bottom | 📌 pinned (Kushal, 2026-10-23) |
+| [D-117](#d-117--a-warning-before-adding-a-number-when-this-machines-ram-is-too-small-for-it-with-a-resource-monitor-and-a-calculator---pinned-kushal-2026-10-25) | A warning before adding a number when this machine's RAM is too small for it (resource monitor + a calculator, built from docs/19 and D-46/D-61) | 📌 pinned (Kushal, 2026-10-25) |
 | [D-95](#d-95) | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
 | [D-88](#d-88) | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | [D-87](#d-87) | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |

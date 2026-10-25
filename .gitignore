@@ -77,3 +77,6 @@ regression-report.md
 dev-feedback-*/
 dev-feedback-*.md
 docs/feedback/inbox/
+
+# CodeGraph code index (local, rebuilt by `codegraph init`)
+.codegraph/
