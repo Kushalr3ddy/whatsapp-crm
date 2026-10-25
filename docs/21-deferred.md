@@ -1785,6 +1785,8 @@ CI), **Schemathesis** (property-based API fuzzing once an OpenAPI spec exists), 
 tools miss in *this* app: cross-org access (IDOR) on every route, CSRF on session routes, session fixation/expiry,
 login throttling, file upload and download headers, and authorization by role/scope.
 
+**Update 2026-10-25:** two free scans were added as GitHub Actions: `security-semgrep.yml` (Semgrep community rules on every code PR, fails only on ERROR severity, not a required check) and `security-zap.yml` (OWASP ZAP baseline against the production web build and the API every night, report attached, never blocks). Still to do: the hand-written cross-organisation (IDOR), CSRF, session and role tests, ZAP's authenticated and API scans and Schemathesis (need the OpenAPI spec, D-88), and Nuclei.
+
 **Why parked:** needs the tool survey and a decision on what runs per-PR versus nightly; some pieces want an OpenAPI
 spec (P9) first.
 

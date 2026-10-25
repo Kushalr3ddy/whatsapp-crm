@@ -1,0 +1,71 @@
+# Dynamic security scan (D-48): OWASP ZAP's baseline scan crawls the running app (production build of the web app, plus the API) and reports what a
+# browser-side attacker can see without logging in: missing security headers, cookie flags, information leaks, risky redirects. It is passive (it does
+# not attack or change anything) and runs on a throwaway database. Every night and on demand, never on a pull request, and it never blocks anything:
+# the report is attached to the run (zap-report). Log-in-only pages and cross-organisation access are covered by the hand-written tests instead.
+name: security-zap
+
+on:
+  schedule:
+    - cron: '45 20 * * *'   # 02:15 in India (UTC+5:30)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: whatsapp_crm_dev
+        ports: ['5434:5432']
+        options: >-
+          --health-cmd "pg_isready -U dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://dev:dev@localhost:5434/whatsapp_crm_dev
+      APP_SECRET: ci-only-app-secret-0123456789abcdef0123456789abcdef  # gitleaks:allow
+      PUBLIC_URL: http://localhost:3000
+      ENCRYPTION_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff  # gitleaks:allow
+      ENCRYPTION_INDEX_KEY: ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100  # gitleaks:allow
+      API_KEY: ci-only-bootstrap-api-key-0123456789abcdef  # gitleaks:allow
+      NODE_ENV: development
+      GATEWAY_CHANNEL: fake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - name: start the API and the web app (production build)
+        run: |
+          npm run dev > /tmp/api.log 2>&1 &
+          timeout 120 bash -c 'until curl -sf http://localhost:3000/ready >/dev/null; do sleep 2; done'
+          npm run web:prod > /tmp/web.log 2>&1 &
+          timeout 600 bash -c 'until curl -sf -o /dev/null http://localhost:3001/login; do sleep 5; done'
+      - name: ZAP baseline scan of the web app
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: 'http://localhost:3001'
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-report-web
+      - name: ZAP baseline scan of the API
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: 'http://localhost:3000'
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-report-api
+      - name: server logs
+        if: failure()
+        run: tail -n 100 /tmp/api.log /tmp/web.log || true
