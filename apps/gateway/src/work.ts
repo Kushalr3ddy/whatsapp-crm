@@ -1194,18 +1194,19 @@ async function applyConnectionEventInOrg(
             WHEN ${event.state} = 'closed' THEN channel_session.reconnect_attempts + 1
             ELSE channel_session.reconnect_attempts END,
           last_connected_at = COALESCE(${openedAt}, channel_session.last_connected_at),
-          -- A completed link has no further use for the challenge, and leaving it behind would
-          -- let the UI keep offering a QR for a number that is already connected.
-          link_challenge = CASE WHEN ${event.state} = 'open'
-            THEN NULL ELSE channel_session.link_challenge END,
-          -- Same for the request itself: left set, the sweep kept asking for a link on a number that
-          -- was already connected, and each attempt disturbed the live session.
-          link_requested_at = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_requested_at END,
-          link_requested_mode = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_requested_mode END,
-          link_requested_phone = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_requested_phone END,
-          link_error = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.link_error END,
-          qr_expires_at = CASE WHEN ${event.state} = 'open' THEN NULL ELSE channel_session.qr_expires_at END,
           updated_at = now()`);
+
+  // A completed link has no further use for the challenge, and leaving it behind would let the UI keep offering a QR for a number that is
+  // already connected. Same for the request itself: left set, the sweep kept asking for a link on a number that was already connected,
+  // and each attempt disturbed the live session. Its own statement, run only on open: `channel_session_link_requested` fires on any SET of
+  // `link_requested_at`, even to the same value, so writing it on every event re-sent a pending link to the gateway (R-014).
+  if (event.state === 'open') {
+    await ctx.db.execute(sql`
+      UPDATE channel_session
+      SET link_challenge = NULL, link_requested_at = NULL, link_requested_mode = NULL, link_requested_phone = NULL,
+          link_error = NULL, qr_expires_at = NULL
+      WHERE sender_identity_id = ${event.senderId}`);
+  }
 
   // 403 is the code WhatsApp uses when it refuses a number outright (a ban or a block). It arrives as a
   // plain close, not a logout, so it needs its own branch: say so loudly and stop the campaigns.
