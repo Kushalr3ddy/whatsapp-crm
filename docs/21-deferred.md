@@ -24,7 +24,7 @@ is not re-proposed.
 |---|---|---|
 | [D-1](#d-1) | A lightweight database browser (Drizzle Studio or similar) | 📌 pinned |
 | [D-1b](#d-1b) | Drizzle's query builder (as opposed to Drizzle itself) | 📌 pinned |
-| [D-3](#d-3) | Licence | 📌 pinned |
+| [D-3](#d-3) | Licence | ◐ proprietary `LICENSE` added 2026-10-25 · 📌 the signed-key enforcement (docs/34) still pinned |
 | [D-4](#d-4) | The AI agent (F12) | ✅ built 2026-10-21 (settings, auto-reply, campaign tools, queue); its guardrails are D-81 |
 | [D-5](#d-5) | Baileys 7.x | ◐ on 7.0.0-rc14 since 2026-10-23 (#161) · 📌 stable 7.0.0 still awaited |
 | [D-6](#d-6) | UUIDv7 primary keys | 📌 pinned |
