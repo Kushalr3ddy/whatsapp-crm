@@ -136,6 +136,7 @@ is not re-proposed.
 | [D-114](#d-114--an-approval-system-requests-from-agents-to-admins-with-status-pages-and-notifications---pinned-kushal-2026-10-23) | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
 | [D-115](#d-115--campaigns-a-timeout-for-messages-the-ai-sends---pinned-kushal-2026-10-23-meaning-mostly-clear) | Campaigns: a timeout for AI-sent messages (how long the AI may wait or keep trying before giving up or handing the chat back) | 📌 pinned (Kushal, 2026-10-23): so the AI never waits forever on a message it sent |
 | [D-116](#d-116--chats-a-button-to-jump-to-the-bottom-the-latest-message---pinned-kushal-2026-10-23) | Chats: a "go to the latest message" button that scrolls a long chat to the bottom | 📌 pinned (Kushal, 2026-10-23) |
+| [D-117](#d-117--a-warning-before-adding-a-number-when-this-machines-ram-is-too-small-for-it-with-a-resource-monitor-and-a-calculator---pinned-kushal-2026-10-25) | A warning before adding a number when this machine's RAM is too small for it (resource monitor + a calculator, built from docs/19 and D-46/D-61) | 📌 pinned (Kushal, 2026-10-25) |
 
 ## By theme (added 2026-10-23)
 
@@ -3307,6 +3308,23 @@ Inbound messages keep their current look.
 **Shape (to confirm when built):** a count on the button when new messages arrived while they were scrolled up (for example "3 new"); a chat opens at the bottom by default; a new message only pulls the view down if they were already at the bottom, so reading older messages is never interrupted (the inbox refreshes on a timer, `inbox/auto-refresh.tsx`). Small and front-end only. Keep it simple: a CRM chat view, not a WhatsApp clone.
 
 **Ties to:** D-46 (lag), D-112 (the sender line under each message).
+
+## D-117 · A warning before adding a number when this machine's RAM is too small for it, with a resource monitor and a calculator — 📌 pinned (Kushal, 2026-10-25)
+
+**What:** each linked WhatsApp number adds memory (the gateway grows about 30 to 60 MB per number, `docs/19-capacity.md`), so on a small machine adding one more can make the whole app lag or get killed by the operating system. Before it happens, the app should know how much RAM the machine it runs on has, how much is in use, and say so on the **Linked numbers** page and in the **Add a number** step:
+
+> *This machine has 2 GB of RAM and is using 1.6 GB. Adding another number will probably make the app slow. You can add about 1 more number safely.*
+
+**Yes, it needs both a calculator and a resource monitor:**
+1. **The monitor (what is true now):** total RAM and free RAM of the machine (or the container's memory limit, which is the number that matters when the app runs in Docker), the memory used by each of the API, gateway and web processes, the load, and the number of linked numbers. Read on the server with Node's `os` module and the container's cgroup files; no extra tool or service needed. Shown on an admin-only **System** card (also useful for D-46 and D-61), refreshed every few seconds, and logged.
+2. **The calculator (what will happen):** the same formula as the capacity calculator (`docs/capacity-calculator.html`: base memory of each process + about 45 MB per number + Postgres + headroom) turned into a function: *numbers the machine can carry = (RAM limit - fixed processes - safety margin) / memory per number*. Calibrated from the real per-number figure the monitor measures (the doc says per-number RAM is still an estimate; it needs a second and third number to measure).
+3. **The warning:** three states on the Linked numbers page and when pressing **Add a number**: green (room for more), amber ("adding one more will probably make the app slow", still allowed), red ("not enough memory, this will likely crash; add RAM or remove a number first"). Never silently blocks, because the owner knows their machine; an admin can switch the check off. Memory pressure that is already happening (swap in use, a process near its limit) shows the same warning even with no new number.
+
+**Where it lives:** a small `system-resources` module in `packages/core` (reads `os`, `/sys/fs/cgroup/memory.max` and `memory.current`), an admin endpoint `GET /system/resources`, the card and the warning in `apps/web/app/numbers`. Per-number RAM calibrated by the monitor over time, not a constant.
+
+**Ties to:** D-46 (lag), D-61 (lighter web tier: the fixed part of the formula shrinks when Next goes), D-77 (limits on numbers per org), D-113 (anti-ban switch, same Linked numbers page), `docs/19-capacity.md` and the capacity calculator (the formula to reuse). Container memory limits and heap caps (`--max-old-space-size`) are a separate, cheaper step that makes the numbers more predictable.
+
+**Tests:** unit tests of the calculator on known inputs (1, 2, 4 GB, 0 to 5 numbers; a container limit lower than host RAM); an integration test that the endpoint is admin-only; a browser test of the warning state with a faked low-memory reading.
 
 ## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (Kushal, 2026-10-23)
 
