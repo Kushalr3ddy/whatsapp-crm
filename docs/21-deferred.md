@@ -22,121 +22,120 @@ is not re-proposed.
 
 | Pin | What | Status |
 |---|---|---|
-| [D-1](#d-1--a-lightweight-database-browser-drizzle-studio-or-similar) | A lightweight database browser (Drizzle Studio or similar) | 📌 pinned |
-| [D-1b](#d-1b--drizzles-query-builder-as-opposed-to-drizzle-itself) | Drizzle's query builder (as opposed to Drizzle itself) | ⏸ later · not required for now (Kushal, 2026-10-25) |
-| [D-3](#d-3--licence) | Licence | 📌 pinned |
-| [D-4](#d-4--the-ai-agent-f12---built-2026-10-21-kushals-ai-speedrun-guardrails-left-for-d-81) | The AI agent (F12) | ✅ built 2026-10-21 (settings, auto-reply, campaign tools, queue); its guardrails are D-81 |
-| [D-5](#d-5--baileys-7x) | Baileys 7.x | ◐ on 7.0.0-rc14 since 2026-10-23 (#161) · 📌 stable 7.0.0 still awaited |
-| [D-6](#d-6--uuidv7-primary-keys) | UUIDv7 primary keys | 📌 pinned |
-| [D-7](#d-7--turborepo-and-splitting-the-queue-driver) | Turborepo, and splitting the queue driver | 📌 pinned |
-| [D-8](#d-8--self-serve-setup-wizard-guided-walkthrough-whitelabelling--parked-kushal-2026-10-20-not-working-on-this-for-now) | Self-serve setup wizard, guided walkthrough, whitelabelling | ◐ partly built (what-next buttons) · ⏸ parked |
-| [D-9](#d-9--generating-env-and-a-secrets-driver---ai-settings-tab-built-2026-10-22-was-kushals-priority) | Generating `.env`, and a secrets driver; **first an "AI settings" sub-tab in the AI tab (provider, key, model, test)** | ✅ AI settings tab built 2026-10-22 · 📌 the rest pinned |
-| [D-10](#d-10--what-belongs-in-the-inbox--broadcast-output-and-unknown-senders) | What belongs in the inbox — broadcast output, and unknown senders | 📌 pinned |
-| [D-11](#d-11--media-at-rest--encryption-retention-scanning-compliance---serving-built-the-rest-parked) | Media at rest — encryption, retention, scanning, compliance | ◐ partly built (serving; rest parked) |
-| [D-13](#d-13--access-auditing--who-read-what---landed) | Access auditing — who *read* what | ✅ done |
-| [D-14](#d-14--the-linked-number-receives-nothing--bad-mac-on-every-inbound---closed-2026-09-28) | The linked number receives nothing — `Bad MAC` on every inbound | ✅ done |
-| [D-15](#d-15--a-documentation-site) | A documentation site | 📌 pinned |
-| [D-17](#d-17--presence-typing-indicators-and-collision-detection-f3-realtime---built-viewing-pr-28-2026-10-12-typing-and-the-send-anyway-warning-d-54-pr-32-2026-10-13) | Presence, typing indicators and collision detection (F3 realtime) | ✅ done |
-| [D-18](#d-18---meta-inbox-niceties-snooze-the-meta-24-hour-window-ui-keyboard-shortcuts) | 🔵 **META** Inbox niceties: snooze, the Meta 24-hour window UI, ~~keyboard shortcu | 📌 pinned |
-| [D-19](#d-19---meta-rich-message-templates--user-managed-meta-aligned-with-media-and-import--deferred-priority-withdrawn-2026-10-16) | 🔵 **META** Rich message templates — user-managed, Meta-aligned, with media and im | 📌 pinned |
-| [D-20](#d-20--sqlite-support-for-single-machine-deployments) | SQLite support for single-machine deployments | 📌 pinned |
-| [D-21](#d-21--the-full-import-mapping-wizard--work-on-now-kushal-2026-10-20) | The full import mapping wizard | ▶ working on it · ◐ partly built (columns step, several phones, joined names; PR #83) |
-| [D-22](#d-22--row-level-de-duplication-with-a-diff-style-review) | Row-level de-duplication with a diff-style review | 📌 pinned |
-| [D-23](#d-23--inbox-search-f3-ac-7--pinned-research-later-kushal-2026-10-20) | Inbox search (F3 AC-7) | 📌 pinned |
-| [D-24](#d-24--typing-simulation-p6-anti-ban-layer-3---landed-2026-09-29) | Typing simulation (P6 anti-ban layer 3) | ✅ done |
-| [D-25](#d-25--outbound-media-sending-files---landed-2026-10-05) | Outbound media (sending files) | ✅ done |
-| [D-26](#d-26--campaign-body-variation-spintax--per-recipient---landed-both-halves) | Campaign body variation (spintax + per-recipient) | ✅ done |
-| [D-27](#d-27--opt-out-keyword-handling-stop--unsubscribe--out-of-alpha-scope-kushal-2026-10-06) | Opt-out keyword handling (STOP / unsubscribe) | 📌 pinned |
-| [D-28](#d-28--dynamic-audience-segments-segregation---minimal-slice-landed-2026-09-30) | Dynamic audience segments ("segregation") | ◐ partly built (minimal slice) |
-| [D-29](#d-29--an-anti-ban-advisory-mode--warn-but-do-not-enforce---built-2026-10-06) | An anti-ban "advisory mode" — warn but do not enforce | ✅ done |
-| [D-30](#d-30--media-that-fails-to-store-is-invisible-to-the-operator) | Media that fails to store is invisible to the operator | ◐ partly built (reasons recorded; manual retry missing) |
-| [D-31](#d-31--per-org-encryption-keys-the-dekkek-design-and-key-rotation---rotation-built-2026-10-13-per-org-keys-still-pinned-was-priority-kushal-2026-10-06) | Per-org encryption keys (the DEK/KEK design), and key rotation | ◐ partly built (key rotation) |
-| [D-32](#d-32--encrypting-contact-identifiers-phone-numbers-and-emails) | Encrypting contact identifiers (phone numbers and emails) | 📌 pinned |
-| [D-33](#d-33--p1-close-out-and-deployment) | P1 close-out and deployment | 📌 pinned |
-| [D-34](#d-34---meta-the-meta-cloud-api-adapter-p8-and-the-real-number-pilot) | 🔵 **META** The Meta Cloud API adapter (P8) and the real-number pilot | 📌 pinned |
-| [D-35](#d-35--contact-export-to-excel-xlsx---csv-and-vcard-export-built-2026-10-06-xlsx-not) | Contact export to Excel (.xlsx) | ◐ partly built (CSV and vCard; no .xlsx) |
-| [D-36](#d-36--contact-import-from-a-vcard-vcf) | Contact import from a vCard (.vcf) | 📌 pinned |
-| [D-37](#d-37---meta-meta-tier-and-quality-tracking-feeding-the-health-engine) | 🔵 **META** Meta tier and quality tracking, feeding the health engine | 📌 pinned |
-| [D-38](#d-38---meta-meta-template-submission-approval-status-and-the-template-only-window) | 🔵 **META** Meta template submission, approval status, and the template-only windo | 📌 pinned |
-| [D-39](#d-39---meta-per-transport-pacing-policy-and-the-meta-inboundstatus-webhooks) | 🔵 **META** Per-transport pacing policy and the Meta inbound/status webhooks | 📌 pinned |
-| [D-40](#d-40--custom-fields-in-imports-segments-and-exports) | Custom fields in imports, segments, and exports | ◐ partly built (import into fields) |
-| [D-41](#d-41--the-gateway-runs-outside-row-level-security---built-2026-10-13-was-priority-kushal-2026-10-06) | The gateway runs outside row-level security | ✅ done |
-| [D-42](#d-42--human-takeover-from-an-ai-agent-inside-a-conversation---partly-built-2026-10-21) | Human takeover from an AI agent, inside a conversation | ◐ partly built: assigning the chat to a person is the takeover; no pause state |
-| [D-43](#d-43--extra-restriction-alert-channels-webhook-email-canary-self-test) | Extra restriction-alert channels (webhook, email, canary self-test) | 📌 pinned |
-| [D-44](#d-44--baileys-7-upgrade) | Baileys 7 upgrade: **duplicate of [D-5](#d-5--baileys-7x)** (kept for history; track it there) | ◐ on 7.0.0-rc14 since 2026-10-23 (#161) |
-| [D-45](#d-45--link-a-lid-address-to-its-phone-number---built-2026-10-10-pr-6) | Link a `@lid` address to its phone number | ✅ done |
-| [D-46](#d-46--ui-responsiveness--the-app-feels-laggy-when-used-fast--high-priority-kushal-2026-10-22) | UI responsiveness — the app feels laggy when used fast | 🔺 **HIGH PRIORITY** (Kushal, 2026-10-22) · 📌 pinned |
-| [D-47](#d-47--signup-page-billing-gate-and-beta-tester-override--parked-kushal-2026-10-20-not-working-on-this-for-now) | Signup page, billing gate and beta-tester override | ⏸ parked |
-| [D-48](#d-48--security-test-suite-owasp) | Security test suite (OWASP) | 📌 pinned |
-| [D-49](#d-49--revamp-the-browser-e2e-suite-to-industry-standard-covering-every-ui-element) | Revamp the browser (e2e) suite to industry standard, covering every UI | 📌 pinned |
-| [D-50](#d-50--test-the-frontend-and-backend-independently-modularity-check) | Test the frontend and backend independently (modularity check) | 📌 pinned |
-| [D-51](#d-51--deleted-message-tracking) | Deleted-message tracking | 📌 pinned |
-| [D-52](#d-52--deleting-previous-campaigns---priority-kushal-2026-10-23-unparked-after-mikhils-feedback-was-parked-2026-10-20) | Deleting previous campaigns (unparked after Mikhil's feedback) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
-| [D-53](#d-53--assignment-model-and-message-authorship---built-authorship-pr-26-owner--participants-pr-27-2026-10-11) | Assignment model and message authorship | ✅ done |
-| [D-54](#d-54--typing-indicator-and-the-just-replied-send-anyway-warning---built-2026-10-13-pr-32) | Typing indicator and the "just replied, send anyway?" warning | ✅ done |
-| [D-55](#d-55--licence-enforcement-drm-usage-is-blocked-when-an-org-has-not-paid--pinned-to-be-revisited-last-kushal-2026-10-13-will-come-to-it-in-the-end--pinned-research-later-kushal-2026-10-20) | Licence enforcement ("DRM"): usage is blocked when an org has not paid | 📌 pinned |
-| [D-56](#d-56--telemetry-metrics-tracing-and-error-tracking-beyond-logs--pinned-kushal-2026-10-13) | Telemetry: metrics, tracing and error tracking beyond logs | 📌 pinned |
-| [D-57](#d-57--run-the-import-commit-as-a-background-job--pinned-2026-10-15) | Run the import commit as a background job | 📌 pinned |
-| [D-58](#d-58--public-site-and-launch-readiness-checklist--pinned-kushal-2026-10-15) | Public site and launch-readiness checklist | 📌 pinned |
-| [D-59](#d-59--file-support-in-chat-kushal-2026-10-16---priority-again-kushal-2026-10-21-files-in-campaigns-first-was-pinned-research-later-2026-10-20) | File support in chat (Kushal, 2026-10-16) | ◐ partly built: rounds 1 and 2, and **files in campaigns first slice built 2026-10-21** (one picture or GIF, 5 MB, no MP4 yet) |
-| [D-60](#d-60--number-fallback-message-the-first-number-that-has-a-whatsapp-account---built-2026-10-16) | Number fallback: message the first number that has a WhatsApp account | ✅ done |
-| [D-61](#d-61--lighter-web-tier-plain-react-with-refresh-buttons-instead-of-next-everywhere--pinned-kushal-2026-10-16) | Lighter web tier: plain React with refresh buttons instead of Next eve | 📌 pinned |
-| [D-62](#d-62--ship-as-a-single-executable-if-possible--pinned-kushal-2026-10-16) | Ship as a single executable, if possible | 📌 pinned |
-| [D-63](#d-63--centralised-file-store-s3-compatible-storage-alongside-local-smb-pinned-too---driver-built-2026-10-16-default-stays-local-kushal-2026-10-16) | Centralised file store: S3-compatible storage alongside local | ◐ partly built (S3 driver) · 📌 pinned |
-| [D-64](#d-64--database-portability-move-the-database-side-logic-into-the-app-so-other-databases-can-work--pinned-kushal-2026-10-16) | Database portability: move the database-side logic into the app so oth | 📌 pinned |
-| [D-65](#d-65--bugs-found-running-the-alpha-container-on-a-vm-2026-10-17-not-fixed--parked-kushal-2026-10-20-not-working-on-this-for-now) | Bugs found running the alpha container on a VM (2026-10-17), not fixed | ◐ partly fixed (1 of 8) · ⏸ parked |
-| [D-66](#d-66--motion-on-most-pages-not-just-the-sign-in-screen--pinned-kushal-2026-10-17) | Motion on most pages, not just the sign-in screen | ◐ partly built (sign-in and Overview motion) |
-| [D-67](#d-67--save-a-number-or-name-onto-a-lid-chat-like-add-contact-in-whatsapp--pinned-again-kushal-2026-10-21-it-was-the-priority-on-2026-10-20) | Save a number or name onto a `@lid` chat, like "add contact" in WhatsA | 📌 pinned again 2026-10-21 (was priority) · ◐ partly built (channels ignored; mapping investigated) |
-| [D-68](#d-68--campaign-with-no-tagged-people-tell-the-user-to-tag-them-first---built-in-pr-56-kushal-2026-10-17) | Campaign with no tagged people: tell the user to tag them first | ✅ done |
-| [D-69](#d-69--chats-available-inside-the-job-portal-and-any-other-web-app--pinned-kushal-2026-10-17) | Chats available inside the job portal (and any other web app) | 📌 pinned |
-| [D-70](#d-70--contacts-page-refresh-admin-chosen-columns-tidier-layout-sort-and-search-by-date--work-on-now-kushal-2026-10-20) | Contacts page: refresh, admin-chosen columns, tidier layout, sort and  | ▶ working on it · ◐ built: tag fixes, Refresh, expandable rows, date range and order · ⏳ columns chosen by an admin is D-79 |
-| [D-71](#d-71--a-big-background-picture-for-each-tab--pinned-kushal-2026-10-19) | A big background picture for each tab | 📌 pinned |
-| [D-72](#d-72--mobile-friendly-ui--pinned-kushal-2026-10-20) | Mobile-friendly UI | 📌 pinned |
-| [D-73](#d-73--message-these-people-right-after-an-import--pinned-kushal-2026-10-20--parked-kushal-2026-10-20-not-working-on-this-for-now) | "Message these people" right after an import | ◐ partly built (buttons) · ⏸ parked |
-| [D-74](#d-74--add-number-form-country-code-dropdown-and-a-numbers-only-phone-field---built-2026-10-20) | Add-number form: country-code dropdown and a numbers-only phone field | ✅ done |
-| [D-75](#d-75--number-assignment-who-each-whatsapp-number-belongs-to--pinned-kushal-2026-10-20-not-building-it-now) | Number assignment: who each WhatsApp number belongs to | 📌 pinned |
-| [D-76](#d-76--notifications-tab-number-requests-and-approvals--pinned-kushal-2026-10-20) | Notifications tab, number requests and approvals (to be built on the D-114 approval system) | 📌 pinned |
-| [D-77](#d-77--admin-controls-user-scopes-and-number-limits--pinned-kushal-2026-10-20) | Admin controls: user scopes and number limits | 📌 pinned |
-| [D-78](#d-78--email-invitations-to-join-an-organisation-via-smtp-or-an-email-api-decide-later--pinned-kushal-2026-10-20) | Email: invitations to join an organisation, via SMTP or an email API ( | 📌 pinned |
-| [D-79](#d-79--contacts-columns-chosen-by-an-admin-for-the-whole-team--pinned-kushal-2026-10-21) | Contacts: columns chosen by an admin for the whole team | 📌 pinned |
-| [D-80](#d-80--create-and-edit-a-contact-page-save-an-unknown-sender-org-neutral-fields--pinned-kushal-2026-10-21) | Create and edit a contact page; save an unknown sender (org-neutral fields) | 📌 pinned |
-| [D-81](#d-81--ai-assistant-guardrails--pinned-kushal-2026-10-21-it-needs-to-just-work-for-now-we-can-set-up-guardrails-later) | AI assistant guardrails (facts, opt-out words, approval mode, topics, spend) | 📌 pinned · Kushal: "later" |
-| [D-82](#d-82--a-gateway-restart-can-break-the-whatsapp-session--pinned-found-2026-10-21) | A gateway restart can break the WhatsApp session (decrypt failures, nothing received) | ◐ partly built 2026-10-23 (ordered, flushed writes; visibility; see D-101) · 📌 pinned · hit 2026-10-21 |
-| [D-83](#d-83--npm-run-devfast-leaves-some-screens-stale-after-an-action--pinned-found-2026-10-21) | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
-| [D-84](#d-84--the-ai-runs-whole-conversations--pinned-kushal-2026-10-21-it-should-take-over-the-entire-conversation) | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
-| [D-85](#d-85--ai-templates-pick-a-template-fill-its-blanks-get-the-script--priority-kushal-2026-10-21-mockup-first-then-build) | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
-| [D-86](#d-86--ai-page-the-one-off-orders-box-moves-to-the-bottom-templated-orders-and-order-history--pinned-kushal-2026-10-21) | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
-| [D-87](#d-87--rule-every-mass-message-goes-to-a-tag-so-no-one-is-messaged-untagged--pinned-as-a-rule-kushal-2026-10-21) | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
-| [D-88](#d-88--an-openapi-spec-and-a-swagger-page-for-the-api--pinned-kushal-2026-10-22) | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
-| [D-89](#d-89--speed-the-contacts-page-sign-out-and-measuring-in-production-mode--pinned-session-audit-2026-10-22) | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
-| [D-90](#d-90--import-duplicates-newest-name-wins-now-a-needs-review-list-later-a-cleanup-script-for-old-copies--pinned-kushal-2026-10-22) | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
-| [D-91](#d-91--a-chat-the-ai-is-handling-cannot-be-typed-into-until-a-person-overrides-and-stops-the-ai--pinned-kushal-2026-10-22-raised-again-2026-10-23) | A chat the AI is handling cannot be typed into (admins and participants too) until a person takes over from the AI; also while the AI is mid-reply | 📌 pinned (Kushal, 2026-10-22; raised again 2026-10-23) |
-| [D-92](#d-92--a-separate-feedback-portal-testers-google-doc-into-github-issues-with-ai-help-and-follow-up-questions-later--pinned-kushal-2026-10-22) | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | ◐ first slice built 2026-10-22 (the Google Doc ingester and the scheduled `feedback-ingest` worker, running every few hours) · 📌 the portal, AI help and follow-up questions pinned |
-| [D-93](#d-93--a-separate-log-for-the-ai-assistant-through-the-whole-process--pinned-kushal-2026-10-22) | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
-| [D-94](#d-94--messages-the-owner-sends-from-their-own-phone-and-older-chat-history-are-missing-from-the-inbox--high-priority-kushal-2026-10-22) | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
-| [D-95](#d-95--caching-and-extra-data-layers-redis-result-cache-views-replica-search-server---pinned-for-later-kushal-2026-10-23) | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
-| [D-96](#d-96--forgot-password-a-way-to-reset-your-own-password---priority-kushal-2026-10-23) | Forgot password: a way to reset your own password (no self-service reset today; the beta server has no operator at a keyboard) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
-| [D-97](#d-97--ai-settings-say-add-a-model-first-next-to-the-save-button-when-no-model-is-set-up---pinned-kushal-2026-10-23) | AI settings say "add a model first" next to Save when no model is set up (and disable Hand to AI with that reason) | 📌 pinned (Kushal, 2026-10-23) |
-| [D-98](#d-98--a-usage-and-limits-check-for-the-chosen-ai-model-used-remaining-and-roughly-how-many-messages-it-can-still-handle---pinned-kushal-2026-10-23) | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
-| [D-99](#d-99--contacts-add-one-contact-or-several-at-once-by-hand---pinned-kushal-2026-10-23) | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
-| [D-100](#d-100--campaigns-an-indicator-on-each-campaign-showing-whether-the-ai-is-used---pinned-kushal-2026-10-23) | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
-| [D-101](#d-101--waiting-for-this-message-on-the-recipients-phone-even-when-the-ai-sends-it---priority-kushal-2026-10-23-raised-again-after-it-kept-happening) | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · ◐ built on a branch (Baileys 7.0.0-rc14), real-phone check pending |
-| [D-102](#d-102--messages-typed-on-the-owners-phone-or-whatsapp-web-do-not-all-reach-the-inbox---priority-kushal-2026-10-23-same-root-as-d-101-follow-up-to-d-94) | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · ◐ built with D-101, real-phone check pending |
-| [D-103](#d-103--the-ai-tab-is-confusing-a-guided-walkthrough-of-what-has-to-be-set-up-in-order---pinned-kushal-2026-10-23) | The AI tab is confusing: a guided walkthrough of what to set up, in order | 📌 pinned (Kushal, 2026-10-23) |
-| [D-104](#d-104--turn-the-ai-model-off-deletes-the-model-settings-there-is-no-way-to-pause-the-ai-and-keep-them---pinned-kushal-2026-10-23) | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
-| [D-105](#d-105--contacts-dates-and-order-the-date-added--last-imported-choice-is-unclear---pinned-kushal-2026-10-23) | Contacts "Dates and order": the Date: Added / Last imported choice is unclear (rename, hint, show it as a sentence) | 📌 pinned (Kushal, 2026-10-23) |
-| [D-106](#d-106--inbox-resolve--reopen-is-confusing-say-mark-as-completed--reopen-chat---pinned-kushal-2026-10-23) | Inbox: rename Resolve / Reopen to Mark as completed / Reopen chat (and the Closed tab to Completed) | 📌 pinned (Kushal, 2026-10-23) |
-| [D-107](#d-107--import-two-different-things-are-both-called-preview-the-check-should-run-by-itself---pinned-kushal-2026-10-23) | Import: the sample table and the Preview button are both called preview; run the check automatically and show Import straight away | 📌 pinned (Kushal, 2026-10-23) |
-| [D-108](#d-108--import-mark-invalid-phone-numbers-and-emails-in-the-preview-and-make-the-person-fix-or-drop-them-with-a-confirmation---pinned-kushal-2026-10-23) | Import: mark invalid phone numbers and emails in the preview; fix them inline or drop them with a confirmation | 📌 pinned (Kushal, 2026-10-23) |
-| [D-109](#d-109--campaign-form-build-a-new-template-jumps-to-the-ai-tab-and-the-template-picker-does-not-make-the-campaign-an-ai-campaign---pinned-kushal-2026-10-23) | Campaign form: "Build a new template" jumps to the AI tab, and picking a template there does not make the campaign an AI campaign | 📌 pinned (Kushal, 2026-10-23) |
-| [D-110](#d-110--tell-the-assistant-what-to-do-as-a-small-chat-bubble-on-the-right-side-of-the-page-not-a-section-in-the-ai-tab---pinned-kushal-2026-10-23) | "Tell the assistant what to do" as a small chat bubble on the right side of every page, not a section of the AI tab | 📌 pinned (Kushal, 2026-10-23) |
-| [D-111](#d-111--import-de-duplicate-in-the-browser-before-upload-with-a-progress-bar-drop-exact-copies-ask-which-to-keep-when-copies-differ---pinned-kushal-2026-10-23) | Import: de-duplicate in the browser first (progress bar, drop exact copies, ask which to keep when copies differ); server still enforces | 📌 pinned (Kushal, 2026-10-23) |
-| [D-112](#d-112--message-and-campaign-tracking-is-poor-say-who-sent-each-message-ai-or-a-person-and-show-it-in-campaigns-too---pinned-kushal-2026-10-23) | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
-| [D-113](#d-113--linked-numbers-replace-advisory-mode-with-a-plain-anti-ban-switch-on--off---pinned-kushal-2026-10-23) | Linked numbers: rename "Advisory mode" to a plain Anti-ban protection On / Off switch (words only; maybe auto-expire) | 📌 pinned (Kushal, 2026-10-23) |
-| [D-114](#d-114--an-approval-system-requests-from-agents-to-admins-with-status-pages-and-notifications---pinned-kushal-2026-10-23) | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
-| [D-115](#d-115--campaigns-a-timeout-for-messages-the-ai-sends---pinned-kushal-2026-10-23-meaning-mostly-clear) | Campaigns: a timeout for AI-sent messages (how long the AI may wait or keep trying before giving up or handing the chat back) | 📌 pinned (Kushal, 2026-10-23): so the AI never waits forever on a message it sent |
-| [D-116](#d-116--chats-a-button-to-jump-to-the-bottom-the-latest-message---pinned-kushal-2026-10-23) | Chats: a "go to the latest message" button that scrolls a long chat to the bottom | 📌 pinned (Kushal, 2026-10-23) |
-| [D-117](#d-117--a-warning-before-adding-a-number-when-this-machines-ram-is-too-small-for-it-with-a-resource-monitor-and-a-calculator---pinned-kushal-2026-10-25) | A warning before adding a number when this machine's RAM is too small for it (resource monitor + a calculator, built from docs/19 and D-46/D-61) | 📌 pinned (Kushal, 2026-10-25) |
+| [D-1](#d-1) | A lightweight database browser (Drizzle Studio or similar) | 📌 pinned |
+| [D-1b](#d-1b) | Drizzle's query builder (as opposed to Drizzle itself) | 📌 pinned |
+| [D-3](#d-3) | Licence | ◐ proprietary `LICENSE` added 2026-10-25 · 📌 the signed-key enforcement (docs/34) still pinned |
+| [D-4](#d-4) | The AI agent (F12) | ✅ built 2026-10-21 (settings, auto-reply, campaign tools, queue); its guardrails are D-81 |
+| [D-5](#d-5) | Baileys 7.x | ◐ on 7.0.0-rc14 since 2026-10-23 (#161) · 📌 stable 7.0.0 still awaited |
+| [D-6](#d-6) | UUIDv7 primary keys | 📌 pinned |
+| [D-7](#d-7) | Turborepo, and splitting the queue driver | 📌 pinned |
+| [D-8](#d-8) | Self-serve setup wizard, guided walkthrough, whitelabelling | ◐ partly built (what-next buttons) · ⏸ parked |
+| [D-9](#d-9) | Generating `.env`, and a secrets driver; **first an "AI settings" sub-tab in the AI tab (provider, key, model, test)** | ✅ AI settings tab built 2026-10-22 · 📌 the rest pinned |
+| [D-10](#d-10) | What belongs in the inbox — broadcast output, and unknown senders | 📌 pinned |
+| [D-11](#d-11) | Media at rest — encryption, retention, scanning, compliance | ◐ partly built (serving; rest parked) |
+| [D-13](#d-13) | Access auditing — who *read* what | ✅ done |
+| [D-14](#d-14) | The linked number receives nothing — `Bad MAC` on every inbound | ✅ done |
+| [D-15](#d-15) | A documentation site | 📌 pinned |
+| [D-17](#d-17) | Presence, typing indicators and collision detection (F3 realtime) | ✅ done |
+| [D-18](#d-18) | 🔵 **META** Inbox niceties: snooze, the Meta 24-hour window UI, ~~keyboard shortcu | 📌 pinned |
+| [D-19](#d-19) | 🔵 **META** Rich message templates — user-managed, Meta-aligned, with media and im | 📌 pinned |
+| [D-20](#d-20) | SQLite support for single-machine deployments | 📌 pinned |
+| [D-21](#d-21) | The full import mapping wizard | ▶ working on it · ◐ partly built (columns step, several phones, joined names; PR #83) |
+| [D-22](#d-22) | Row-level de-duplication with a diff-style review | 📌 pinned |
+| [D-23](#d-23) | Inbox search (F3 AC-7) | 📌 pinned |
+| [D-24](#d-24) | Typing simulation (P6 anti-ban layer 3) | ✅ done |
+| [D-25](#d-25) | Outbound media (sending files) | ✅ done |
+| [D-26](#d-26) | Campaign body variation (spintax + per-recipient) | ✅ done |
+| [D-27](#d-27) | Opt-out keyword handling (STOP / unsubscribe) | 📌 pinned |
+| [D-28](#d-28) | Dynamic audience segments ("segregation") | ◐ partly built (minimal slice) |
+| [D-29](#d-29) | An anti-ban "advisory mode" — warn but do not enforce | ✅ done |
+| [D-30](#d-30) | Media that fails to store is invisible to the operator | ◐ partly built (reasons recorded; manual retry missing) |
+| [D-31](#d-31) | Per-org encryption keys (the DEK/KEK design), and key rotation | ◐ partly built (key rotation) |
+| [D-32](#d-32) | Encrypting contact identifiers (phone numbers and emails) | 📌 pinned |
+| [D-33](#d-33) | P1 close-out and deployment | 📌 pinned |
+| [D-34](#d-34) | 🔵 **META** The Meta Cloud API adapter (P8) and the real-number pilot | 📌 pinned |
+| [D-35](#d-35) | Contact export to Excel (.xlsx) | ◐ partly built (CSV and vCard; no .xlsx) |
+| [D-36](#d-36) | Contact import from a vCard (.vcf) | 📌 pinned |
+| [D-37](#d-37) | 🔵 **META** Meta tier and quality tracking, feeding the health engine | 📌 pinned |
+| [D-38](#d-38) | 🔵 **META** Meta template submission, approval status, and the template-only windo | 📌 pinned |
+| [D-39](#d-39) | 🔵 **META** Per-transport pacing policy and the Meta inbound/status webhooks | 📌 pinned |
+| [D-40](#d-40) | Custom fields in imports, segments, and exports | ◐ partly built (import into fields) |
+| [D-41](#d-41) | The gateway runs outside row-level security | ✅ done |
+| [D-42](#d-42) | Human takeover from an AI agent, inside a conversation | ◐ partly built: assigning the chat to a person is the takeover; no pause state |
+| [D-43](#d-43) | Extra restriction-alert channels (webhook, email, canary self-test) | 📌 pinned |
+| [D-44](#d-44) | Baileys 7 upgrade | 📌 pinned |
+| [D-45](#d-45) | Link a `@lid` address to its phone number | ✅ done |
+| [D-46](#d-46) | UI responsiveness — the app feels laggy when used fast | 🔺 **HIGH PRIORITY** (Kushal, 2026-10-22) · 📌 pinned |
+| [D-47](#d-47) | Signup page, billing gate and beta-tester override | ⏸ parked |
+| [D-48](#d-48) | Security test suite (OWASP) | 📌 pinned |
+| [D-49](#d-49) | Revamp the browser (e2e) suite to industry standard, covering every UI | 📌 pinned |
+| [D-50](#d-50) | Test the frontend and backend independently (modularity check) | 📌 pinned |
+| [D-51](#d-51) | Deleted-message tracking | 📌 pinned |
+| [D-52](#d-52) | Deleting previous campaigns (unparked after Mikhil's feedback) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| [D-53](#d-53) | Assignment model and message authorship | ✅ done |
+| [D-54](#d-54) | Typing indicator and the "just replied, send anyway?" warning | ✅ done |
+| [D-55](#d-55) | Licence enforcement ("DRM"): usage is blocked when an org has not paid | 📌 pinned |
+| [D-56](#d-56) | Telemetry: metrics, tracing and error tracking beyond logs | 📌 pinned |
+| [D-57](#d-57) | Run the import commit as a background job | 📌 pinned |
+| [D-58](#d-58) | Public site and launch-readiness checklist | 📌 pinned |
+| [D-59](#d-59) | File support in chat (Kushal, 2026-10-16) | ◐ partly built: rounds 1 and 2, and **files in campaigns first slice built 2026-10-21** (one picture or GIF, 5 MB, no MP4 yet) |
+| [D-60](#d-60) | Number fallback: message the first number that has a WhatsApp account | ✅ done |
+| [D-61](#d-61) | Lighter web tier: plain React with refresh buttons instead of Next eve | 📌 pinned |
+| [D-62](#d-62) | Ship as a single executable, if possible | 📌 pinned |
+| [D-63](#d-63) | Centralised file store: S3-compatible storage alongside local | ◐ partly built (S3 driver) · 📌 pinned |
+| [D-64](#d-64) | Database portability: move the database-side logic into the app so oth | 📌 pinned |
+| [D-65](#d-65) | Bugs found running the alpha container on a VM (2026-10-17), not fixed | ◐ partly fixed (1 of 8) · ⏸ parked |
+| [D-66](#d-66) | Motion on most pages, not just the sign-in screen | ◐ partly built (sign-in and Overview motion) |
+| [D-67](#d-67) | Save a number or name onto a `@lid` chat, like "add contact" in WhatsA | 📌 pinned again 2026-10-21 (was priority) · ◐ partly built (channels ignored; mapping investigated) |
+| [D-68](#d-68) | Campaign with no tagged people: tell the user to tag them first | ✅ done |
+| [D-69](#d-69) | Chats available inside the job portal (and any other web app) | 📌 pinned |
+| [D-70](#d-70) | Contacts page: refresh, admin-chosen columns, tidier layout, sort and  | ▶ working on it · ◐ built: tag fixes, Refresh, expandable rows, date range and order · ⏳ columns chosen by an admin is D-79 |
+| [D-71](#d-71) | A big background picture for each tab | 📌 pinned |
+| [D-72](#d-72) | Mobile-friendly UI | 📌 pinned |
+| [D-73](#d-73) | "Message these people" right after an import | ◐ partly built (buttons) · ⏸ parked |
+| [D-74](#d-74) | Add-number form: country-code dropdown and a numbers-only phone field | ✅ done |
+| [D-75](#d-75) | Number assignment: who each WhatsApp number belongs to | 📌 pinned |
+| [D-76](#d-76) | Notifications tab, number requests and approvals (to be built on the D-114 approval system) | 📌 pinned |
+| [D-77](#d-77) | Admin controls: user scopes and number limits | 📌 pinned |
+| [D-78](#d-78) | Email: invitations to join an organisation, via SMTP or an email API ( | 📌 pinned |
+| [D-79](#d-79) | Contacts: columns chosen by an admin for the whole team | 📌 pinned |
+| [D-80](#d-80) | Create and edit a contact page; save an unknown sender (org-neutral fields) | 📌 pinned |
+| [D-81](#d-81) | AI assistant guardrails (facts, opt-out words, approval mode, topics, spend) | 📌 pinned · Kushal: "later" |
+| [D-82](#d-82) | A gateway restart can break the WhatsApp session (decrypt failures, nothing received) | ◐ partly built 2026-10-23 (ordered, flushed writes; visibility; see D-101) · 📌 pinned · hit 2026-10-21 |
+| [D-83](#d-83) | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
+| [D-84](#d-84) | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
+| [D-85](#d-85) | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
+| [D-89](#d-89) | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
+| [D-90](#d-90) | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
+| [D-91](#d-91) | A chat the AI is handling cannot be typed into (admins and participants too) until a person takes over from the AI; also while the AI is mid-reply | 📌 pinned (Kushal, 2026-10-22; raised again 2026-10-23) |
+| [D-92](#d-92) | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
+| [D-93](#d-93) | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
+| [D-94](#d-94) | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
+| [D-96](#d-96) | Forgot password: a way to reset your own password (no self-service reset today; the beta server has no operator at a keyboard) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
+| [D-97](#d-97) | AI settings say "add a model first" next to Save when no model is set up (and disable Hand to AI with that reason) | 📌 pinned (Kushal, 2026-10-23) |
+| [D-98](#d-98) | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
+| [D-99](#d-99) | Contacts: add one contact, or several at once, by hand (single and multiple modes) | 📌 pinned (Kushal, 2026-10-23) |
+| [D-100](#d-100) | Campaigns: an indicator on each campaign showing whether the AI is used (badge, template name, openings written, filter) | 📌 pinned (Kushal, 2026-10-23) |
+| [D-101](#d-101) | "Waiting for this message" on the recipient's phone even when the AI sends it (phone-number vs LID session mismatch; docs/45) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · ◐ built on a branch (Baileys 7.0.0-rc14), real-phone check pending |
+| [D-102](#d-102) | Messages typed on the owner's phone or WhatsApp Web do not all reach the inbox (same LID session root as D-101; follow-up to D-94) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · ◐ built with D-101, real-phone check pending |
+| [D-103](#d-103) | The AI tab is confusing: a guided walkthrough of what to set up, in order | 📌 pinned (Kushal, 2026-10-23) |
+| [D-104](#d-104) | "Turn the AI model off" deletes the model, key and URL; add a real Pause that keeps them (and rename the delete) | 📌 pinned (Kushal, 2026-10-23) |
+| [D-105](#d-105) | Contacts "Dates and order": the Date: Added / Last imported choice is unclear (rename, hint, show it as a sentence) | 📌 pinned (Kushal, 2026-10-23) |
+| [D-106](#d-106) | Inbox: rename Resolve / Reopen to Mark as completed / Reopen chat (and the Closed tab to Completed) | 📌 pinned (Kushal, 2026-10-23) |
+| [D-107](#d-107) | Import: the sample table and the Preview button are both called preview; run the check automatically and show Import straight away | 📌 pinned (Kushal, 2026-10-23) |
+| [D-108](#d-108) | Import: mark invalid phone numbers and emails in the preview; fix them inline or drop them with a confirmation | 📌 pinned (Kushal, 2026-10-23) |
+| [D-109](#d-109) | Campaign form: "Build a new template" jumps to the AI tab, and picking a template there does not make the campaign an AI campaign | 📌 pinned (Kushal, 2026-10-23) |
+| [D-110](#d-110) | "Tell the assistant what to do" as a small chat bubble on the right side of every page, not a section of the AI tab | 📌 pinned (Kushal, 2026-10-23) |
+| [D-111](#d-111) | Import: de-duplicate in the browser first (progress bar, drop exact copies, ask which to keep when copies differ); server still enforces | 📌 pinned (Kushal, 2026-10-23) |
+| [D-112](#d-112) | Message and campaign tracking: a small "Sent by the AI assistant / Sent by <name> / Campaign / phone" line under each message; sent text and state per campaign recipient | 📌 pinned (Kushal, 2026-10-23) |
+| [D-113](#d-113) | Linked numbers: rename "Advisory mode" to a plain Anti-ban protection On / Off switch (words only; maybe auto-expire) | 📌 pinned (Kushal, 2026-10-23) |
+| [D-114](#d-114) | An approval system: requests from agents to admins (numbers, campaigns, do-not-contact lifts, ...), My requests and Approvals pages, notifications; D-76 becomes its first use | 📌 pinned (Kushal, 2026-10-23) |
+| [D-115](#d-115) | Campaigns: a timeout for AI-sent messages (how long the AI may wait or keep trying before giving up or handing the chat back) | 📌 pinned (Kushal, 2026-10-23): so the AI never waits forever on a message it sent |
+| [D-116](#d-116) | Chats: a "go to the latest message" button that scrolls a long chat to the bottom | 📌 pinned (Kushal, 2026-10-23) |
+| [D-95](#d-95) | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
+| [D-88](#d-88) | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
+| [D-87](#d-87) | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
+| [D-86](#d-86) | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
 
 ## By theme (added 2026-10-23)
 
@@ -1787,6 +1786,8 @@ choosing, not yet verified): **OWASP ZAP** (baseline + API scan in CI), **Nuclei
 CI), **Schemathesis** (property-based API fuzzing once an OpenAPI spec exists), and a hand-written suite for what
 tools miss in *this* app: cross-org access (IDOR) on every route, CSRF on session routes, session fixation/expiry,
 login throttling, file upload and download headers, and authorization by role/scope.
+
+**Update 2026-10-25:** two free scans were added as GitHub Actions: `security-semgrep.yml` (Semgrep community rules on every code PR, fails only on ERROR severity, not a required check) and `security-zap.yml` (OWASP ZAP baseline against the production web build and the API every night, report attached, never blocks). Still to do: the hand-written cross-organisation (IDOR), CSRF, session and role tests, ZAP's authenticated and API scans and Schemathesis (need the OpenAPI spec, D-88), and Nuclei.
 
 **Why parked:** needs the tool survey and a decision on what runs per-PR versus nightly; some pieces want an OpenAPI
 spec (P9) first.
