@@ -144,6 +144,7 @@ ${fig('07-import-upload', 'Step 1: drop a file or click to choose one.')}
 lets you start a fresh import (people already in the CRM are matched by phone or email and updated, not duplicated).</li>
 </ul>
 <h3>Step 2 · Match columns</h3>
+<p>Columns you do not map are <b>not thrown away</b>: by default every column of the sheet is stored on the person (up to 200 columns), and <b>Choose columns</b> lets you keep only some.</p>
 ${fig('08-import-match', 'Step 2: tell the CRM what each column is.')}
 ${markers([
   [1, '<b>Which columns hold phone numbers?</b> Tick every column that has a number. If a person has more than one, they are tried in the order shown. Use <b>Another column holds numbers…</b> to add more. Numbers with no country code are read as Indian numbers.'],
@@ -206,6 +207,10 @@ ${markers([
 ])}
 <p>Each row shows the person, the last activity time, an unread count, how many messages, which of your numbers it is on, who owns it
 (or <i>Unassigned</i>), a <b>closed</b> badge, and a red <b>⚠</b> if a message in it is waiting to be sent. The list refreshes itself every few seconds.</p>
+<h3>Handing one chat to the AI</h3>
+<p>In the chat header, <b>Hand to AI</b> gives this one conversation to the AI assistant (it needs to be switched on); <b>Take back from AI</b> returns it to you. The AI stops at once when you take it back. This is the same as choosing the AI assistant as the assignee.</p>
+<h3>When a customer’s phone says “Waiting for this message”</h3>
+<p>Under a message you sent you may see <b>delivered, but the other phone could not read it yet</b>. That means WhatsApp delivered it but their phone could not unlock it, so it shows “Waiting for this message” for them until it works. It usually fixes itself in a moment. If the composer says <b>the encryption session of this number looks broken</b>, unlink the number on <b>Linked numbers</b> and link it again. Messages you type on your own phone or on WhatsApp Web only reach the inbox once that is fixed.</p>
 <h3>Inside a conversation</h3>
 ${fig('04-thread', 'An open conversation.')}
 ${markers([
@@ -261,7 +266,9 @@ ${markers([
   [5, '…or <b>Build a filter</b> on the spot.']
 ])}
 ${steps([
+  '<b>Start from a saved template (optional).</b> The box <b>Start from a saved template</b> lists the templates saved on the AI page. Picking one fills the message box; you can still change the text. A template that carries instructions for the AI also makes this an <b>AI campaign</b> (see below).',
   '<b>Write the message.</b> Use <code>{{name}}</code> for the person’s name and <code>{Hi|Hey|Hello}</code> to vary wording: each person gets a slightly different message, which is safer than hundreds of identical ones. Custom fields work too, as <code>{{city}}</code>.',
+  '<b>Add a picture or GIF (optional).</b> One JPG, PNG, WebP or GIF per campaign, up to 5 MB. It goes to everyone with your message as the caption, at the same safe pace. A GIF plays as a short looping video. <b>Use one I uploaded before</b> reuses an earlier picture.',
   '<b>Choose who gets it.</b> Pick exactly one: a tag, an import, a saved audience, or a filter you build (has tag, reply status, "messaged in the last N days"; a live count shows "N people match right now"). The audience freezes the moment you start, so later changes never alter a running campaign. People marked do-not-contact are always left out.',
   '<b>Send from.</b> Choose the number.',
   'Press <b>Create draft</b>. Nothing is sent yet.'
@@ -275,6 +282,8 @@ ${steps([
   'Watch progress: "N of M done" with tiles for <b>Total, Sent, Queued, Pending, Skipped, Failed</b>. Click a tile to filter the recipient list.',
   '<b>Pause</b> stops sending at once; <b>Resume</b> continues. <b>Cancel</b> ends it for good (people not yet reached are marked skipped).'
 ])}
+<h3>AI campaigns: a first message written for each person</h3>
+<p>When a campaign uses an AI template (and the AI assistant is on), the AI <b>writes the opening message for each person</b> from their name and the columns stored on them, following the template's outline, so no two people get the same text. The campaign waits for the AI. If the AI cannot write one after a few tries, that person is <b>skipped</b> with the reason <i>ai_opening_failed</i>; nobody is dropped silently. When someone replies, the AI answers in that chat under the same template. Read a few of the openings in the recipient list before you start a large campaign.</p>
 <h3>Why someone was skipped</h3>
 <p>Every skipped person is listed with a reason; nobody is dropped silently.</p>
 ${table(['Reason', 'Meaning'], [
@@ -283,6 +292,7 @@ ${table(['Reason', 'Meaning'], [
   ['an agent is mid-conversation', 'A colleague is chatting with them right now.'],
   ['sent a campaign within 14 days', 'They were messaged recently.'],
   ['in another live campaign', 'They are already waiting in a running campaign.'],
+  ['the AI could not write their opening', 'An AI campaign only: the AI did not produce a message for this person after several tries.'],
   ['campaign cancelled', 'The campaign was cancelled before their turn.']
 ])}
 <h3>Automatic pauses</h3>
@@ -322,6 +332,10 @@ ${markers([
   [6, 'What it may talk about.'],
   [7, 'Whether it may start campaigns by itself.']
 ])}
+<h3>Choosing the AI model ${admin}</h3>
+<p>The <b>AI settings</b> tab (next to <b>Assistant</b>) is where you choose the company and model the AI runs on: pick a provider, paste its key, choose a model and press <b>Test</b>. The test makes two tiny real calls, so you know it works before anything is sent to a customer. If the model answers with nothing, a warning banner says so instead of failing silently.</p>
+<h3>AI templates</h3>
+<p>On the <b>Assistant</b> tab, <b>Describe what you want</b> turns a few plain words into instructions for the AI, a suggested audience and a draft first message. Read and edit the result, then save it as a <b>template</b>. Saved templates appear under <b>Saved templates</b>; you can pick one when you create a campaign, or use it to message a group. The locked safety rules are always added in front, whatever a template says.</p>
 <h3>Switching it on ${admin}</h3>
 ${steps([
   '<b>Tick the consent box.</b> To write a reply, the assistant sends the conversation (including the contact’s name and what they wrote) to an outside AI company. Only agree if your contacts have been told. Your choice is saved with the date.',
