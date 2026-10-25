@@ -730,3 +730,29 @@ original shape; these are the deltas.
 Contacts also gain behaviour without new columns: a `wa_lid` identity can be linked to a `phone`
 identity on the same contact, or two contacts merged (`contact.merged` audit; the absorbed contact is
 soft-deleted).
+
+## Added since the first slice: migrations 0024 to 0038 (updated 2026-10-25)
+
+The full, always-current list of tables, columns, keys, indexes, policies and triggers is generated from the live database:
+[`generated/database-reference.md`](generated/database-reference.md) (and the diagram page `generated/schema.html`). Regenerate with
+`npm run db:docs`. This section only says what changed in meaning since the tables above were written. 32 tables now.
+
+| What | Migration | Meaning |
+|---|---|---|
+| `contact_identity.wa_registered`, `wa_checked_at` | 0029 | Whether WhatsApp has an account on this number and when it was checked (number fallback, D-60) |
+| `message.media_error`, `media_failed_at` | 0030 | Why an attachment could not be stored, so the thread can say so (D-30) |
+| `app_user.is_bot` | 0031 | The AI assistant's own user. A chat assigned to it is "handled by the AI" (D-91, Hand to AI) |
+| `ai_setting` | 0031, 0032 | One row per org: `enabled`, `instructions`, `daily_message_cap` (default 200), `may_start_campaigns` (default off), the consent record (`consent_accepted_at/by`) and `bot_user_id`. Off until an admin accepts |
+| `ai_run` | 0031 | One row each time the assistant sends, tries or is held back: `kind` (`reply`, `campaign_action`), `outcome` (`sent`, `blocked`, `failed`, `skipped`), `reason` (a gate name, `daily_cap`, `model_error`, `empty_answer`), `model` and token counts. Cost and behaviour can be checked from it |
+| `ai_job` | 0033 | The assistant's waiting list, one running per org at a time: `kind` (`command`, `draft`), `input`, `status` (`queued`, `running`, `done`, `failed`, `cancelled`), `result` (JSON), `error` |
+| `ai_template` | 0034 | A saved template: `name`, `description` (what the owner typed), `instructions` (written by the model, editable), `audience`, `first_message`, `use_count`, `last_used_at`. The locked always-on rules are added in code on every reply and are not stored here |
+| `campaign.ai_template_id` | 0035 | Makes a campaign an AI campaign: replies to its messages go to the AI under that template |
+| `campaign.media_asset_id`; `media_asset.campaign_picture`, `gif_playback`, `source_asset_id` | 0036 | One picture or GIF per campaign (caption = the message); a GIF is sent as a looping video; `source_asset_id` points at the original when a derived copy is stored |
+| `campaign_recipient.opening_enc`, `opening_tries` | 0037 | The first message the AI wrote for this person (encrypted like every message body) and how many times writing it was tried. The campaign waits if the AI is off |
+| `channel_session.own_decrypt_burst_at` | 0038 | A burst of undecryptable messages from the account's own other devices (the owner's phone or WhatsApp Web). Kept apart from `decrypt_burst_at` and never scored for ban health (D-102) |
+| `message.retry_requests`, `last_retry_at` | 0038 | How many times the recipient's phone asked for this message again because it could not decrypt it ("Waiting for this message"); the thread shows it until the message is read (D-101, `45-rca-waiting-for-this-message-2026-10-23.md`) |
+| indexes `message_body_keyver_idx`, `channel_auth_state_keyver_idx` | 0028 | Find rows still under an old encryption key version during key rotation (`envelope_key_version()`) |
+
+Rules that still hold: every table that belongs to an org has `org_id` and a forced row-level-security policy; the app runs each request
+as the restricted `crm_app` role with `app.org_id` set (the gateway runs outside it, D-41); message bodies, campaign openings and
+credentials are encrypted at rest; `audit_log` is append-only.
