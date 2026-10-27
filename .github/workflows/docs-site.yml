@@ -31,7 +31,9 @@ jobs:
       - name: install
         working-directory: site
         run: npm ci
-      - name: refresh the endpoint reference from the generated file
+      - name: generate the endpoint reference from the code (docs/generated/ is git-ignored, so it is not in the checkout)
+        run: node scripts/api-docs.mjs
+      - name: copy it into the site
         working-directory: site
         run: node scripts/sync-generated.mjs
       - name: build
