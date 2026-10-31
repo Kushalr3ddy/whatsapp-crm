@@ -2,7 +2,8 @@ import { resolveSendAsset } from './campaign-media.js';
 import { sql } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
-import { renderBody } from './body-variation.js';
+import { planFirstMessage, renderRecipientBody } from './antiban/campaign-text.js';
+import { drawGapMs } from './antiban/gap.js';
 import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
 import type { TenantWork } from './ingestion.js';
 import { blockingPolicyGate, POLICY_SKIP_REASON, COOLDOWN_DAYS } from './policy-gates.js';
@@ -223,15 +224,23 @@ export async function dispatchCampaign(
 
   return tenant(async (tx) => {
     // A campaign with a picture or GIF sends it to everyone, the message being its caption; a GIF goes as its converted looping clip.
-    const withPicture = (await tx.execute(sql`
-      SELECT media_asset_id AS "pictureId" FROM campaign WHERE id = ${input.campaignId} AND org_id = ${input.orgId}`
-    ) as unknown as Array<{ pictureId: string | null }>)[0]?.pictureId ?? null;
+    const settings = (await tx.execute(sql`
+      SELECT media_asset_id AS "pictureId", media_after_reply AS "mediaAfterReply"
+      FROM campaign WHERE id = ${input.campaignId} AND org_id = ${input.orgId}`
+    ) as unknown as Array<{ pictureId: string | null; mediaAfterReply: boolean }>)[0];
+    const withPicture = settings?.pictureId ?? null;
+    const mediaAfterReply = settings?.mediaAfterReply ?? true;
     const asset = withPicture === null ? null : await resolveSendAsset(tx, input.orgId, withPicture);
     if (withPicture !== null && asset === null) throw new Error('campaign_picture_unavailable');
 
     const rows = await tx.execute(sql`
       SELECT cr.id, cr.contact_id AS "contactId", c.display_name AS "contactName",
-             c.custom_fields AS "customFields", cr.opening_enc AS "openingEnc"
+             c.custom_fields AS "customFields", cr.opening_enc AS "openingEnc", cr.planned_gap_ms AS "plannedGapMs",
+             -- Nobody in this chat has ever written to this number: a new chat (F6 AC-7.3).
+             NOT EXISTS (
+               SELECT 1 FROM message i JOIN conversation v ON v.id = i.conversation_id
+               WHERE v.contact_id = cr.contact_id AND v.sender_identity_id = ${input.senderIdentityId}
+                 AND i.direction = 'inbound') AS "newChat"
       FROM campaign_recipient cr
       JOIN contact c ON c.id = cr.contact_id AND c.org_id = cr.org_id
       WHERE cr.campaign_id = ${input.campaignId} AND cr.org_id = ${input.orgId}
@@ -245,6 +254,7 @@ export async function dispatchCampaign(
     const batch = rows as unknown as Array<{
       id: string; contactId: string; contactName: string | null;
       customFields: Record<string, unknown> | null; openingEnc: Uint8Array | null;
+      plannedGapMs: number | null; newChat: boolean;
     }>;
 
     let queued = 0;
@@ -262,16 +272,26 @@ export async function dispatchCampaign(
         continue;
       }
 
-      // Render this recipient's copy first — spintax picks a wording, {{name}} fills from the
-      // contact (D-26) — because the stored blind index is of the rendered body.
+      // Render this recipient's copy first — a variant picked from a draw seeded by campaign and contact, {{name}} and
+      // {{first_name}} filled from the contact (D-26, F6 AC-7.2) — because the stored blind index is of the rendered body.
       // {{name}} plus any of the org's custom fields ({{city}}, {{stage}}…); an unset one is blank.
-      const vars: Record<string, string> = {};
-      for (const [k, v] of Object.entries(recipient.customFields ?? {})) vars[k.toLowerCase()] = String(v);
       // The AI's own opening for this person, when the campaign has an AI template; otherwise the campaign's wording.
-      const body = recipient.openingEnc !== null
+      const rendered = recipient.openingEnc !== null
         ? new TextDecoder().decode(kms.decrypt(recipient.openingEnc))
-        : renderBody(input.body, { ...vars, name: recipient.contactName ?? '' });
+        : renderRecipientBody(input.body, {
+          campaignId: input.campaignId, contactId: recipient.contactId,
+          displayName: recipient.contactName, customFields: recipient.customFields
+        });
+      // A new chat gets the text alone when the campaign has a picture or a link; they get the rest if they reply (F6 AC-7.3).
+      const plan = planFirstMessage({
+        rendered, hasMedia: asset !== null, newChat: recipient.newChat, mediaAfterReply: mediaAfterReply
+      });
+      const body = plan.text;
+      const media = plan.withMedia ? asset : null;
       const hmac = kms.blindIndex(body);
+      // The gap this message waits was drawn when the campaign launched and stays; one that has none yet (a campaign that was
+      // already running) gets its draw now, and keeps it.
+      const plannedGapMs = recipient.plannedGapMs ?? drawGapMs();
 
       // One conversation per contact per sender, reused if it exists — a campaign message
       // belongs in the same thread as everything else, not in a parallel history.
@@ -284,17 +304,18 @@ export async function dispatchCampaign(
 
       const created = await tx.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type,
-                             body_enc, body_hmac, sent_by, campaign_id, dnc_override, media_id)
-        VALUES (${input.orgId}, ${conversationId}, 'outbound', 'queued', ${asset?.contentType ?? 'text'},
+                             body_enc, body_hmac, sent_by, campaign_id, dnc_override, media_id, planned_gap_ms)
+        VALUES (${input.orgId}, ${conversationId}, 'outbound', 'queued', ${media?.contentType ?? 'text'},
                 ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
                 ${hmac}, 'system', ${input.campaignId},
-                ${(input.gateOverrides ?? []).includes('dnc')}, ${asset?.mediaId ?? null})
+                ${(input.gateOverrides ?? []).includes('dnc')}, ${media?.mediaId ?? null}, ${plannedGapMs})
         RETURNING id`);
       const messageId = (created as unknown as Array<{ id: string }>)[0]!.id;
 
       await tx.execute(sql`
         UPDATE campaign_recipient
-        SET status = 'queued', message_id = ${messageId}, attempted_at = now()
+        SET status = 'queued', message_id = ${messageId}, attempted_at = now(),
+            planned_gap_ms = ${plannedGapMs}, followup_pending = ${plan.split !== null}
         WHERE id = ${recipient.id} AND org_id = ${input.orgId}`);
       queued += 1;
     }

@@ -1,6 +1,6 @@
 /** Domain logic. Depends on ports and the database, never on a concrete adapter. */
 export {
-  storeInboundMessage, storeOwnMessage, markMessageSent, markMessageFailed, applyDeliveryStatus, sentMessageText,
+  storeInboundMessage, storeOwnMessage, markMessageSent, markMessageFailed, applyDeliveryStatus, sentMessageText, requestRead,
   type InboundMessage, type OwnMessage, type StoredInbound
 } from './messages.js';
 
@@ -67,12 +67,27 @@ export {
   type OutboundUpload, type IncomingMedia, type StoredMedia, type ResolvedMedia
 } from './media.js';
 
-export { typingDelayMs } from './typing.js';
-
 export {
-  basicPolicy, makeBasicPolicy, BASIC_GAP_MIN_MS, BASIC_GAP_MAX_MS, BASIC_BATCH,
-  type AntiBanPolicy, type SendContext, type SendDecision, type BatchContext
+  HOLD_REASONS, LANE_PRIORITIES,
+  type AntiBanPolicy, type SendContext, type SendDecision, type BatchContext, type Hold, type HoldReason, type LanePriority,
+  type NumberState, type QuietHoursSetting, type SendMessage, type CappingStatus
 } from './antiban.js';
+export * from './antiban/constants.js';
+export { makeAntiBanPolicy, gapFactorFor } from './antiban/policy.js';
+export { drawGapMs, typingMs, laneWaitMs, startsRun, seededRandom } from './antiban/gap.js';
+export { quietHoursEnd } from './antiban/quiet-hours.js';
+export { reactionBrakeOn, type NewChatOutcomes } from './antiban/brake.js';
+export { numberHints, type NumberHint } from './antiban/hints.js';
+export { splitFirstMessage, hasVariation, type FirstMessageSplit } from './antiban/first-message.js';
+export { renderRecipientBody, planFirstMessage, type RecipientText } from './antiban/campaign-text.js';
+export { contactHoldOf, numberHoldOf, recordHold, clearHold, type Queryable } from './antiban/holds.js';
+export {
+  laneCandidates, loadNumberState, loadQuietHours, lastSentAtOf, storedWarnings, newChatOutcomes, newChatsSince,
+  type LaneCandidate, type StoredWarnings
+} from './antiban/lane-state.js';
+export { applyWhatsAppNotice, type WhatsAppNotice, type TimelockNotice, type CappingNotice } from './antiban/notices.js';
+export { computeEta, campaignEta, type Eta, type EtaDelay, type EtaInput, type EtaItem } from './antiban/eta.js';
+export { queueCampaignFollowUp } from './campaign-followup.js';
 export { recordHealthEvent } from './health-events.js';
 
 export { renderBody, resolveSpintax, fillVariables } from './body-variation.js';

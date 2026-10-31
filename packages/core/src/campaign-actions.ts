@@ -3,6 +3,7 @@ import type { Transaction } from '@crm/db';
 import { AUDIT, writeAudit, type AuditActor } from './audit.js';
 import { campaignProgress, snapshotAudience, type CampaignProgress } from './campaigns.js';
 import type { PolicyGate } from './policy-gates.js';
+import { GAP_MAX_MS, GAP_MIN_MS } from './antiban/constants.js';
 
 /**
  * The operations on a campaign: create a draft, start or resume it, pause it, cancel it, edit its wording.
@@ -36,6 +37,8 @@ export interface NewCampaign extends CampaignAudience {
   readonly aiTemplateId?: string | undefined;
   /** A stored campaign picture or GIF sent with every message; must be one of the org's campaign pictures. */
   readonly mediaAssetId?: string | undefined;
+  /** Send the picture or link to new chats only after they reply (F6 AC-7.3). On unless said otherwise. */
+  readonly mediaAfterReply?: boolean | undefined;
 }
 
 /** Creates a draft. Nothing is sent and no audience is frozen until it is started. */
@@ -77,10 +80,10 @@ export async function createCampaignDraft(
 
   const rows = await tx.execute(sql`
     INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, status)
+                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, media_after_reply, status)
     VALUES (${orgId}, ${input.name}, ${input.body}, ${input.senderIdentityId}, ${input.fromImportRunId ?? null},
             ${input.explicitContactIds === undefined ? null : JSON.stringify(input.explicitContactIds)}::jsonb,
-            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, 'draft')
+            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, ${input.mediaAfterReply ?? true}, 'draft')
     RETURNING id`);
   const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
   await writeAudit(tx, {
@@ -114,6 +117,13 @@ export async function startCampaign(
   // Only on the first start. Resuming a paused campaign must not re-snapshot, or contacts added since would silently
   // join an audience somebody already approved.
   if (campaign.status === 'draft') await snapshotAudience(tx, orgId, id);
+
+  // Draw every recipient's gap once, now, and keep it: the lane waits exactly this long before each message, so the schedule
+  // and the ETA are known before anything is sent (F6 AC-3.1). A resume only fills the recipients that have none.
+  await tx.execute(sql`
+    UPDATE campaign_recipient
+    SET planned_gap_ms = ${GAP_MIN_MS} + floor(random() * ${GAP_MAX_MS - GAP_MIN_MS + 1})::int
+    WHERE campaign_id = ${id} AND org_id = ${orgId} AND planned_gap_ms IS NULL AND status = 'pending'`);
 
   await tx.execute(sql`
     UPDATE campaign SET status = 'running', started_at = coalesce(started_at, now()), pause_reason = NULL, updated_at = now()
@@ -170,7 +180,7 @@ export async function setCampaignStatus(
  * rewording it under the gateway would make one audience see two different messages, so pause it first.
  */
 export async function editCampaign(
-  tx: Transaction, orgId: string, ctx: ActionContext, id: string, change: { name?: string | undefined; body?: string | undefined }
+  tx: Transaction, orgId: string, ctx: ActionContext, id: string, change: { name?: string | undefined; body?: string | undefined; mediaAfterReply?: boolean | undefined }
 ): Promise<'ok' | 'not_found' | 'not_editable'> {
   const found = (await tx.execute(sql`
     SELECT status, name, body FROM campaign WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`) as unknown as Array<{
@@ -180,7 +190,10 @@ export async function editCampaign(
   if (found.status !== 'draft' && found.status !== 'paused') return 'not_editable';
   const name = change.name ?? found.name;
   const body = change.body ?? found.body;
-  await tx.execute(sql`UPDATE campaign SET name = ${name}, body = ${body}, updated_at = now() WHERE id = ${id} AND org_id = ${orgId}`);
+  await tx.execute(sql`
+    UPDATE campaign SET name = ${name}, body = ${body}, media_after_reply = coalesce(${change.mediaAfterReply ?? null}::boolean, media_after_reply),
+                        updated_at = now()
+    WHERE id = ${id} AND org_id = ${orgId}`);
   await writeAudit(tx, {
     orgId, actor: ctx.actor, action: AUDIT.campaignEdited, targetType: 'campaign', targetId: id,
     // The wording itself is not logged, only that it changed and how long it is now.
