@@ -1,6 +1,6 @@
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
-  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent,
+  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedNoticeEvent, NormalisedStatusEvent, OutboundContent,
   ProviderHealth,
   Recipient, SenderRef, SendResult, InboundMedia } from '@crm/channels';
 
@@ -30,6 +30,8 @@ export interface FakeOptions {
    * undelivered sends as a delivery collapse and pauses the number for 48 hours.
    */
   readonly autoDeliverAfterMs?: number;
+  /** The time the fake stamps on what it records. A test with a fake clock passes it, so presence, typing and sends line up with the lane's. */
+  readonly clock?: () => Date;
 }
 
 /** Baileys-like defaults: free, unofficial, no window, no template requirement. */
@@ -63,7 +65,13 @@ export class FakeChannelProvider implements ChannelProvider {
   readonly sent: FakeSentMessage[] = [];
 
   /** Every typing-presence call, in order, so a test can assert composing fired before the send. */
-  readonly typingCalls: Array<{ senderId: string; to: Recipient; state: 'composing' | 'paused' }> = [];
+  readonly typingCalls: Array<{ senderId: string; to: Recipient; state: 'composing' | 'paused'; at: Date }> = [];
+  /** Every presence call, in order: the number going online before a run and offline after it (F6 AC-1.6). */
+  readonly presenceCalls: Array<{ senderId: string; state: 'available' | 'unavailable'; at: Date }> = [];
+  /** Every read receipt asked for, in order: who, which of their messages, when (F6 AC-1.7). */
+  readonly markReadCalls: Array<{ senderId: string; from: Recipient; providerMessageIds: readonly string[]; at: Date }> = [];
+  /** Numbers (E.164) whose sends WhatsApp refuses with a 463 until removed from this set. */
+  readonly refuse463 = new Set<string>();
   /** Numbers (E.164) this fake reports as having no WhatsApp account; every other number is registered. */
   readonly unregistered = new Set<string>();
   /** Every registration lookup, in order, so a test can assert how many were made and for which numbers. */
@@ -77,6 +85,7 @@ export class FakeChannelProvider implements ChannelProvider {
   private readonly media = new Map<string, InboundMedia>();
   private readonly statusQueue: NormalisedStatusEvent[] = [];
   private readonly connectionQueue: NormalisedConnectionEvent[] = [];
+  private readonly noticeQueue: NormalisedNoticeEvent[] = [];
   private readonly waiters: Array<() => void> = [];
   private readonly options: FakeOptions;
   private counter = 0;
@@ -141,11 +150,14 @@ export class FakeChannelProvider implements ChannelProvider {
     if (this.health_.get(sender.id)?.state !== 'open') {
       throw new Error(`sender ${sender.id} is not connected`);
     }
+    if (this.refuse463.has(to.phoneE164)) {
+      throw Object.assign(new Error('WhatsApp refused the message (463)'), { statusCode: 463 });
+    }
     if (this.options.failAll || this.options.failFor?.includes(to.phoneE164)) {
       throw new Error(`fake send failure for ${to.phoneE164}`);
     }
     const providerMessageId = `fake-msg-${this.run}-${++this.counter}`;
-    this.sent.push({ senderId: sender.id, to, content, providerMessageId, at: new Date() });
+    this.sent.push({ senderId: sender.id, to, content, providerMessageId, at: this.now() });
     this.emitStatus({
       providerMessageId, senderId: sender.id, status: 'sent', errorCode: null, at: new Date()
     });
@@ -169,7 +181,19 @@ export class FakeChannelProvider implements ChannelProvider {
    */
   async typing(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void> {
     if (this.health_.get(sender.id)?.state !== 'open') return;
-    this.typingCalls.push({ senderId: sender.id, to, state });
+    this.typingCalls.push({ senderId: sender.id, to, state, at: this.now() });
+  }
+
+  /** Records a presence call; a disconnected sender is a silent no-op, as with the real adapter. */
+  async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<void> {
+    if (this.health_.get(sender.id)?.state !== 'open') return;
+    this.presenceCalls.push({ senderId: sender.id, state, at: this.now() });
+  }
+
+  /** Records a read receipt instead of sending one. */
+  async markRead(sender: SenderRef, from: Recipient, providerMessageIds: readonly string[]): Promise<void> {
+    if (this.health_.get(sender.id)?.state !== 'open') return;
+    this.markReadCalls.push({ senderId: sender.id, from, providerMessageIds, at: this.now() });
   }
 
   /** Answers a registration lookup from `unregistered`, recording it; null when set to be unable to tell. */
@@ -202,6 +226,11 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Streams delivery-state events until shutdown. */
   async *status(): AsyncIterable<NormalisedStatusEvent> {
     yield* this.drain(this.statusQueue);
+  }
+
+  /** Streams WhatsApp's limit warnings until shutdown. */
+  async *notices(): AsyncIterable<NormalisedNoticeEvent> {
+    yield* this.drain(this.noticeQueue);
   }
 
   /** Streams connection state changes until shutdown. */
@@ -262,6 +291,33 @@ export class FakeChannelProvider implements ChannelProvider {
     this.media.delete(mediaRef);
   }
 
+  /** Simulates WhatsApp's reachout timelock for a number: active until a time, or lifted (`active: false`). */
+  emitTimelock(
+    senderId: string,
+    n: { active: boolean; until?: Date | null; enforcementType?: string | null; at?: Date }
+  ): void {
+    this.noticeQueue.push({
+      kind: 'timelock', senderId, active: n.active, until: n.until ?? null,
+      enforcementType: n.enforcementType ?? 'DEFAULT', at: n.at ?? this.now()
+    });
+    this.release();
+  }
+
+  /** Simulates WhatsApp's new-chat cap update for a number. */
+  emitCapping(
+    senderId: string,
+    n: {
+      status: 'NONE' | 'FIRST_WARNING' | 'SECOND_WARNING' | 'CAPPED'; totalQuota?: number | null; usedQuota?: number | null;
+      cycleStart?: Date | null; cycleEnd?: Date | null; at?: Date
+    }
+  ): void {
+    this.noticeQueue.push({
+      kind: 'capping', senderId, status: n.status, totalQuota: n.totalQuota ?? null, usedQuota: n.usedQuota ?? null,
+      cycleStart: n.cycleStart ?? null, cycleEnd: n.cycleEnd ?? null, at: n.at ?? this.now()
+    });
+    this.release();
+  }
+
   /** Simulates a delivery-state change from the provider. */
   emitStatus(event: NormalisedStatusEvent): void {
     this.statusQueue.push(event);
@@ -279,6 +335,11 @@ export class FakeChannelProvider implements ChannelProvider {
   }
 
   // ---- internals ---------------------------------------------------------------------
+
+  /** The time to stamp on a recorded call: the test's clock when it gave one. */
+  private now(): Date {
+    return this.options.clock?.() ?? new Date();
+  }
 
   /** Yields queued items, waiting for more until shutdown. */
   private async *drain<T>(queue: T[]): AsyncIterable<T> {

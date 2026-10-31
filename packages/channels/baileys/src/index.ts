@@ -6,7 +6,7 @@ import makeWASocket, {
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, InboundMedia,
   LinkChallenge,
-  NormalisedConnectionEvent, NormalisedIdentityLink, NormalisedInboundEvent, NormalisedStatusEvent,
+  NormalisedConnectionEvent, NormalisedIdentityLink, NormalisedInboundEvent, NormalisedNoticeEvent, NormalisedStatusEvent,
   OutboundContent,
   ProviderHealth, Recipient,
   SenderRef, SendResult
@@ -119,6 +119,7 @@ export class BaileysChannelProvider implements ChannelProvider {
   readonly #links = new EventStream<NormalisedIdentityLink>();
   readonly #status = new EventStream<NormalisedStatusEvent>();
   readonly #connectionEvents = new EventStream<NormalisedConnectionEvent>();
+  readonly #notices = new EventStream<NormalisedNoticeEvent>();
   /** Consecutive failed reconnects per sender, so backoff grows and eventually gives up. */
   readonly #reconnectAttempts = new Map<string, number>();
   /** Scheduled reconnects, kept so shutdown can cancel them instead of firing into a closed pool. */
@@ -225,7 +226,18 @@ export class BaileysChannelProvider implements ChannelProvider {
     // privacy-mode contact addresses a chat that does not exist, and in the previous system that
     // crashed the whole engine rather than one send — a permanent crash loop (M26).
     const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
-    const sent = await conn.socket.sendMessage(jid, toBaileysContent(content) as never);
+    let sent;
+    try {
+      sent = await conn.socket.sendMessage(jid, toBaileysContent(content) as never);
+    } catch (error) {
+      // WhatsApp's refusal carries its status code (a Boom error keeps it under `output`): put it where the gateway looks, so a 463
+      // is told apart from any other failure (F6 AC-2.6).
+      const code = (error as { output?: { statusCode?: number } } | null)?.output?.statusCode;
+      if (typeof code === 'number' && error instanceof Error && (error as { statusCode?: number }).statusCode === undefined) {
+        throw Object.assign(error, { statusCode: code });
+      }
+      throw error;
+    }
     if (!sent?.key.id) throw new Error('WhatsApp accepted the send but returned no message id');
     this.#rememberSent(sent.key.id);
 
@@ -243,6 +255,24 @@ export class BaileysChannelProvider implements ChannelProvider {
     if (!conn || conn.state !== 'open') return;
     const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
     await conn.socket.sendPresenceUpdate(state, jid);
+  }
+
+  /**
+   * Shows the number online or offline (F6 AC-1.6). `markOnlineOnConnect` is off, so nothing else ever sets it: the lane does,
+   * around a run of sends. Best-effort like typing.
+   */
+  async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<void> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return;
+    await conn.socket.sendPresenceUpdate(state);
+  }
+
+  /** Tells WhatsApp these messages from a contact were read (F6 AC-1.7). Never called when a message arrives. */
+  async markRead(sender: SenderRef, from: Recipient, providerMessageIds: readonly string[]): Promise<void> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open' || providerMessageIds.length === 0) return;
+    const jid = from.providerAddress ?? `${from.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
+    await conn.socket.readMessages(providerMessageIds.map((id) => ({ remoteJid: jid, id, fromMe: false })));
   }
 
   /**
@@ -266,6 +296,11 @@ export class BaileysChannelProvider implements ChannelProvider {
   /** A privacy address and its phone number, whenever WhatsApp shows them together. */
   identityLinks(): AsyncIterable<NormalisedIdentityLink> {
     return this.#links;
+  }
+
+  /** WhatsApp's limit warnings: the reachout timelock and the new-chat cap (F6 S2). */
+  notices(): AsyncIterable<NormalisedNoticeEvent> {
+    return this.#notices;
   }
 
   /** Delivery receipts, normalised to one status vocabulary across every provider. */
@@ -336,6 +371,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     this.#inbound.close();
     this.#status.close();
     this.#links.close();
+    this.#notices.close();
   }
 
   /** Opens a socket and wires every Baileys event onto our normalised streams. */
@@ -400,6 +436,8 @@ export class BaileysChannelProvider implements ChannelProvider {
       if (type !== 'notify') return;   // 'append' is history sync, not new traffic
       for (const m of messages) this.#emitInbound(senderId, m, isOwn);
     });
+    // WhatsApp's own warnings about starting new chats (F6 S2). The timelock arrives as part of a connection update, the cap as its own event.
+    socket.ev.on('message-capping.update', (info) => { this.#emitCapping(senderId, info); });
     socket.ev.on('messages.update', (updates) => {
       for (const u of updates) this.#emitStatus(senderId, u);
     });
@@ -432,6 +470,8 @@ export class BaileysChannelProvider implements ChannelProvider {
   #onConnectionUpdate(
     senderId: string, conn: Connection, update: Partial<ConnectionState>, expectQr: boolean
   ): void {
+    if (update.reachoutTimeLock !== undefined) this.#emitTimelock(senderId, update.reachoutTimeLock);
+
     if (update.qr !== undefined && expectQr && conn.pendingQr) {
       conn.pendingQr.resolve(update.qr);
       conn.pendingQr = null;
@@ -481,6 +521,40 @@ export class BaileysChannelProvider implements ChannelProvider {
       // reconnecting on our own would just re-register in the background.
       if (!failedLink) this.#scheduleReconnect(senderId, reason);
     }
+  }
+
+  /** Turns WhatsApp's reachout timelock state into a port notice. An inactive state is the restriction being lifted. */
+  #emitTimelock(
+    senderId: string, state: { isActive?: boolean; timeEnforcementEnds?: Date; enforcementType?: string }
+  ): void {
+    if (this.#shuttingDown) return;
+    const active = state.isActive === true;
+    this.#options.logger.info({ senderId, active, until: state.timeEnforcementEnds, type: state.enforcementType }, 'whatsapp reachout timelock update');
+    this.#notices.push({
+      kind: 'timelock', senderId, active, until: state.timeEnforcementEnds ?? null,
+      enforcementType: state.enforcementType ?? null, at: new Date(), raw: state
+    });
+  }
+
+  /** Turns WhatsApp's new-chat cap update into a port notice. Its timestamps are seconds since the epoch, sent as strings. */
+  #emitCapping(
+    senderId: string,
+    info: {
+      total_quota?: number; used_quota?: number; cycle_start_timestamp?: string; cycle_end_timestamp?: string; capping_status?: string
+    }
+  ): void {
+    if (this.#shuttingDown) return;
+    const seconds = (v: string | undefined): Date | null => {
+      const n = v === undefined ? NaN : Number(v);
+      return Number.isFinite(n) && n > 0 ? new Date(n * 1000) : null;
+    };
+    const known = ['NONE', 'FIRST_WARNING', 'SECOND_WARNING', 'CAPPED'] as const;
+    const status = known.find((k) => k === info.capping_status) ?? null;
+    this.#options.logger.info({ senderId, status, total: info.total_quota, used: info.used_quota }, 'whatsapp new-chat cap update');
+    this.#notices.push({
+      kind: 'capping', senderId, status, totalQuota: info.total_quota ?? null, usedQuota: info.used_quota ?? null,
+      cycleStart: seconds(info.cycle_start_timestamp), cycleEnd: seconds(info.cycle_end_timestamp), at: new Date(), raw: info
+    });
   }
 
   /**

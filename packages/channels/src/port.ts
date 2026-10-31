@@ -189,6 +189,37 @@ export interface NormalisedConnectionEvent {
   readonly at: Date;
 }
 
+/**
+ * A limit warning WhatsApp sent one of our numbers (F6 S2). Two kinds, both about starting new chats: the reachout timelock
+ * (WhatsApp is not letting the number message people who have not written to it, until a time) and the new-chat cap (how many
+ * new chats the number may start in a cycle, and how close it is). Emitted rather than polled, because they arrive on their own.
+ */
+export type NormalisedNoticeEvent =
+  | {
+    readonly kind: 'timelock';
+    readonly senderId: string;
+    /** False when WhatsApp lifted the restriction. */
+    readonly active: boolean;
+    /** When the restriction ends, when WhatsApp said. */
+    readonly until: Date | null;
+    /** WhatsApp's type: `DEFAULT`, `WEB_COMPANION_ONLY`, a `BIZ_…` violation kind. */
+    readonly enforcementType: string | null;
+    readonly at: Date;
+    readonly raw?: unknown;
+  }
+  | {
+    readonly kind: 'capping';
+    readonly senderId: string;
+    /** `NONE`, `FIRST_WARNING`, `SECOND_WARNING` or `CAPPED`. */
+    readonly status: 'NONE' | 'FIRST_WARNING' | 'SECOND_WARNING' | 'CAPPED' | null;
+    readonly totalQuota: number | null;
+    readonly usedQuota: number | null;
+    readonly cycleStart: Date | null;
+    readonly cycleEnd: Date | null;
+    readonly at: Date;
+    readonly raw?: unknown;
+  };
+
 /** How a linking attempt is presented to the person holding the phone. */
 export type LinkChallenge =
   | { readonly mode: 'qr'; readonly qr: string; readonly expiresAt: Date }
@@ -220,7 +251,8 @@ export interface ChannelProvider {
   logout(senderId: string): Promise<void>;
 
   /**
-   * Sends one message. Throws on failure; the caller classifies and decides whether to retry.
+   * Sends one message. Throws on failure; the caller classifies it and never retries it automatically. A refusal by WhatsApp that
+   * carries a status code throws an error whose `statusCode` is that code (463 is the one the gateway acts on, F6 AC-2.6).
    * A failure here must never affect the connection or any other recipient (M26).
    */
   send(sender: SenderRef, to: Recipient, content: OutboundContent): Promise<SendResult>;
@@ -234,6 +266,22 @@ export interface ChannelProvider {
    * be swallowed by the caller and never fail the send it precedes.
    */
   typing?(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void>;
+
+  /**
+   * Shows the number as online (`available`) or offline (`unavailable`). The gateway sets it `available` before the first send of
+   * a run and `unavailable` after 90 s with nothing sent, so the number is never left online (F6 AC-1.6).
+   *
+   * Optional: a transport with no presence concept omits it. Cosmetic like `typing`: a failure is swallowed by the caller.
+   */
+  presence?(sender: SenderRef, state: 'available' | 'unavailable'): Promise<void>;
+
+  /**
+   * Tells WhatsApp that messages from a recipient were read (the blue ticks they see). The gateway calls it when an agent opens the
+   * chat, or a few seconds before the reply to them starts typing, and never when a message arrives (F6 AC-1.7).
+   *
+   * Optional: a transport with no read receipts omits it.
+   */
+  markRead?(sender: SenderRef, from: Recipient, providerMessageIds: readonly string[]): Promise<void>;
 
   /**
    * Asks whether a phone number has a WhatsApp account, the lookup the app does when you type a
@@ -272,6 +320,12 @@ export interface ChannelProvider {
    * (WhatsApp: a person shares their number). The caller links the two onto one contact.
    */
   identityLinks?(): AsyncIterable<NormalisedIdentityLink>;
+
+  /**
+   * Optional. Limit warnings from WhatsApp: the reachout timelock and the new-chat cap (F6 S2). The gateway stores the latest of
+   * each on the number and every raw one as a notice.
+   */
+  notices?(): AsyncIterable<NormalisedNoticeEvent>;
 
   /**
    * Connection state changes, so a caller can persist them and react the instant a socket
