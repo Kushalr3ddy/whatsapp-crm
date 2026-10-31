@@ -288,6 +288,13 @@
       "when": 1793463673337,
       "tag": "0040_antiban_v2_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793467257780,
+      "tag": "0041_antiban_v2_contact_state",
+      "breakpoints": true
     }
   ]
 }

@@ -291,6 +291,12 @@ export const channelSession = pgTable('channel_session', {
   cappingUpdatedAt: timestamp('capping_updated_at', { withTimezone: true }),
   /** The first time this number opened after it was last linked. Null while unlinked. */
   linkedSince: timestamp('linked_since', { withTimezone: true }),
+  /** Many recent sends to fast-delivering contacts are stuck at one tick: campaigns on this number are held (F6 AC-4.6). Null = not held. */
+  manyUndeliveredAt: timestamp('many_undelivered_at', { withTimezone: true }),
+  /** When an agent resumed from the number card. Only sends after it count toward the next hold, or the hold would return at once (F6 AC-4.7). */
+  manyUndeliveredResumedAt: timestamp('many_undelivered_resumed_at', { withTimezone: true }),
+  /** Contacts on 3 or more chats asked for retries within 10 minutes: the number is held until it is relinked (F6 AC-5.4). Null = not held. */
+  decryptWaveAt: timestamp('decrypt_wave_at', { withTimezone: true }),
 
   // The linking handshake. The API cannot call the provider directly — the gateway owns the
   // socket in a separate process — so a link request is left here and the challenge WhatsApp
@@ -354,6 +360,14 @@ export const conversation = pgTable('conversation', {
   unreadCount: integer('unread_count').notNull().default(0),
   /** WhatsApp refused a send to this contact with a 463; new sends to them are held until a person retries (F6 AC-2.6). */
   refused463At: timestamp('refused_463_at', { withTimezone: true }),
+  /** The contact probably blocked this number (profile photo and about both gone, one tick for 30 minutes). Campaigns and the AI stop; an agent can still send (F6 AC-4.3). */
+  likelyBlockedAt: timestamp('likely_blocked_at', { withTimezone: true }),
+  /** The contact's phone asked for one of our messages again and has not yet read anything since: new sends wait (F6 AC-5.1). */
+  decryptRetryAt: timestamp('decrypt_retry_at', { withTimezone: true }),
+  /** Whether the contact's profile photo and about were visible at the last delivery: `{ photo, about, at }` (F6 AC-4.2). */
+  profileSnapshot: jsonb('profile_snapshot'),
+  /** When the contact's profile was last probed. At most one probe per contact per 24 hours (F6 AC-4.2). */
+  profileProbeAt: timestamp('profile_probe_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
@@ -459,6 +473,10 @@ export const message = pgTable('message', {
    */
   retryRequests: integer('retry_requests').notNull().default(0),
   lastRetryAt: timestamp('last_retry_at', { withTimezone: true }),
+  /** When the sweep judged this message, still at one tick 30 minutes after sending (F6 AC-4.2). Null = not judged yet. */
+  tickCheckedAt: timestamp('tick_checked_at', { withTimezone: true }),
+  /** What the sweep decided: `likely_blocked`, `likely_offline`, or `decrypt_retry` when S5 owns it (F6 AC-4.1 to 4.4). Nothing is ever resent. */
+  tickVerdict: text('tick_verdict'),
   /**
    * An admin knowingly sent this to someone flagged do-not-contact (the override is a per-message,
    * audited decision with a reason). The gateway's last-line check refuses to send to a
@@ -822,6 +840,8 @@ export const campaign = pgTable('campaign', {
    * Known contacts get it all at once (F6 AC-7.3). On by default.
    */
   mediaAfterReply: boolean('media_after_reply').notNull().default(true),
+  /** Why these people are being messaged, in a sentence. Said in the closing message if one of them opts out (F6 AC-6.2). Null = the org's default. */
+  purpose: text('purpose'),
   /** Why a campaign was paused by the system rather than a person (e.g. `ban_suspected`, `unlinked`). */
   pauseReason: text('pause_reason'),
 
@@ -1003,5 +1023,16 @@ export const antibanSetting = pgTable('antiban_setting', {
   quietHoursEnd: text('quiet_hours_end').notNull().default('08:00'),
   /** An IANA time zone name, e.g. `Asia/Kolkata`. */
   timeZone: text('time_zone').notNull().default('Asia/Kolkata'),
+  /** Send one closing message when someone opts out (F6 AC-6.7). On by default. The opt-out itself (do-not-contact) happens either way. */
+  closingMessageEnabled: boolean('closing_message_enabled').notNull().default(true),
+  /** The org's contact number and email, said in the closing message. A missing one leaves its line out. */
+  contactPhone: text('contact_phone'),
+  contactEmail: text('contact_email'),
+  /** Why the org messages people when the campaign states no purpose of its own. */
+  defaultPurpose: text('default_purpose'),
+  /** The org's own opt-out words, besides `stop`, `unsubscribe` and `opt out` (F6 AC-6.1). */
+  stopWords: text('stop_words').array().notNull().default(sql`'{}'::text[]`),
+  /** The org's own words that lift do-not-contact, besides `start` (F6 AC-6.6). */
+  restartWords: text('restart_words').array().notNull().default(sql`'{}'::text[]`),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });

@@ -147,6 +147,6 @@ export const TABLE_NOTES: Record<string, TableNote> = {
   },
   antiban_setting: {
     group: 'WhatsApp numbers',
-    purpose: 'An org’s sending settings, one row: quiet hours (on by default, 22:00 to 08:00) and the time zone they are read in.'
+    purpose: 'An org’s sending settings, one row: quiet hours (on by default, 22:00 to 08:00) and the time zone they are read in, the closing message when someone opts out (on or off, the org’s contact number and email, a default purpose) and the org’s own stop and restart words.'
   }
 };
