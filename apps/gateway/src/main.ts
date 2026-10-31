@@ -9,19 +9,19 @@ import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { storeInboundMessage, storeOwnMessage, claimCampaignReply, applyDeliveryStatus, storeMedia,
   DecryptFailureTracker, markDecryptBurst, markOwnDecryptBurst, recordRetryRequest, linkLidToPhone,
-  markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText } from '@crm/core';
+  markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText, queueCampaignFollowUp } from '@crm/core';
 import { LiveLlm } from '@crm/llm';
 import { createStorage } from '@crm/storage';
 import type { ChannelProvider, NormalisedInboundEvent } from '@crm/channels';
 import {
-  applyConnectionEvent, handleLinkRequest, handleUnlinkRequest, handleSend,
+  applyConnectionEvent, applyNoticeEvent, handleLinkRequest, handleUnlinkRequest, handleSend, handleReadRequest, kickLane,
   markAllSessionsClosed, restoreSessions, sweepPendingWork,
   type WorkContext
 } from './work.js';
 
 /** A command arriving on the Postgres NOTIFY channel. */
 interface GatewayCommand {
-  readonly kind: 'link' | 'unlink' | 'send';
+  readonly kind: 'link' | 'unlink' | 'send' | 'read';
   readonly id: string;
 }
 
@@ -134,7 +134,10 @@ async function main(): Promise<void> {
     verifyFallbackNumbers: config.SEND_VERIFY_FALLBACK_NUMBERS,
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
     kms, llm,
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    // The typing beat and the pause before a read receipt; the longer waits (the gap between sends, a timelock) are scheduled instead.
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    // A number's lane comes back to a waiting message when it is due, rather than holding a sweep open (F6 S1).
+    schedule: (ms, run) => { setTimeout(run, ms).unref(); }
   };
 
   // ── identity links: a person shared their number, so a privacy address now has one ───────
@@ -231,6 +234,15 @@ async function main(): Promise<void> {
             { senderId: event.senderId, conversationId: stored.conversationId },
             'inbound message stored'
           );
+          // A new chat that got a campaign's text alone has just replied: the picture or link that was held back goes now (F6 AC-7.3).
+          try {
+            if (await queueCampaignFollowUp(inOrg(org), kms, org, stored.conversationId)) {
+              logger.info({ senderId: event.senderId, conversationId: stored.conversationId }, 'a campaign follow-up was queued after the contact replied');
+              void kickLane(ctx, event.senderId).catch(() => undefined);
+            }
+          } catch (error) {
+            logger.error({ conversationId: stored.conversationId, err: error instanceof Error ? error.message : String(error) }, 'could not queue a campaign follow-up');
+          }
           // Only for a message that was actually inserted. A redelivery already has its file,
           // and fetching it again would cost a round trip to WhatsApp to produce a duplicate.
           if (event.mediaRef !== null && stored.messageId !== null) {
@@ -350,6 +362,19 @@ async function main(): Promise<void> {
     }
   })();
 
+  // ── WhatsApp's limit warnings: the reachout timelock and the new-chat cap (F6 S2) ──────────
+  if (provider.notices) {
+    void (async () => {
+      for await (const notice of provider.notices!()) {
+        try {
+          await applyNoticeEvent(ctx, notice);
+        } catch (error) {
+          logger.error({ err: error instanceof Error ? error.message : String(error) }, 'failed to record a WhatsApp limit notice');
+        }
+      }
+    })();
+  }
+
   // ── connection state ────────────────────────────────────────────────────────────────
   // Nothing else can see a socket open or close, so this stream is the only way the database —
   // and therefore the UI — learns whether a number is actually linked.
@@ -389,6 +414,7 @@ async function main(): Promise<void> {
         if (cmd.kind === 'link') await handleLinkRequest(ctx, cmd.id);
         else if (cmd.kind === 'unlink') await handleUnlinkRequest(ctx, cmd.id);
         else if (cmd.kind === 'send') await handleSend(ctx, cmd.id);
+        else if (cmd.kind === 'read') await handleReadRequest(ctx, cmd.id);
       } catch (error) {
         logger.error(
           { payload, err: error instanceof Error ? error.message : String(error) },

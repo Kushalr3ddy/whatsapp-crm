@@ -103,6 +103,7 @@ document (templates, webhooks, policy delegation, the SDK, OpenAPI) is design, n
 | Campaigns | `GET/POST /campaigns` · `GET /campaigns/:id` | Create a **draft** (sends nothing); detail with progress |
 | | `POST /campaigns/:id/start` · `/pause` · `/cancel` | Start freezes the audience; pause is instant |
 | | `GET /campaigns/:id/preview` · `GET /campaigns/:id/recipients` | Dry run before start; per-recipient results |
+| | `GET /campaigns/:id/eta` | When it finishes, from the gaps stored at launch (see below) |
 
 All paths are under `/api/v1` except the health checks.
 
@@ -219,9 +220,12 @@ qualifies). Errors use the problem shape above.
 | `POST /campaigns/:id/start` | `messages:send` | Optional `overrideGates: [dnc\|engagement\|cooldown\|duplicate_campaign]` + `reason` (admin only, audited) |
 | `GET /campaigns/:id` | `conversations:read` | Now includes `gateOverrides`, `gateOverrideReason`, `pauseReason` |
 | `GET /senders/:id/health-events` | `senders:read` | The number's timeline (refused connections, logouts nobody asked for, devices removed on the phone), newest first |
-| `GET /senders` | `senders:read` | `id`, `label`, `provider`, `phoneE164`, `status`, `connectionState`, `linked`, `linkError` |
+| `GET /senders` | `senders:read` | `id`, `label`, `provider`, `phoneE164`, `status`, `connectionState`, `linked`, `linkError`, and what WhatsApp last said about the number's limits (`timelockActive`, `timelockUntil`, `timelockType`, `cappingStatus`, `cappingTotalQuota`, `cappingUsedQuota`, `cappingCycleEnd`, `linkedSince`) with `hints` (advice only: `new_number`, `use_phone_too`) |
 | `POST /segments` | `contacts:write` | Now takes `saved` (default `true`); `false` makes a one-off inline audience that is not listed |
-| `PATCH /campaigns/:id` | `messages:send` | `{ name?, body? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise) |
+| `PATCH /campaigns/:id` | `messages:send` | `{ name?, body?, mediaAfterReply? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise) |
+| `POST /campaigns` | `messages:send` | Takes `mediaAfterReply` (default `true`: new chats get the text alone, the picture or link follows when they reply). The answer carries `warnings` (`no_variation` when the text has no `{a\|b}` choice and no AI writes it; the campaign can still launch) |
+| `GET /campaigns/:id` | `conversations:read` | Also `mediaAfterReply`, `aiTemplateId` and `warnings` |
+| `GET /campaigns/:id/eta` | `conversations:read` | `{ finishAt, goNow, afterReset, resetAt, basis: quota\|time_only, delayedBy: [{ reason: reply_priority\|timelock\|new_chat_cap\|quiet_hours, seconds }] }`. `finishAt` is null when nothing is left to send; `404` for a campaign that is not the caller's org's. No randomness: the same campaign gives the same answer |
 | `GET/PUT /ai/settings` | admin (session) | The AI assistant's switch, instructions, daily message limit, `mayStartCampaigns`, consent. `PUT` refuses to switch on until `acceptConsent` has been sent once (`422 AI_RULE`); creates the assistant's user the first time |
 | `GET /ai/status` | `conversations:read` | `{ enabled }`, so screens know whether to offer the helpers |
 | `GET /ai/llm` | `conversations:read` | Which AI provider and model the install uses now (`driver`, `provider`, `model`, `ready`, `source`), and the providers on offer. An admin also gets the **last four characters** of the key and the address; the key is never returned. |

@@ -56,6 +56,8 @@ beforeEach(async () => {
   await db.execute(sql`DELETE FROM org`);
   orgId = (await db.execute(sql`
     INSERT INTO org(name,slug) VALUES ('c','campaigns') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+  // Quiet hours depend on the time of day the suite runs at; they have their own tests (antiban-v2-protection).
+  await db.execute(sql`INSERT INTO antiban_setting (org_id, quiet_hours_enabled) VALUES (${orgId}, false)`);
   senderId = (await db.execute(sql`
     INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
     VALUES (${orgId}, 'fake', 'blaster', '+919000000001', 'active')
@@ -612,7 +614,7 @@ describe('a campaign with a picture', () => {
   it('sends the picture to everyone with the message as the caption', async () => {
     const stored = (await upload(await pic('jpeg'), 'diwali.jpg')).body.data;
     const created = await request(app).post('/api/v1/campaigns').set(...auth())
-      .send({ name: 'with picture', body: 'Hi {{name}}, offer!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 3), mediaAssetId: stored.id });
+      .send({ name: 'with picture', body: 'Hi {{name}}, offer!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 3), mediaAssetId: stored.id, mediaAfterReply: false });
     expect(created.status).toBe(201);
     const detail = await request(app).get(`/api/v1/campaigns/${created.body.data.id}`).set(...auth());
     expect(detail.body.data).toMatchObject({ mediaAssetId: stored.id, mediaFilename: 'diwali.jpg', mediaContentType: 'image/jpeg' });
@@ -650,7 +652,7 @@ describe('a campaign with a picture', () => {
     const stored = (await upload(await pic('gif'), 'welcome.gif')).body.data;
     expect(stored).toMatchObject({ contentType: 'image/gif', gif: true });
     const created = await request(app).post('/api/v1/campaigns').set(...auth())
-      .send({ name: 'gif', body: 'Welcome!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 1), mediaAssetId: stored.id });
+      .send({ name: 'gif', body: 'Welcome!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 1), mediaAssetId: stored.id, mediaAfterReply: false });
     await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
     await dispatchCampaigns(gatewayCtx());
     const row = (await db.execute(sql`

@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { writeAudit, AUDIT, decodeLinkError } from '@crm/core';
+import { writeAudit, AUDIT, decodeLinkError, numberHints } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
@@ -37,6 +37,11 @@ export function sendersRouter(): Router {
              cs.connection_state AS "connectionState", cs.disconnect_reason AS "disconnectReason",
              cs.last_connected_at AS "lastConnectedAt",
              cs.link_error AS "linkErrorRaw",
+             -- What WhatsApp last said about this number's limits (F6 S2).
+             cs.timelock_active AS "timelockActive", cs.timelock_until AS "timelockUntil", cs.timelock_type AS "timelockType",
+             cs.capping_status AS "cappingStatus", cs.capping_total_quota AS "cappingTotalQuota",
+             cs.capping_used_quota AS "cappingUsedQuota", cs.capping_cycle_end AS "cappingCycleEnd",
+             cs.linked_since AS "linkedSince",
              -- Whether credentials are stored: the truth of "is this number linked", independent
              -- of the live socket. A corrupt session can be connected but this is the one that
              -- says there is something to unlink, and drives the button state in the UI.
@@ -49,6 +54,12 @@ export function sendersRouter(): Router {
     const data = (rows as unknown as Array<Record<string, unknown> & { linkErrorRaw: string | null }>)
       .map(({ linkErrorRaw, ...sender }) => ({
         ...sender,
+        // Advice only, never blocking (F6 AC-7.6): a number linked in the last 7 days, a timelock that wants the phone used too.
+        hints: numberHints({
+          linkedSince: typeof sender.linkedSince === 'string' ? new Date(sender.linkedSince) : null,
+          timelockType: typeof sender.timelockType === 'string' ? sender.timelockType : null,
+          now: new Date()
+        }),
         // The last link failure, in plain words, so the Numbers page can say why a number is not up.
         linkError: decodeLinkError(linkErrorRaw)
       }));

@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
-import { writeAudit, AUDIT, storeOutboundMedia } from '@crm/core';
+import { writeAudit, AUDIT, storeOutboundMedia, requestRead } from '@crm/core';
 import type { StorageDriver } from '@crm/storage';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
@@ -356,11 +356,15 @@ export function messagesRouter(
     async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
     const conversationId = String(req.params.id);
-    const updated = (await req.tenant!((tx) => tx.execute(sql`
-      UPDATE conversation SET unread_count = 0
-      WHERE id = ${conversationId} AND org_id = ${orgId}
-      RETURNING id, unread_count AS "unreadCount"`)
-    ) as unknown as Array<{ id: string; unreadCount: number }>);
+    const updated = (await req.tenant!(async (tx) => {
+      const rows = await tx.execute(sql`
+        UPDATE conversation SET unread_count = 0
+        WHERE id = ${conversationId} AND org_id = ${orgId}
+        RETURNING id, unread_count AS "unreadCount"`);
+      // An agent reading the chat is what tells WhatsApp its messages were read; the gateway does it (F6 AC-1.7).
+      if ((rows as unknown as unknown[]).length > 0) await requestRead(tx, orgId, conversationId);
+      return rows;
+    }) as unknown as Array<{ id: string; unreadCount: number }>);
     if (updated.length === 0) {
       res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
       return;
@@ -826,9 +830,11 @@ export function messagesRouter(
         // Opening a thread reads it: clear the unread badge. Without this the count only ever
         // grew — it was incremented on every inbound and reset nowhere. Idempotent, so the
         // 5-second inbox poll reopening the same thread costs nothing.
-        await tx.execute(sql`
+        const cleared = await tx.execute(sql`
           UPDATE conversation SET unread_count = 0
-          WHERE id = ${conversationId} AND org_id = ${orgId} AND unread_count <> 0`);
+          WHERE id = ${conversationId} AND org_id = ${orgId} AND unread_count <> 0
+          RETURNING id`);
+        if ((cleared as unknown as unknown[]).length > 0) await requestRead(tx, orgId, conversationId);
       }
       return found;
     });
