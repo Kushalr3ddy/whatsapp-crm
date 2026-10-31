@@ -1,7 +1,7 @@
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
-  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedNoticeEvent, NormalisedStatusEvent, OutboundContent,
-  ProviderHealth,
+  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedNoticeEvent, NormalisedRetryEvent, NormalisedStatusEvent, OutboundContent,
+  ProfileVisibility, ProviderHealth,
   Recipient, SenderRef, SendResult, InboundMedia } from '@crm/channels';
 
 /**
@@ -78,6 +78,14 @@ export class FakeChannelProvider implements ChannelProvider {
   readonly registrationChecks: string[] = [];
   /** When set, lookups answer "could not tell" (null), as a closed socket or a failed query would. */
   registrationUnknown = false;
+  /** What each contact's profile shows (by E.164): a number not listed shows both photo and about, as most contacts do. */
+  readonly profiles = new Map<string, ProfileVisibility>();
+  /** Every profile lookup, in order (the contact's E.164), so a test can assert how many were made (F6 AC-4.2). */
+  readonly profileChecks: string[] = [];
+  /** When set, profile lookups answer "could not tell" (null). */
+  profileUnknown = false;
+  /** Every encryption session the gateway asked to be recreated, in order (F6 AC-5.3). */
+  readonly sessionResets: Array<{ senderId: string; to: Recipient; at: Date }> = [];
 
   private readonly health_ = new Map<string, ProviderHealth>();
   private readonly inboundQueue: NormalisedInboundEvent[] = [];
@@ -86,6 +94,7 @@ export class FakeChannelProvider implements ChannelProvider {
   private readonly statusQueue: NormalisedStatusEvent[] = [];
   private readonly connectionQueue: NormalisedConnectionEvent[] = [];
   private readonly noticeQueue: NormalisedNoticeEvent[] = [];
+  private readonly retryQueue: NormalisedRetryEvent[] = [];
   private readonly waiters: Array<() => void> = [];
   private readonly options: FakeOptions;
   private counter = 0;
@@ -203,6 +212,18 @@ export class FakeChannelProvider implements ChannelProvider {
     return !this.unregistered.has(phoneE164);
   }
 
+  /** Answers a profile lookup from `profiles`, recording it; null when set to be unable to tell. */
+  async profileSnapshot(_sender: SenderRef, to: Recipient): Promise<ProfileVisibility | null> {
+    this.profileChecks.push(to.phoneE164);
+    if (this.profileUnknown) return null;
+    return this.profiles.get(to.phoneE164) ?? { photo: true, about: true };
+  }
+
+  /** Records that the session with a contact was thrown away. */
+  async resetSession(sender: SenderRef, to: Recipient): Promise<void> {
+    this.sessionResets.push({ senderId: sender.id, to, at: this.now() });
+  }
+
   /**
    * Hands back media previously queued with `receiveMessage`, or null when there is none.
    *
@@ -231,6 +252,11 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Streams WhatsApp's limit warnings until shutdown. */
   async *notices(): AsyncIterable<NormalisedNoticeEvent> {
     yield* this.drain(this.noticeQueue);
+  }
+
+  /** Streams contacts' requests to have a message sent again until shutdown. */
+  async *retries(): AsyncIterable<NormalisedRetryEvent> {
+    yield* this.drain(this.retryQueue);
   }
 
   /** Streams connection state changes until shutdown. */
@@ -315,6 +341,12 @@ export class FakeChannelProvider implements ChannelProvider {
       kind: 'capping', senderId, status: n.status, totalQuota: n.totalQuota ?? null, usedQuota: n.usedQuota ?? null,
       cycleStart: n.cycleStart ?? null, cycleEnd: n.cycleEnd ?? null, at: n.at ?? this.now()
     });
+    this.release();
+  }
+
+  /** Simulates a contact's phone asking for one of our messages again because it could not decrypt it (F6 S5). */
+  emitRetry(senderId: string, providerMessageId: string, at?: Date): void {
+    this.retryQueue.push({ senderId, providerMessageId, at: at ?? this.now() });
     this.release();
   }
 

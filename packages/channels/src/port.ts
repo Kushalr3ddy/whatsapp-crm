@@ -220,6 +220,28 @@ export type NormalisedNoticeEvent =
     readonly raw?: unknown;
   };
 
+/**
+ * A contact's phone asked us to send a message again because it could not decrypt it: it shows "Waiting for this message" until we
+ * answer (F6 S5). Baileys answers by itself; the event lets the gateway hold new sends to that contact and count the retries.
+ */
+export interface NormalisedRetryEvent {
+  readonly senderId: string;
+  /** WhatsApp's id for the message we sent. */
+  readonly providerMessageId: string;
+  readonly at: Date;
+}
+
+/**
+ * What a contact's profile shows this number right now (F6 S4). Both are hidden from a number that was blocked, and from one the contact
+ * never shared them with, so they are only evidence together and compared with how they looked at the last delivery.
+ */
+export interface ProfileVisibility {
+  /** The profile photo can be fetched. */
+  readonly photo: boolean;
+  /** The "about" text can be fetched. */
+  readonly about: boolean;
+}
+
 /** How a linking attempt is presented to the person holding the phone. */
 export type LinkChallenge =
   | { readonly mode: 'qr'; readonly qr: string; readonly expiresAt: Date }
@@ -295,6 +317,21 @@ export interface ChannelProvider {
    */
   isRegistered?(sender: SenderRef, phoneE164: string): Promise<boolean | null>;
 
+  /**
+   * Whether the contact's profile photo and about can be seen from this number (F6 AC-4.2). Resolves `null` when it could not be asked
+   * (socket closed, query failed), which the caller must not read as "hidden".
+   *
+   * Optional: a transport with no profile lookups omits it, and the checks that need it do nothing. Called at most once per contact per
+   * day by the caller: a stream of profile lookups is itself a pattern to avoid.
+   */
+  profileSnapshot?(sender: SenderRef, to: Recipient): Promise<ProfileVisibility | null>;
+
+  /**
+   * Throws away the encryption session with a contact so the next message starts a fresh one (F6 AC-5.3). The gateway calls it when the
+   * same message has been asked for twice, which means the session is out of step with the contact's phone. Optional.
+   */
+  resetSession?(sender: SenderRef, to: Recipient): Promise<void>;
+
   /** Inbound messages, normalised. Consumed by the gateway and republished onto the queue. */
   inbound(): AsyncIterable<NormalisedInboundEvent>;
 
@@ -326,6 +363,11 @@ export interface ChannelProvider {
    * each on the number and every raw one as a notice.
    */
   notices?(): AsyncIterable<NormalisedNoticeEvent>;
+
+  /**
+   * Optional. A contact's phone asking for a message of ours again (F6 S5). The provider answers the request itself; this only reports it.
+   */
+  retries?(): AsyncIterable<NormalisedRetryEvent>;
 
   /**
    * Connection state changes, so a caller can persist them and react the instant a socket
