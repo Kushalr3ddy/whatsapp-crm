@@ -14,6 +14,7 @@ import { corsAllowlist } from './cors.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
+import { antibanRouter } from './routes/antiban.js';
 import { messagesRouter } from './routes/messages.js';
 import { mediaRouter } from './routes/media.js';
 import { importsRouter } from './routes/imports.js';
@@ -193,6 +194,7 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
   }));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
+  api.use('/antiban', antibanRouter());
   api.use('/media', mediaRouter(deps.storage));
   api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES, deps.config.DEFAULT_COUNTRY,
     { ...IMPORT_PARSE_DEFAULTS, ...deps.importParse }));

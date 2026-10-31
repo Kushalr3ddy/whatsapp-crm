@@ -56,6 +56,10 @@ interface QueuedSend {
   /** Flagged do-not-contact; refused unless an admin overrode it for this message (`dncOverride`). */
   readonly doNotContact: boolean;
   readonly dncOverride: boolean;
+  /** An agent typed it (a signed-in person, not a campaign, the AI or an API key). */
+  readonly byAgent: boolean;
+  /** The contact has written to us since they were flagged, so an agent may answer by hand (F6 AC-6.5). */
+  readonly dncReopened: boolean;
   readonly recipientValue: string;
   readonly recipientKind: string;
   readonly bodyEnc: Uint8Array | null;
@@ -75,6 +79,9 @@ async function loadJob(ctx: WorkContext, messageId: string): Promise<QueuedSend 
            si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
            v.contact_id AS "contactId", ct.do_not_contact AS "doNotContact",
            m.dnc_override AS "dncOverride",
+           (m.sent_by_user_id IS NOT NULL AND m.campaign_id IS NULL AND m.sent_by <> 'agent') AS "byAgent",
+           (ct.dnc_at IS NOT NULL AND EXISTS (
+              SELECT 1 FROM message i WHERE i.conversation_id = v.id AND i.direction = 'inbound' AND i.created_at > ct.dnc_at)) AS "dncReopened",
            ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
     FROM message m
     JOIN conversation v   ON v.id = m.conversation_id
@@ -434,8 +441,9 @@ function gateFailure(job: QueuedSend): string | null {
   // "Waiting for this message" and keeps asking for a resend (31 retry requests in one day, 2026-10-22).
   if (job.recipientKind === 'phone' && job.senderPhone !== null && job.recipientValue === job.senderPhone) return 'own_number';
   // The last line of the do-not-contact gate. It is checked when a message is created, but a contact can be flagged after that.
-  // Only an admin's explicit, audited per-message override lets it through.
-  if (job.doNotContact && !job.dncOverride) return 'do_not_contact';
+  // Only an admin's explicit, audited per-message override lets it through, or an agent answering a contact who wrote again after
+  // being flagged (F6 AC-6.5). Campaigns and the AI never get past it.
+  if (job.doNotContact && !job.dncOverride && !(job.byAgent && job.dncReopened)) return 'do_not_contact';
   return null;
 }
 

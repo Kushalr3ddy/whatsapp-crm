@@ -2,11 +2,14 @@ import type { LlmDriver } from '@crm/llm';
 import { sql } from 'drizzle-orm';
 import { setTenant, type Database, type Transaction } from '@crm/db';
 import { tenantDatabase } from './tenant.js';
-import type { ChannelProvider, NormalisedConnectionEvent, NormalisedNoticeEvent } from '@crm/channels';
+import type { ChannelProvider, NormalisedConnectionEvent, NormalisedNoticeEvent, NormalisedRetryEvent, NormalisedStatusEvent, Recipient } from '@crm/channels';
 import {
   classifyLinkFailure, encodeLinkError,
   dispatchCampaign, reconcileCampaign, writeOpenings, makeAntiBanPolicy,
-  applyWhatsAppNotice, type AntiBanPolicy, recordHealthEvent, reencryptBatch
+  applyWhatsAppNotice, type AntiBanPolicy, recordHealthEvent, reencryptBatch,
+  applyDeliveryStatus, markMessageFailedByProviderId, markDecryptBurst, liftRetryOnReceipt, conversationOfSent, snapshotDue, saveSnapshot,
+  registerRetryRequest, checkUnreached, reviewManyUndelivered, contactWroteAgain, handleInboundSafety,
+  type ProbeFn, type InboundSafetyResult
 } from '@crm/core';
 import { runLane, markInboundRead, type LaneResult } from './lane.js';
 import type { Logger } from '@crm/shared';
@@ -494,6 +497,13 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   // A key rotation in progress (D-31): a small batch per sweep, never in the way of a send.
   await sweepKeyRotation(ctx);
 
+  // Messages that never got their second tick (F6 S4). Before the dispatcher, so a hold raised here applies to this sweep's campaign batch.
+  try {
+    await sweepDeliveries(ctx);
+  } catch (error) {
+    ctx.logger.error({ err: error instanceof Error ? error.message : String(error) }, 'delivery check failed');
+  }
+
   // After sending, not before: a campaign tops the queue up with whatever room the policy gives
   // once this sweep's sends have gone.
   await dispatchCampaigns(ctx);
@@ -771,4 +781,160 @@ export async function markAllSessionsClosed(ctx: WorkContext): Promise<number> {
     return (rows as unknown as unknown[]).length;
   });
   return counts.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * The address of a conversation's contact in the form the provider takes, the same pick the lane makes (phone first, then the
+ * WhatsApp address). Null when the contact has no way to be reached.
+ */
+async function recipientOfConversation(ctx: WorkContext, conversationId: string): Promise<Recipient | null> {
+  const to = (await ctx.db.execute(sql`
+    SELECT ci.kind, ci.value_normalized AS "value"
+    FROM conversation v JOIN contact_identity ci ON ci.contact_id = v.contact_id AND ci.kind IN ('phone','wa_jid','wa_lid')
+    WHERE v.id = ${conversationId}
+    ORDER BY CASE ci.kind WHEN 'phone' THEN 0 WHEN 'wa_jid' THEN 1 ELSE 2 END, ci.is_primary DESC LIMIT 1`
+  ) as unknown as Array<{ kind: string; value: string }>)[0];
+  if (to === undefined) return null;
+  return to.kind === 'phone' ? { phoneE164: to.value } : { phoneE164: '', providerAddress: to.value };
+}
+
+/**
+ * Applies a delivery receipt (F6 S4, S5). A failed ack marks the message failed; anything else moves its status forward. A delivered or
+ * read receipt then does two more things: it lifts the hold on new sends to that contact if it came after their retry request (AC-5.2),
+ * and it takes a snapshot of what their profile photo and about look like, at most once a day (AC-4.2), for the sweep to compare with.
+ */
+export async function applyStatusEvent(ctx: WorkContext, event: NormalisedStatusEvent): Promise<void> {
+  const orgId = await orgOfSender(ctx, event.senderId);
+  if (orgId === null) return;
+  const scoped = scopedTo(ctx, orgId);
+  if (event.status === 'failed') {
+    await markMessageFailedByProviderId(scoped.db, orgId, event.providerMessageId, 'delivery_error');
+    return;
+  }
+  await applyDeliveryStatus(scoped.db, orgId, event.providerMessageId, event.status);
+  if (event.status !== 'delivered' && event.status !== 'read') return;
+
+  if (await liftRetryOnReceipt(scoped.db, event.providerMessageId, event.at)) {
+    scoped.logger.info({ senderId: event.senderId, providerMessageId: event.providerMessageId }, 'the contact\'s phone can read us again: the hold on new sends to them is lifted');
+    await kickLane(ctx, event.senderId);
+  }
+
+  const profile = scoped.provider.profileSnapshot?.bind(scoped.provider);
+  if (profile === undefined) return;
+  const found = await conversationOfSent(scoped.db, event.providerMessageId);
+  if (found === null) return;
+  const now = clockOf(scoped);
+  if (!(await snapshotDue(scoped.db, found.conversationId, now))) return;
+  const to = await recipientOfConversation(scoped, found.conversationId);
+  if (to === null) return;
+  try {
+    const seen = await profile({ id: event.senderId, phoneE164: '' }, to);
+    if (seen !== null) await saveSnapshot(scoped.db, found.conversationId, seen, now);
+  } catch (error) {
+    scoped.logger.warn({ senderId: event.senderId, err: error instanceof Error ? error.message : String(error) }, 'could not take a profile snapshot at a delivery');
+  }
+}
+
+/** The context's clock. */
+const clockOf = (ctx: WorkContext): Date => (ctx.now ?? (() => new Date()))();
+
+/**
+ * A contact's phone asked for one of our messages again (F6 S5). The provider sends it again itself; here every new send to that
+ * contact is held (AC-5.1). The second request for the same message means the session with that contact is out of step: it is
+ * recreated, and the composer's existing warning about a broken encryption session is raised (AC-5.3). Retries from three contacts
+ * within ten minutes hold the whole number (AC-5.4).
+ */
+export async function applyRetryEvent(ctx: WorkContext, event: NormalisedRetryEvent): Promise<void> {
+  const orgId = await orgOfSender(ctx, event.senderId);
+  if (orgId === null) return;
+  const scoped = scopedTo(ctx, orgId);
+  const outcome = await registerRetryRequest(scoped.db, event.senderId, event.providerMessageId, event.at);
+  if (outcome === null) {
+    // Only a message this CRM sent is worth a hold. A retry request for one the owner typed on their phone is not ours to answer.
+    scoped.logger.debug({ senderId: event.senderId, messageId: event.providerMessageId }, 'a retry request for a message this CRM did not send');
+    return;
+  }
+  scoped.logger.warn({
+    senderId: event.senderId, messageId: event.providerMessageId, conversationId: outcome.conversationId, retries: outcome.retries
+  }, 'the recipient\'s phone could not decrypt a message and asked for it again: new sends to them are held');
+
+  if (outcome.resetSession) {
+    await markDecryptBurst(scoped.db, event.senderId, event.at);
+    const reset = scoped.provider.resetSession?.bind(scoped.provider);
+    const to = await recipientOfConversation(scoped, outcome.conversationId);
+    if (reset !== undefined && to !== null) {
+      try {
+        await reset({ id: event.senderId, phoneE164: '' }, to);
+        scoped.logger.warn({ senderId: event.senderId, conversationId: outcome.conversationId }, 'asked twice for the same message: the encryption session with this contact was recreated');
+      } catch (error) {
+        scoped.logger.error({ senderId: event.senderId, err: error instanceof Error ? error.message : String(error) }, 'could not recreate the encryption session with this contact');
+      }
+    }
+  }
+  if (outcome.waveStarted) {
+    scoped.logger.error({ senderId: event.senderId }, 'retries from several contacts in a few minutes: the whole number is held until it is linked again');
+  }
+}
+
+/**
+ * The sweep for messages that never got their second tick (F6 S4), for every number: judges what has been at one tick for 30 minutes,
+ * holds or releases the number's campaigns by how many are stuck, and runs the lane again when a hold was released. Profile lookups
+ * only happen on a connected number, a few per pass.
+ */
+export async function sweepDeliveries(ctx: WorkContext): Promise<number> {
+  const counts = await inEachOrg(ctx, async (scoped) => {
+    let judged = 0;
+    const senders = (await scoped.db.execute(sql`SELECT id, org_id AS "orgId" FROM sender_identity`)) as unknown as Array<{ id: string; orgId: string }>;
+    for (const s of senders) {
+      const now = clockOf(scoped);
+      const profile = scoped.provider.profileSnapshot?.bind(scoped.provider);
+      const open = profile !== undefined && (await scoped.provider.health(s.id)).state === 'open';
+      const probe: ProbeFn = async (conversationId) => {
+        if (!open || profile === undefined) return null;
+        const to = await recipientOfConversation(scoped, conversationId);
+        return to === null ? null : profile({ id: s.id, phoneE164: '' }, to);
+      };
+      const result = await checkUnreached(scoped.db, { senderIdentityId: s.id, now, probe });
+      judged += result.judged;
+      if (result.likelyBlocked > 0) {
+        scoped.logger.warn({ senderId: s.id, contacts: result.likelyBlocked }, 'contacts probably blocked this number: campaigns and the AI stop messaging them');
+      }
+      const review = await reviewManyUndelivered(scoped.db, { orgId: s.orgId, senderIdentityId: s.id, now });
+      if (review.change === 'hold') scoped.logger.error({ senderId: s.id, stuck: review.stuck }, 'many messages are not reaching people: the number\'s campaigns are on hold');
+      if (review.change === 'lift') {
+        scoped.logger.info({ senderId: s.id, stuck: review.stuck }, 'messages are reaching people again: the hold on the number\'s campaigns is lifted');
+        await kickLane(ctx, s.id);
+      }
+    }
+    return judged;
+  });
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * What to do about a message a contact just sent, once it is stored (F6 S5, S6): a message that decrypts clears the holds that only
+ * a silent contact would have (a retry not yet resolved, a probable block); then the message is read for an opt-out or a restart. An
+ * opt-out queues the one closing message and runs the lane, so it goes at reply priority at once. Needs the key service in the context,
+ * and uses the AI driver, when there is one, to read intent.
+ */
+export async function applyInboundEffects(ctx: WorkContext, input: {
+  readonly senderId: string; readonly conversationId: string; readonly messageId: string | null; readonly body: string; readonly contentType: string
+}): Promise<InboundSafetyResult> {
+  const orgId = await orgOfSender(ctx, input.senderId);
+  if (orgId === null) return { outcome: 'none', closingMessageId: null, via: null };
+  const scoped = scopedTo(ctx, orgId);
+  if (await contactWroteAgain(scoped.db, input.conversationId)) {
+    scoped.logger.info({ senderId: input.senderId, conversationId: input.conversationId }, 'the contact wrote to us: the hold for a retry or a probable block is lifted');
+    await kickLane(ctx, input.senderId);
+  }
+  if (scoped.kms === undefined) return { outcome: 'none', closingMessageId: null, via: null };
+  const result = await handleInboundSafety(
+    { db: scoped.db, kms: scoped.kms, ...(scoped.llm === undefined ? {} : { llm: scoped.llm }), now: () => clockOf(scoped) },
+    { orgId, conversationId: input.conversationId, body: input.body, contentType: input.contentType }
+  );
+  if (result.outcome !== 'none') {
+    scoped.logger.info({ senderId: input.senderId, conversationId: input.conversationId, outcome: result.outcome, via: result.via, closingMessageId: result.closingMessageId }, 'opt-out handled');
+  }
+  if (result.closingMessageId !== null) await kickLane(ctx, input.senderId);
+  return result;
 }

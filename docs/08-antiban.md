@@ -1,8 +1,8 @@
 # 08 · Anti-ban
 
-> **v2, part 1 (2026-10-31).** The send lane, WhatsApp's warnings, the exact schedule and the extra protection are in. Delivery
-> checks, decrypt retries and opt-out handling (S4 to S6) and the screens (S10) come after. The spec, with every acceptance case, is
-> `06-features/F6-antiban.md`; this page says where the code is.
+> **v2, parts 1 and 2 (2026-10-31).** The send lane, WhatsApp's warnings, the exact schedule and the extra protection (part 1), and
+> the delivery checks, decrypt retries and opt-out handling (S4 to S6, part 2) are in. The screens (S10) come after. The spec, with
+> every acceptance case, is `06-features/F6-antiban.md`; this page says where the code is.
 
 Running Baileys against a normal WhatsApp number **violates WhatsApp's Terms of Service**. The number can be banned at any
 time, for reasons outside this system's control, with no appeal. Nothing here removes that risk. This feature acts on every signal
@@ -29,8 +29,9 @@ only thing that reaches the provider is the lane.
 
 A hold keeps the message queued with `hold_reason` and `hold_until` (null when it waits for something). It never drops a message,
 survives a restart, and when it lifts the message goes in its original place in the lane. Hold reasons are a typed list
-(`HOLD_REASONS`); the codes of S4 to S6 are already in it. A hold on one contact or on the whole number is looked up in one place,
-`antiban/holds.ts` (`contactHoldOf`, `numberHoldOf`).
+(`HOLD_REASONS`). A hold on one contact or on the whole number is looked up in one place,
+`antiban/holds.ts` (`contactHoldOf`, `numberHoldOf`). Which priorities a hold stops is the policy's rule: most stop everything, but
+`likely_blocked` stops only campaign and AI messages and `many_undelivered` only campaigns.
 
 ## What the policy acts on
 
@@ -40,12 +41,50 @@ survives a restart, and when it lifts the message goes in its original place in 
 | Cap `FIRST_WARNING` / `SECOND_WARNING` | Gaps before new chats x2 / x3 (*guess*) |
 | Cap `CAPPED`, or quota used up | New chats held (`new_chat_cap`) until the cycle ends |
 | A 463 refusal | That message `failed`; new sends to that contact held (`refused_463`) until a person lifts it. A containment: the cause of 463 is not known yet |
-| Reaction brake: of the last 50 new-chat sends, 30+ with under 5% replies (or 10%+ blocked, from S4) | New-chat gaps x2 (*guess*); lifts by itself |
+| Reaction brake: of the last 50 new-chat sends, 30+ with under 5% replies (or 10%+ marked `likely_blocked`) | New-chat gaps x2 (*guess*); lifts by itself |
 | Quiet hours (default 22:00 to 08:00, org time zone, `antiban_setting`) | Campaign and AI first messages held (`quiet_hours`); replies and manual sends still go |
 | `device_removed` | As before (R-017): everything held, campaigns paused `unlinked` |
 
 WhatsApp's raw warnings are kept in `whatsapp_notice`; the latest of each, the quota, `linked_since` and the timelock type are on
 `channel_session`. The port carries them as `ChannelProvider.notices()`; `presence()` and `markRead()` are optional port methods.
+
+## After the send: ticks, retries and opt-outs (S4 to S6)
+
+**One tick for 30 minutes (S4, `antiban/ticks.ts`, `antiban/delivery-check.ts`).** The gateway sweep (`sweepDeliveries`, run with every
+sweep) looks at each outbound message still at one tick 30 minutes after it went. A message the contact asked for again belongs to S5
+and is only marked. For the rest it probes the contact's profile photo and about (`ChannelProvider.profileSnapshot`, at most once per
+contact per 24 h, a few lookups per pass) and compares with the snapshot taken when a message to them was last delivered. Both visible
+then and both gone now: the contact is marked `likely_blocked` (campaigns and the AI stop messaging them; an agent can still send by
+hand; a message from them clears the mark). Anything else, or no snapshot: `likely_offline`. **Nothing is ever resent.**
+
+Many stuck: of the number's last 20 sends to distinct contacts who "deliver fast" (one of their last 3 messages delivered within 5 min),
+excluding messages sent from the phone, 8 or more still at one tick after 30 min hold the number's campaigns (`many_undelivered`) and add
+a health event. It lifts when the count falls below 4, or when an agent resumes (`POST /senders/:id/resume`, the number card); after a
+resume only newer sends count, so the old stuck ones do not bring the hold straight back.
+
+**Decrypt retries (S5, `antiban/retry-state.ts`).** A contact's phone asking for a message again ("Waiting for this message") arrives as a
+port event (`ChannelProvider.retries()`; the Baileys adapter reads it from its log line). Baileys resends the message itself; we never
+queue a copy. Every new send to that contact is held (`decrypt_retry`) until a delivered or read receipt that comes after the retry, or a
+message from them that decrypts. A second request for the same message recreates the session with that contact
+(`ChannelProvider.resetSession`; in Baileys this removes the contact's `session-<user>.<device>` keys, and those under their privacy
+address, from the credential store) and raises the composer's existing encryption-session warning (`decrypt_burst_at`). Retries from 3 or
+more different contacts within 10 minutes hold the whole number (`decrypt_wave`) with a critical health event; that hold ends when the
+number is linked again, not on a reconnect.
+
+**Opt-outs (S6, `antiban/optout.ts`, `antiban/opt-out.ts`).** When a stored inbound message is a STOP word (`stop`, `unsubscribe`,
+`opt out`, and the org's own: the whole message, not a word inside a sentence), or the AI classifier reads it as negative (who is
+this, do not message me, abuse; keywords only when no AI is configured; a slow or failing model counts as no), one closing message is
+queued at reply priority and the contact goes on do-not-contact with the reason `opt_out`. The closing message says why they were
+messaged (the campaign's `purpose`, else the org's default), a one-line summary of what was last sent, that they will not be messaged
+again, and the org's contact number and email; plain text with every link removed, and a line is left out when what it needs is not set.
+Exactly one per opt-out: a second STOP sends nothing. Campaigns and the AI stay blocked by the existing do-not-contact gates; a
+do-not-contact contact who writes again can be answered by an agent by hand (a signed-in person, not a key or the AI). The flag lifts
+when an agent lifts it (`PUT /contacts/:id/do-not-contact`), or the contact sends a restart word (`start`, and the org's own), but only
+a flag that came from an opt-out. An agent can mark a reply as an opt-out by hand (`POST /conversations/:id/opt-out`), with the same
+effect. The closing message is on by default and switchable per org (`antiban_setting.closing_message_enabled`; the opt-out itself
+happens either way).
+
+Settings: `GET/PUT /antiban/settings` (admin). `missing` lists the contact details the closing message is still without.
 
 ## Extra protection
 
@@ -62,7 +101,7 @@ finish is named (`delayedBy`).
 
 ## What stays, because it protects people and not the number
 
-- **Do-not-contact**, checked when a message is created and again as the last line before it is sent. Only an admin can lift it, per message or per campaign, with a reason, audited.
+- **Do-not-contact**, checked when a message is created and again as the last line before it is sent. An admin can override it per message or per campaign, with a reason, audited; an agent can answer by hand a contact who wrote after being flagged; an agent or the contact (a restart word) can lift an opt-out.
 - **The recipient policy gates** (`packages/core/src/policy-gates.ts`): an agent mid-conversation, the 14-day cooldown after another campaign, a duplicate in a live campaign.
 - **Not sending to the sending number itself, an empty body, a contact whose numbers have no WhatsApp account** (the number fallback, D-60).
 - **Connection handling**: a 403 raises a ban warning and pauses the number's running campaigns; an unrequested logout (401) does the same; a device removed under Linked devices is an unlink, not a ban (R-017). Written to `sender_health_event`.

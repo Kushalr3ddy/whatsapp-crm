@@ -54,7 +54,9 @@ export interface Lane {
   /** A contact with one phone number and a conversation on this number; `inbound` makes it a known contact (it has written to us). */
   contact(opts?: { phone?: string; name?: string; inbound?: boolean | 'old'; inboundAt?: Date }): Promise<{ contactId: string; conversationId: string; phone: string }>;
   /** Queues an outbound message the way the API / AI / a campaign would. */
-  queue(conversationId: string, body: string, how?: { sentBy?: string; campaignId?: string; mediaId?: string; createdAt?: Date; gapMs?: number }): Promise<string>;
+  queue(conversationId: string, body: string, how?: { sentBy?: string; campaignId?: string; mediaId?: string; createdAt?: Date; gapMs?: number; userId?: string }): Promise<string>;
+  /** An outbound message already sent `agoMs` ago (to the lane's clock), at one tick unless `deliveredAfterMs` or `status` say otherwise. */
+  sent(conversationId: string, how?: { agoMs?: number; status?: string; deliveredAfterMs?: number | undefined; sentBy?: string | undefined; campaignId?: string; body?: string }): Promise<{ id: string; providerId: string; sentAt: Date }>;
   /** Runs the lane, moving the clock to each wake-up it asks for, until it has nothing more to say. Returns the order messages were sent in. */
   drain(over?: Partial<WorkContext>, maxWakes?: number): Promise<string[]>;
   one<T>(query: ReturnType<typeof sql>): Promise<T>;
@@ -122,12 +124,27 @@ export async function makeLane(opts: { clock?: FakeClock; quietHours?: boolean }
     async queue(conversationId, body, how = {}) {
       const rows = await db.execute(sql`
         INSERT INTO message (org_id, conversation_id, direction, status, content_type, body_enc, body_hmac, sent_by, campaign_id, media_id,
-                             created_at, planned_gap_ms)
+                             created_at, planned_gap_ms, sent_by_user_id)
         VALUES (${orgId}, ${conversationId}, 'outbound', 'queued', ${how.mediaId === undefined ? 'text' : 'image'},
                 ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))}, ${kms.blindIndex(body)}, ${how.sentBy ?? 'api'},
-                ${how.campaignId ?? null}, ${how.mediaId ?? null}, ${(how.createdAt ?? new Date()).toISOString()}, ${how.gapMs ?? null})
+                ${how.campaignId ?? null}, ${how.mediaId ?? null}, ${(how.createdAt ?? new Date()).toISOString()}, ${how.gapMs ?? null}, ${how.userId ?? null})
         RETURNING id`);
       return (rows as unknown as Array<{ id: string }>)[0]!.id;
+    },
+    async sent(conversationId, how = {}) {
+      const sentAt = new Date(clock.now().getTime() - (how.agoMs ?? 31 * 60_000));
+      const deliveredAt = how.deliveredAfterMs === undefined ? null : new Date(sentAt.getTime() + how.deliveredAfterMs);
+      const status = how.status ?? (deliveredAt === null ? 'sent' : 'delivered');
+      const providerId = `wamid.${randomUUID()}`;
+      const body = how.body ?? 'Hello';
+      const id = (await one<{ id: string }>(sql`
+        INSERT INTO message (org_id, conversation_id, direction, status, content_type, body_enc, body_hmac, sent_by, campaign_id,
+                             provider_message_id, created_at, sent_at, delivered_at)
+        VALUES (${orgId}, ${conversationId}, 'outbound', ${status}, 'text', ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
+                ${kms.blindIndex(body)}, ${how.sentBy ?? 'api'}, ${how.campaignId ?? null}, ${providerId}, ${sentAt.toISOString()},
+                ${sentAt.toISOString()}, ${deliveredAt === null ? null : deliveredAt.toISOString()})
+        RETURNING id`)).id;
+      return { id, providerId, sentAt };
     },
     async drain(over = {}, maxWakes = 3000) {
       const order: string[] = [];

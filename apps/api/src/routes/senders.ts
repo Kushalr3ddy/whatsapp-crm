@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { writeAudit, AUDIT, decodeLinkError, numberHints } from '@crm/core';
+import { writeAudit, AUDIT, decodeLinkError, numberHints, resumeNumber } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
@@ -78,6 +78,30 @@ export function sendersRouter(): Router {
         WHERE sender_identity_id = ${String(req.params.id)} AND org_id = ${req.crm!.orgId}
         ORDER BY at DESC LIMIT 30`));
       res.json({ data: rows });
+    });
+
+  /**
+   * Lifts the hold on a number's campaigns that was raised because many messages were not reaching people (F6 AC-4.6, AC-4.7). The
+   * number card's Resume. Says whether anything was held; only the sends from now on count toward holding it again.
+   */
+  router.post('/:id/resume', requireUuidParam('id'), requireScope('senders:write'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+      const out = await req.tenant!(async (tx) => {
+        const found = await tx.execute(sql`SELECT id FROM sender_identity WHERE id = ${id} AND org_id = ${orgId}`);
+        if ((found as unknown as unknown[]).length === 0) return null;
+        const resumed = await resumeNumber(tx, orgId, id, new Date());
+        if (resumed) {
+          await writeAudit(tx, {
+            orgId, actor: auditActor(req), action: AUDIT.senderResumed, targetType: 'sender_identity', targetId: id,
+            ip: req.ip ?? null, requestId: String(req.id)
+          });
+        }
+        return resumed;
+      });
+      if (out === null) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such number.')); return; }
+      res.json({ data: { resumed: out } });
     });
 
   /** Creates a sender. It exists but is not connected until it has been linked. */

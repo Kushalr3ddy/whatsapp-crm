@@ -7,14 +7,14 @@ import { tenantDatabase } from './tenant.js';
 import { localKmsFromConfig } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
-import { storeInboundMessage, storeOwnMessage, claimCampaignReply, applyDeliveryStatus, storeMedia,
-  DecryptFailureTracker, markDecryptBurst, markOwnDecryptBurst, recordRetryRequest, linkLidToPhone,
-  markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText, queueCampaignFollowUp } from '@crm/core';
+import { storeInboundMessage, storeOwnMessage, claimCampaignReply, storeMedia,
+  DecryptFailureTracker, markDecryptBurst, markOwnDecryptBurst, linkLidToPhone,
+  assertKeyRingCoversData, autoReply, sentMessageText, queueCampaignFollowUp } from '@crm/core';
 import { LiveLlm } from '@crm/llm';
 import { createStorage } from '@crm/storage';
 import type { ChannelProvider, NormalisedInboundEvent } from '@crm/channels';
 import {
-  applyConnectionEvent, applyNoticeEvent, handleLinkRequest, handleUnlinkRequest, handleSend, handleReadRequest, kickLane,
+  applyConnectionEvent, applyInboundEffects, applyNoticeEvent, applyRetryEvent, applyStatusEvent, handleLinkRequest, handleUnlinkRequest, handleSend, handleReadRequest, kickLane,
   markAllSessionsClosed, restoreSessions, sweepPendingWork,
   type WorkContext
 } from './work.js';
@@ -96,19 +96,6 @@ async function main(): Promise<void> {
           .then((org) => (org === null ? undefined : markDecryptBurst(inOrg(org), senderId, at)))
           .catch((err: unknown) => {
             logger.error({ err, senderId }, 'could not record decrypt-failure burst');
-          });
-      },
-      // A recipient's phone could not read a message we sent: note it on the message so the thread says so (their phone shows "Waiting for this message").
-      onRetryRequest: (senderId, messageId, at) => {
-        orgForSender(db, senderId)
-          .then((org) => (org === null ? undefined : recordRetryRequest(inOrg(org), senderId, messageId, at)))
-          .then((found) => {
-            // Only a message this CRM sent is worth a warning. A retry request for one the owner typed on their phone is not ours to answer.
-            if (found === true) logger.warn({ senderId, messageId }, 'the recipient\'s phone could not decrypt a message and asked for it again');
-            else logger.debug({ senderId, messageId }, 'a retry request for a message this CRM did not send');
-          })
-          .catch((err: unknown) => {
-            logger.error({ err, senderId, messageId }, 'could not record a retry request');
           });
       },
       // A recipient could not decrypt something we sent and asks again: give the text back so it is re-sent (their phone shows
@@ -234,7 +221,19 @@ async function main(): Promise<void> {
             { senderId: event.senderId, conversationId: stored.conversationId },
             'inbound message stored'
           );
-          // A new chat that got a campaign's text alone has just replied: the picture or link that was held back goes now (F6 AC-7.3).
+          // An opt-out, a restart, or just a message that decrypts (clearing a retry hold): before anything else reads it, so the AI and a
+        // campaign follow-up never answer someone who just said STOP (F6 S5, S6).
+        let optedOut = false;
+        if (stored.isNew) {
+          try {
+            optedOut = (await applyInboundEffects(ctx, {
+              senderId: event.senderId, conversationId: stored.conversationId, messageId: stored.messageId, body: event.body, contentType: event.contentType
+            })).outcome === 'opted_out';
+          } catch (error) {
+            logger.error({ conversationId: stored.conversationId, err: error instanceof Error ? error.message : String(error) }, 'could not handle an opt-out');
+          }
+        }
+        // A new chat that got a campaign's text alone has just replied: the picture or link that was held back goes now (F6 AC-7.3).
           try {
             if (await queueCampaignFollowUp(inOrg(org), kms, org, stored.conversationId)) {
               logger.info({ senderId: event.senderId, conversationId: stored.conversationId }, 'a campaign follow-up was queued after the contact replied');
@@ -251,7 +250,7 @@ async function main(): Promise<void> {
 
           // The AI assistant answers only conversations assigned to it; autoReply checks that, and
           // everything else, itself. Not awaited: a slow model must never hold up the inbound stream.
-          if (llm.name !== 'none' && stored.messageId !== null) {
+          if (llm.name !== 'none' && stored.messageId !== null && !optedOut) {
             const conversationId = stored.conversationId;
             // A reply to a campaign that has an AI template: hand the chat to the assistant first, so it answers this very message (R-011).
             try {
@@ -344,15 +343,8 @@ async function main(): Promise<void> {
   void (async () => {
     for await (const event of provider.status()) {
       try {
-        const org = await orgForSender(db, event.senderId);
-        if (org === null) continue;
-        // A delivery ERROR ack from the server: the message did not go. Recorded as a failed send
-        // instead of leaving it at "sent".
-        if (event.status === 'failed') {
-          await markMessageFailedByProviderId(inOrg(org), org, event.providerMessageId, 'delivery_error');
-          continue;
-        }
-        await applyDeliveryStatus(inOrg(org), org, event.providerMessageId, event.status);
+        // A failed ack is recorded as a failed send; a delivered or read receipt also lifts a retry hold and takes a profile snapshot.
+        await applyStatusEvent(ctx, event);
       } catch (error) {
         logger.error(
           { err: error instanceof Error ? error.message : String(error) },
@@ -361,6 +353,19 @@ async function main(): Promise<void> {
       }
     }
   })();
+
+  // ── contacts asking for a message again because their phone could not read it (F6 S5) ──────
+  if (provider.retries) {
+    void (async () => {
+      for await (const retry of provider.retries!()) {
+        try {
+          await applyRetryEvent(ctx, retry);
+        } catch (error) {
+          logger.error({ err: error instanceof Error ? error.message : String(error) }, 'failed to record a retry request');
+        }
+      }
+    })();
+  }
 
   // ── WhatsApp's limit warnings: the reachout timelock and the new-chat cap (F6 S2) ──────────
   if (provider.notices) {

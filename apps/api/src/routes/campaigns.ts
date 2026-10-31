@@ -24,7 +24,9 @@ const createCampaign = z.object({
   /** One stored campaign picture or GIF sent with every message, the message being its caption. */
   mediaAssetId: z.string().uuid().optional(),
   /** A new chat gets the text alone; the picture or link follows when they reply. On unless said otherwise (F6 AC-7.3). */
-  mediaAfterReply: z.boolean().optional()
+  mediaAfterReply: z.boolean().optional(),
+  /** Why these people are being messaged, in a sentence. Said in the closing message if one of them opts out (F6 AC-6.2). */
+  purpose: z.string().trim().min(1).max(300).optional()
 }).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId, v.fromSegmentId]
   .filter((x) => x !== undefined).length === 1, {
   message: 'state the audience exactly once: fromImportRunId, explicitContactIds, fromTagId, or fromSegmentId'
@@ -127,11 +129,11 @@ export function campaignsRouter(storage: StorageDriver): Router {
     }
     const orgId = req.crm!.orgId;
     const {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId, mediaAfterReply
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId, mediaAfterReply, purpose
     } = parsed.data;
 
     const created = await req.tenant!((tx) => createCampaignDraft(tx, orgId, actionContext(req), {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId, mediaAfterReply
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId, mediaAfterReply, purpose
     }));
 
     if ('error' in created) {
@@ -231,7 +233,7 @@ export function campaignsRouter(storage: StorageDriver): Router {
                  c.started_at AS "startedAt", c.completed_at AS "completedAt",
                  c.created_at AS "createdAt", c.gate_overrides AS "gateOverrides",
                  c.gate_override_reason AS "gateOverrideReason", c.pause_reason AS "pauseReason",
-                 c.media_asset_id AS "mediaAssetId", c.media_after_reply AS "mediaAfterReply",
+                 c.media_asset_id AS "mediaAssetId", c.media_after_reply AS "mediaAfterReply", c.purpose,
                  c.ai_template_id AS "aiTemplateId", ma.filename AS "mediaFilename",
                  ma.content_type AS "mediaContentType", ma.size_bytes AS "mediaSizeBytes"
           FROM campaign c
