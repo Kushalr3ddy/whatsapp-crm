@@ -175,3 +175,34 @@ describe('S9 the policy is a driver', () => {
     expect(policy.campaignBatch({ senderIdentityId: 's1', waiting: 500 })).toBe(0);
   });
 });
+
+describe('S4 and S5 holds: who each one stops', () => {
+  const blocked = { reason: 'likely_blocked' as const, until: null };
+
+  it('AC-4.3 a probably-blocked contact stops campaign and AI messages; an agent can still send by hand, and a reply still goes', async () => {
+    expect(await ask(ctx({ priority: 'campaign', newChat: false, contactHold: blocked }))).toEqual({ action: 'hold', reason: 'likely_blocked', until: null });
+    expect(await ask(ctx({ priority: 'ai', newChat: false, contactHold: blocked }))).toEqual({ action: 'hold', reason: 'likely_blocked', until: null });
+    expect((await ask(ctx({ priority: 'manual', newChat: false, contactHold: blocked }))).action).toBe('send');
+    expect((await ask(ctx({ priority: 'reply', newChat: false, contactHold: blocked }))).action).toBe('send');
+  });
+
+  it('AC-4.6 many undelivered holds campaigns on the number; replies, agents and the AI still go', async () => {
+    const number = { hold: { reason: 'many_undelivered' as const, until: null } };
+    expect(await ask(ctx({ priority: 'campaign', number }))).toEqual({ action: 'hold', reason: 'many_undelivered', until: null });
+    for (const priority of ['reply', 'manual', 'ai'] as const) expect((await ask(ctx({ priority, newChat: false, number }))).action).toBe('send');
+  });
+
+  it('AC-5.1 an unresolved decrypt retry holds every new send to that contact, whoever queued it', async () => {
+    const retry = { reason: 'decrypt_retry' as const, until: null };
+    for (const priority of ['reply', 'manual', 'ai', 'campaign'] as const) {
+      expect(await ask(ctx({ priority, newChat: false, contactHold: retry }))).toEqual({ action: 'hold', reason: 'decrypt_retry', until: null });
+    }
+  });
+
+  it('AC-5.4 a decrypt wave holds the whole number, every priority', async () => {
+    const number = { hold: { reason: 'decrypt_wave' as const, until: null } };
+    for (const priority of ['reply', 'manual', 'ai', 'campaign'] as const) {
+      expect(await ask(ctx({ priority, newChat: false, number }))).toEqual({ action: 'hold', reason: 'decrypt_wave', until: null });
+    }
+  });
+});

@@ -1,4 +1,4 @@
-import type { AntiBanPolicy, NumberState, SendContext, SendDecision } from '../antiban.js';
+import type { AntiBanPolicy, Hold, HoldReason, LanePriority, NumberState, SendContext, SendDecision } from '../antiban.js';
 import {
   BRAKE_GAP_FACTOR, CAMPAIGN_QUEUE_AHEAD, FIRST_WARNING_GAP_FACTOR, SECOND_WARNING_GAP_FACTOR
 } from './constants.js';
@@ -15,6 +15,22 @@ export function gapFactorFor(newChat: boolean, number: NumberState): number {
   let factor = status === 'FIRST_WARNING' ? FIRST_WARNING_GAP_FACTOR : status === 'SECOND_WARNING' ? SECOND_WARNING_GAP_FACTOR : 1;
   if (number.brakeOn) factor *= BRAKE_GAP_FACTOR;
   return factor;
+}
+
+/**
+ * The priorities a hold stops, when it does not stop everything. A contact who probably blocked us is still answered and still
+ * written to by an agent (AC-4.3); a number whose messages are not arriving pauses its campaigns only (AC-4.6), because a reply
+ * or an agent's message is what finds out whether anything is wrong.
+ */
+const HOLD_SCOPE: Partial<Record<HoldReason, readonly LanePriority[]>> = {
+  likely_blocked: ['campaign', 'ai'],
+  many_undelivered: ['campaign']
+};
+
+/** Whether `hold` stops a message of this priority. */
+function holdApplies(hold: Hold, priority: LanePriority): boolean {
+  const scope = HOLD_SCOPE[hold.reason];
+  return scope === undefined || scope.includes(priority);
 }
 
 /**
@@ -40,8 +56,8 @@ export function makeAntiBanPolicy(): AntiBanPolicy {
 function decide(ctx: SendContext): SendDecision {
   const { message, number, now } = ctx;
 
-  if (number.hold !== null) return { action: 'hold', ...number.hold };
-  if (ctx.contactHold !== null) return { action: 'hold', ...ctx.contactHold };
+  if (number.hold !== null && holdApplies(number.hold, message.priority)) return { action: 'hold', ...number.hold };
+  if (ctx.contactHold !== null && holdApplies(ctx.contactHold, message.priority)) return { action: 'hold', ...ctx.contactHold };
 
   if (message.newChat) {
     // AC-2.1: a timelock holds new chats until it ends; known contacts still get their messages.

@@ -89,6 +89,25 @@ export { applyWhatsAppNotice, type WhatsAppNotice, type TimelockNotice, type Cap
 export { computeEta, campaignEta, type Eta, type EtaDelay, type EtaInput, type EtaItem } from './antiban/eta.js';
 export { queueCampaignFollowUp } from './campaign-followup.js';
 export { recordHealthEvent } from './health-events.js';
+export { judgeUnreached, deliversFast, stuckDecision, type ProfileSeen, type ProfileSnapshot, type UnreachedVerdict } from './antiban/ticks.js';
+export {
+  checkUnreached, snapshotDue, saveSnapshot, conversationOfSent, stuckCount, reviewManyUndelivered, resumeNumber,
+  type ProbeFn, type UnreachedResult
+} from './antiban/delivery-check.js';
+export { isDecryptWave } from './antiban/decrypt.js';
+export { registerRetryRequest, liftRetryOnReceipt, contactWroteAgain, type RetryOutcome } from './antiban/retry-state.js';
+export { decryptWaveActive } from './antiban/holds.js';
+export {
+  matchesStopWord, matchesRestartWord, looksNegative, buildClosingMessage, type ClosingMessageParts
+} from './antiban/optout.js';
+export {
+  handleInboundSafety, markOptOut, OPT_OUT_REASON,
+  type InboundSafetyInput, type InboundSafetyResult, type OptOutDeps, type OptOutResult
+} from './antiban/opt-out.js';
+export {
+  loadAntiBanSettings, saveAntiBanSettings, missingContactDetails, cleanWords,
+  type AntiBanSettings, type AntiBanSettingsPatch
+} from './antiban/settings.js';
 
 export { renderBody, resolveSpintax, fillVariables } from './body-variation.js';
 

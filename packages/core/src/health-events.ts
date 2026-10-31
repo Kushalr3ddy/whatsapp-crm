@@ -1,12 +1,15 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 
+/** The part of a database handle this needs; a transaction has it too. */
+type Executor = Pick<Database, 'execute'>;
+
 /**
  * Writes one entry on a number's timeline: a refused connection (403), a session ended without being asked, a device removed
  * under Linked devices. The Numbers page reads these back so an operator sees what happened to a number and when.
  */
 export async function recordHealthEvent(
-  db: Database,
+  db: Executor,
   e: {
     orgId: string; senderIdentityId: string; kind: string;
     severity: 'info' | 'warning' | 'critical'; summary: string; evidence?: unknown; at?: Date;

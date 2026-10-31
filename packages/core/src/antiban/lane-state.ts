@@ -4,6 +4,7 @@ import { reactionBrakeOn, type NewChatOutcomes } from './brake.js';
 import {
   BRAKE_WINDOW, DEFAULT_TIME_ZONE, QUIET_HOURS_DEFAULT_END, QUIET_HOURS_DEFAULT_START, REPLY_WINDOW_MS
 } from './constants.js';
+import { CLOSING_MESSAGE_MARK } from './constants.js';
 import { numberHoldOf, type Queryable } from './holds.js';
 
 /** One queued outbound message of a number, with what the lane needs to order it and ask the policy about it. */
@@ -37,18 +38,20 @@ export async function laneCandidates(
              EXISTS (SELECT 1 FROM message i WHERE i.conversation_id = v.id AND i.direction = 'inbound') AS "known",
              EXISTS (SELECT 1 FROM message i WHERE i.conversation_id = v.id AND i.direction = 'inbound'
                      AND i.created_at > ${since}) AS "recentInbound",
-             m.sent_by AS "sentBy"
+             m.sent_by AS "sentBy",
+             -- The closing message sent when someone opts out goes at reply priority, whenever they last wrote (F6 AC-6.2).
+             coalesce(m.dnc_override_reason = ${CLOSING_MESSAGE_MARK}, false) AS "closing"
       FROM message m JOIN conversation v ON v.id = m.conversation_id
       WHERE v.sender_identity_id = ${senderIdentityId} AND m.direction = 'outbound' AND m.status = 'queued'
     )
     SELECT "messageId", "conversationId", "contactId", "plannedGapMs", "holdReason", "holdUntil", "campaignId",
            NOT "known" AS "newChat",
-           CASE WHEN "recentInbound" THEN 'reply'
+           CASE WHEN "recentInbound" OR "closing" THEN 'reply'
                 WHEN "campaignId" IS NOT NULL THEN 'campaign'
                 WHEN "sentBy" = 'agent' THEN 'ai'
                 ELSE 'manual' END AS "priority"
     FROM q
-    ORDER BY CASE WHEN "recentInbound" THEN 0 WHEN "campaignId" IS NOT NULL THEN 3 WHEN "sentBy" = 'agent' THEN 2 ELSE 1 END,
+    ORDER BY CASE WHEN "recentInbound" OR "closing" THEN 0 WHEN "campaignId" IS NOT NULL THEN 3 WHEN "sentBy" = 'agent' THEN 2 ELSE 1 END,
              "createdAt" ASC, "messageId" ASC
     LIMIT ${limit}`);
   return (rows as unknown as Array<Omit<LaneCandidate, 'holdUntil'> & { holdUntil: string | null }>).map((r) => ({
@@ -79,13 +82,15 @@ export async function newChatOutcomes(db: Queryable, senderIdentityId: string): 
     SELECT count(*)::int AS sent,
            count(*) FILTER (WHERE EXISTS (
              SELECT 1 FROM message i WHERE i.conversation_id = x.conversation_id AND i.direction = 'inbound'
-               AND i.created_at > x.sent_at))::int AS replied
+               AND i.created_at > x.sent_at))::int AS replied,
+           -- S4: the contacts of these sends that probably blocked the number.
+           count(*) FILTER (WHERE EXISTS (
+             SELECT 1 FROM conversation c WHERE c.id = x.conversation_id AND c.likely_blocked_at IS NOT NULL))::int AS blocked
     FROM (
       SELECT n.* FROM n ORDER BY n.sent_at DESC LIMIT ${BRAKE_WINDOW}
     ) x`);
-  const row = (rows as unknown as Array<{ sent: number; replied: number }>)[0] ?? { sent: 0, replied: 0 };
-  // S4 fills this in: the share of these contacts marked likely_blocked. Until contacts can be marked, it is zero.
-  return { sent: row.sent, replied: row.replied, likelyBlocked: 0 };
+  const row = (rows as unknown as Array<{ sent: number; replied: number; blocked: number }>)[0] ?? { sent: 0, replied: 0, blocked: 0 };
+  return { sent: row.sent, replied: row.replied, likelyBlocked: row.blocked };
 }
 
 /** New chats this number started after `since`: the ones WhatsApp's last quota figure does not know about yet. */

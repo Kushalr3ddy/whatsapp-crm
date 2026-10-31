@@ -65,3 +65,47 @@ export const DEFAULT_TIME_ZONE = 'Asia/Kolkata';
 
 /** A number linked fewer days ago than this gets the "go gentle" hint. */
 export const NEW_NUMBER_DAYS = 7;
+
+// ── after the send: ticks, offline or blocked (S4) ──────────────────────────────────────────────────
+/** A message still at one tick this long after sending is looked at by the sweep (*guess*). */
+export const TICK_CHECK_AFTER_MS = 30 * 60 * 1000;
+/** A contact's profile photo and about are probed at most this often (*guess*). */
+export const PROFILE_PROBE_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** A snapshot taken at a delivery is renewed after this long, so the next delivery does not probe again (*guess*). */
+export const PROFILE_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** A contact "delivers fast" when one of their last 3 messages from us was delivered within this long (*guess*). */
+export const FAST_DELIVERY_MS = 5 * 60 * 1000;
+/** … looking back this many messages (*guess*). */
+export const FAST_DELIVERY_LOOKBACK = 3;
+/** Many stuck: the number's latest sends to distinct fast-delivering contacts that are looked at (*guess*). */
+export const STUCK_WINDOW = 20;
+/** … this many or more still at one tick holds the number's campaigns (*guess*). */
+export const STUCK_HOLD_AT = 8;
+/** … and the hold lifts when the count falls below this (*guess*). */
+export const STUCK_LIFT_BELOW = 4;
+/** How many stuck messages one sweep judges per number, so a backlog never turns into a burst of probes. */
+export const TICK_SWEEP_BATCH = 50;
+
+// ── never "Waiting for this message" (S5) ───────────────────────────────────────────────────────────
+/** Retries from this many different contacts … (*guess*) */
+export const RETRY_WAVE_CONTACTS = 3;
+/** … within this long hold the whole number (*guess*). */
+export const RETRY_WAVE_WINDOW_MS = 10 * 60 * 1000;
+/** A second retry for the same message recreates the session with that contact. */
+export const RETRY_RESET_AT = 2;
+
+// ── replies, STOP and the closing message (S6) ──────────────────────────────────────────────────────
+/** Words that opt a contact out, matched against the whole message. The org's own list is added to these. */
+export const DEFAULT_STOP_WORDS: readonly string[] = ['stop', 'unsubscribe', 'opt out'];
+/** Words that lift do-not-contact when the contact sends them. The org's own list is added to this. */
+export const DEFAULT_RESTART_WORDS: readonly string[] = ['start'];
+/** The closing message quotes at most this much of what was last sent, on one line (*guess*). */
+export const CLOSING_SUMMARY_MAX_CHARS = 120;
+/** The classifier reads at most this much of a contact's message (*guess*). */
+export const CLASSIFIER_MAX_CHARS = 500;
+/** Marks the closing message on the message's `dnc_override_reason`: it goes past the do-not-contact gate it sets, and at reply priority. */
+export const CLOSING_MESSAGE_MARK = 'opt_out_closing';
+/** The classifier waits this long for the model before giving up, so a slow model never holds up the inbound stream (*guess*). */
+export const CLASSIFIER_TIMEOUT_MS = 8_000;
+/** At most this many profile probes per number in one sweep, so a backlog never becomes a stream of lookups (*guess*). */
+export const PROBES_PER_SWEEP = 5;

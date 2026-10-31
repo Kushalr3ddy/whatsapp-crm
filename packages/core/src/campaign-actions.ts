@@ -39,6 +39,8 @@ export interface NewCampaign extends CampaignAudience {
   readonly mediaAssetId?: string | undefined;
   /** Send the picture or link to new chats only after they reply (F6 AC-7.3). On unless said otherwise. */
   readonly mediaAfterReply?: boolean | undefined;
+  /** Why these people are being messaged, in a sentence; said in the closing message if one of them opts out (F6 AC-6.2). */
+  readonly purpose?: string | null | undefined;
 }
 
 /** Creates a draft. Nothing is sent and no audience is frozen until it is started. */
@@ -80,10 +82,10 @@ export async function createCampaignDraft(
 
   const rows = await tx.execute(sql`
     INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, media_after_reply, status)
+                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, media_after_reply, purpose, status)
     VALUES (${orgId}, ${input.name}, ${input.body}, ${input.senderIdentityId}, ${input.fromImportRunId ?? null},
             ${input.explicitContactIds === undefined ? null : JSON.stringify(input.explicitContactIds)}::jsonb,
-            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, ${input.mediaAfterReply ?? true}, 'draft')
+            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, ${input.mediaAfterReply ?? true}, ${input.purpose ?? null}, 'draft')
     RETURNING id`);
   const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
   await writeAudit(tx, {
