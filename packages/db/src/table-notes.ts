@@ -140,5 +140,13 @@ export const TABLE_NOTES: Record<string, TableNote> = {
   sender_health_event: {
     group: 'Audit and health',
     purpose: 'A timeline of what happened to a number: refused by WhatsApp, logged out unasked, or removed on the phone.'
+  },
+  whatsapp_notice: {
+    group: 'Audit and health',
+    purpose: 'Every limit warning WhatsApp sent a number, as it arrived: a new-chat timelock or a new-chat cap update. The latest of each is also on the number’s connection row.'
+  },
+  antiban_setting: {
+    group: 'WhatsApp numbers',
+    purpose: 'An org’s sending settings, one row: quiet hours (on by default, 22:00 to 08:00) and the time zone they are read in.'
   }
 };

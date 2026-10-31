@@ -273,6 +273,25 @@ export const channelSession = pgTable('channel_session', {
    */
   ownDecryptBurstAt: timestamp('own_decrypt_burst_at', { withTimezone: true }),
 
+  // What WhatsApp last told this number about its own limits (F6 S2). Only the latest of each lives here; every raw one is also
+  // kept in `whatsapp_notice`.
+  /** WhatsApp is not letting this number start new chats (`reachoutTimeLock`). */
+  timelockActive: boolean('timelock_active').notNull().default(false),
+  /** When the timelock ends, or null when WhatsApp gave no end. */
+  timelockUntil: timestamp('timelock_until', { withTimezone: true }),
+  /** WhatsApp's enforcement type for the timelock (`DEFAULT`, `WEB_COMPANION_ONLY`, a violation kind…). */
+  timelockType: text('timelock_type'),
+  /** The new-chat cap's warning level: `NONE`, `FIRST_WARNING`, `SECOND_WARNING` or `CAPPED`. Null until WhatsApp says. */
+  cappingStatus: text('capping_status'),
+  cappingTotalQuota: integer('capping_total_quota'),
+  cappingUsedQuota: integer('capping_used_quota'),
+  cappingCycleStart: timestamp('capping_cycle_start', { withTimezone: true }),
+  cappingCycleEnd: timestamp('capping_cycle_end', { withTimezone: true }),
+  /** When the cap figures above were received, so new chats started since then can be counted against them. */
+  cappingUpdatedAt: timestamp('capping_updated_at', { withTimezone: true }),
+  /** The first time this number opened after it was last linked. Null while unlinked. */
+  linkedSince: timestamp('linked_since', { withTimezone: true }),
+
   // The linking handshake. The API cannot call the provider directly — the gateway owns the
   // socket in a separate process — so a link request is left here and the challenge WhatsApp
   // issues is written back for the API to serve.
@@ -333,6 +352,8 @@ export const conversation = pgTable('conversation', {
   windowExpiresAt: timestamp('window_expires_at', { withTimezone: true }),
 
   unreadCount: integer('unread_count').notNull().default(0),
+  /** WhatsApp refused a send to this contact with a 463; new sends to them are held until a person retries (F6 AC-2.6). */
+  refused463At: timestamp('refused_463_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
@@ -422,6 +443,16 @@ export const message = pgTable('message', {
    * waiting and cleared when it sends, so the inbox can say "waiting: reason" instead of silence.
    */
   holdReason: text('hold_reason'),
+  /** When the hold is expected to lift, or null when it waits for something (F6 AC-8.1). Informational: the lane re-checks every time. */
+  holdUntil: timestamp('hold_until', { withTimezone: true }),
+  /** The gap this message waits after the previous send from its number, in ms. Drawn once, so the schedule is known in advance (F6 AC-3.1). */
+  plannedGapMs: integer('planned_gap_ms'),
+  /** The provider's message, when the send failed with `send_error`. */
+  errorDetail: text('error_detail'),
+  /** An inbound message: an agent opened the chat, so WhatsApp is to be told it was read (F6 AC-1.7). */
+  readRequestedAt: timestamp('read_requested_at', { withTimezone: true }),
+  /** An inbound message: when WhatsApp was told it was read. Never set on arrival. */
+  readMarkedAt: timestamp('read_marked_at', { withTimezone: true }),
   /**
    * How many times the recipient's phone asked us to send this message again because it could not decrypt it (the phone shows
    * "Waiting for this message"). The thread says so while it is above zero and the message has not been read (D-101).
@@ -786,6 +817,11 @@ export const campaign = pgTable('campaign', {
    */
   gateOverrides: text('gate_overrides').array().notNull().default(sql`'{}'::text[]`),
   gateOverrideReason: text('gate_override_reason'),
+  /**
+   * A campaign with a link or a picture sends the text alone to new chats; the picture or link follows when they reply.
+   * Known contacts get it all at once (F6 AC-7.3). On by default.
+   */
+  mediaAfterReply: boolean('media_after_reply').notNull().default(true),
   /** Why a campaign was paused by the system rather than a person (e.g. `ban_suspected`, `unlinked`). */
   pauseReason: text('pause_reason'),
 
@@ -827,7 +863,11 @@ export const campaignRecipient = pgTable('campaign_recipient', {
   /** For a campaign with an AI template: this person's opening message as the AI wrote it (encrypted like any message body). */
   openingEnc: bytea('opening_enc'),
   /** How many times the AI has tried to write this opening and failed; after three the recipient is skipped and reported. */
-  openingTries: integer('opening_tries').notNull().default(0)
+  openingTries: integer('opening_tries').notNull().default(0),
+  /** The gap this recipient's message waits after the previous send, in ms. Drawn once at launch (F6 AC-3.1). */
+  plannedGapMs: integer('planned_gap_ms'),
+  /** The first message went as text alone to a new chat; the picture or link is still to be sent when they reply (F6 AC-7.3). */
+  followupPending: boolean('followup_pending').notNull().default(false)
 }, (t) => [
   // One row per person per campaign. Also what makes a re-run idempotent.
   uniqueIndex('campaign_recipient_uidx').on(t.campaignId, t.contactId),
@@ -932,3 +972,36 @@ export const aiJob = pgTable('ai_job', {
   index('ai_job_org_created_idx').on(t.orgId, t.createdAt),
   index('ai_job_org_status_idx').on(t.orgId, t.status)
 ]);
+
+/**
+ * Everything WhatsApp told a number about its own limits, as it arrived: a reachout timelock update or a new-chat cap update.
+ * The latest of each is also on `channel_session`; this keeps the history so a change can be explained afterwards (F6 AC-2).
+ */
+export const whatsappNotice = pgTable('whatsapp_notice', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
+  senderIdentityId: uuid('sender_identity_id').notNull()
+    .references(() => senderIdentity.id, { onDelete: 'cascade' }),
+  /** `timelock` or `capping`. */
+  kind: text('kind').notNull(),
+  /** The update exactly as the adapter normalised it. */
+  payload: jsonb('payload').notNull().default({}),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('whatsapp_notice_sender_idx').on(t.senderIdentityId, t.receivedAt)
+]);
+
+/**
+ * An org's anti-ban settings, one row. Absent means the defaults: quiet hours on, 22:00 to 08:00 in the org's time zone (F6 AC-7.5).
+ */
+export const antibanSetting = pgTable('antiban_setting', {
+  orgId: uuid('org_id').primaryKey().references(() => org.id, { onDelete: 'cascade' }),
+  /** Campaign and AI first messages wait while it is quiet hours. Replies and manual sends still go. */
+  quietHoursEnabled: boolean('quiet_hours_enabled').notNull().default(true),
+  /** Local `HH:MM` when quiet hours begin and end; the window may cross midnight. */
+  quietHoursStart: text('quiet_hours_start').notNull().default('22:00'),
+  quietHoursEnd: text('quiet_hours_end').notNull().default('08:00'),
+  /** An IANA time zone name, e.g. `Asia/Kolkata`. */
+  timeZone: text('time_zone').notNull().default('Asia/Kolkata'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});

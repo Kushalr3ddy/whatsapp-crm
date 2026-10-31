@@ -281,6 +281,13 @@
       "when": 1793374643050,
       "tag": "0039_antiban_purge",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793463673337,
+      "tag": "0040_antiban_v2_engine",
+      "breakpoints": true
     }
   ]
 }
