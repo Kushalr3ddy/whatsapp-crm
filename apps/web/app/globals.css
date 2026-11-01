@@ -14,113 +14,143 @@
  * Without the `:not([data-theme="light"])` guard, choosing light on a dark-set OS would do
  * nothing, because the media query would keep winning.
  *
- * Colour roles: `accent` is the brand (buttons, links, the active nav item); `success`, `warning`
- * and `danger` carry meaning and are never used decoratively; `muted` is secondary text.
+ * Look ("Pulse", redesign step 0): one violet accent for buttons, the active item, focus and the ring.
+ * `success`, `warning`, `danger` and `info` carry status and are never used decoratively. `muted` is
+ * secondary text, `edge` is the border of anything you can type in or press (3:1 against its surface),
+ * `border` is the quiet hairline between layers. The sidebar is dark in both themes.
+ *
+ * Motion (redesign step 0b): four speeds only (--m100/150/200/300), ease-out in and ease-in out, and
+ * only transform and opacity move. Loops are for live work (a spinner, the progress bar while a page loads).
+ * Everything falls back to a 100 ms fade or an instant change under prefers-reduced-motion.
  */
 /* Pure-CSS count-up: the real number is in the markup (--to), the animation only runs it up from zero. */
 @property --n { syntax: '<integer>'; initial-value: 0; inherits: false; }
 
 @theme {
-  --font-sans: var(--font-body), Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: var(--font-body), "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-heading: var(--font-sans);
+  --font-mono: var(--font-numbers), "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
-  /* Direction A (clean light): near-white surfaces, thin borders, one green accent. Blue is for info only. */
-  --color-canvas: #f7f8f9;
+  --color-canvas: #f5f5fb;
   --color-surface: #ffffff;
-  --color-border: #e5e7eb;
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
-  --color-accent: #16a34a;
-  --color-accent-soft: #e8f7ee;
+  --color-surface-2: #f0f0f9;
+  --color-border: #e1e1ee;
+  --color-edge: #8a8fa8;
+  --color-ink: #14152a;
+  --color-muted: #585d78;
+  --color-accent: #5b45e0;
+  --color-accent-soft: #ece9ff;
   --color-on-accent: #ffffff;
+  /* Still read by the sign-in page and the live panel until their own steps. */
   --color-lime: #4ade80;
-  --color-info: #2563eb;
-  --color-success: #15803d;
-  --color-success-soft: #e8f7ee;
-  --color-danger: #dc2626;
-  --color-warning: #a16207;
-  --color-warning-soft: #fef3c7;
+  --color-bright: #16a34a;
+  --color-info: #1d4ed8;
+  --color-success: #166534;
+  --color-success-soft: #e4f5ea;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fde8e8;
+  --color-warning: #92400e;
+  --color-warning-soft: #fdf0c9;
 
-  --color-sidebar: #ffffff;
-  --color-sidebar-ink: #0f172a;
-  --color-sidebar-muted: #64748b;
-  --color-sidebar-hover: #f1f5f9;
-  --color-sidebar-active: #e8f7ee;
-  --color-sidebar-active-ink: #15803d;
+  --color-sidebar: #14152a;
+  --color-sidebar-ink: #eceff7;
+  --color-sidebar-muted: #a6abc8;
+  --color-sidebar-line: #26284a;
+  --color-sidebar-hover: #1c1e3a;
+  --color-sidebar-active: #26284a;
+  --color-sidebar-active-ink: #ffffff;
 
-  --radius-card: 0.5rem;
-  --radius-control: 0.375rem;
-  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.05);
-  --shadow-pop: 0 10px 28px rgb(15 23 42 / 0.12);
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --shadow-card: 0 1px 2px rgb(20 21 42 / 0.05);
+  --shadow-pop: 0 8px 24px rgb(20 21 42 / 0.07);
 }
 
 @layer base {
   :root {
     color-scheme: light;
+    --m100: 100ms;
+    --m150: 150ms;
+    --m200: 200ms;
+    --m300: 300ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   }
 
   :root[data-theme="dark"] {
-    --color-canvas: #0a0e11;
-    --color-surface: #10161b;
-    --color-border: #1e2830;
-    --color-ink: #e6edf3;
-    --color-muted: #8b98a5;
-    --color-accent: #3ddc84;
-    --color-accent-soft: #10261a;
-    --color-on-accent: #04210f;
+    --color-canvas: #0f1115;
+    --color-surface: #16191f;
+    --color-surface-2: #1c2027;
+    --color-border: #2a2f38;
+    --color-edge: #6c7380;
+    --color-ink: #eef0f4;
+    --color-muted: #a0a7b4;
+    --color-accent: #a498ff;
+    --color-accent-soft: #26233a;
+    --color-on-accent: #0f1115;
     --color-lime: #86efac;
-    --color-info: #7fb0ff;
-    --color-success: #5ee59a;
-    --color-success-soft: #10261a;
-    --color-danger: #ff8a7a;
-    --color-warning: #f5c26b;
-    --color-warning-soft: #3a2d12;
-    --color-sidebar: #0a0e11;
-    --color-sidebar-ink: #e6edf3;
-    --color-sidebar-muted: #8b98a5;
-    --color-sidebar-hover: #141c23;
-    --color-sidebar-active: #10261a;
-    --color-sidebar-active-ink: #3ddc84;
-    --shadow-card: none;
-    --shadow-pop: 0 10px 28px rgb(0 0 0 / 0.55);
+    --color-bright: #52d68f;
+    --color-info: #86b4ff;
+    --color-success: #52d68f;
+    --color-success-soft: #12261c;
+    --color-danger: #ff948a;
+    --color-danger-soft: #331a1b;
+    --color-warning: #f2b95e;
+    --color-warning-soft: #2b2210;
+    --color-sidebar: #0a0b0e;
+    --color-sidebar-ink: #eef0f4;
+    --color-sidebar-muted: #959cab;
+    --color-sidebar-line: #1d2128;
+    --color-sidebar-hover: #16191f;
+    --color-sidebar-active: #20242c;
+    --color-sidebar-active-ink: #ffffff;
+    --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.05);
+    --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
     color-scheme: dark;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --color-canvas: #0a0e11;
-      --color-surface: #10161b;
-      --color-border: #1e2830;
-      --color-ink: #e6edf3;
-      --color-muted: #8b98a5;
-      --color-accent: #3ddc84;
-      --color-accent-soft: #10261a;
-      --color-on-accent: #04210f;
+      --color-canvas: #0f1115;
+      --color-surface: #16191f;
+      --color-surface-2: #1c2027;
+      --color-border: #2a2f38;
+      --color-edge: #6c7380;
+      --color-ink: #eef0f4;
+      --color-muted: #a0a7b4;
+      --color-accent: #a498ff;
+      --color-accent-soft: #26233a;
+      --color-on-accent: #0f1115;
       --color-lime: #86efac;
-      --color-info: #7fb0ff;
-      --color-success: #5ee59a;
-      --color-success-soft: #10261a;
-      --color-danger: #ff8a7a;
-      --color-warning: #f5c26b;
-      --color-warning-soft: #3a2d12;
-      --color-sidebar: #0a0e11;
-      --color-sidebar-ink: #e6edf3;
-      --color-sidebar-muted: #8b98a5;
-      --color-sidebar-hover: #141c23;
-      --color-sidebar-active: #10261a;
-      --color-sidebar-active-ink: #3ddc84;
-      --shadow-card: none;
-      --shadow-pop: 0 10px 28px rgb(0 0 0 / 0.55);
+      --color-bright: #52d68f;
+      --color-info: #86b4ff;
+      --color-success: #52d68f;
+      --color-success-soft: #12261c;
+      --color-danger: #ff948a;
+      --color-danger-soft: #331a1b;
+      --color-warning: #f2b95e;
+      --color-warning-soft: #2b2210;
+      --color-sidebar: #0a0b0e;
+      --color-sidebar-ink: #eef0f4;
+      --color-sidebar-muted: #959cab;
+      --color-sidebar-line: #1d2128;
+      --color-sidebar-hover: #16191f;
+      --color-sidebar-active: #20242c;
+      --color-sidebar-active-ink: #ffffff;
+      --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.05);
+      --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
       color-scheme: dark;
     }
   }
 
+  /* 16px root: text-sm is 14px, text-xs is 12px, and nothing renders below 12px. */
   html {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   h1, h2, .font-heading {
     font-family: var(--font-heading);
+    font-weight: 600;
   }
 
   body {
@@ -150,54 +180,94 @@
  */
 @layer components {
   /* Buttons ------------------------------------------------------------------------------- */
+  /* Hover is a lighter layer that sweeps in from the left (::before, transform only); press sinks 1%. */
   .btn {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.375rem;
+    gap: 0.5rem;
+    min-height: 2.75rem;
     border-radius: var(--radius-control);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-edge);
     background: var(--color-surface);
-    padding: 0.45rem 0.85rem;
+    padding: 0 1rem;
     font-size: 0.875rem;
     font-weight: 500;
     line-height: 1.25;
     color: var(--color-ink);
-    box-shadow: var(--shadow-card);
     cursor: pointer;
-    transition: background-color 120ms, border-color 120ms, opacity 120ms;
+    transition: transform var(--m100) var(--ease-out);
   }
-  .btn:hover { background: var(--color-accent-soft); }
+  .btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: currentColor;
+    opacity: 0.08;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--m150) var(--ease-in);
+  }
+  @media (hover: hover) {
+    .btn:hover:not(:disabled):not([aria-disabled="true"])::before {
+      transform: scaleX(1);
+      transition: transform var(--m200) var(--ease-out);
+    }
+  }
+  .btn:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.99); }
   .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
   .btn-primary {
-    border-color: transparent;
+    border-color: var(--color-accent);
     background: var(--color-accent);
     color: var(--color-on-accent);
   }
-  .btn-primary:hover { background: var(--color-accent); opacity: 0.9; }
-  .btn-danger { color: var(--color-danger); }
-  .btn-danger:hover { border-color: var(--color-danger); background: var(--color-surface); }
-  .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8125rem; border-radius: var(--radius-control); box-shadow: none; }
-  .btn-ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--color-muted); }
-  .btn-ghost:hover { background: var(--color-accent-soft); color: var(--color-ink); }
+  .btn-primary::before { opacity: 0.18; }
+  .btn-danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-edge)); }
+  .btn-sm { min-height: 2.25rem; padding: 0 0.75rem; font-size: 0.875rem; }
+  .btn-ghost { border-color: transparent; background: transparent; color: var(--color-muted); }
+  .btn-ghost:hover { color: var(--color-ink); }
+  /* A working button: a small spinner beside the label, only if the wait lasts past 100 ms. */
+  .btn[aria-busy="true"] { cursor: progress; }
+  .btn[aria-busy="true"]::after {
+    content: "";
+    width: 0.9em;
+    height: 0.9em;
+    flex: none;
+    border-radius: 9999px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    opacity: 0;
+    animation: spin 0.8s linear infinite, show 0s linear var(--m100) forwards;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes show { to { opacity: 1; } }
+  /* Phones and tablets: every control is a 44px target. */
+  @media (pointer: coarse) {
+    .btn-sm { min-height: 2.75rem; }
+    .field-sm { min-height: 2.75rem; }
+  }
 
   /* Inputs -------------------------------------------------------------------------------- */
   .field {
+    min-height: 2.75rem;
     border-radius: var(--radius-control);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-edge);
     background: var(--color-surface);
     padding: 0.5rem 0.75rem;
-    font-size: 0.9375rem;
+    font-size: 1rem;
     color: var(--color-ink);
-    transition: border-color 120ms, box-shadow 120ms;
   }
-  .field::placeholder { color: var(--color-muted); opacity: 0.7; }
+  .field::placeholder { color: var(--color-muted); opacity: 0.8; }
   .field:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 28%, transparent);
   }
-  .field-sm { padding: 0.25rem 0.5rem; font-size: 0.8125rem; border-radius: var(--radius-control); }
+  .field-sm { min-height: 2.25rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; }
 
   /* Surfaces ------------------------------------------------------------------------------ */
   .card {
@@ -210,12 +280,14 @@
   .list > li + li, .list > form + form { border-top: 1px solid var(--color-border); }
 
   /* Page frame ---------------------------------------------------------------------------- */
-  .page { margin-inline: auto; width: 100%; max-width: 64rem; padding: 2rem 1.5rem 4rem; }
-  .page-narrow { max-width: 42rem; }
-  .page-wide { max-width: 56rem; }
-  .page-title { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; }
-  .page-desc { margin-top: 0.35rem; font-size: 0.9375rem; color: var(--color-muted); }
-  .section-title { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; color: var(--color-muted); text-transform: uppercase; }
+  /* Widths are the old pixel widths (56rem, 36.75rem, 49rem at the old 14px root); each screen's own step may widen them. */
+  .page { margin-inline: auto; width: 100%; max-width: 56rem; padding: 2rem 1.5rem 4rem; animation: fade-in var(--m100) var(--ease-out) both; }
+  .page-narrow { max-width: 36.75rem; }
+  .page-wide { max-width: 49rem; }
+  .page-title { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+  .page-desc { margin-top: 0.35rem; font-size: 1rem; color: var(--color-muted); }
+  .section-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; color: var(--color-muted); text-transform: uppercase; }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
   /* Small things ------------------------------------------------------------------------- */
   .badge {
@@ -224,25 +296,25 @@
     gap: 0.25rem;
     border-radius: 9999px;
     border: 1px solid var(--color-border);
-    padding: 0.1rem 0.55rem;
+    padding: 0.1rem 0.625rem;
     font-size: 0.75rem;
     font-weight: 500;
-    line-height: 1.4;
+    line-height: 1.5;
     white-space: nowrap;
   }
   .badge-success { border-color: transparent; background: var(--color-success-soft); color: var(--color-success); }
   .badge-warning { border-color: transparent; background: var(--color-warning-soft); color: var(--color-warning); }
-  .badge-danger { border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); color: var(--color-danger); }
+  .badge-danger { border-color: transparent; background: var(--color-danger-soft); color: var(--color-danger); }
   .badge-accent { border-color: transparent; background: var(--color-accent-soft); color: var(--color-accent); }
 
   .notice {
     border-radius: var(--radius-card);
     border: 1px solid var(--color-border);
     background: var(--color-surface);
-    padding: 0.65rem 0.9rem;
+    padding: 0.75rem 1rem;
     font-size: 0.875rem;
   }
-  .notice-danger { border-color: color-mix(in srgb, var(--color-danger) 45%, transparent); color: var(--color-danger); }
+  .notice-danger { border-color: color-mix(in srgb, var(--color-danger) 45%, transparent); background: var(--color-danger-soft); color: var(--color-danger); }
   .notice-warning { border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); background: var(--color-warning-soft); color: var(--color-warning); }
   .notice-success { border-color: transparent; background: var(--color-success-soft); color: var(--color-success); }
 
@@ -257,20 +329,10 @@
     font-weight: 600;
   }
 
-  /* Motion: small and quick. Pages ease in, buttons press, cards lift when they are links. ---- */
-  .btn { transition: background-color 140ms, border-color 140ms, opacity 140ms, transform 90ms, box-shadow 140ms; }
-  .btn:active:not(:disabled) { transform: scale(0.97); }
-  .btn-primary { box-shadow: 0 1px 2px rgb(22 163 74 / 0.35); }
-  .btn-primary:hover { opacity: 1; filter: brightness(1.08); box-shadow: 0 3px 10px color-mix(in srgb, var(--color-accent) 35%, transparent); }
-  a > .card { transition: transform 160ms, box-shadow 160ms, border-color 160ms; }
-  a:hover > .card { transform: translateY(-2px); box-shadow: var(--shadow-pop); border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)); }
+  /* Cards that are links: the edge firms up on hover, at once. Nothing lifts or animates (only transform and opacity move). */
+  a:hover > .card { border-color: color-mix(in srgb, var(--color-ink) 28%, var(--color-border)); }
 
-  .page > * { animation: rise 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-  .page > *:nth-child(2) { animation-delay: 40ms; }
-  .page > *:nth-child(3) { animation-delay: 80ms; }
-  .page > *:nth-child(4) { animation-delay: 120ms; }
-  .page > *:nth-child(n+5) { animation-delay: 160ms; }
-  /* A click was heard: a bar across the top while the next page loads, the pressed link dimmed, and buttons that press in. */
+  /* A click was heard: a bar across the top while the next page loads, and the pressed link dimmed. */
   .nav-progress {
     position: fixed; inset: 0 0 auto 0; z-index: 100; height: 3px; overflow: hidden; background: var(--color-accent-soft);
     display: none; pointer-events: none;
@@ -282,30 +344,39 @@
   }
   @keyframes nav-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
   a[data-pending] { opacity: 0.6; cursor: progress; }
-  button:not(:disabled):active, .btn:not(:disabled):active { transform: scale(0.97); }
-  button, .btn { transition: transform 80ms ease-out; }
-  @media (prefers-reduced-motion: reduce) {
-    .nav-progress::after { animation: none; width: 100%; opacity: 0.6; }
-    button, .btn { transition: none; }
-  }
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-  /* A bright strip along the top of a stat tile, so the overview has some colour in it. */
-  .stat-tile { position: relative; overflow: hidden; }
-  .stat-tile::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--color-accent), var(--color-lime)); }
-
   /* Sidebar ------------------------------------------------------------------------------- */
-  .sidebar { background: var(--color-sidebar); color: var(--color-sidebar-ink); border-color: var(--color-border); }
-  .sidebar .nav-link { color: var(--color-sidebar-muted); transition: background-color 140ms, color 140ms, transform 140ms; }
-  .sidebar .nav-link:hover { background: var(--color-sidebar-hover); color: var(--color-sidebar-ink); transform: translateX(2px); }
-  .sidebar .nav-link[aria-current="page"] { background: var(--color-sidebar-active); color: var(--color-sidebar-active-ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--color-accent); }
+  /* Dark in both themes. Hover and the current page are a layer whose opacity changes (::before). */
+  .sidebar { background: var(--color-sidebar); color: var(--color-sidebar-ink); border-color: var(--color-sidebar-line); }
+  .sidebar .nav-link { position: relative; isolation: isolate; color: var(--color-sidebar-muted); }
+  .sidebar .nav-link::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+    background: var(--color-sidebar-hover); opacity: 0; transition: opacity var(--m100) var(--ease-out);
+  }
+  .sidebar .nav-link:hover { color: var(--color-sidebar-ink); }
+  .sidebar .nav-link:hover::before { opacity: 1; }
+  .sidebar .nav-link[aria-current="page"] { color: var(--color-sidebar-active-ink); font-weight: 500; }
+  .sidebar .nav-link[aria-current="page"]::before { background: var(--color-sidebar-active); opacity: 1; }
   .sidebar .btn-ghost { color: var(--color-sidebar-muted); }
-  .sidebar .btn-ghost:hover { background: var(--color-sidebar-hover); color: var(--color-sidebar-ink); }
+  .sidebar .btn-ghost:hover { color: var(--color-sidebar-ink); }
+  .sidebar .btn::before { background: var(--color-sidebar-ink); }
   .sidebar .avatar { background: var(--color-accent); color: var(--color-on-accent); }
-
-  @media (prefers-reduced-motion: reduce) {
-    .page > *, .btn, a > .card, .sidebar .nav-link { animation: none !important; transition: none !important; transform: none !important; }
+  .sidebar :focus-visible { outline-color: var(--color-sidebar-active-ink); }
+  /* The phone menu: a panel under the top bar. It fades and drops 4px in (150 ms) and out (100 ms). */
+  .menu-panel {
+    position: absolute; inset-inline: 0; top: 100%; z-index: 60; background: var(--color-sidebar);
+    border-bottom: 1px solid var(--color-sidebar-line); padding: 0.5rem 0.75rem 0.75rem;
+    opacity: 0; transform: translateY(-4px); visibility: hidden;
+    transition: opacity var(--m100) var(--ease-in), transform var(--m100) var(--ease-in), visibility 0s linear var(--m100);
+  }
+  .menu-panel[data-open="true"] {
+    opacity: 1; transform: none; visibility: visible;
+    transition: opacity var(--m150) var(--ease-out), transform var(--m150) var(--ease-out);
+  }
+  @media (min-width: 48rem) {
+    .menu-panel, .menu-panel[data-open="true"] { position: static; opacity: 1; transform: none; visibility: visible; border: 0; padding: 0; background: transparent; display: contents; }
   }
 
   /* Sign-in screen --------------------------------------------------------------------------- */
@@ -405,20 +476,32 @@
   @keyframes sc-brick3 { 0%, 76.5% { opacity: 0; transform: translateY(-34px) scale(0.92); } 79.1% { opacity: 1; transform: translateY(4px); } 80.5%, 93% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(4px); } }
   @keyframes sc-brick4 { 0%, 81.0% { opacity: 0; transform: translateY(-34px) scale(0.92); } 83.6% { opacity: 1; transform: translateY(4px); } 85.0%, 93% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(4px); } }
 
-  /* Empty states float gently; the illustration is decorative. */
-  .empty-float { animation: float 5s ease-in-out infinite; }
-  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-
   @media (prefers-reduced-motion: reduce) {
-    .auth-blobs span, .auth-card, .empty-float, .scene *, .count, .sk { animation: none !important; }
+    .auth-blobs span, .auth-card, .scene *, .count { animation: none !important; }
     .scene .sil.acc .green, .scene .sil.rej .red, .scene .sil.idle .grey, .scene .badge, .scene .brick, .scene .cap .c4 { opacity: 1; } .scene .arrow { opacity: 1; height: 152px; } .scene .doc, .scene .reply { display: none; }
   }
 
-  .count { --n: var(--to); counter-reset: num var(--n); animation: countup 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .count { --n: var(--to); counter-reset: num var(--n); animation: countup var(--m300) var(--ease-out) both; }
   .count::after { content: counter(num); }
   @keyframes countup { from { --n: 0; } to { --n: var(--to); } }
 
-  /* Skeletons shimmer while a page's data loads. */
-  .sk { border-radius: var(--radius-control); background: linear-gradient(90deg, var(--color-border) 25%, color-mix(in srgb, var(--color-border) 45%, var(--color-surface)) 50%, var(--color-border) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
-  @keyframes shimmer { to { background-position: -200% 0; } }
+  /* Skeletons: grey blocks in the shape of what is coming. A lighter band sweeps across (transform only); static when motion is reduced. */
+  .sk { position: relative; overflow: hidden; border-radius: var(--radius-control); background: var(--color-border); }
+  .sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-surface) 60%, transparent), transparent); transform: translateX(-100%); animation: shimmer 1.5s ease-in-out infinite; }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+
+  /* Reduced motion: fades of 100 ms at most. Slides, sweeps, spins and shimmers stop; state still changes. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-property: opacity !important;
+      transition-duration: var(--m100) !important;
+      transition-delay: 0s !important;
+      animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+    }
+    .sk::after { display: none; }
+    .btn:active:not(:disabled) { transform: none; }
+  }
 }

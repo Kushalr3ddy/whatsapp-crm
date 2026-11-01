@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
-import { Inter } from 'next/font/google';
+import { Geist, Geist_Mono } from 'next/font/google';
 import { Nav } from './nav';
 import { NavProgress } from './nav-progress';
 import { ConnectionWatch } from '@/components/connection-watch';
@@ -9,8 +9,9 @@ import { connectionSignature } from '@/lib/connection-signature';
 import { listSenders, getMe } from '@/lib/crm';
 import './globals.css';
 
-/** The one font used everywhere. Self-hosted by Next at build time; Latin only, to keep it light. */
-const body = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap' });
+/** The text face, and its mono twin for counts, times and phone numbers. Self-hosted by Next at build time; Latin only, to keep it light. */
+const body = Geist({ subsets: ['latin'], variable: '--font-body', display: 'swap' });
+const numbers = Geist_Mono({ subsets: ['latin'], variable: '--font-numbers', display: 'swap' });
 
 /** Browser tab title and description. Generic on purpose — the product is not one company's. */
 export const metadata: Metadata = {
@@ -54,7 +55,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // hydration mismatch can throw a full-screen error overlay that hides the page, which this clears.
   // It suppresses ONLY these two elements' own attributes, never the page content below.
   return (
-    <html lang="en" className={body.variable} suppressHydrationWarning>
+    <html lang="en" className={`${body.variable} ${numbers.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: applyThemeBeforePaint }} />
       </head>

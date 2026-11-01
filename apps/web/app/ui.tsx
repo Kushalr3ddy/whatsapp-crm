@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import Link from 'next/link';
+import { Check, Inbox } from 'lucide-react';
 
 /**
  * Small presentational pieces shared by every screen. No data, no behaviour — they exist so a page
@@ -32,7 +33,7 @@ export function Stat(
   const colour = tone === 'success' ? 'text-success' : tone === 'warning' ? 'text-warning'
     : tone === 'danger' ? 'text-danger' : 'text-ink';
   const body = (
-    <div className="card stat-tile h-full p-4 pt-5">
+    <div className="card h-full p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
         {icon !== undefined && (
@@ -41,7 +42,7 @@ export function Stat(
           </span>
         )}
       </div>
-      <p className={`mt-1.5 text-3xl font-semibold tabular-nums tracking-tight ${colour}`}>
+      <p className={`mt-1.5 font-mono text-3xl font-medium tabular-nums tracking-tight ${colour}`}>
         {typeof value === 'number'
           ? (<><span aria-hidden className="count" style={{ '--to': value } as CSSProperties} /><span className="sr-only">{value}</span></>)
           : value}
@@ -85,10 +86,10 @@ export function Checklist({ steps }: { steps: ChecklistStep[] }) {
           <li key={step.label} className="flex items-center gap-3 px-5 py-3">
             <span
               aria-hidden
-              className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
-                step.done ? 'border-transparent bg-accent text-on-accent' : 'border-border text-muted'}`}
+              className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-xs ${
+                step.done ? 'border-transparent bg-accent text-on-accent' : 'border-edge text-muted'}`}
             >
-              {step.done ? '✓' : ''}
+              {step.done ? <Check size={14} strokeWidth={2.5} aria-hidden /> : null}
             </span>
             <span className="min-w-0 flex-1">
               <span className={`block font-medium ${step.done ? 'text-muted line-through' : ''}`}>{step.label}</span>
@@ -125,14 +126,9 @@ export function EmptyState(
 ) {
   return (
     <div className="card flex flex-col items-center gap-2 px-6 py-10 text-center">
-      <svg className="empty-float" viewBox="0 0 96 72" width="96" height="72" fill="none" aria-hidden>
-        <rect x="8" y="10" width="54" height="36" rx="10" fill="var(--color-accent-soft)" stroke="var(--color-accent)" strokeWidth="1.6" />
-        <path d="M20 46 18 58l14-12" fill="var(--color-accent-soft)" stroke="var(--color-accent)" strokeWidth="1.6" strokeLinejoin="round" />
-        <rect x="34" y="26" width="54" height="34" rx="10" fill="var(--color-accent)" />
-        <path d="M76 60l2 10-12-10" fill="var(--color-accent)" />
-        <circle cx="52" cy="43" r="3" fill="var(--color-on-accent)" /><circle cx="61" cy="43" r="3" fill="var(--color-on-accent)" opacity="0.8" /><circle cx="70" cy="43" r="3" fill="var(--color-on-accent)" opacity="0.6" />
-        <circle cx="76" cy="14" r="3.5" fill="var(--color-lime)" /><circle cx="14" cy="64" r="2.5" fill="var(--color-lime)" />
-      </svg>
+      <span className="flex size-12 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden>
+        <Inbox size={24} strokeWidth={1.75} />
+      </span>
       <p className="mt-1 font-medium">{title}</p>
       {body !== undefined && <p className="max-w-md text-sm text-muted">{body}</p>}
       {action !== undefined && <div className="mt-2">{action}</div>}
@@ -156,7 +152,11 @@ export function Meter({ value, max, label }: { value: number; max: number; label
       role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value}
       className="h-1.5 w-full overflow-hidden rounded-full bg-border"
     >
-      <div className="h-full rounded-full bg-accent" style={{ width: `${String(pct)}%` }} />
+      {/* Scaled, not resized, so it moves on the compositor and never reflows (motion rules). */}
+      <div
+        className="h-full w-full origin-left bg-accent transition-transform duration-300 ease-out"
+        style={{ transform: `scaleX(${String(pct / 100)})` }}
+      />
     </div>
   );
 }
