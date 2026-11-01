@@ -140,8 +140,10 @@ OutboundDispatcher.enqueue(intent, contact, content, sender?)
       └─ 5. Enqueue         job keyed idempotently on (campaign, contact, template_version)
                 │
                 ▼
-        worker-send  ──► antiban.beforeSend(...)   send, wait or hold
-                ├──────► typing simulation
+        worker-send  ──► the number's lane       one at a time, replies first
+                ├──────► gates                   do-not-contact (fails), number connected
+                ├──────► antiban.beforeSend(...) send, wait or hold (with a reason)
+                ├──────► typing inside the wait
                 ├──────► provider.send(...)
                 ├──────► persist message + provider_message_id
                 └──────► on failure: classify → retry w/ backoff → DLQ after N

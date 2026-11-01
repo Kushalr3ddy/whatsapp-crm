@@ -59,7 +59,7 @@ flowchart TD
   M --> N[An admin presses Start: audience is frozen]
   N --> O[Gateway sweep: dispatchCampaign claims pending recipients with SKIP LOCKED, up to the anti-ban policy's batch]
   O --> P[Each recipient gets a message row: image or video, the file, the caption]
-  P --> Q{handleSend gates:<br/>do-not-contact, number connected, the anti-ban policy}
+  P --> Q{The number's lane gates:<br/>do-not-contact, number connected, the anti-ban policy}
   Q -- held --> R[Stays queued with the reason, retried by the sweep]
   Q -- ok --> S{GIF clip?}
   S -- no --> T[Sent as a photo with the caption]
@@ -143,24 +143,31 @@ flowchart LR
 
 ## 7 · The send pipeline for every outbound message
 
-All sends, text or picture, human or AI or campaign, end here. (Code: `handleSend` in `apps/gateway/src/work.ts`;
+All sends, text or picture, human or AI or campaign, end here. (Code: `runLane` in `apps/gateway/src/lane.ts`, started by `handleSend` and the sweep in `work.ts`;
 the rules are in [`08-antiban.md`](08-antiban.md).)
 
 ```mermaid
 flowchart TD
-  A([Message row: queued]) --> B{Contact marked do-not-contact,<br/>and no admin override?}
+  A([Message row: queued]) --> A2[Joins its number's lane: reply, agent, AI, campaign; oldest first]
+  A2 --> B{Contact marked do-not-contact,<br/>and no admin override?}
   B -- yes --> C[Failed: do_not_contact]
   B -- no --> D{Number connected?}
   D -- no --> E[Stays queued: sender_not_connected]
   D -- yes --> H{Anti-ban policy: send, wait or hold?}
-  H -- hold --> I[Stays queued with the policy's reason]
-  H -- send, or wait then send --> J[Read the file from storage if any, optional typing pause]
+  H -- hold --> I[Stays queued with the reason and when it should lift]
+  H -- wait --> W[Lane comes back at the moment the gap ends; typing runs inside the wait]
+  W --> H
+  H -- send --> N1{First message to a new chat?}
+  N1 -- yes --> R1[Ask WhatsApp once if the number has an account]
+  R1 -- not on WhatsApp --> C2[Failed: not_on_whatsapp]
+  R1 -- yes or unknown --> J
+  N1 -- no --> J[Read the file from storage if any]
   J --> K[Send through the channel]
   K --> L{Sent?}
   L -- yes --> M[Marked sent, provider id stored]
-  L -- no --> N[Marked failed with the reason]
+  L -- no --> N[Marked failed with the reason; a 463 also holds new sends to that contact]
 ```
-The only policy for now (`basicPolicy`) never holds: it makes a send wait out the rest of a random 3 to 8 second gap since the number's last send.
+The policy (`makeAntiBanPolicy`) is pure: it reads the number's state, the contact's state, the stored gap and the clock, and answers send, wait or hold. A message that has to wait does not block one that is held for a different reason (a new chat held by a timelock lets a known contact through), but it does hold up the lane behind it.
 
 ## 8 · Choosing the AI: the AI settings tab
 

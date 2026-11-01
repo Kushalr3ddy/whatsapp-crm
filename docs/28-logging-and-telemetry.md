@@ -80,7 +80,7 @@ find the whole story (section 5).
 | Process | Logs |
 |---|---|
 | **API** (`apps/api`) | One line per request and response (method, path, status, timing, request id), and `unhandled error` with the stack for any failure nothing caught. |
-| **Gateway** (`apps/gateway`) | `message sent`; why a send is held (`sender not connected — leaving message queued`, `send held by the anti-ban policy`); link and unlink results and classified link failures; connection state changes; key rotation batches (`key rotation: re-encrypted a batch onto the current key`); `gateway ready` at boot. |
+| **Gateway** (`apps/gateway`) | `message sent`; why a send is held (`sender not connected — leaving messages queued`; `anti-ban decision` at `info` with the reason, the inputs and the gap, once when a hold starts and for each send; `many messages are not reaching people`, `contacts probably blocked this number`, `opt-out handled`); link and unlink results and classified link failures; connection state changes; key rotation batches (`key rotation: re-encrypted a batch onto the current key`); `gateway ready` at boot. |
 | **Web** (`apps/web`) | Next.js's own request log (route, status, time). Errors from the API are shown to the person and are in the API log. |
 
 Levels in practice: `info` is normal events, `warn` is "something is being held back or refused but
@@ -165,7 +165,9 @@ queryable, permanent and visible in the app.
 | Question | Where the answer lives |
 |---|---|
 | **Who did what, and when?** | `audit_log`: sign-ins, assignments, overrides, exports, key rotation pause/verify. Append-only; the application role cannot edit or delete rows. |
-| **Why is this message not sent yet?** | `message.hold_reason` (shown in the thread as "waiting: …"): `sender_not_connected`, or the reason the anti-ban policy gave. |
+| **Why is this message not sent yet?** | `message.hold_reason` and `hold_until` (shown in the thread as "waiting: …"): `sender_not_connected`, or the reason the anti-ban policy gave (`timelock`, `new_chat_cap`, `quiet_hours`, `refused_463`, `decrypt_retry`, `decrypt_wave`, `likely_blocked`, `many_undelivered`). `hold_until` is null when it waits for something. |
+| **What did WhatsApp say about this number's limits?** | `channel_session` (`timelock_*`, `capping_*`, `linked_since`) for the latest; `whatsapp_notice` for every warning as it arrived. |
+| **Why did a message fail?** | `message.error_code` (`send_error`, `whatsapp_refused_463`, `not_on_whatsapp`, `do_not_contact`, …) and `error_detail`. |
 | **What has happened to this number?** | `sender_health_event` (also `GET /api/v1/senders/:id/health-events`): a refused connection (403), a logout nobody asked for, a device removed on the phone. |
 | **How is a campaign doing?** | `campaign` and `campaign_recipient`: per-recipient status, and the reason a person was skipped (`skip_reason`). |
 | **Where does a key rotation stand?** | The **Security** page, `npm run keys -- status`, and the `key_rotation_state` table. See [22 · Encryption](22-encryption.md). |
@@ -177,8 +179,8 @@ queryable, permanent and visible in the app.
 
 **"A message is stuck on waiting."**
 1. Read its `hold_reason` (or the "waiting: …" under it in the thread).
-2. `sender_not_connected`: check the Numbers page. Any other reason is the anti-ban policy holding it; it clears on its own.
-3. A message that is only waiting its turn has no reason: the policy spaces sends from one number a few seconds apart.
+2. `sender_not_connected`: check the Numbers page. Any other reason is the anti-ban engine holding it; see RB-14 for which ones clear on their own.
+3. A message that is only waiting its turn has no reason: the lane spaces sends from one number by 1 to 50 seconds, and a reply goes first.
 4. Confirm in the gateway log: `grep 'THE-MESSAGE-ID' .dev-logs/gateway.log`.
 
 **"Someone got an error."**

@@ -106,9 +106,9 @@ are the spiky parts.
 ## The two numbers that matter more than the table
 
 **1. A Baileys number sends one message every few seconds at most.**
-The anti-ban policy leaves a random 3 to 8 second gap between sends from one number (about 5.5 s on
-average, before the typing beat), so a number carries at most ~15,000 messages/day, and in practice
-fewer. "50k messages/day" is not a hardware question — it needs several numbers. Throughput here is
+The anti-ban policy leaves a random 1 to 50 second gap between sends from one number (about 25 s on
+average; the typing sits inside the wait), so a number carries at most ~3,400 messages/day if it sent around the clock, about
+2,000 for campaigns with the default 14 hours outside quiet hours, and fewer while WhatsApp's new-chat warnings stretch the gaps. "50k messages/day" is not a hardware question — it needs several numbers. Throughput here is
 bought with numbers, not with RAM. There is no daily cap, by design.
 
 **2. Meta's messaging tier caps you long before your server does** — 250/day unverified, then

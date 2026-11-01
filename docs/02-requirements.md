@@ -75,11 +75,11 @@ Numbered so everything downstream — features, tests, acceptance criteria — c
 ### Anti-ban (detail in `08-antiban.md`)
 | id | Requirement | Pri |
 |---|---|---|
-| FR-38 | Per-number gap between sends and a small campaign batch (`AntiBanPolicy`; the first engine was removed on 2026-10-30) | V1 |
-| FR-39 | Rate limits per minute / hour / day with Gaussian jitter, enforced across all workers | V1 |
-| FR-40 | Typing simulation | V1 |
-| FR-42 | Risk scoring from typed disconnect and delivery signals, with auto-throttle and auto-pause | V1 |
-| FR-43 | Recovery orchestration per incident class | V1 |
+| FR-38 | One send lane per number with a stored gap between sends and a small campaign batch (`AntiBanPolicy`; the v2 engine, `feat/antiban-v2`; the first engine was removed on 2026-10-30) | V1 |
+| FR-39 | ~~Rate limits per minute / hour / day~~ **Dropped by decision: no daily caps.** The limits are WhatsApp's own signals (timelock, new-chat cap) | — |
+| FR-40 | Typing simulation and presence, inside the wait between sends | V1 |
+| FR-42 | ~~Risk scoring~~ Replaced: delivery checks (one tick for 30 minutes, `likely_blocked`, `many_undelivered`) and WhatsApp's warnings, no score | V1 |
+| FR-43 | ~~Recovery orchestration~~ Replaced: decrypt-retry holds and `decrypt_wave`, and the 463 containment | V1 |
 | FR-44 | Policy gates with a hard distinction between admin-overridable and never-overridable | V1 |
 | FR-45 | Blocked recipients are always reported, never silently dropped | V1 |
 | FR-46 | Meta-side tier, quality-rating and status tracking, with a hard stop on marketing at Low | V1 |

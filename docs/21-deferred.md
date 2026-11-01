@@ -43,12 +43,12 @@ is not re-proposed.
 | [D-21](#d-21) | The full import mapping wizard | ▶ working on it · ◐ partly built (columns step, several phones, joined names; PR #83) |
 | [D-22](#d-22) | Row-level de-duplication with a diff-style review | 📌 pinned |
 | [D-23](#d-23) | Inbox search (F3 AC-7) | 📌 pinned |
-| [D-24](#d-24) | Typing simulation (P6 anti-ban layer 3) | ✅ done |
+| [D-24](#d-24) | Typing simulation (P6 anti-ban layer 3) | ✅ done · reworked into the send lane's wait by anti-ban v2 (2026-10-31) |
 | [D-25](#d-25) | Outbound media (sending files) | ✅ done |
 | [D-26](#d-26) | Campaign body variation (spintax + per-recipient) | ✅ done |
-| [D-27](#d-27) | Opt-out keyword handling (STOP / unsubscribe) | 📌 pinned |
+| [D-27](#d-27) | Opt-out keyword handling (STOP / unsubscribe) | ◐ STOP words, closing message and do-not-contact built by anti-ban v2 (2026-10-31); other languages not |
 | [D-28](#d-28) | Dynamic audience segments ("segregation") | ◐ partly built (minimal slice) |
-| [D-29](#d-29) | An anti-ban "advisory mode" — warn but do not enforce | ✅ done |
+| [D-29](#d-29) | An anti-ban "advisory mode" — warn but do not enforce | removed 2026-10-30 with the first engine |
 | [D-30](#d-30) | Media that fails to store is invisible to the operator | ◐ partly built (reasons recorded; manual retry missing) |
 | [D-31](#d-31) | Per-org encryption keys (the DEK/KEK design), and key rotation | ◐ partly built (key rotation) |
 | [D-32](#d-32) | Encrypting contact identifiers (phone numbers and emails) | 📌 pinned |
@@ -1192,7 +1192,9 @@ the encrypted-body question.
 
 ---
 
-## D-24 · Typing simulation (P6 anti-ban layer 3) — ✅ **LANDED 2026-09-29**
+## D-24 · Typing simulation (P6 anti-ban layer 3) — ✅ **LANDED 2026-09-29** · reworked by anti-ban v2
+
+> **Now (2026-10-31):** `typing.ts` and `typingDelayMs` are gone. Typing is part of the send lane (`apps/gateway/src/lane.ts`): `composing` for `clamp(chars x 60 ms, 2 s, 25 s)`, refreshed every 5 s, then `paused`, then the send, **inside** the gap between sends, so it adds no time. `SEND_TYPING_SIMULATION=false` still turns it off. The text below is the original design.
 
 > **In plain terms.** When a person messages on WhatsApp, the other side briefly sees "typing…" before the
 > message arrives. A bot that sends instantly never shows that, and WhatsApp can notice. Typing simulation
@@ -1322,7 +1324,9 @@ yet**, so this is a known soft spot, not a solved one.
 
 ---
 
-## D-27 · Opt-out keyword handling (STOP / unsubscribe) — OUT OF ALPHA SCOPE (Kushal, 2026-10-06)
+## D-27 · Opt-out keyword handling (STOP / unsubscribe) — OUT OF ALPHA SCOPE (Kushal, 2026-10-06) · ◐ built in anti-ban v2 (2026-10-31)
+
+> **Built on `feat/antiban-v2`:** a contact whose whole message is `stop`, `unsubscribe` or `opt out` (or one of the org's own words), or whom the AI classifier reads as negative, gets one closing message and goes on do-not-contact with the reason `opt_out`; a restart word (`start`) or an agent lifts it; an agent can mark a reply as an opt-out by hand. See `08-antiban.md` and F6 S6. **Not built:** the multi-language packs (the org can add its own words), and a stop word inside a sentence is left to the classifier.
 
 **What:** an inbound `STOP` / `UNSUBSCRIBE` (multi-language) that **automatically and irreversibly**
 sets `do_not_contact` and drops the contact from every pending send. Distinct from the manual
@@ -1405,7 +1409,7 @@ earn its place with filters on custom fields such as city and skills (D-40, D-70
 
 ---
 
-## D-29 · An anti-ban "advisory mode" — warn but do not enforce — ✅ **BUILT 2026-10-06**
+## D-29 · An anti-ban "advisory mode" — warn but do not enforce — ✅ **BUILT 2026-10-06** · **removed 2026-10-30** with the first engine (migration 0039); there is nothing to switch off in the v2 engine
 
 > **Update 2026-10-09:** do-not-contact is now actually enforced on every send path, and an admin can lift it per message or campaign (audited, with a reason); advisory mode still does not bypass it. The line below saying it stays hard is superseded.
 >

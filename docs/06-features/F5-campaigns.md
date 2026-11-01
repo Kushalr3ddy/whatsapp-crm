@@ -28,7 +28,7 @@ mid-run must not change who is being messaged.
 Re-enqueueing is a no-op; a worker restart cannot duplicate.
 
 **Execution is deliberately slow.** The anti-ban policy queues a small batch per number and spaces the
-sends a few seconds apart. A 10,000-recipient campaign takes hours, not seconds. This is a feature,
+sends by a random 1 to 50 seconds, drawn once at launch (`planned_gap_ms`), so `GET /campaigns/:id/eta` can say when it finishes. A 10,000-recipient campaign takes days, not hours, from one number. This is a feature,
 and the UI must make it feel like one rather than a bug.
 
 **Pause/resume acts on the queue**, not by mutating rows, so in-flight jobs finish cleanly.
@@ -47,7 +47,7 @@ and the UI must make it feel like one rather than a bug.
 - **AC-6** Quiet hours and the recipient's timezone are respected; a campaign scheduled into
   quiet hours waits rather than sending.
 - **AC-7** A sender crossing risk High auto-pauses the campaign on that sender and alerts.
-- **AC-8** An opt-out received mid-campaign removes that contact from all pending sends immediately.
+- **AC-8** An opt-out received mid-campaign removes that contact from all pending sends immediately. *(Built in anti-ban v2: the contact goes on do-not-contact and each pending message to them fails as `do_not_contact` when the lane reaches it.)*
 - **AC-9** Cost actuals are reconciled against estimates and visible after completion.
 
 ## API surface

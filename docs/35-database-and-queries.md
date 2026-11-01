@@ -36,19 +36,19 @@ erDiagram
   ORG ||--o{ AI_TEMPLATE : saves
 ```
 
-**The 32 tables, by group** (one line each; the generated reference has the rest):
+**The 34 tables, by group** (one line each; the generated reference has the rest):
 
 | Group | Tables |
 |---|---|
 | Workspaces and people | `org`, `app_user`, `org_membership`, `session`, `api_key` |
 | Contacts | `contact`, `contact_identity`, `tag`, `contact_tag`, `custom_field`, `segment` |
 | Inbox | `conversation`, `message`, `media_asset`, `internal_note`, `canned_reply`, `conversation_participant`, `conversation_presence` |
-| WhatsApp numbers | `sender_identity`, `channel_session`, `channel_auth_state` |
+| WhatsApp numbers | `sender_identity`, `channel_session`, `channel_auth_state`, `antiban_setting` |
 | Campaigns | `campaign`, `campaign_recipient`, `ai_setting`, `ai_template`, `ai_job` |
 | Import | `import_run`, `import_row` |
-| Audit and health | `audit_log`, `ai_run`, `key_rotation_state`, `sender_health_event` |
+| Audit and health | `audit_log`, `ai_run`, `key_rotation_state`, `sender_health_event`, `whatsapp_notice` |
 
-That is 32 tables. A person's number or email is not on `contact`: it is a row in `contact_identity`
+That is 34 tables. A person's number or email is not on `contact`: it is a row in `contact_identity`
 (kinds `phone`, `email`, `wa_jid`, `wa_lid`, …), so one person can have several ways to be reached.
 
 ## 2 · How tenancy (one org never sees another) works

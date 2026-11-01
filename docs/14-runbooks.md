@@ -221,3 +221,26 @@ said `recv retry request, but message not available` and the placeholder never c
 
 **Prevent:** `dev-up.sh` no longer runs the gateway under `tsx watch` (since 2026-10-23; `--watch-gateway` brings the old behaviour back for a laptop with no real number linked). Do not restart the gateway while testing real numbers; after changing gateway or `packages/core` code, stop and start the script. (Before that, under `tsx watch` every saved edit to a file it imports restarted it.) Restart only the API
 and web with `bash infra/scripts/dev-up.sh --no-gateway`. Never run two gateways on one number. Tracked as D-82 (flush auth state on shutdown; detect the burst and say so on the page).
+
+---
+
+## RB-14 · Messages are held ("waiting: …")
+
+**Impact** Queued messages are not leaving a number, or not leaving to one contact. Nothing is dropped; a hold keeps the message in its place in the lane.
+
+**Diagnose** `message.hold_reason` and `hold_until` on a waiting message (also the "waiting: …" line in the thread); the gateway log line `anti-ban decision` has the reason and its inputs. `channel_session` (`timelock_*`, `capping_*`) and `whatsapp_notice` show what WhatsApp last said about the number.
+
+| Reason | What it means | How it ends |
+|---|---|---|
+| `timelock`, `new_chat_cap` | WhatsApp is not letting the number start new chats. Known contacts still get messages. | By itself at `hold_until` (WhatsApp's time). Nothing to do. |
+| `quiet_hours` | Campaign and AI first messages wait out the org's quiet hours (default 22:00 to 08:00, Asia/Kolkata). | At `hold_until`. Change the hours with `PUT /antiban/settings` (admin). |
+| `refused_463` | WhatsApp refused a message to this contact (463). New sends to them are held. The cause of 463 is not known. | **Nothing clears it yet** (the Retry action is S10). Do not clear it in bulk: `UPDATE conversation SET refused_463_at = NULL WHERE id = '…'` for one chat, after looking at why. |
+| `decrypt_retry` | The contact's phone asked for our last message again. New sends to them wait. | A delivered or read receipt after the retry, or a message from them. There is no timeout. |
+| `decrypt_wave` | Phones of 3 or more contacts asked for retries within 10 minutes. The whole number is held and a critical health event is recorded: suspect the session store, not the contacts. | **Only relinking the number** (a reconnect does not). Check `docs/45` and RB-13 first. |
+| `many_undelivered` | 8 or more of the last 20 sends to fast-delivering contacts are still at one tick after 30 minutes. The number's campaigns are held (replies and manual sends still go). | When the count falls below 4, or `POST /senders/:id/resume` (needs `senders:write`; audited). Look at the Numbers page timeline first: WhatsApp may be limiting the number. |
+| `likely_blocked` | The contact's photo and about were visible and are gone: they probably blocked the number. Campaigns and the AI stop; an agent can still send by hand. | When the contact writes to us. |
+| `sender_not_connected` | The number is down. | When it reconnects (RB-02). |
+
+A message that failed rather than waited: `do_not_contact` (the contact is on the list; an `opt_out` flag lifts with `PUT /contacts/:id/do-not-contact` or the contact sending `start`), `not_on_whatsapp`, `whatsapp_refused_463`, `send_error` (`message.error_detail` has the provider's words). Failed messages are never retried automatically.
+
+**Prevent** Target people who expect the message; the engine reacts to WhatsApp's warnings, it cannot make a number safe.

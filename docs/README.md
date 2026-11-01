@@ -43,7 +43,7 @@ the database and the phone stay in sync, and why "connected" is not "receiving")
 | [05 Data model](05-data-model.md) | Every table, **every column explained** |
 | [06 Features](06-features/) | One file per module, F1–F12, with acceptance criteria and test cases |
 | [07 Ingestion](07-ingestion.md) | Getting data in from spreadsheets, sheets, APIs |
-| [08 Anti-ban](08-antiban.md) | What was removed, what is in place now, and where a new anti-ban plugs in |
+| [08 Anti-ban](08-antiban.md) | How a message goes out, what the engine reacts to, and where a different policy plugs in |
 | [09 Security](09-security.md) | Threat model, encryption, compliance |
 | [10 Stack](10-stack.md) | Every technology choice, and the alternative that lost |
 | [11 Conventions](11-conventions.md) | How code is written here, including the comment rule |

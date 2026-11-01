@@ -13,7 +13,25 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
-### 2026-10-30 — the old anti-ban engine removed; a placeholder policy in its place
+### 2026-10-31 — anti-ban v2: the new engine (stories S1 to S9 of F6), on `feat/antiban-v2`
+The engine that replaces the placeholder. Spec and acceptance cases: `docs/06-features/F6-antiban.md`; where the code is: `docs/08-antiban.md`. **Not in this branch:** the screens (S10: message timeline, campaign recipient list, ETA line, live number card), which come after.
+- **Send lane and priorities:** one lane per number (`apps/gateway/src/lane.ts`) takes every outbound message from any source, in the order reply (answers an inbound from the last 24 h), what an agent typed, the AI, campaign; oldest first inside each. Two sends from one number never leave together. The send path in `work.ts` was cut down to hand the lane its messages.
+- **Gaps and typing:** a uniform 1 to 50 s gap after the previous send (none for the first message of a run, a silence of 90 s or more). `composing` for `clamp(chars x 60 ms, 2 s, 25 s)` sits inside the wait, then `paused`, then the send. A wait longer than the typing is scheduled, not slept (`WorkContext.schedule`).
+- **Presence and read receipts:** `available` before a run, `unavailable` after 90 s of nothing sent. An inbound message is no longer marked read on arrival: only when an agent opens the chat, or 3 to 20 s before the reply to it starts typing.
+- **WhatsApp's warnings:** the Baileys adapter turns `reachoutTimeLock` and `message-capping.update` into port events; every raw one is kept in `whatsapp_notice`, the latest of each on `channel_session`. Timelock holds new chats (`timelock`); the cap's first and second warnings stretch new-chat gaps by 2 and 3; `CAPPED` or a used-up quota holds them (`new_chat_cap`) until the cycle ends. A 463 fails that message (`whatsapp_refused_463`) and holds new sends to that contact (`refused_463`): a containment, the cause of 463 is still unknown. Nothing in the code clears that hold yet (the Retry action is S10); today it is cleared by hand in the database. `device_removed` is as before (R-017).
+- **Exact schedule and ETA:** each recipient's gap is drawn once at launch and stored (`planned_gap_ms`); `GET /campaigns/:id/eta` plays it forward, splits what goes now from what waits for the quota reset, and names what moved the finish (`delayedBy`).
+- **Ticks, `likely_blocked`, `many_undelivered`:** the sweep looks at each message still at one tick 30 minutes after sending, probes the contact's profile photo and about (at most once per contact per 24 h) and compares with the snapshot from the last delivery. Both gone: the contact is `likely_blocked` (campaigns and the AI stop; an agent can still send by hand); otherwise `likely_offline`. Nothing is resent. 8 or more of the last 20 sends to fast-delivering contacts still stuck hold the number's campaigns (`many_undelivered`) with a health event; `POST /senders/:id/resume` lifts it.
+- **Decrypt-retry holds and `decrypt_wave`:** a contact's phone asking for a message again holds every new send to them (`decrypt_retry`) until a later delivered or read receipt or a message from them. A second request for the same message resets the session with that contact. Retries from 3 contacts within 10 minutes hold the whole number (`decrypt_wave`, critical health event) until the number is linked again.
+- **STOP, opt-out closing message and do-not-contact:** a stored inbound message that is a STOP word (`stop`, `unsubscribe`, `opt out`, the org's own; the whole message) or that the AI classifier reads as negative sends one closing message (why they were messaged, what was last sent, the org's contact number and email; plain text, no links) at reply priority, then the contact goes on do-not-contact with the reason `opt_out`. A restart word (`start`, the org's own) lifts only an opt-out flag. An agent can answer a flagged contact who wrote again, and can mark a reply as an opt-out by hand.
+- **Extra protection:** `isRegistered` just before the first message to a new chat (cached 30 days; "could not tell" sends); variants `{a|b}` with a seeded pick and a `no_variation` warning; media after reply (new chats get the text first, the picture or link follows when they reply); the reaction brake (new-chat gaps x2 when the last 50 new-chat sends show 10% or more `likely_blocked`, or 30 or more sent with under 5% replies); quiet hours for campaign and AI first messages (default 22:00 to 08:00, Asia/Kolkata, per org); hints (`new_number`, `use_phone_too`).
+- **New API routes and fields:** `GET /campaigns/:id/eta`, `GET/PUT /antiban/settings`, `POST /senders/:id/resume`, `POST /conversations/:id/opt-out`; `GET /senders` carries WhatsApp's limits and `hints`; campaigns take `purpose` and `mediaAfterReply` and answer with `warnings`. See `docs/15-api.md`.
+- **Migrations `0040_antiban_v2_engine`** (tables `whatsapp_notice` and `antiban_setting`; timelock, cap and `linked_since` on `channel_session`; `refused_463_at` on `conversation`; `hold_until`, `planned_gap_ms`, `error_detail`, read timestamps on `message`; `planned_gap_ms`, `followup_pending` on `campaign_recipient`; `media_after_reply` on `campaign`) **and `0041_antiban_v2_contact_state`** (closing-message settings and stop and restart words on `antiban_setting`; `purpose` on `campaign`; `many_undelivered_at`, `many_undelivered_resumed_at`, `decrypt_wave_at` on `channel_session`; `likely_blocked_at`, `decrypt_retry_at`, `profile_snapshot`, `profile_probe_at` on `conversation`; `tick_checked_at`, `tick_verdict` on `message`). Both are additive. `docs/05-data-model.md` lists them.
+- **Channel port:** optional `presence`, `markRead`, `notices()`, `retries()`, `profileSnapshot` and `resetSession`, in the Baileys and fake adapters.
+- **Removed:** `basicPolicy` and the old `typing.ts`; the gateway takes any `AntiBanPolicy`, now `makeAntiBanPolicy` (`packages/core/src/antiban/policy.ts`). **There are no daily caps**, by design. Every threshold with no data behind it is a named constant marked *guess* in `packages/core/src/antiban/constants.ts`, and each decision that uses one is logged at `info` with its inputs.
+- **Tests:** unit tests in `packages/core/src/antiban/*.test.ts` and the Baileys adapter (`notices.test.ts`, `profile-session.test.ts`); integration tests `tests/integration/antiban-v2-{lane,schedule,warnings,protection,ticks,decrypt,optout,api}.test.ts` with a shared harness. `antiban-purged.test.ts` still keeps the old engine's names out.
+- **Not proven:** nothing here has run against a real phone. The numbers marked *guess* are untuned.
+
+### 2026-10-30 — the old anti-ban engine removed; a placeholder policy in its place (replaced by the v2 engine above)
 - **Removed:** the warmup ramp and the daily, hourly and per-minute caps, circadian pacing, the contact-graph gates, the risk score and health bands (degraded and quarantined), timed recovery after a 463 or 429, silent-restriction detection, advisory mode (`POST /senders/:id/enforcement`), fake background presence, delayed read receipts, recipient time zones, the campaign forecast, and the simulation harness (`npm run test:sim`). Gone with them: the Numbers page health panel, risk bar and banners, the matching inbox, composer and AI notices, the campaign forecast line, the `SEND_RATE_*`, `SEND_CIRCADIAN`, `NEW_CONTACT*`, `CONTACT_GRAPH_GATES`, `SEND_RECIPIENT_TIMEZONE`, `SEND_READ_RECEIPTS` and `SEND_BACKGROUND_ENTROPY` settings, `docs/27-restriction-tracking.md`, and the `presence` and `markRead` calls of the channel port.
 - **Added:** `AntiBanPolicy` (`packages/core/src/antiban.ts`): `beforeSend` (send, wait or hold) and `campaignBatch`, with one implementation, `basicPolicy` (a random 3 to 8 second gap between sends from one number, at most 20 campaign messages waiting per number, no daily cap by design). Every send passes through it, whoever queued it.
 - **Kept:** do-not-contact, the recipient policy gates and their overrides, the typing beat, the number fallback, the 403 and logout ban banners with their campaign pause, the device-removed unlink notice (R-017), and the decrypt-failure tracker (it now only feeds the composer warning). The identical-body daily cap (`IDENTICAL_BODY_DAILY_CAP`) is removed too.
@@ -1160,23 +1178,21 @@ Working through the remaining anti-ban backlog one by one. **#1 of 8 done.**
   a web Import tab with simple column mapping.
 - ❌ Google Sheets, REST puller, webhook source, schedules, full mapping wizard (**D-21**).
 
-### P6 · Anti-ban — ✅ complete
-- ✅ All six layers, enforced at the one send chokepoint: warmup ramp, per-minute/hour/day ceilings,
-  Gaussian jitter; circadian pacing (the sender's day **and**, via `timezoneForPhone`, the recipient's);
-  contact-graph gates with the reply-ratio floor; health scoring (both directions, receipt grace,
-  decrypt-failure signal); timed recovery; reconnect easing; outbound-only clamp; identical-body guard;
-  delivery→speed curve. Human behaviour: typing simulation, delayed read receipts, background presence
-  noise. A **sender-health panel** and recovery banners on the Numbers page.
-- ✅ **The simulation harness** (`npm run test:sim`) proves it against a virtual WhatsApp.
-- ❌ Not built: the admin-overridable gates (engagement lock, cooldown, duplicate-campaign guard), a
-  normalised `send_risk_event` table, Meta-side tier/quality tracking (P8), group limits, per-number proxy.
+### P6 · Anti-ban — ◐ engine built (v2), screens not yet
+- ✅ **v2 engine (2026-10-31, `feat/antiban-v2`):** the send lane, gaps and typing, presence and read receipts, WhatsApp's warnings,
+  the exact schedule and ETA, ticks and `likely_blocked`, decrypt-retry holds, STOP and the closing message, and the extra protection.
+  See the 2026-10-31 entry under *Latest* and `docs/08-antiban.md`. No daily caps, by design.
+- ◐ S10 (visibility) not built yet.
+- The first engine (six layers, health bands, simulation harness) was **removed on 2026-10-30** and is not coming back;
+  its history is in the entries below and in `docs/21-deferred.md`.
+- ❌ Not built: Meta-side tier/quality tracking (P8), group limits, per-number proxy.
 
 ### P7 · Campaigns — ✅ alpha-complete
 - Create (target by tag / import / hand-picked contacts / dynamic segment), a **dry-run preview**,
   start / pause / resume / cancel, per-recipient results, a forecast; the audience is frozen at start;
   bodies are rendered per recipient (spintax + `{{name}}`); the gateway paces them through the engine.
   A full **Broadcast UI**.
-- ❌ Templates (**D-19**), scheduling and quiet hours, outbound media in a campaign, cost estimate.
+- ❌ Templates (**D-19**), scheduling, outbound media in a campaign, cost estimate. (Quiet hours now exist as an org setting, anti-ban v2.)
 
 ### P8 · Meta Cloud API — ❌ not started
 
@@ -1220,6 +1236,7 @@ In the order Kushal set, remaining (2026-10-21). *Pinned* items are deliberately
    **D-33** deployment, **D-34/37/38/39** Meta, **D-31** per-org keys, **D-44** Baileys 7, **D-48** security tests, **D-49** e2e revamp,
    **D-56** telemetry, **D-57** background import, **D-61/62/64** web tier, executable, database portability.
 9. **Real-number pilot** and the **72-hour datacenter-IP test** once hosting (D-33) is chosen; a spare number is needed.
+10. **Anti-ban v2 (2026-10-31):** the engine (S1 to S9) is built on `feat/antiban-v2`; left: merge it, build S10 (visibility: message timeline, campaign recipient list, ETA line, number card), a real-phone check of timelock, cap, ticks, decrypt retries and the STOP closing message, and tuning the *guess* constants. D-101 and D-102 need the same real-phone session.
 
 ## Blockers (detail in `HANDOFF.md`)
 

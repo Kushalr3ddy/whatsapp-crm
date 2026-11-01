@@ -184,8 +184,8 @@ Each download is recorded in the audit log as `media.downloaded`, and opening a 
 
 `POST /campaigns/:id/start` **queues nothing**. It freezes the audience into
 `campaign_recipient` rows, and the gateway converts those into messages a small batch at a
-time (the anti-ban policy's `campaignBatch`, 20 waiting per number for now), each one spaced from the
-last by a few seconds:
+time (the anti-ban policy's `campaignBatch`, 20 waiting per number), each one spaced from the
+last by the gap drawn for it at start (1 to 50 seconds, `planned_gap_ms`):
 
 ```json
 { "status": "running",

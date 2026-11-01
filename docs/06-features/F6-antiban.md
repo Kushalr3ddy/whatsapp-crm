@@ -1,7 +1,10 @@
 # F6 · Anti-ban
 
-**Status:** v2 in build (2026-10-31). Replaces the placeholder `basicPolicy` behind the `AntiBanPolicy` seam that the cleanup
-(PR #9) left. The diagrams this spec follows: https://claude.ai/artifact/FrRGsgBUBwYxuKUofWmGWn (sections 1–8).
+**Status (2026-10-31):** the engine (S1–S9) is built on branch `feat/antiban-v2` (stories S1–S9, migrations 0040 and 0041, one
+test per AC from 1.1 to 9.2). **S10 (visibility) is not in this branch.** `basicPolicy` is gone (AC-9.3). Where the built behaviour
+differs from an AC below, see *Where the built engine differs from this spec*. Nothing has run against a real phone yet.
+The placeholder `basicPolicy` sat behind the `AntiBanPolicy` seam that the cleanup (PR #9) left. The diagrams this spec follows:
+https://claude.ai/artifact/FrRGsgBUBwYxuKUofWmGWn (sections 1–8).
 
 **What nothing here can promise:** that a number is not banned. WhatsApp's model is secret and the biggest input is people
 reporting the number. This feature does three things: it acts on every signal WhatsApp gives us, it never sends in a way that
@@ -119,7 +122,26 @@ Checked by the sweep for every outbound message still at one tick 30 min (*guess
 - **AC-9.2** DNC, the recipient gates and "number not connected" still sit outside the policy and cannot be relaxed by it.
 - **AC-9.3** `basicPolicy` is deleted.
 
-## S10 · Visibility (PR B)
+## Where the built engine differs from this spec
+
+Read from the code on `feat/antiban-v2`; the acceptance tests pass against what is built, so these are decisions the build made, not bugs.
+
+| AC | Spec says | Built |
+|---|---|---|
+| AC-6.4, AC-9.2, the `dnc` code in S10 | A contact on DNC is held (`dnc`) | A message to a DNC contact is **failed** with `do_not_contact` by the gateway's last gate (`apps/gateway/src/lane.ts`, `gateFailure`), not held, and never reaches the policy. `dnc` is in the hold-reason list but nothing produces it. Only an admin's audited per-message override, the closing message, or an agent answering a contact who wrote after being flagged gets past it. |
+| AC-5.4 | The whole number is held (`decrypt_wave`) | Held with no expiry time. It lifts **only when the number is linked again**, not on a reconnect and not by resuming (`antiban/holds.ts`, `decryptWaveActive`). |
+| AC-6.1 | A STOP word, or the classifier | A STOP or restart word counts only as the **whole message**, ignoring case and punctuation (`antiban/optout.ts`): "stop" opts out, "please stop" does not, and is left to the classifier. A slow (over 8 s) or failing model counts as "not negative". |
+| AC-4.3, AC-5.1 | The state is on the contact | `likely_blocked_at` and `decrypt_retry_at` are columns of **`conversation`**, so they are per number: the same person on two numbers is two states. `refused_463_at` is on `conversation` too. |
+| AC-1.2, S1 priority | A reply answers an inbound from the last 24 h | Decided by the **conversation**, not by who wrote the message: an AI message or a campaign message to a chat whose contact wrote in the last 24 h is queued at **reply** priority (`antiban/lane-state.ts`). So an AI reply inside 24 h counts as a reply and **skips quiet hours** (AC-7.5 only holds campaign and AI messages that are not replies). The opt-out closing message is always reply priority. |
+| AC-7.5 | The org's time zone | Quiet hours default to 22:00 to 08:00 in **Asia/Kolkata** until the org sets its own (`antiban_setting`, `antiban/constants.ts`). An unreadable setting never blocks sending. |
+| AC-2.6 | New sends to that contact are held | Held (`refused_463`), but no code lifts it: only a hand edit of `conversation.refused_463_at` does. The Retry action is S10. |
+| AC-5.2 | The hold lifts on a receipt or a message | Also true, and there is no timeout: a `decrypt_retry` that never gets a later receipt or message from the contact stays. `likely_blocked` is cleared only by a message from the contact. |
+| AC-4.7 | Resume "from the number card" | The route exists (`POST /senders/:id/resume`); the card is S10. After a resume only newer sends count toward the hold. |
+| AC-2.7 | Everything held, campaigns paused `unlinked` | A number that is not connected leaves its messages queued with the hold reason `sender_not_connected`; the campaign pause (`unlinked`) is done by the connection handler, not the policy. `unlinked` is in the hold-reason list but nothing writes it as a message hold. |
+| AC-4.3, S10 | `likely_blocked` stops campaigns and AI | The hold scope is exactly campaign and AI priority; replies and manual sends still go. `many_undelivered` stops campaigns only. `decrypt_retry`, `refused_463`, `decrypt_wave` stop every priority. |
+| AC-1.3 | Gap 1–50 s | Drawn once and stored (`planned_gap_ms`); the first message of a run has none. Messages from an agent or a reply draw theirs when first seen by the lane. |
+
+## S10 · Visibility (PR B, not built on this branch)
 
 Reason codes shown to the user, each with a plain sentence and, where one exists, an action:
 

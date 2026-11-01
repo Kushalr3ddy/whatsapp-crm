@@ -18,8 +18,8 @@ the state of one contact. Every threshold with no data behind it is a named cons
 One **lane** per number (`apps/gateway/src/lane.ts`). Every outbound message of that number, from any source, waits in it, and the
 only thing that reaches the provider is the lane.
 
-1. **Order:** a reply (answers an inbound from the last 24 h), then what an agent typed, then the AI, then campaign messages; oldest first within each.
-2. **Gates outside the policy** (they cannot be relaxed by it): do-not-contact, an empty body, the number itself, a number that is not connected.
+1. **Order:** a reply (answers an inbound from the last 24 h), then what an agent typed, then the AI, then campaign messages; oldest first within each. The priority is read from the chat, not from who wrote the message: an AI or campaign message to a chat whose contact wrote in the last 24 h goes as a reply (and skips quiet hours). The opt-out closing message is always a reply.
+2. **Gates outside the policy** (they cannot be relaxed by it): do-not-contact (the message is **failed** with `do_not_contact`, not held), an empty body, the number itself, a number that is not connected (the message stays queued with `sender_not_connected`).
 3. **The policy** (`AntiBanPolicy`, `packages/core/src/antiban.ts`; the v2 driver is `antiban/policy.ts`) answers `send`, `wait ms` or `hold {reason, until}`. It is pure: everything it reads is in the `SendContext`.
 4. **Gap:** uniform 1 to 50 s after the previous send; the first message of a run (a silence of 90 s or more) has none. The gap is drawn once and stored (`campaign_recipient.planned_gap_ms`, copied to `message.planned_gap_ms`), so the schedule is known in advance.
 5. **Typing sits inside the wait:** `composing` for `clamp(chars x 60 ms, 2 s, 25 s)`, refreshed every 5 s, then `paused`, then the send. The wait is the longer of gap and typing.
@@ -40,10 +40,12 @@ survives a restart, and when it lifts the message goes in its original place in 
 | Timelock active (`reachoutTimeLock`) | New chats held (`timelock`) until it ends; known contacts still go |
 | Cap `FIRST_WARNING` / `SECOND_WARNING` | Gaps before new chats x2 / x3 (*guess*) |
 | Cap `CAPPED`, or quota used up | New chats held (`new_chat_cap`) until the cycle ends |
-| A 463 refusal | That message `failed`; new sends to that contact held (`refused_463`) until a person lifts it. A containment: the cause of 463 is not known yet |
+| A 463 refusal | That message `failed`; new sends to that contact held (`refused_463`). Nothing clears it yet (the Retry action is S10): today it is cleared by hand (`conversation.refused_463_at`). A containment: the cause of 463 is not known yet |
 | Reaction brake: of the last 50 new-chat sends, 30+ with under 5% replies (or 10%+ marked `likely_blocked`) | New-chat gaps x2 (*guess*); lifts by itself |
-| Quiet hours (default 22:00 to 08:00, org time zone, `antiban_setting`) | Campaign and AI first messages held (`quiet_hours`); replies and manual sends still go |
+| Quiet hours (default 22:00 to 08:00 in Asia/Kolkata until the org sets its own, `antiban_setting`) | Campaign and AI first messages held (`quiet_hours`); replies and manual sends still go |
 | `device_removed` | As before (R-017): everything held, campaigns paused `unlinked` |
+
+Setting `SEND_TYPING_SIMULATION=false` turns the typing off (CI and the fake channel do); it is the only anti-ban setting in the environment, everything else is a constant or an org setting.
 
 WhatsApp's raw warnings are kept in `whatsapp_notice`; the latest of each, the quota, `linked_since` and the timelock type are on
 `channel_session`. The port carries them as `ChannelProvider.notices()`; `presence()` and `markRead()` are optional port methods.
