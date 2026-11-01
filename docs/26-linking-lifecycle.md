@@ -33,6 +33,9 @@ Two columns describe a number, and they mean different things — conflating the
   with `app_user.status`, which is a separate table using `active` / `disabled` for a person's
   login — see `05-data-model.md`.)
 
+- **`channel_session.linked_since`** — the first `open` after the last link. A logout clears it. The anti-ban `decrypt_wave` hold on a
+  number ends only when this is later than the wave, so **relinking the number is what lifts that hold**; a reconnect does not.
+
 The credentials themselves are rows in **`channel_auth_state`**, encrypted (see `22-encryption.md`).
 Their *presence* is what makes a number "linked" from our side: the gateway can only restore a
 socket for a number that has stored credentials, and Baileys only issues a fresh QR for a number

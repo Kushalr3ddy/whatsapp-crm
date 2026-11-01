@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as core from '@crm/core';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +24,7 @@ const FORBIDDEN = new RegExp([
   'readIsDue', 'timezoneForPhone', 'circadianActivity', 'circadianDelayMs', 'circadianTimezone',
   '(?<!pg_)advisory(?!_xact| lock)', 'daily_cap_override', 'dailyCapOverride', 'warmup_started_at', 'warmupStartedAt',
   'quarantined', 'degraded', 'restriction_state', 'restrictionState', 'recovery_until', 'recoveryUntil', 'recovery_incident',
+  'basicPolicy', 'makeBasicPolicy', 'BASIC_GAP_MIN_MS', 'BASIC_GAP_MAX_MS', 'BASIC_BATCH',
   'perSenderDailyCap', 'CampaignForecast', 'SEND_RATE_PER_', 'IDENTICAL_BODY', 'identicalBodyCap', 'SEND_CIRCADIAN', 'CONTACT_GRAPH_GATES', 'SEND_BACKGROUND_ENTROPY'
 ].join('|'));
 
@@ -57,5 +59,14 @@ describe('the old anti-ban engine stays removed', () => {
     for (const gone of ['pacing', 'health', 'recovery', 'restriction', 'contact-graph', 'entropy', 'read-receipts', 'recipient-timezone']) {
       expect(() => statSync(join(root, 'packages/core/src', `${gone}.ts`)), gone).toThrow();
     }
+  });
+});
+
+describe('AC-9.3 the placeholder policy is deleted', () => {
+  it('AC-9.3 basicPolicy and its constants are no longer exported, and the v2 policy is', () => {
+    for (const gone of ['basicPolicy', 'makeBasicPolicy', 'BASIC_GAP_MIN_MS', 'BASIC_GAP_MAX_MS', 'BASIC_BATCH', 'typingDelayMs']) {
+      expect(core, gone).not.toHaveProperty(gone);
+    }
+    expect(core.makeAntiBanPolicy).toBeTypeOf('function');
   });
 });

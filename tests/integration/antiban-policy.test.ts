@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
@@ -6,15 +6,16 @@ import { createDatabase, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { createLogger } from '@crm/shared';
-import { storeInboundMessage, BASIC_BATCH, type AntiBanPolicy } from '@crm/core';
+import { storeInboundMessage, CAMPAIGN_QUEUE_AHEAD, type AntiBanPolicy } from '@crm/core';
 import {
-  handleSend, dispatchCampaigns, sweepPendingWork, restoreSessions, type WorkContext
+  handleSend, dispatchCampaigns, kickLane, sweepPendingWork, restoreSessions, type WorkContext
 } from '../../apps/gateway/src/work.js';
 
 /**
- * The anti-ban policy in the send path, end to end: every message that leaves the gateway asks the policy, whoever queued
- * it; the policy can space sends out, hold one, or let it go; a campaign queues a small batch at a time. And what the
- * migration that removed the old engine does to the rows it left behind.
+ * The anti-ban policy seam in the send path, end to end (F6 S9): every message that leaves the gateway asks the policy, whoever
+ * queued it; any policy fits (a fixed one here); it can wait, hold or let a message go; a campaign queues a small batch at a time.
+ * The v2 policy itself is covered in `antiban-v2-*.test.ts`. And what the migration that removed the old engine does to the rows it
+ * left behind.
  */
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const kms = new LocalKms({
@@ -63,17 +64,20 @@ function fixed(decision: Awaited<ReturnType<AntiBanPolicy['beforeSend']>>): Anti
   return {
     get asked() { return asked; },
     beforeSend: () => { asked += 1; return Promise.resolve(decision); },
-    campaignBatch: () => BASIC_BATCH
+    campaignBatch: () => CAMPAIGN_QUEUE_AHEAD
   };
 }
 
 beforeAll(() => { db = createDatabase(url, { max: 6 }); });
 afterAll(async () => { await db.$client.end(); });
+afterEach(async () => { await db.execute(sql`DELETE FROM org WHERE id = ${orgId}`); });
 
 beforeEach(async () => {
   slept = [];
   orgId = randomUUID();
   await db.execute(sql`INSERT INTO org(id,name,slug) VALUES (${orgId},'ab',${'ab-' + orgId.slice(0, 8)})`);
+  // Quiet hours depend on the time of day the suite runs at; they have their own tests.
+  await db.execute(sql`INSERT INTO antiban_setting (org_id, quiet_hours_enabled) VALUES (${orgId}, false)`);
   senderId = (await one<{ id: string }>(sql`
     INSERT INTO sender_identity(org_id,provider,label,phone_e164,status)
     VALUES (${orgId},'fake','ab','+919000000321','active') RETURNING id`)).id;
@@ -89,25 +93,23 @@ beforeEach(async () => {
 });
 
 describe('every send goes through the policy', () => {
-  it('spaces a reply, an AI reply and a campaign message 3 to 8 seconds apart from one number', async () => {
+  it('AC-9.1 asks the policy about a reply, an AI reply and a campaign message alike, whoever queued them', async () => {
     const ids = [
       await queue('manual reply', 'agent'),
       await queue('the assistant answering', 'ai'),
       await queue('campaign opener', 'system'),
       await queue('and an api message', 'api')
     ];
-    for (const id of ids) await handleSend(ctx(), id);
+    const asked: string[] = [];
+    const policy: AntiBanPolicy = {
+      beforeSend: (c) => { asked.push(c.message.id); return Promise.resolve({ action: 'send' }); },
+      campaignBatch: () => 20
+    };
+    await kickLane(ctx({ antiBan: policy }), senderId);
 
-    // All four went out through the provider ...
-    expect(provider.sent.map((m) => (m.content as { body: string }).body))
-      .toEqual(['manual reply', 'the assistant answering', 'campaign opener', 'and an api message']);
+    expect(provider.sent).toHaveLength(4);
+    for (const id of ids) expect(asked).toContain(id);
     for (const id of ids) expect((await statusOf(id)).status).toBe('sent');
-    // ... the first at once (nothing sent before it), each later one after the rest of a 3-8 s gap.
-    expect(slept).toHaveLength(3);
-    for (const ms of slept) {
-      expect(ms).toBeGreaterThan(2_500);
-      expect(ms).toBeLessThanOrEqual(8_000);
-    }
   });
 
   it('does not make a number wait for a gap another number already served', async () => {
@@ -122,23 +124,23 @@ describe('every send goes through the policy', () => {
     await handleSend(ctx(), await queue('from the second number', 'agent', otherConv));
 
     expect(provider.sent).toHaveLength(2);
-    expect(slept).toEqual([]);
+    expect(slept.filter((ms) => ms > 20_000)).toEqual([]);      // no gap: only typing beats
   });
 
-  it('sleeps for what the policy says before sending', async () => {
+  it('AC-9.1 a fixed wait is honoured, once, before the message goes', async () => {
     const id = await queue('after a wait', 'agent');
     await handleSend(ctx({ antiBan: fixed({ action: 'wait', ms: 1234 }) }), id);
-    expect(slept).toEqual([1234]);
+    expect(slept).toContain(1234);
     expect((await statusOf(id)).status).toBe('sent');
   });
 
-  it('leaves a held message queued with the reason, then sends it once the policy lets it', async () => {
+  it('AC-9.1 leaves a held message queued with the reason, then sends it once the policy lets it', async () => {
     const id = await queue('held', 'agent');
-    const hold = fixed({ action: 'hold', reason: 'policy_hold' });
+    const hold = fixed({ action: 'hold', reason: 'quiet_hours', until: null });
     await handleSend(ctx({ antiBan: hold }), id);
 
     expect(provider.sent).toHaveLength(0);
-    expect(await statusOf(id)).toEqual({ status: 'queued', hold: 'policy_hold' });
+    expect(await statusOf(id)).toEqual({ status: 'queued', hold: 'quiet_hours' });
 
     await handleSend(ctx({ antiBan: fixed({ action: 'send' }) }), id);
     expect(provider.sent).toHaveLength(1);
@@ -147,7 +149,7 @@ describe('every send goes through the policy', () => {
 });
 
 describe('what the policy cannot relax', () => {
-  it('a do-not-contact contact is refused without the policy being asked', async () => {
+  it('AC-9.2 a do-not-contact contact is refused without the policy being asked', async () => {
     await db.execute(sql`UPDATE contact SET do_not_contact = true WHERE id = ${contactId}`);
     const id = await queue('to someone who asked us to stop', 'agent');
     const policy = fixed({ action: 'send' });
@@ -159,7 +161,7 @@ describe('what the policy cannot relax', () => {
     expect(policy.asked).toBe(0);
   });
 
-  it('a number that is not connected holds the message whatever the policy would say', async () => {
+  it('AC-9.2 a number that is not connected holds the message whatever the policy would say', async () => {
     const id = await queue('nobody home', 'agent');
     const policy = fixed({ action: 'send' });
     await handleSend(ctx({ antiBan: policy, provider: new FakeChannelProvider() }), id);
@@ -168,20 +170,19 @@ describe('what the policy cannot relax', () => {
     expect(policy.asked).toBe(0);
   });
 
-  it('shows "typing…" before each send when the typing simulation is on, and the policy still applies', async () => {
+  it('AC-1.4 shows "typing…" before each send when the typing simulation is on, and the policy still applies', async () => {
     await handleSend(ctx(), await queue('first', 'agent'));
     await handleSend(ctx({ typingSimulation: true }), await queue('second', 'agent'));
 
     expect(provider.typingCalls.map((c) => c.state)).toEqual(['composing', 'paused']);
     expect(provider.sent).toHaveLength(2);
-    // The gap, then the typing beat (700 to 8000 ms).
-    expect(slept).toHaveLength(2);
-    expect(slept[1]!).toBeGreaterThanOrEqual(700);
+    // The typing beat for a short text is the 2 s floor.
+    expect(slept).toContain(2_000);
   });
 });
 
 describe('a campaign of 50 recipients', () => {
-  it('queues at most 20 at a time, and every send is spaced out', async () => {
+  it('AC-9.1 queues at most the policy batch at a time, and every send goes through the lane', async () => {
     const campaignId = (await one<{ id: string }>(sql`
       INSERT INTO campaign (org_id, name, status, body, sender_identity_id, started_at)
       VALUES (${orgId}, 'fifty', 'running', 'hello {{name}}', ${senderId}, now()) RETURNING id`)).id;
@@ -196,27 +197,22 @@ describe('a campaign of 50 recipients', () => {
     }
     const waiting = async () => (await one<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM message WHERE org_id = ${orgId} AND status = 'queued'`)).n;
-
-    const queuedIds = async () => ((await db.execute(sql`
-      SELECT id FROM message WHERE org_id = ${orgId} AND status = 'queued' ORDER BY created_at, id`)) as unknown as Array<{ id: string }>).map((r) => r.id);
+    const policy = { ...fixed({ action: 'send' }), campaignBatch: ({ waiting: w }: { waiting: number }) => Math.max(0, CAMPAIGN_QUEUE_AHEAD - w) };
 
     const batches: number[] = [];
     for (let round = 0; round < 10; round++) {
-      const queued = await dispatchCampaigns(ctx());
+      const queued = await dispatchCampaigns(ctx({ antiBan: policy }));
       if (queued === 0) break;
       batches.push(queued);
-      expect(await waiting()).toBeLessThanOrEqual(BASIC_BATCH);
+      expect(await waiting()).toBeLessThanOrEqual(CAMPAIGN_QUEUE_AHEAD);
       // A sweep before anything has gone out adds nothing: the batch is still waiting.
-      expect(await dispatchCampaigns(ctx())).toBe(0);
-      for (const id of await queuedIds()) await handleSend(ctx(), id);   // sends the batch, one gap apart
+      expect(await dispatchCampaigns(ctx({ antiBan: policy }))).toBe(0);
+      await kickLane(ctx({ antiBan: policy }), senderId);
       expect(await waiting()).toBe(0);
     }
 
     expect(batches).toEqual([20, 20, 10]);
     expect(provider.sent).toHaveLength(50);
-    // 49 gaps. Each is what is left of a 3-8 s gap after the real time the previous send took, so under 8 s and above 0.
-    expect(slept.length).toBeGreaterThanOrEqual(49);
-    for (const ms of slept) { expect(ms).toBeGreaterThan(0); expect(ms).toBeLessThanOrEqual(8_000); }
   }, 60_000);
 });
 

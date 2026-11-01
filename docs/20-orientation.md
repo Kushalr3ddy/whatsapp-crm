@@ -54,7 +54,7 @@ Build phases, in [`17-roadmap.md`](17-roadmap.md). The order work happens in.
 | **P3** | **Channels — the Baileys adapter. First code that touches WhatsApp** | **done** — link, send, receive, media all verified |
 | **P4** | Inbox (the screen agents use) | mostly (search + realtime left) |
 | **P5** | Data import (spreadsheets and other sources) | first slice (CSV + Excel) |
-| **P6** | The anti-ban engine | **replaced** — the first engine was removed on 2026-10-30; a placeholder policy (a 3 to 8 second gap, a batch of 20) is in until the new one lands |
+| **P6** | The anti-ban engine | **v2 engine built** (`feat/antiban-v2`) — the first engine was removed on 2026-10-30; the screens for the new one are not built yet |
 | P7 | Campaigns | first slice |
 | P8–P12 | Official Meta API, public API, automation, hardening, release | not started |
 
@@ -234,13 +234,15 @@ codes, order updates, anything a client sees) goes through the paid official cha
 outreach goes through Baileys, wrapped in the safety engine described in
 [`08-antiban.md`](08-antiban.md).
 
-**What is in place now, in plain terms** — the first engine was removed and the new one is pending. Every message passes one
-point, which for now does two things:
+**What is in place now, in plain terms** — the first engine was removed and the v2 engine replaced it. Every message of a number waits in
+that number's **lane**, one at a time, and the lane:
 
-1. **A gap** — a random 3 to 8 second pause between two sends from the same number, never a robotic fixed interval.
-2. **A small batch** — a campaign puts at most 20 messages per number in the send queue at a time.
+1. **Puts replies first**, then what a person typed, then the AI, then campaign messages.
+2. **Leaves a gap** — a random 1 to 50 second pause, drawn once when a campaign starts so the finish time is known, with "typing…" shown inside the wait.
+3. **Holds, with a reason, and never drops** — when WhatsApp warns the number (new-chat timelock or cap), when a contact's phone could not read our last message, when the contact probably blocked us, or in quiet hours.
+4. **Handles STOP** — a contact who writes STOP gets one closing message and is not messaged again.
 
-Typing ("typing…" before each send), do-not-contact and the other protections for the people being messaged stay as they were.
+There are no daily caps, by design. Do-not-contact and the other protections for the people being messaged stay as they were.
 
 **Nothing here removes the risk.** Never point this at a number you cannot
 afford to lose.

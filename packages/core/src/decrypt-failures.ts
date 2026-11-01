@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
+import { registerRetryRequest } from './antiban/retry-state.js';
 
 /**
  * Decrypt-failure signal.
@@ -59,11 +60,5 @@ export async function markOwnDecryptBurst(db: Database, senderId: string, at: Da
  * The thread reads `retry_requests` to say the other phone could not read the message yet (D-101).
  */
 export async function recordRetryRequest(db: Database, senderId: string, providerMessageId: string, at: Date): Promise<boolean> {
-  const rows = await db.execute(sql`
-    UPDATE message m SET retry_requests = m.retry_requests + 1, last_retry_at = ${at.toISOString()}::timestamptz
-    FROM conversation v
-    WHERE m.provider_message_id = ${providerMessageId} AND m.direction = 'outbound'
-      AND v.id = m.conversation_id AND v.sender_identity_id = ${senderId}
-    RETURNING m.id`);
-  return (rows as unknown as unknown[]).length > 0;
+  return (await registerRetryRequest(db, senderId, providerMessageId, at)) !== null;
 }

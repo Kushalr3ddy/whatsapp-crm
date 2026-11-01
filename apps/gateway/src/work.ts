@@ -2,37 +2,19 @@ import type { LlmDriver } from '@crm/llm';
 import { sql } from 'drizzle-orm';
 import { setTenant, type Database, type Transaction } from '@crm/db';
 import { tenantDatabase } from './tenant.js';
-import { chooseRecipientNumber } from './number-fallback.js';
-import type { ChannelProvider, NormalisedConnectionEvent } from '@crm/channels';
+import type { ChannelProvider, NormalisedConnectionEvent, NormalisedNoticeEvent, NormalisedRetryEvent, NormalisedStatusEvent, Recipient } from '@crm/channels';
 import {
   classifyLinkFailure, encodeLinkError,
-  markMessageFailed, markMessageSent, dispatchCampaign, reconcileCampaign, writeOpenings, typingDelayMs,
-  basicPolicy, type AntiBanPolicy, recordHealthEvent, reencryptBatch
+  dispatchCampaign, reconcileCampaign, writeOpenings, makeAntiBanPolicy,
+  applyWhatsAppNotice, type AntiBanPolicy, recordHealthEvent, reencryptBatch,
+  applyDeliveryStatus, markMessageFailedByProviderId, markDecryptBurst, liftRetryOnReceipt, conversationOfSent, snapshotDue, saveSnapshot,
+  registerRetryRequest, checkUnreached, reviewManyUndelivered, contactWroteAgain, handleInboundSafety,
+  type ProbeFn, type InboundSafetyResult
 } from '@crm/core';
+import { runLane, markInboundRead, type LaneResult } from './lane.js';
 import type { Logger } from '@crm/shared';
 import type { KmsDriver } from '@crm/kms-local';
 import type { StorageDriver } from '@crm/storage';
-
-/** A queued outbound message, joined to everything needed to actually send it. */
-interface QueuedSend {
-  readonly messageId: string;
-  readonly orgId: string;
-  readonly senderIdentityId: string;
-  readonly senderPhone: string | null;
-  /** Who the message is to, for the number-fallback lookup. */
-  readonly contactId: string;
-  /** Flagged do-not-contact; refused unless an admin overrode it for this message (`dncOverride`). */
-  readonly doNotContact: boolean;
-  readonly dncOverride: boolean;
-  readonly recipientValue: string;
-  readonly recipientKind: string;
-  readonly bodyEnc: Uint8Array | null;
-  /** The attachment this message carries (D-25), or null for plain text. */
-  readonly mediaStorageKey: string | null;
-  readonly mediaContentType: string | null;
-  readonly mediaGifPlayback: boolean | null;
-  readonly mediaFilename: string | null;
-}
 
 /** A pending request from the API to link a number. */
 interface PendingLink {
@@ -57,8 +39,8 @@ export interface WorkContext {
   /** Decrypts a stored message body back to text for sending. */
   readonly decrypt: (cipher: Uint8Array) => string;
   /**
-   * What decides when a message may go and how many campaign messages queue at once. Absent = `basicPolicy`, so a
-   * context that says nothing still spaces its sends out; tests that want none of it pass a policy that always sends.
+   * What decides when a message may go and how many campaign messages queue at once. Absent = the v2 policy (`makeAntiBanPolicy`);
+   * a test that wants none of it passes a policy that always sends.
    */
   readonly antiBan?: AntiBanPolicy;
   /**
@@ -86,10 +68,20 @@ export interface WorkContext {
    */
   readonly storage?: StorageDriver;
   /**
-   * Waits before a send. Injected so tests do not spend real seconds on the gap between sends — production
-   * passes a real sleep, and skipping it entirely would defeat the point of the gap.
+   * Waits inside a send: the typing beat and the pause before a read receipt (a few seconds to 25 at most). Injected so tests do not
+   * spend real seconds — production passes a real sleep. A context with neither `sleep` nor `schedule` does not wait at all.
    */
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * Comes back to a number's lane later, at a given delay. How the lane honours a wait longer than its typing: it leaves the message
+   * alone and asks to be run again when it is due, instead of holding a sweep open (F6 S1). Production passes a timer; a test passes
+   * a recorder it fires itself. A context with `sleep` but no `schedule` sleeps through the wait inline.
+   */
+  readonly schedule?: (ms: number, run: () => void) => void;
+  /** The current time. Injected so a test can run the lane against a clock it moves itself; default `new Date()`. */
+  readonly now?: () => Date;
+  /** Random source for the gaps and read delays the lane draws. Default `Math.random`. */
+  readonly random?: () => number;
 }
 
 /**
@@ -246,7 +238,7 @@ async function handleUnlinkRequestInOrg(ctx: WorkContext, sessionId: string): Pr
       connection_state = 'closed', disconnect_reason = 'unlinked',
       link_requested_at = NULL, link_requested_mode = NULL, link_requested_phone = NULL,
       link_challenge = NULL, link_error = NULL, qr_expires_at = NULL,
-      unlink_requested_at = NULL, updated_at = now()
+      unlink_requested_at = NULL, linked_since = NULL, updated_at = now()
     WHERE id = ${sessionId}`);
   await ctx.db.execute(sql`
     UPDATE sender_identity SET status = 'linking', updated_at = now()
@@ -255,213 +247,114 @@ async function handleUnlinkRequestInOrg(ctx: WorkContext, sessionId: string): Pr
 }
 
 /**
- * Messages this process is handling right now. A message can reach `handleSend` from the NOTIFY and from the sweep,
- * and each call may sleep before sending: without this a second caller arriving during the pause would send it twice.
- * In-process only; a second gateway process would need a database claim, which there is none of.
+ * Lanes running right now, one per number. A kick while a lane is running does not start a second one: it marks the lane dirty, and
+ * the running one looks again before it finishes. This is what keeps two messages of one number from ever leaving together (AC-1.1).
  */
-const inFlight = new Set<string>();
+const laneRuns = new Map<string, Promise<LaneResult>>();
+const laneDirty = new Set<string>();
+/** The earliest pending wake-up per number, so a lane asks to be woken once rather than once per message. */
+const laneWakes = new Map<string, number>();
 
 /**
- * Sends one queued message.
+ * Runs the lane of one number (F6 S1) and arranges to run it again when something will change by itself: a gap ends, a hold
+ * expires, the number goes idle. Safe to call from anywhere, any number of times.
+ */
+export function kickLane(ctx: WorkContext, senderId: string): Promise<LaneResult> {
+  const running = laneRuns.get(senderId);
+  if (running !== undefined) {
+    laneDirty.add(senderId);
+    return running;
+  }
+  const run = (async (): Promise<LaneResult> => {
+    const orgId = await orgOfSender(ctx, senderId);
+    if (orgId === null) return { sent: 0, failed: 0, nextWakeAt: null };
+    const scoped = scopedTo(ctx, orgId);
+    let sent = 0;
+    let failed = 0;
+    let result: LaneResult;
+    do {
+      laneDirty.delete(senderId);
+      result = await runLane(scoped, orgId, senderId);
+      sent += result.sent;
+      failed += result.failed;
+    } while (laneDirty.has(senderId));
+    return { sent, failed, nextWakeAt: result.nextWakeAt };
+  })().then((result) => {
+    wakeLaneAt(ctx, senderId, result.nextWakeAt);
+    return result;
+  }).finally(() => { laneRuns.delete(senderId); });
+  // Registered in the same tick, so a second kick right behind this one joins it instead of starting another.
+  laneRuns.set(senderId, run);
+  return run;
+}
+
+/** Asks `ctx.schedule` to run the lane again at `at`, unless an earlier wake-up is already waiting. */
+function wakeLaneAt(ctx: WorkContext, senderId: string, at: Date | null): void {
+  if (at === null || ctx.schedule === undefined) return;
+  const when = at.getTime();
+  const pending = laneWakes.get(senderId);
+  if (pending !== undefined && pending <= when) return;
+  laneWakes.set(senderId, when);
+  const delay = Math.max(0, when - (ctx.now ?? (() => new Date()))().getTime());
+  ctx.schedule(delay, () => {
+    if (laneWakes.get(senderId) === when) laneWakes.delete(senderId);
+    kickLane(ctx, senderId).catch((error: unknown) => {
+      ctx.logger.error({ senderId, err: error instanceof Error ? error.message : String(error) }, 'lane run failed');
+    });
+  });
+}
+
+/**
+ * Sends what is queued for a message's number.
  *
- * Every failure is recorded against that message and nothing else. In the previous system one
- * unsendable recipient threw and took down the whole engine, so the watchdog restarted it, the
- * operator retried, and it died again — a permanent crash loop for a single contact
- * (docs/00-prior-art.md, M26).
+ * Every message of a number goes through its lane, so this runs the lane of the message's number: the message goes when its turn
+ * and the policy say so, which may be after others (a reply goes before campaign messages queued earlier).
  *
- * There is no retry here, deliberately. Retrying into WhatsApp is exactly how a number gets banned, so a failed
- * message stays failed until a person sends it again.
+ * Every failure is recorded against that message and nothing else. In the previous system one unsendable recipient threw and took
+ * down the whole engine, so the watchdog restarted it, the operator retried, and it died again — a permanent crash loop for a
+ * single contact (docs/00-prior-art.md, M26).
+ *
+ * There is no retry here, deliberately. Retrying into WhatsApp is exactly how a number gets banned, so a failed message stays
+ * failed until a person sends it again.
  */
 export async function handleSend(ctx: WorkContext, messageId: string): Promise<void> {
-  if (inFlight.has(messageId)) return;
-  inFlight.add(messageId);
-  try {
-    // One send at a time per number. The policy's gap is measured from the last send that has *left*, and a send
-    // does not count until after its pause, so two messages checked at once would both see the same gap and both
-    // go. Serialising per number makes check-then-send atomic, which is also the cadence the gap is there to produce.
-    const owner = (await ctx.db.execute(sql`
-      SELECT v.sender_identity_id AS "senderId", m.org_id AS "orgId"
-      FROM message m JOIN conversation v ON v.id = m.conversation_id
-      WHERE m.id = ${messageId}`) as unknown as Array<{ senderId: string; orgId: string }>)[0];
-    if (owner === undefined) return;
-    // Everything from here on runs pinned to the message's own org (D-41).
-    const scoped = scopedTo(ctx, owner.orgId);
-    await withSenderLock(owner.senderId, () => handleSendOnce(scoped, messageId));
-  } finally {
-    inFlight.delete(messageId);
-  }
+  const owner = (await ctx.db.execute(sql`
+    SELECT v.sender_identity_id AS "senderId"
+    FROM message m JOIN conversation v ON v.id = m.conversation_id
+    WHERE m.id = ${messageId}`) as unknown as Array<{ senderId: string }>)[0];
+  if (owner === undefined) return;
+  await kickLane(ctx, owner.senderId);
 }
-
-/** The tail of each number's send queue, so the next send for that number waits its turn. */
-const senderLocks = new Map<string, Promise<void>>();
 
 /**
- * Runs `work` after every earlier piece of work for the same sender has finished, whether it
- * succeeded or threw. The map entry is dropped once the chain goes idle, so it cannot grow.
+ * An agent opened a chat: tell WhatsApp its inbound messages were read (F6 AC-1.7). Messages are never marked read when they arrive;
+ * this and the reply path in the lane are the only places it happens.
  */
-async function withSenderLock(senderId: string, work: () => Promise<void>): Promise<void> {
-  const previous = senderLocks.get(senderId) ?? Promise.resolve();
-  let release!: () => void;
-  const mine = new Promise<void>((resolve) => { release = resolve; });
-  const tail = previous.then(() => mine);
-  senderLocks.set(senderId, tail);
-  await previous.catch(() => undefined);
-  try {
-    await work();
-  } finally {
-    release();
-    if (senderLocks.get(senderId) === tail) senderLocks.delete(senderId);
-  }
-}
-
-/** The body of `handleSend`, run at most once at a time per message. */
-async function handleSendOnce(ctx: WorkContext, messageId: string): Promise<void> {
-  const rows = await ctx.db.execute(sql`
-    SELECT m.id AS "messageId", m.org_id AS "orgId", m.body_enc AS "bodyEnc",
-           ma.storage_key AS "mediaStorageKey", ma.content_type AS "mediaContentType", ma.gif_playback AS "mediaGifPlayback",
-           ma.filename AS "mediaFilename",
-           si.id AS "senderIdentityId", si.phone_e164 AS "senderPhone",
-           v.contact_id AS "contactId", ct.do_not_contact AS "doNotContact",
-           m.dnc_override AS "dncOverride",
-           ci.value_normalized AS "recipientValue", ci.kind AS "recipientKind"
-    FROM message m
-    JOIN conversation v   ON v.id = m.conversation_id
-    JOIN contact ct       ON ct.id = v.contact_id
-    JOIN sender_identity si ON si.id = v.sender_identity_id
-    LEFT JOIN media_asset ma ON ma.id = m.media_id AND ma.org_id = m.org_id
-    JOIN contact_identity ci ON ci.contact_id = v.contact_id
-                            AND ci.kind IN ('phone','wa_jid','wa_lid')
-    WHERE m.id = ${messageId} AND m.direction = 'outbound' AND m.status = 'queued'
-    ORDER BY CASE ci.kind WHEN 'phone' THEN 0 WHEN 'wa_jid' THEN 1 ELSE 2 END,
-             ci.is_primary DESC
-    LIMIT 1`);
-  const job = (rows as unknown as QueuedSend[])[0];
-  if (!job) return;                     // already sent, cancelled, or has no reachable identity
-
-  if (job.bodyEnc === null) {
-    await markMessageFailed(ctx.db, messageId, 'empty_body');
-    return;
-  }
-
-  // Never send from a number to itself. A linked device's message to its own account cannot be decrypted on the phone:
-  // it shows "Waiting for this message" and keeps asking for a resend (31 retry requests in one day, 2026-10-22).
-  if (job.recipientKind === 'phone' && job.senderPhone !== null && job.recipientValue === job.senderPhone) {
-    await markMessageFailed(ctx.db, messageId, 'own_number');
-    return;
-  }
-
-  // The last line of the do-not-contact gate. It is checked when a message is created, but a contact
-  // can be flagged after that.
-  // Only an admin's explicit, audited per-message override lets it through.
-  if (job.doNotContact && !job.dncOverride) {
-    await markMessageFailed(ctx.db, messageId, 'do_not_contact');
-    return;
-  }
-
-  // Why this message is still waiting, shown in the thread as "waiting: reason". Written each time
-  // the gateway leaves it queued; cleared when it sends. Best-effort: never blocks the send path.
-  const hold = async (reason: string): Promise<void> => {
-    await ctx.db.execute(sql`
-      UPDATE message SET hold_reason = ${reason}
-      WHERE id = ${messageId} AND hold_reason IS DISTINCT FROM ${reason}`).catch(() => undefined);
-  };
-
-  try {
-    const health = await ctx.provider.health(job.senderIdentityId);
-    if (health.state !== 'open') {
-      // Leave it queued rather than failing it: the boot sweep will pick it up once the
-      // sender reconnects. A send is not wrong just because the socket is briefly down.
-      ctx.logger.warn(
-        { messageId, senderId: job.senderIdentityId, state: health.state },
-        'sender not connected — leaving message queued'
-      );
-      await hold('sender_not_connected');
-      return;
-    }
-
-    // ── the anti-ban policy ──────────────────────────────────────────────────────────
-    // Everything that decides when this message may go is behind one interface (`antiBan`): it can let the message
-    // go, ask for a pause first, or leave it queued with a reason. Do-not-contact above and the number being
-    // connected are not its business and cannot be relaxed by it.
-    const lastSent = (await ctx.db.execute(sql`
-      SELECT max(m.sent_at) AS "lastSentAt"
-      FROM message m JOIN conversation v ON v.id = m.conversation_id
-      WHERE v.sender_identity_id = ${job.senderIdentityId} AND m.direction = 'outbound'`
-    ) as unknown as Array<{ lastSentAt: string | null }>)[0]?.lastSentAt ?? null;
-    const decision = await (ctx.antiBan ?? basicPolicy).beforeSend({
-      senderIdentityId: job.senderIdentityId, now: new Date(),
-      lastSentAt: lastSent === null ? null : new Date(lastSent)
-    });
-    if (decision.action === 'hold') {
-      // Left queued, exactly like a disconnected sender: a message that is merely early is not a failed message.
-      ctx.logger.warn({ messageId, senderId: job.senderIdentityId, reason: decision.reason }, 'send held by the anti-ban policy');
-      await hold(decision.reason);
-      return;
-    }
-    // Before the send rather than after, so a burst arriving at once is spread out instead of going at once and then waiting.
-    if (decision.action === 'wait' && ctx.sleep) await ctx.sleep(decision.ms);
-
-    const senderRef = { id: job.senderIdentityId, phoneE164: job.senderPhone ?? '' };
-    // A contact with more than one number: make sure the one we send to has a WhatsApp account, and
-    // move to the next that does if not (D-60). Runs after the anti-ban policy and its pause.
-    let recipientValue = job.recipientValue;
-    if (ctx.verifyFallbackNumbers) {
-      const pick = await chooseRecipientNumber(ctx, job, senderRef);
-      if (pick.kind === 'none') {
-        // Sending to a number with no account would only cost the sender its delivery ratio.
-        await markMessageFailed(ctx.db, messageId, 'no_whatsapp_number');
-        ctx.logger.warn({ messageId, contactId: job.contactId }, 'none of this contact\'s numbers has a WhatsApp account');
-        return;
-      }
-      if (pick.kind === 'switched') recipientValue = pick.phone;
-    }
-    const recipient = job.recipientKind === 'phone'
-      ? { phoneE164: recipientValue }
-      : { phoneE164: '', providerAddress: recipientValue };
-    const body = ctx.decrypt(job.bodyEnc);
-
-    // An attachment (D-25): read the file back from storage so the adapter can upload it. Done
-    // before the typing pause is spent on a message that cannot go. A file that cannot be read
-    // fails this one message with a clear code — the inbox shows it, nothing else is affected.
-    let media: { bytes: Uint8Array; contentType: string; filename: string | null; gifPlayback?: boolean } | undefined;
-    if (job.mediaStorageKey !== null) {
-      if (!ctx.storage) throw new Error('media_storage_unavailable');
-      media = {
-        bytes: await ctx.storage.get(job.mediaStorageKey),
-        contentType: job.mediaContentType ?? 'application/octet-stream',
-        filename: job.mediaFilename,
-        ...(job.mediaGifPlayback === true ? { gifPlayback: true } : {})
-      };
-    }
-
-    // ── typing simulation ─────────────────────────────────────────────────────────────
-    // Show the "typing…" bubble and pause a beat proportional to the message length before
-    // sending, so the send looks human rather than instant (D-24). Opt-in,
-    // and strictly cosmetic: presence is best-effort, so a failure to signal it is swallowed and
-    // never fails the send it precedes.
-    if (ctx.typingSimulation && ctx.provider.typing) {
-      try {
-        await ctx.provider.typing(senderRef, recipient, 'composing');
-        if (ctx.sleep) await ctx.sleep(typingDelayMs(body.length));
-        await ctx.provider.typing(senderRef, recipient, 'paused');
-      } catch (presenceError) {
-        ctx.logger.warn(
-          { messageId, senderId: job.senderIdentityId, err: String(presenceError) },
-          'typing presence failed — sending anyway'
-        );
-      }
-    }
-
-    const result = await ctx.provider.send(
-      senderRef, recipient, { kind: 'freeform', body, ...(media ? { media } : {}) }
-    );
-    await markMessageSent(ctx.db, messageId, result.providerMessageId);
-    ctx.logger.info({ messageId, providerMessageId: result.providerMessageId }, 'message sent');
-  } catch (error) {
-    const code = error instanceof Error ? error.message : String(error);
-    await markMessageFailed(ctx.db, messageId, code);
-    ctx.logger.error({ messageId, err: code }, 'send failed');
-  }
+export async function handleReadRequest(ctx: WorkContext, conversationId: string): Promise<number> {
+  const owner = (await ctx.db.execute(sql`
+    SELECT org_id AS "orgId", sender_identity_id AS "senderId" FROM conversation WHERE id = ${conversationId}`
+  ) as unknown as Array<{ orgId: string; senderId: string }>)[0];
+  if (owner === undefined) return 0;
+  const scoped = scopedTo(ctx, owner.orgId);
+  const health = await scoped.provider.health(owner.senderId);
+  if (health.state !== 'open') return 0;      // left requested; the next sweep tries again
+  const pending = (await scoped.db.execute(sql`
+    SELECT id, provider_message_id AS "providerMessageId" FROM message
+    WHERE conversation_id = ${conversationId} AND direction = 'inbound' AND read_requested_at IS NOT NULL
+      AND read_marked_at IS NULL AND provider_message_id IS NOT NULL
+    ORDER BY created_at DESC LIMIT 20`) as unknown as Array<{ id: string; providerMessageId: string }>);
+  if (pending.length === 0) return 0;
+  const to = (await scoped.db.execute(sql`
+    SELECT ci.kind, ci.value_normalized AS "value"
+    FROM conversation v JOIN contact_identity ci ON ci.contact_id = v.contact_id AND ci.kind IN ('phone','wa_jid','wa_lid')
+    WHERE v.id = ${conversationId}
+    ORDER BY CASE ci.kind WHEN 'phone' THEN 0 WHEN 'wa_jid' THEN 1 ELSE 2 END, ci.is_primary DESC LIMIT 1`
+  ) as unknown as Array<{ kind: string; value: string }>)[0];
+  if (to === undefined) return 0;
+  const recipient = to.kind === 'phone' ? { phoneE164: to.value } : { phoneE164: '', providerAddress: to.value };
+  const done = await markInboundRead(scoped, { id: owner.senderId, phoneE164: '' }, recipient, pending);
+  if (done) scoped.logger.info({ senderId: owner.senderId, conversationId, messages: pending.length }, 'an agent opened the chat: its messages were marked read');
+  return done ? pending.length : 0;
 }
 
 /**
@@ -492,7 +385,7 @@ async function dispatchCampaignsInOrg(ctx: WorkContext): Promise<number> {
     ORDER BY c.started_at ASC
     LIMIT 20`);
 
-  const policy = ctx.antiBan ?? basicPolicy;
+  const policy = ctx.antiBan ?? defaultPolicy;
   let queued = 0;
   for (const campaign of rows as unknown as Array<{
     id: string; orgId: string; body: string; senderIdentityId: string; gateOverrides: string[];
@@ -554,6 +447,9 @@ export async function sweepKeyRotation(ctx: WorkContext, batch = 100): Promise<n
   return moved;
 }
 
+/** The v2 policy, used when the context does not bring its own. */
+const defaultPolicy: AntiBanPolicy = makeAntiBanPolicy();
+
 /** A tenant-scoped runner for the gateway, which has no request to take one from. */
 function tenantRunner(ctx: WorkContext, orgId: string) {
   return <T>(work: (tx: Transaction) => Promise<T>): Promise<T> =>
@@ -583,21 +479,36 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
     SELECT id FROM channel_session WHERE unlink_requested_at IS NOT NULL`);
   for (const r of unlinkRows as unknown as Array<{ id: string }>) await handleUnlinkRequest(ctx, r.id);
 
-  const sendRows = await ctx.db.execute(sql`
-    SELECT id FROM message
-    WHERE direction = 'outbound' AND status = 'queued'
-    ORDER BY created_at ASC LIMIT ${ctx.sweepBatchSize ?? 200}`);
-  const sends = (sendRows as unknown as Array<{ id: string }>).map((r) => r.id);
-  for (const id of sends) await handleSend(ctx, id);
+  // Chats an agent opened while the gateway was down or the number was disconnected: tell WhatsApp they were read.
+  const readRows = await ctx.db.execute(sql`
+    SELECT DISTINCT conversation_id AS id FROM message
+    WHERE direction = 'inbound' AND read_requested_at IS NOT NULL AND read_marked_at IS NULL AND provider_message_id IS NOT NULL
+    LIMIT 50`);
+  for (const r of readRows as unknown as Array<{ id: string }>) await handleReadRequest(ctx, r.id);
+
+  // One lane per number that has something queued. Each lane runs on its own, so a number waiting out a gap never holds up another.
+  const laneRows = await ctx.db.execute(sql`
+    SELECT DISTINCT v.sender_identity_id AS id
+    FROM message m JOIN conversation v ON v.id = m.conversation_id
+    WHERE m.direction = 'outbound' AND m.status = 'queued'`);
+  const results = await Promise.all((laneRows as unknown as Array<{ id: string }>).map((r) => kickLane(ctx, r.id)));
+  const sends = results.reduce((n, r) => n + r.sent + r.failed, 0);
 
   // A key rotation in progress (D-31): a small batch per sweep, never in the way of a send.
   await sweepKeyRotation(ctx);
+
+  // Messages that never got their second tick (F6 S4). Before the dispatcher, so a hold raised here applies to this sweep's campaign batch.
+  try {
+    await sweepDeliveries(ctx);
+  } catch (error) {
+    ctx.logger.error({ err: error instanceof Error ? error.message : String(error) }, 'delivery check failed');
+  }
 
   // After sending, not before: a campaign tops the queue up with whatever room the policy gives
   // once this sweep's sends have gone.
   await dispatchCampaigns(ctx);
 
-  return { links: links.length, sends: sends.length };
+  return { links: links.length, sends };
 }
 
 /**
@@ -679,6 +590,25 @@ async function suspectBan(
 }
 
 /**
+ * Stores a limit warning WhatsApp sent a number (F6 S2): the raw notice, and the latest of its kind on the number. Then runs the
+ * number's lane, because a warning can change what may go: a timelock that ended releases the held messages (AC-2.2), one that
+ * began holds new chats (AC-2.1).
+ */
+export async function applyNoticeEvent(ctx: WorkContext, event: NormalisedNoticeEvent): Promise<void> {
+  const orgId = await orgOfSender(ctx, event.senderId);
+  if (orgId === null) return;
+  const scoped = scopedTo(ctx, orgId);
+  await applyWhatsAppNotice(scoped.db, orgId, event.senderId, event);
+  scoped.logger.info(
+    event.kind === 'timelock'
+      ? { senderId: event.senderId, kind: event.kind, active: event.active, until: event.until?.toISOString() ?? null, type: event.enforcementType }
+      : { senderId: event.senderId, kind: event.kind, status: event.status, total: event.totalQuota, used: event.usedQuota, cycleEnd: event.cycleEnd?.toISOString() ?? null },
+    'WhatsApp limit notice stored'
+  );
+  await kickLane(ctx, event.senderId);
+}
+
+/**
  * Records a connection state change, and promotes or demotes the sender to match.
  *
  * This is the only writer of `channel_session.connection_state`, which is what the UI reads to
@@ -737,6 +667,10 @@ async function applyConnectionEventInOrg(
   }
 
   if (event.state === 'open') {
+    // The first open after a link starts the clock for the "new number, go gentle" hint (F6 AC-2.5, AC-7.6).
+    await ctx.db.execute(sql`
+      UPDATE channel_session SET linked_since = ${event.at.toISOString()}
+      WHERE sender_identity_id = ${event.senderId} AND linked_since IS NULL`);
     // Promote on first successful connection. Until this existed only the wa:link script set
     // 'active', so a number linked through the API stayed 'linking' forever and POST /messages
     // kept answering NO_ACTIVE_SENDER.
@@ -760,6 +694,7 @@ async function applyConnectionEventInOrg(
   }
 
   if (event.state === 'logged_out') {
+    await ctx.db.execute(sql`UPDATE channel_session SET linked_since = NULL WHERE sender_identity_id = ${event.senderId}`);
     // Terminal: the number was unlinked from the phone. Say so rather than leaving it looking
     // active, which would keep the dispatcher queueing sends that can never leave. Deliberately
     // *not* auto-retired: a genuine 401 ban and a user-initiated unlink look identical at the
@@ -846,4 +781,160 @@ export async function markAllSessionsClosed(ctx: WorkContext): Promise<number> {
     return (rows as unknown as unknown[]).length;
   });
   return counts.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * The address of a conversation's contact in the form the provider takes, the same pick the lane makes (phone first, then the
+ * WhatsApp address). Null when the contact has no way to be reached.
+ */
+async function recipientOfConversation(ctx: WorkContext, conversationId: string): Promise<Recipient | null> {
+  const to = (await ctx.db.execute(sql`
+    SELECT ci.kind, ci.value_normalized AS "value"
+    FROM conversation v JOIN contact_identity ci ON ci.contact_id = v.contact_id AND ci.kind IN ('phone','wa_jid','wa_lid')
+    WHERE v.id = ${conversationId}
+    ORDER BY CASE ci.kind WHEN 'phone' THEN 0 WHEN 'wa_jid' THEN 1 ELSE 2 END, ci.is_primary DESC LIMIT 1`
+  ) as unknown as Array<{ kind: string; value: string }>)[0];
+  if (to === undefined) return null;
+  return to.kind === 'phone' ? { phoneE164: to.value } : { phoneE164: '', providerAddress: to.value };
+}
+
+/**
+ * Applies a delivery receipt (F6 S4, S5). A failed ack marks the message failed; anything else moves its status forward. A delivered or
+ * read receipt then does two more things: it lifts the hold on new sends to that contact if it came after their retry request (AC-5.2),
+ * and it takes a snapshot of what their profile photo and about look like, at most once a day (AC-4.2), for the sweep to compare with.
+ */
+export async function applyStatusEvent(ctx: WorkContext, event: NormalisedStatusEvent): Promise<void> {
+  const orgId = await orgOfSender(ctx, event.senderId);
+  if (orgId === null) return;
+  const scoped = scopedTo(ctx, orgId);
+  if (event.status === 'failed') {
+    await markMessageFailedByProviderId(scoped.db, orgId, event.providerMessageId, 'delivery_error');
+    return;
+  }
+  await applyDeliveryStatus(scoped.db, orgId, event.providerMessageId, event.status);
+  if (event.status !== 'delivered' && event.status !== 'read') return;
+
+  if (await liftRetryOnReceipt(scoped.db, event.providerMessageId, event.at)) {
+    scoped.logger.info({ senderId: event.senderId, providerMessageId: event.providerMessageId }, 'the contact\'s phone can read us again: the hold on new sends to them is lifted');
+    await kickLane(ctx, event.senderId);
+  }
+
+  const profile = scoped.provider.profileSnapshot?.bind(scoped.provider);
+  if (profile === undefined) return;
+  const found = await conversationOfSent(scoped.db, event.providerMessageId);
+  if (found === null) return;
+  const now = clockOf(scoped);
+  if (!(await snapshotDue(scoped.db, found.conversationId, now))) return;
+  const to = await recipientOfConversation(scoped, found.conversationId);
+  if (to === null) return;
+  try {
+    const seen = await profile({ id: event.senderId, phoneE164: '' }, to);
+    if (seen !== null) await saveSnapshot(scoped.db, found.conversationId, seen, now);
+  } catch (error) {
+    scoped.logger.warn({ senderId: event.senderId, err: error instanceof Error ? error.message : String(error) }, 'could not take a profile snapshot at a delivery');
+  }
+}
+
+/** The context's clock. */
+const clockOf = (ctx: WorkContext): Date => (ctx.now ?? (() => new Date()))();
+
+/**
+ * A contact's phone asked for one of our messages again (F6 S5). The provider sends it again itself; here every new send to that
+ * contact is held (AC-5.1). The second request for the same message means the session with that contact is out of step: it is
+ * recreated, and the composer's existing warning about a broken encryption session is raised (AC-5.3). Retries from three contacts
+ * within ten minutes hold the whole number (AC-5.4).
+ */
+export async function applyRetryEvent(ctx: WorkContext, event: NormalisedRetryEvent): Promise<void> {
+  const orgId = await orgOfSender(ctx, event.senderId);
+  if (orgId === null) return;
+  const scoped = scopedTo(ctx, orgId);
+  const outcome = await registerRetryRequest(scoped.db, event.senderId, event.providerMessageId, event.at);
+  if (outcome === null) {
+    // Only a message this CRM sent is worth a hold. A retry request for one the owner typed on their phone is not ours to answer.
+    scoped.logger.debug({ senderId: event.senderId, messageId: event.providerMessageId }, 'a retry request for a message this CRM did not send');
+    return;
+  }
+  scoped.logger.warn({
+    senderId: event.senderId, messageId: event.providerMessageId, conversationId: outcome.conversationId, retries: outcome.retries
+  }, 'the recipient\'s phone could not decrypt a message and asked for it again: new sends to them are held');
+
+  if (outcome.resetSession) {
+    await markDecryptBurst(scoped.db, event.senderId, event.at);
+    const reset = scoped.provider.resetSession?.bind(scoped.provider);
+    const to = await recipientOfConversation(scoped, outcome.conversationId);
+    if (reset !== undefined && to !== null) {
+      try {
+        await reset({ id: event.senderId, phoneE164: '' }, to);
+        scoped.logger.warn({ senderId: event.senderId, conversationId: outcome.conversationId }, 'asked twice for the same message: the encryption session with this contact was recreated');
+      } catch (error) {
+        scoped.logger.error({ senderId: event.senderId, err: error instanceof Error ? error.message : String(error) }, 'could not recreate the encryption session with this contact');
+      }
+    }
+  }
+  if (outcome.waveStarted) {
+    scoped.logger.error({ senderId: event.senderId }, 'retries from several contacts in a few minutes: the whole number is held until it is linked again');
+  }
+}
+
+/**
+ * The sweep for messages that never got their second tick (F6 S4), for every number: judges what has been at one tick for 30 minutes,
+ * holds or releases the number's campaigns by how many are stuck, and runs the lane again when a hold was released. Profile lookups
+ * only happen on a connected number, a few per pass.
+ */
+export async function sweepDeliveries(ctx: WorkContext): Promise<number> {
+  const counts = await inEachOrg(ctx, async (scoped) => {
+    let judged = 0;
+    const senders = (await scoped.db.execute(sql`SELECT id, org_id AS "orgId" FROM sender_identity`)) as unknown as Array<{ id: string; orgId: string }>;
+    for (const s of senders) {
+      const now = clockOf(scoped);
+      const profile = scoped.provider.profileSnapshot?.bind(scoped.provider);
+      const open = profile !== undefined && (await scoped.provider.health(s.id)).state === 'open';
+      const probe: ProbeFn = async (conversationId) => {
+        if (!open || profile === undefined) return null;
+        const to = await recipientOfConversation(scoped, conversationId);
+        return to === null ? null : profile({ id: s.id, phoneE164: '' }, to);
+      };
+      const result = await checkUnreached(scoped.db, { senderIdentityId: s.id, now, probe });
+      judged += result.judged;
+      if (result.likelyBlocked > 0) {
+        scoped.logger.warn({ senderId: s.id, contacts: result.likelyBlocked }, 'contacts probably blocked this number: campaigns and the AI stop messaging them');
+      }
+      const review = await reviewManyUndelivered(scoped.db, { orgId: s.orgId, senderIdentityId: s.id, now });
+      if (review.change === 'hold') scoped.logger.error({ senderId: s.id, stuck: review.stuck }, 'many messages are not reaching people: the number\'s campaigns are on hold');
+      if (review.change === 'lift') {
+        scoped.logger.info({ senderId: s.id, stuck: review.stuck }, 'messages are reaching people again: the hold on the number\'s campaigns is lifted');
+        await kickLane(ctx, s.id);
+      }
+    }
+    return judged;
+  });
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * What to do about a message a contact just sent, once it is stored (F6 S5, S6): a message that decrypts clears the holds that only
+ * a silent contact would have (a retry not yet resolved, a probable block); then the message is read for an opt-out or a restart. An
+ * opt-out queues the one closing message and runs the lane, so it goes at reply priority at once. Needs the key service in the context,
+ * and uses the AI driver, when there is one, to read intent.
+ */
+export async function applyInboundEffects(ctx: WorkContext, input: {
+  readonly senderId: string; readonly conversationId: string; readonly messageId: string | null; readonly body: string; readonly contentType: string
+}): Promise<InboundSafetyResult> {
+  const orgId = await orgOfSender(ctx, input.senderId);
+  if (orgId === null) return { outcome: 'none', closingMessageId: null, via: null };
+  const scoped = scopedTo(ctx, orgId);
+  if (await contactWroteAgain(scoped.db, input.conversationId)) {
+    scoped.logger.info({ senderId: input.senderId, conversationId: input.conversationId }, 'the contact wrote to us: the hold for a retry or a probable block is lifted');
+    await kickLane(ctx, input.senderId);
+  }
+  if (scoped.kms === undefined) return { outcome: 'none', closingMessageId: null, via: null };
+  const result = await handleInboundSafety(
+    { db: scoped.db, kms: scoped.kms, ...(scoped.llm === undefined ? {} : { llm: scoped.llm }), now: () => clockOf(scoped) },
+    { orgId, conversationId: input.conversationId, body: input.body, contentType: input.contentType }
+  );
+  if (result.outcome !== 'none') {
+    scoped.logger.info({ senderId: input.senderId, conversationId: input.conversationId, outcome: result.outcome, via: result.via, closingMessageId: result.closingMessageId }, 'opt-out handled');
+  }
+  if (result.closingMessageId !== null) await kickLane(ctx, input.senderId);
+  return result;
 }

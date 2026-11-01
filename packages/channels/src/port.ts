@@ -189,6 +189,59 @@ export interface NormalisedConnectionEvent {
   readonly at: Date;
 }
 
+/**
+ * A limit warning WhatsApp sent one of our numbers (F6 S2). Two kinds, both about starting new chats: the reachout timelock
+ * (WhatsApp is not letting the number message people who have not written to it, until a time) and the new-chat cap (how many
+ * new chats the number may start in a cycle, and how close it is). Emitted rather than polled, because they arrive on their own.
+ */
+export type NormalisedNoticeEvent =
+  | {
+    readonly kind: 'timelock';
+    readonly senderId: string;
+    /** False when WhatsApp lifted the restriction. */
+    readonly active: boolean;
+    /** When the restriction ends, when WhatsApp said. */
+    readonly until: Date | null;
+    /** WhatsApp's type: `DEFAULT`, `WEB_COMPANION_ONLY`, a `BIZ_…` violation kind. */
+    readonly enforcementType: string | null;
+    readonly at: Date;
+    readonly raw?: unknown;
+  }
+  | {
+    readonly kind: 'capping';
+    readonly senderId: string;
+    /** `NONE`, `FIRST_WARNING`, `SECOND_WARNING` or `CAPPED`. */
+    readonly status: 'NONE' | 'FIRST_WARNING' | 'SECOND_WARNING' | 'CAPPED' | null;
+    readonly totalQuota: number | null;
+    readonly usedQuota: number | null;
+    readonly cycleStart: Date | null;
+    readonly cycleEnd: Date | null;
+    readonly at: Date;
+    readonly raw?: unknown;
+  };
+
+/**
+ * A contact's phone asked us to send a message again because it could not decrypt it: it shows "Waiting for this message" until we
+ * answer (F6 S5). Baileys answers by itself; the event lets the gateway hold new sends to that contact and count the retries.
+ */
+export interface NormalisedRetryEvent {
+  readonly senderId: string;
+  /** WhatsApp's id for the message we sent. */
+  readonly providerMessageId: string;
+  readonly at: Date;
+}
+
+/**
+ * What a contact's profile shows this number right now (F6 S4). Both are hidden from a number that was blocked, and from one the contact
+ * never shared them with, so they are only evidence together and compared with how they looked at the last delivery.
+ */
+export interface ProfileVisibility {
+  /** The profile photo can be fetched. */
+  readonly photo: boolean;
+  /** The "about" text can be fetched. */
+  readonly about: boolean;
+}
+
 /** How a linking attempt is presented to the person holding the phone. */
 export type LinkChallenge =
   | { readonly mode: 'qr'; readonly qr: string; readonly expiresAt: Date }
@@ -220,7 +273,8 @@ export interface ChannelProvider {
   logout(senderId: string): Promise<void>;
 
   /**
-   * Sends one message. Throws on failure; the caller classifies and decides whether to retry.
+   * Sends one message. Throws on failure; the caller classifies it and never retries it automatically. A refusal by WhatsApp that
+   * carries a status code throws an error whose `statusCode` is that code (463 is the one the gateway acts on, F6 AC-2.6).
    * A failure here must never affect the connection or any other recipient (M26).
    */
   send(sender: SenderRef, to: Recipient, content: OutboundContent): Promise<SendResult>;
@@ -236,6 +290,22 @@ export interface ChannelProvider {
   typing?(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void>;
 
   /**
+   * Shows the number as online (`available`) or offline (`unavailable`). The gateway sets it `available` before the first send of
+   * a run and `unavailable` after 90 s with nothing sent, so the number is never left online (F6 AC-1.6).
+   *
+   * Optional: a transport with no presence concept omits it. Cosmetic like `typing`: a failure is swallowed by the caller.
+   */
+  presence?(sender: SenderRef, state: 'available' | 'unavailable'): Promise<void>;
+
+  /**
+   * Tells WhatsApp that messages from a recipient were read (the blue ticks they see). The gateway calls it when an agent opens the
+   * chat, or a few seconds before the reply to them starts typing, and never when a message arrives (F6 AC-1.7).
+   *
+   * Optional: a transport with no read receipts omits it.
+   */
+  markRead?(sender: SenderRef, from: Recipient, providerMessageIds: readonly string[]): Promise<void>;
+
+  /**
    * Asks whether a phone number has a WhatsApp account, the lookup the app does when you type a
    * number into "new chat". Resolves `true` or `false` when the answer is known and `null` when it
    * could not be asked (socket closed, query failed), in which case the caller must not act on it.
@@ -246,6 +316,21 @@ export interface ChannelProvider {
    * kind of pattern reported to get numbers restricted.
    */
   isRegistered?(sender: SenderRef, phoneE164: string): Promise<boolean | null>;
+
+  /**
+   * Whether the contact's profile photo and about can be seen from this number (F6 AC-4.2). Resolves `null` when it could not be asked
+   * (socket closed, query failed), which the caller must not read as "hidden".
+   *
+   * Optional: a transport with no profile lookups omits it, and the checks that need it do nothing. Called at most once per contact per
+   * day by the caller: a stream of profile lookups is itself a pattern to avoid.
+   */
+  profileSnapshot?(sender: SenderRef, to: Recipient): Promise<ProfileVisibility | null>;
+
+  /**
+   * Throws away the encryption session with a contact so the next message starts a fresh one (F6 AC-5.3). The gateway calls it when the
+   * same message has been asked for twice, which means the session is out of step with the contact's phone. Optional.
+   */
+  resetSession?(sender: SenderRef, to: Recipient): Promise<void>;
 
   /** Inbound messages, normalised. Consumed by the gateway and republished onto the queue. */
   inbound(): AsyncIterable<NormalisedInboundEvent>;
@@ -272,6 +357,17 @@ export interface ChannelProvider {
    * (WhatsApp: a person shares their number). The caller links the two onto one contact.
    */
   identityLinks?(): AsyncIterable<NormalisedIdentityLink>;
+
+  /**
+   * Optional. Limit warnings from WhatsApp: the reachout timelock and the new-chat cap (F6 S2). The gateway stores the latest of
+   * each on the number and every raw one as a notice.
+   */
+  notices?(): AsyncIterable<NormalisedNoticeEvent>;
+
+  /**
+   * Optional. A contact's phone asking for a message of ours again (F6 S5). The provider answers the request itself; this only reports it.
+   */
+  retries?(): AsyncIterable<NormalisedRetryEvent>;
 
   /**
    * Connection state changes, so a caller can persist them and react the instant a socket

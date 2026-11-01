@@ -13,7 +13,7 @@ Nothing is "done" until its exit criteria are met.
 | **P3 · Channels** | `ChannelProvider` port, `fake` adapter, contract suite, `baileys` adapter (Postgres auth store, QR **and** pairing code, reconnect/backoff), gateway process, inbound normalisation, sender identities | Link a real number, send and receive; kill the gateway mid-conversation and lose nothing |
 | **P4 · Inbox** | Conversations, messages, encryption + blind index, assignment, collision detection, notes, canned replies, realtime, search | Two agents work one inbox without stepping on each other |
 | **P5 · Ingestion** | `SourceConnector` port, Excel/CSV, mapping UI, dry run, identity resolution, merge policies, error ledger, Google Sheets, REST puller, schedules | 50k hostile rows import with a per-row report and no data loss |
-| **P6 · Anti-ban** | The anti-ban policy seam; the first engine was removed on 2026-10-30 and the new one is pending | A 50-recipient campaign queues at most one batch at a time and every send is spaced |
+| **P6 · Anti-ban** | The v2 engine (F6 S1 to S9): send lane, WhatsApp's warnings, exact schedule and ETA, ticks, decrypt-retry holds, STOP handling. Built on `feat/antiban-v2`; the first engine was removed on 2026-10-30. **Left:** S10 (screens) and a real-phone check | A 50-recipient campaign queues at most one batch at a time and every send is spaced |
 | **P7 · Campaigns** | Templates, segments, campaigns, dispatcher, throttling, opt-out, quiet hours, per-recipient status, cost estimate | 10k campaign runs, pauses, resumes, survives a worker restart, zero duplicates |
 | **P8 · Meta adapter** | Cloud API adapter, template sync + approval, webhook ingest, 24h window, tier/quality tracking, routing rules, cost report | Both transports live; routing demonstrably picks the cheaper safe path |
 | **P9 · API & webhooks** | Public API hardening, OpenAPI, SDK, outbound webhooks with retry/replay/DLQ, policy delegation | An external app drives the CRM end to end using only the docs |
@@ -30,7 +30,7 @@ Nothing is "done" until its exit criteria are met.
 | F3 Inbox | Threads, assignment, collision, notes, canned replies, search, realtime | SLA, routing rules, working hours, saved views | Sentiment, auto-summary |
 | F4 Templates | Versioned, typed variables, Meta sync, locales, spintax | Media headers, buttons, lists, carousels, A/B | Flows builder |
 | F5 Campaigns | Segments, schedule, dry run, throttle, pause/resume, opt-out, quiet hours | Drip, retargeting, A/B, recurring, approval workflow | Send-time optimisation, journeys |
-| F6 Anti-ban | Full engine | Cross-instance budget, per-number proxy | — |
+| F6 Anti-ban | v2 engine (built); screens (S10) next | Cross-instance budget, per-number proxy | — |
 | F7 Ingestion | Excel/CSV, mapping UI, dry run, error ledger, Sheets, REST, webhook, schedules | DB source, CRM connectors, Airbyte-compatible | CDC streaming |
 | F8 API | REST, keys, OpenAPI, webhooks, SDK, policy delegation | GraphQL, SSO, per-endpoint quotas | Plugin registry |
 | F9 Automation | Opt-out, keyword replies, business hours, classification rules | Visual builder, branching, HTTP action | Journey orchestration |

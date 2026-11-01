@@ -25,7 +25,7 @@ cleared, and it is why the ports exist at all.
 
 | Layer | Tool | Target | Covers |
 |---|---|---|---|
-| **Unit** | Vitest | ≥80% core, **100% anti-ban policy + dispatcher** | The gap between sends, the campaign batch, merge policies, phone normalisation, template rendering, identity resolution |
+| **Unit** | Vitest | ≥80% core, **100% anti-ban policy + dispatcher** | The anti-ban policy, schedule, ticks, decrypt retries and opt-out rules (`packages/core/src/antiban/*.test.ts`), merge policies, phone normalisation, template rendering, identity resolution |
 | **Contract** | Vitest + LocalStack, Keycloak, MailHog | Every adapter and every driver | One conformance suite per port — `ChannelProvider`, `SourceConnector`, `StorageDriver`, `AuthProvider`, `QueueDriver`, `EmailDriver`, `KmsDriver`. New adapters are correct by construction; swapping drivers provably changes nothing. |
 | **Integration** | Vitest + Testcontainers | Repositories, queues, workers | Real Postgres, real queue, no mocks at the boundary. Migrations up and down. **RLS isolation asserted per table.** |
 | **API** | Supertest + Testcontainers | Every endpoint | Happy path, authz matrix (every role × every endpoint), validation, pagination, idempotency, rate limits, error shapes |
@@ -98,6 +98,14 @@ Notes:
 | **PR** | lint (incl. the JSDoc rule) · typecheck · unit · contract · integration · API · Semgrep · gitleaks |
 | **main** | + E2E on all presets · resource budget |
 | **Release** | + load · chaos · restore drill · manual checklist |
+
+### Anti-ban v2 tests
+
+One test per acceptance case of [F6](06-features/F6-antiban.md), titled with its number (`AC-1.3 ...`): unit tests next to the code in
+`packages/core/src/antiban/` and in the Baileys adapter (`notices.test.ts`, `profile-session.test.ts`); integration tests
+`tests/integration/antiban-v2-{lane,schedule,warnings,protection,ticks,decrypt,optout,api}.test.ts` on real Postgres and the fake provider, with the
+shared `antiban-v2-harness.ts`, which injects the clock, the random draw and the sleep so a 30-minute tick check or a 90-second silence runs in
+milliseconds. `antiban-purged.test.ts` fails if a name of the removed first engine comes back. S10 has no test yet (it is not built).
 
 ## Coverage
 

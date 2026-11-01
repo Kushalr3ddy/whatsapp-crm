@@ -332,9 +332,9 @@ npm run wa:link
 ```
 
 QR or pairing code. **Read [`08 · Anti-ban`](08-antiban.md) first if you are pointing this at a
-number you care about** — Baileys is unofficial and a ban has no appeal. The old engine was removed and
-the new one is pending; for now sends from one number are only spaced a few seconds apart, and a campaign
-queues a small batch at a time. That reduces the risk of a ban; it cannot remove it.
+number you care about** — Baileys is unofficial and a ban has no appeal. The v2 engine spaces sends from one
+number by a random 1 to 50 seconds (a campaign of 50 people takes about 20 minutes), shows "typing…" first, holds
+new chats when WhatsApp warns the number, and has no daily cap. That reduces the risk of a ban; it cannot remove it.
 
 Two things that have cost time before, both now handled but worth recognising:
 
@@ -402,7 +402,7 @@ whose provider is `fake`, and the app refuses `GATEWAY_CHANNEL=fake` when `NODE_
 npm run local:seed                    # a fake connected number, 20 people, 3 tags, a field, 3 conversations, an audience
 npm run local:seed -- --reset         # remove exactly what the seed made 
 GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 \
-  SEND_TYPING_SIMULATION=false npm run dev:all
+  SEND_TYPING_SIMULATION=false npm run dev:all   # the gaps between sends still apply; tests that send several messages wait for them
 npm run test:e2e
 ```
 

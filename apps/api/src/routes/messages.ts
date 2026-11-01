@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
-import { writeAudit, AUDIT, storeOutboundMedia } from '@crm/core';
+import { writeAudit, AUDIT, storeOutboundMedia, requestRead, markOptOut } from '@crm/core';
 import type { StorageDriver } from '@crm/storage';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
@@ -356,11 +356,15 @@ export function messagesRouter(
     async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
     const conversationId = String(req.params.id);
-    const updated = (await req.tenant!((tx) => tx.execute(sql`
-      UPDATE conversation SET unread_count = 0
-      WHERE id = ${conversationId} AND org_id = ${orgId}
-      RETURNING id, unread_count AS "unreadCount"`)
-    ) as unknown as Array<{ id: string; unreadCount: number }>);
+    const updated = (await req.tenant!(async (tx) => {
+      const rows = await tx.execute(sql`
+        UPDATE conversation SET unread_count = 0
+        WHERE id = ${conversationId} AND org_id = ${orgId}
+        RETURNING id, unread_count AS "unreadCount"`);
+      // An agent reading the chat is what tells WhatsApp its messages were read; the gateway does it (F6 AC-1.7).
+      if ((rows as unknown as unknown[]).length > 0) await requestRead(tx, orgId, conversationId);
+      return rows;
+    }) as unknown as Array<{ id: string; unreadCount: number }>);
     if (updated.length === 0) {
       res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));
       return;
@@ -787,6 +791,19 @@ export function messagesRouter(
       } });
     });
 
+  /**
+   * An agent marks a reply as an opt-out by hand, because the classifier missed it (F6 AC-6.8). The same effect as the contact sending
+   * STOP: one closing message goes at reply priority, then the contact is on do-not-contact. Marking someone who has already opted out
+   * changes nothing and sends nothing.
+   */
+  router.post('/conversations/:id/opt-out', requireUuidParam('id'), requireScope('conversations:write'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const result = await req.tenant!((tx) => markOptOut(tx, kms, { orgId, conversationId: String(req.params.id), actor: auditActor(req) }));
+      if (!result.found) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.')); return; }
+      res.json({ data: { alreadyOptedOut: result.alreadyOptedOut, closingMessageId: result.closingMessageId } });
+    });
+
   /** Returns one thread, oldest first, with bodies decrypted for display. */
   router.get('/conversations/:id/messages', requireUuidParam('id'), requireScope('conversations:read'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
@@ -826,9 +843,11 @@ export function messagesRouter(
         // Opening a thread reads it: clear the unread badge. Without this the count only ever
         // grew — it was incremented on every inbound and reset nowhere. Idempotent, so the
         // 5-second inbox poll reopening the same thread costs nothing.
-        await tx.execute(sql`
+        const cleared = await tx.execute(sql`
           UPDATE conversation SET unread_count = 0
-          WHERE id = ${conversationId} AND org_id = ${orgId} AND unread_count <> 0`);
+          WHERE id = ${conversationId} AND org_id = ${orgId} AND unread_count <> 0
+          RETURNING id`);
+        if ((cleared as unknown as unknown[]).length > 0) await requestRead(tx, orgId, conversationId);
       }
       return found;
     });
@@ -991,10 +1010,16 @@ export function messagesRouter(
         }
 
         const flagged = (await tx.execute(sql`
-          SELECT c.do_not_contact AS flagged FROM conversation v JOIN contact c ON c.id = v.contact_id
+          SELECT c.do_not_contact AS flagged,
+                 -- They have written to us since they were flagged: an agent may answer by hand (F6 AC-6.5).
+                 (c.dnc_at IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM message i WHERE i.conversation_id = v.id AND i.direction = 'inbound' AND i.created_at > c.dnc_at)) AS reopened
+          FROM conversation v JOIN contact c ON c.id = v.contact_id
           WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}`)
-        ) as unknown as Array<{ flagged: boolean }>;
-        const verdict = dncVerdict(req, flagged[0]?.flagged === true, overrideDnc);
+        ) as unknown as Array<{ flagged: boolean; reopened: boolean }>;
+        const verdict = flagged[0]?.flagged === true && flagged[0].reopened && ctx.kind === 'session'
+          ? 'proceed' as const
+          : dncVerdict(req, flagged[0]?.flagged === true, overrideDnc);
         if (verdict === 'blocked' || verdict === 'forbidden') return { dncRefused: verdict };
 
         // Two people about to answer the same customer: warn the second, who may send anyway.

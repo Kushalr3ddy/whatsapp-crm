@@ -103,6 +103,7 @@ document (templates, webhooks, policy delegation, the SDK, OpenAPI) is design, n
 | Campaigns | `GET/POST /campaigns` · `GET /campaigns/:id` | Create a **draft** (sends nothing); detail with progress |
 | | `POST /campaigns/:id/start` · `/pause` · `/cancel` | Start freezes the audience; pause is instant |
 | | `GET /campaigns/:id/preview` · `GET /campaigns/:id/recipients` | Dry run before start; per-recipient results |
+| | `GET /campaigns/:id/eta` | When it finishes, from the gaps stored at launch (see below) |
 
 All paths are under `/api/v1` except the health checks.
 
@@ -183,8 +184,8 @@ Each download is recorded in the audit log as `media.downloaded`, and opening a 
 
 `POST /campaigns/:id/start` **queues nothing**. It freezes the audience into
 `campaign_recipient` rows, and the gateway converts those into messages a small batch at a
-time (the anti-ban policy's `campaignBatch`, 20 waiting per number for now), each one spaced from the
-last by a few seconds:
+time (the anti-ban policy's `campaignBatch`, 20 waiting per number), each one spaced from the
+last by the gap drawn for it at start (1 to 50 seconds, `planned_gap_ms`):
 
 ```json
 { "status": "running",
@@ -208,7 +209,7 @@ qualifies). Errors use the problem shape above.
 |---|---|---|
 | `GET /contacts/count?q=&tag=` | `contacts:read` | How many contacts match a search / tag filter — the number a bulk action would touch |
 | `GET /contacts/export?format=csv\|vcf` | admin | Streams every contact (CSV for a spreadsheet, vCard for a phone). Audited; 5 per hour |
-| `PUT /contacts/:id/do-not-contact` | `contacts:write` | `{ value, reason? }` — flags or clears do-not-contact. Audited |
+| `PUT /contacts/:id/do-not-contact` | `contacts:write` | `{ value, reason? }` — flags or clears do-not-contact. Audited. A contact who opted out carries the reason `opt_out`; clearing it here is how an agent lifts it. An agent can answer by hand (`POST /messages` with `conversationId`) a flagged contact who wrote after being flagged |
 | `PUT /contacts/:id/custom-fields` | `contacts:write` | `{ values: { key: value \| null } }` — set/clear custom field values, validated against the org's definitions |
 | `GET/POST /custom-fields`, `DELETE /custom-fields/:key` | read / admin | The org's typed field vocabulary (`text`, `number`, `date`, `select`); removing one clears it from every contact |
 | `POST /tags/:id/bulk` | `contacts:write` (`all` = admin) | `{ action: add\|remove, target: all\|search\|segment\|ids, dryRun (default true), expectedCount? }` — set-based, idempotent, previews first, `409 COUNT_CHANGED` if the audience moved |
@@ -219,9 +220,15 @@ qualifies). Errors use the problem shape above.
 | `POST /campaigns/:id/start` | `messages:send` | Optional `overrideGates: [dnc\|engagement\|cooldown\|duplicate_campaign]` + `reason` (admin only, audited) |
 | `GET /campaigns/:id` | `conversations:read` | Now includes `gateOverrides`, `gateOverrideReason`, `pauseReason` |
 | `GET /senders/:id/health-events` | `senders:read` | The number's timeline (refused connections, logouts nobody asked for, devices removed on the phone), newest first |
-| `GET /senders` | `senders:read` | `id`, `label`, `provider`, `phoneE164`, `status`, `connectionState`, `linked`, `linkError` |
+| `GET /senders` | `senders:read` | `id`, `label`, `provider`, `phoneE164`, `status`, `connectionState`, `linked`, `linkError`, and what WhatsApp last said about the number's limits (`timelockActive`, `timelockUntil`, `timelockType`, `cappingStatus`, `cappingTotalQuota`, `cappingUsedQuota`, `cappingCycleEnd`, `linkedSince`) with `hints` (advice only: `new_number`, `use_phone_too`) |
 | `POST /segments` | `contacts:write` | Now takes `saved` (default `true`); `false` makes a one-off inline audience that is not listed |
-| `PATCH /campaigns/:id` | `messages:send` | `{ name?, body? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise) |
+| `PATCH /campaigns/:id` | `messages:send` | `{ name?, body?, mediaAfterReply? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise) |
+| `POST /campaigns` | `messages:send` | Takes `purpose` (one sentence: why these people are messaged, said in the closing message if one opts out; `GET /campaigns/:id` returns it) and `mediaAfterReply` (default `true`: new chats get the text alone, the picture or link follows when they reply). The answer carries `warnings` (`no_variation` when the text has no `{a\|b}` choice and no AI writes it; the campaign can still launch) |
+| `GET /campaigns/:id` | `conversations:read` | Also `mediaAfterReply`, `aiTemplateId` and `warnings` |
+| `GET /campaigns/:id/eta` | `conversations:read` | `{ finishAt, goNow, afterReset, resetAt, basis: quota\|time_only, delayedBy: [{ reason: reply_priority\|timelock\|new_chat_cap\|quiet_hours, seconds }] }`. `finishAt` is null when nothing is left to send; `404` for a campaign that is not the caller's org's. No randomness: the same campaign gives the same answer |
+| `GET/PUT /antiban/settings` | admin (session) | The org's sending settings: `closingMessageEnabled` (default `true`), `contactPhone`, `contactEmail`, `defaultPurpose` (all quoted in the closing message sent when someone opts out), `stopWords`, `restartWords` (lower-cased), `quietHours { enabled, start, end, timeZone }`. `PUT` takes any part (`422` for a bad email, time or zone). `missing` lists `contactPhone` / `contactEmail` when not set. Audited (`antiban.settings_changed`) |
+| `POST /senders/:id/resume` | `senders:write` | Lifts the `many_undelivered` hold on the number's campaigns. `{ data: { resumed } }`, `false` when nothing was held. Only sends after this count toward holding it again. Audited |
+| `POST /conversations/:id/opt-out` | `conversations:write` | Marks a reply as an opt-out by hand: one closing message at reply priority, then do-not-contact (reason `opt_out`). `{ data: { alreadyOptedOut, closingMessageId } }`; a second call sends nothing |
 | `GET/PUT /ai/settings` | admin (session) | The AI assistant's switch, instructions, daily message limit, `mayStartCampaigns`, consent. `PUT` refuses to switch on until `acceptConsent` has been sent once (`422 AI_RULE`); creates the assistant's user the first time |
 | `GET /ai/status` | `conversations:read` | `{ enabled }`, so screens know whether to offer the helpers |
 | `GET /ai/llm` | `conversations:read` | Which AI provider and model the install uses now (`driver`, `provider`, `model`, `ready`, `source`), and the providers on offer. An admin also gets the **last four characters** of the key and the address; the key is never returned. |

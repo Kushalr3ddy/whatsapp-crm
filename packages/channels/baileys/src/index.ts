@@ -6,8 +6,8 @@ import makeWASocket, {
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, InboundMedia,
   LinkChallenge,
-  NormalisedConnectionEvent, NormalisedIdentityLink, NormalisedInboundEvent, NormalisedStatusEvent,
-  OutboundContent,
+  NormalisedConnectionEvent, NormalisedIdentityLink, NormalisedInboundEvent, NormalisedNoticeEvent, NormalisedRetryEvent, NormalisedStatusEvent,
+  OutboundContent, ProfileVisibility,
   ProviderHealth, Recipient,
   SenderRef, SendResult
 } from '@crm/channels';
@@ -119,6 +119,8 @@ export class BaileysChannelProvider implements ChannelProvider {
   readonly #links = new EventStream<NormalisedIdentityLink>();
   readonly #status = new EventStream<NormalisedStatusEvent>();
   readonly #connectionEvents = new EventStream<NormalisedConnectionEvent>();
+  readonly #notices = new EventStream<NormalisedNoticeEvent>();
+  readonly #retries = new EventStream<NormalisedRetryEvent>();
   /** Consecutive failed reconnects per sender, so backoff grows and eventually gives up. */
   readonly #reconnectAttempts = new Map<string, number>();
   /** Scheduled reconnects, kept so shutdown can cancel them instead of firing into a closed pool. */
@@ -225,7 +227,18 @@ export class BaileysChannelProvider implements ChannelProvider {
     // privacy-mode contact addresses a chat that does not exist, and in the previous system that
     // crashed the whole engine rather than one send — a permanent crash loop (M26).
     const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
-    const sent = await conn.socket.sendMessage(jid, toBaileysContent(content) as never);
+    let sent;
+    try {
+      sent = await conn.socket.sendMessage(jid, toBaileysContent(content) as never);
+    } catch (error) {
+      // WhatsApp's refusal carries its status code (a Boom error keeps it under `output`): put it where the gateway looks, so a 463
+      // is told apart from any other failure (F6 AC-2.6).
+      const code = (error as { output?: { statusCode?: number } } | null)?.output?.statusCode;
+      if (typeof code === 'number' && error instanceof Error && (error as { statusCode?: number }).statusCode === undefined) {
+        throw Object.assign(error, { statusCode: code });
+      }
+      throw error;
+    }
     if (!sent?.key.id) throw new Error('WhatsApp accepted the send but returned no message id');
     this.#rememberSent(sent.key.id);
 
@@ -246,6 +259,24 @@ export class BaileysChannelProvider implements ChannelProvider {
   }
 
   /**
+   * Shows the number online or offline (F6 AC-1.6). `markOnlineOnConnect` is off, so nothing else ever sets it: the lane does,
+   * around a run of sends. Best-effort like typing.
+   */
+  async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<void> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return;
+    await conn.socket.sendPresenceUpdate(state);
+  }
+
+  /** Tells WhatsApp these messages from a contact were read (F6 AC-1.7). Never called when a message arrives. */
+  async markRead(sender: SenderRef, from: Recipient, providerMessageIds: readonly string[]): Promise<void> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open' || providerMessageIds.length === 0) return;
+    const jid = from.providerAddress ?? `${from.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
+    await conn.socket.readMessages(providerMessageIds.map((id) => ({ remoteJid: jid, id, fromMe: false })));
+  }
+
+  /**
    * Whether a number has a WhatsApp account, via Baileys' `onWhatsApp` (a contact-sync query on this
    * session). Baileys returns only the numbers that DO exist, so a result without our number means
    * "no account", and no result at all (query failed) means "could not tell".
@@ -258,6 +289,67 @@ export class BaileysChannelProvider implements ChannelProvider {
     return found.some((r) => r.exists);
   }
 
+  /**
+   * Whether the contact's profile photo and about can be fetched from this number (F6 AC-4.2). A hidden photo comes back as a
+   * not-authorized or not-found answer, a hidden about as no status at all; a timeout or a closed socket is "could not tell" (null),
+   * never "hidden". Two lookups, so the caller keeps this to once per contact per day.
+   */
+  async profileSnapshot(sender: SenderRef, to: Recipient): Promise<ProfileVisibility | null> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return null;
+    const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
+    let photo: boolean | null;
+    try {
+      const url = await conn.socket.profilePictureUrl(jid, 'preview');
+      photo = typeof url === 'string' && url !== '';
+    } catch (error) {
+      const code = (error as { output?: { statusCode?: number }; data?: number } | null);
+      const status = code?.output?.statusCode ?? code?.data;
+      photo = status === 401 || status === 403 || status === 404 ? false : null;
+    }
+    let about: boolean | null;
+    try {
+      const list = await conn.socket.fetchStatus(jid);
+      if (list === undefined) about = null;
+      else {
+        const entry = list[0] as { status?: { status?: string } | string | null } | undefined;
+        const text = typeof entry?.status === 'string' ? entry.status : entry?.status?.status;
+        about = typeof text === 'string' && text.trim() !== '';
+      }
+    } catch {
+      about = null;
+    }
+    return photo === null || about === null ? null : { photo, about };
+  }
+
+  /**
+   * Throws away the encryption sessions with a contact, for every device of theirs, so the next message starts a fresh one (F6 AC-5.3).
+   * The sessions are keys in our own credential store (`session-<user>.<device>`, a privacy address as `<user>_1`), so removing them
+   * there is what the next send and the next receipt will find missing, and Baileys builds a new one from the contact's pre-keys.
+   */
+  async resetSession(sender: SenderRef, to: Recipient): Promise<void> {
+    const conn = this.#connections.get(sender.id);
+    if (!conn || conn.state !== 'open') return;
+    const jid = to.providerAddress ?? `${to.phoneE164.replace(/\D/g, '')}@s.whatsapp.net`;
+    const userOf = (j: string): string => (j.split('@')[0] ?? '').split(':')[0] ?? '';
+    const users = new Set([userOf(jid)]);
+    try {
+      const mapping = (conn.socket.signalRepository as unknown as {
+        lidMapping?: { getLIDForPN?: (pn: string) => Promise<string | null>; getPNForLID?: (lid: string) => Promise<string | null> };
+      }).lidMapping;
+      const other = jid.endsWith('@lid') ? await mapping?.getPNForLID?.(jid) : await mapping?.getLIDForPN?.(jid);
+      if (typeof other === 'string' && other !== '') users.add(userOf(other));
+    } catch { /* the mapping is a convenience; the address we have is enough */ }
+    users.delete('');
+    if (users.size === 0) return;
+    const escaped = [...users].map((u) => u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const sessionKey = new RegExp(`^session-(?:${escaped.join('|')})(?:_\\d+)?\\.\\d+$`);
+    const store = this.#options.authStore;
+    for (const key of await store.keys(sender.id)) {
+      if (sessionKey.test(key)) await store.remove(sender.id, key);
+    }
+  }
+
   /** Inbound messages, normalised so callers never see Baileys' own shapes. */
   inbound(): AsyncIterable<NormalisedInboundEvent> {
     return this.#inbound;
@@ -266,6 +358,16 @@ export class BaileysChannelProvider implements ChannelProvider {
   /** A privacy address and its phone number, whenever WhatsApp shows them together. */
   identityLinks(): AsyncIterable<NormalisedIdentityLink> {
     return this.#links;
+  }
+
+  /** A contact's phone asking for one of our messages again because it could not decrypt it (F6 S5). Baileys answers it itself. */
+  retries(): AsyncIterable<NormalisedRetryEvent> {
+    return this.#retries;
+  }
+
+  /** WhatsApp's limit warnings: the reachout timelock and the new-chat cap (F6 S2). */
+  notices(): AsyncIterable<NormalisedNoticeEvent> {
+    return this.#notices;
   }
 
   /** Delivery receipts, normalised to one status vocabulary across every provider. */
@@ -336,6 +438,7 @@ export class BaileysChannelProvider implements ChannelProvider {
     this.#inbound.close();
     this.#status.close();
     this.#links.close();
+    this.#notices.close();
   }
 
   /** Opens a socket and wires every Baileys event onto our normalised streams. */
@@ -356,14 +459,16 @@ export class BaileysChannelProvider implements ChannelProvider {
     const socket = (this.#options.makeSocket ?? makeWASocket)({
       version,
       auth: state,
-      logger: (onFail !== undefined || onRetry !== undefined
-        ? tapDecryptFailures(
-          this.#options.logger,
-          // Own device: the frame says it is from this account (`fromMe`), or its author, or its chat, is this account's own address.
-          (info) => { onFail?.(senderId, new Date(), { own: info.fromMe || isOwn(info.author) || isOwn(info.jid) }); },
-          onRetry === undefined ? undefined : (messageId) => { onRetry(senderId, messageId, new Date()); }
-        )
-        : this.#options.logger) as never,
+      logger: tapDecryptFailures(
+        this.#options.logger,
+        // Own device: the frame says it is from this account (`fromMe`), or its author, or its chat, is this account's own address.
+        (info) => { onFail?.(senderId, new Date(), { own: info.fromMe || isOwn(info.author) || isOwn(info.jid) }); },
+        (messageId) => {
+          const at = new Date();
+          if (!this.#shuttingDown) this.#retries.push({ senderId, providerMessageId: messageId, at });
+          onRetry?.(senderId, messageId, at);
+        }
+      ) as never,
       // Identify as a desktop browser. A plausible, stable client fingerprint matters — the
       // detection heuristics notice inconsistency across sessions.
       browser: Browsers.ubuntu('Chrome'),
@@ -400,6 +505,8 @@ export class BaileysChannelProvider implements ChannelProvider {
       if (type !== 'notify') return;   // 'append' is history sync, not new traffic
       for (const m of messages) this.#emitInbound(senderId, m, isOwn);
     });
+    // WhatsApp's own warnings about starting new chats (F6 S2). The timelock arrives as part of a connection update, the cap as its own event.
+    socket.ev.on('message-capping.update', (info) => { this.#emitCapping(senderId, info); });
     socket.ev.on('messages.update', (updates) => {
       for (const u of updates) this.#emitStatus(senderId, u);
     });
@@ -432,6 +539,8 @@ export class BaileysChannelProvider implements ChannelProvider {
   #onConnectionUpdate(
     senderId: string, conn: Connection, update: Partial<ConnectionState>, expectQr: boolean
   ): void {
+    if (update.reachoutTimeLock !== undefined) this.#emitTimelock(senderId, update.reachoutTimeLock);
+
     if (update.qr !== undefined && expectQr && conn.pendingQr) {
       conn.pendingQr.resolve(update.qr);
       conn.pendingQr = null;
@@ -481,6 +590,40 @@ export class BaileysChannelProvider implements ChannelProvider {
       // reconnecting on our own would just re-register in the background.
       if (!failedLink) this.#scheduleReconnect(senderId, reason);
     }
+  }
+
+  /** Turns WhatsApp's reachout timelock state into a port notice. An inactive state is the restriction being lifted. */
+  #emitTimelock(
+    senderId: string, state: { isActive?: boolean; timeEnforcementEnds?: Date; enforcementType?: string }
+  ): void {
+    if (this.#shuttingDown) return;
+    const active = state.isActive === true;
+    this.#options.logger.info({ senderId, active, until: state.timeEnforcementEnds, type: state.enforcementType }, 'whatsapp reachout timelock update');
+    this.#notices.push({
+      kind: 'timelock', senderId, active, until: state.timeEnforcementEnds ?? null,
+      enforcementType: state.enforcementType ?? null, at: new Date(), raw: state
+    });
+  }
+
+  /** Turns WhatsApp's new-chat cap update into a port notice. Its timestamps are seconds since the epoch, sent as strings. */
+  #emitCapping(
+    senderId: string,
+    info: {
+      total_quota?: number; used_quota?: number; cycle_start_timestamp?: string; cycle_end_timestamp?: string; capping_status?: string
+    }
+  ): void {
+    if (this.#shuttingDown) return;
+    const seconds = (v: string | undefined): Date | null => {
+      const n = v === undefined ? NaN : Number(v);
+      return Number.isFinite(n) && n > 0 ? new Date(n * 1000) : null;
+    };
+    const known = ['NONE', 'FIRST_WARNING', 'SECOND_WARNING', 'CAPPED'] as const;
+    const status = known.find((k) => k === info.capping_status) ?? null;
+    this.#options.logger.info({ senderId, status, total: info.total_quota, used: info.used_quota }, 'whatsapp new-chat cap update');
+    this.#notices.push({
+      kind: 'capping', senderId, status, totalQuota: info.total_quota ?? null, usedQuota: info.used_quota ?? null,
+      cycleStart: seconds(info.cycle_start_timestamp), cycleEnd: seconds(info.cycle_end_timestamp), at: new Date(), raw: info
+    });
   }
 
   /**

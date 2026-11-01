@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import {
-  campaignProgress, previewAudience, POLICY_GATES,
+  campaignProgress, previewAudience, POLICY_GATES, campaignEta, hasVariation,
   createCampaignDraft, startCampaign as startCampaignRun, setCampaignStatus, editCampaign, type ActionContext,
   storeCampaignPicture, listCampaignPictures, CampaignPictureError, GifConversionError
 } from '@crm/core';
@@ -22,7 +22,11 @@ const createCampaign = z.object({
   fromSegmentId: z.string().uuid().optional(),
   aiTemplateId: z.string().uuid().optional(),
   /** One stored campaign picture or GIF sent with every message, the message being its caption. */
-  mediaAssetId: z.string().uuid().optional()
+  mediaAssetId: z.string().uuid().optional(),
+  /** A new chat gets the text alone; the picture or link follows when they reply. On unless said otherwise (F6 AC-7.3). */
+  mediaAfterReply: z.boolean().optional(),
+  /** Why these people are being messaged, in a sentence. Said in the closing message if one of them opts out (F6 AC-6.2). */
+  purpose: z.string().trim().min(1).max(300).optional()
 }).refine((v) => [v.fromImportRunId, v.explicitContactIds, v.fromTagId, v.fromSegmentId]
   .filter((x) => x !== undefined).length === 1, {
   message: 'state the audience exactly once: fromImportRunId, explicitContactIds, fromTagId, or fromSegmentId'
@@ -42,8 +46,19 @@ const startCampaign = z.object({
 /** Body for editing a draft or paused campaign: a new name, new wording, or both. */
 const editBody = z.object({
   name: z.string().trim().min(1).max(200).optional(),
-  body: z.string().min(1).max(4096).optional()
-}).refine((v) => v.name !== undefined || v.body !== undefined, 'give a name or a body');
+  body: z.string().min(1).max(4096).optional(),
+  mediaAfterReply: z.boolean().optional()
+}).refine((v) => v.name !== undefined || v.body !== undefined || v.mediaAfterReply !== undefined, 'give a name, a body or mediaAfterReply');
+
+/**
+ * Warnings about a campaign that never stop it from launching (F6 AC-7.2): text with no `{a|b}` variation and no AI writing it
+ * sends the same words to everyone, which is one of the clearest signs of a bulk sender.
+ */
+function campaignWarnings(body: string, aiTemplateId: string | null): Array<{ code: 'no_variation'; message: string }> {
+  return aiTemplateId === null && !hasVariation(body)
+    ? [{ code: 'no_variation', message: 'Every recipient gets exactly the same text. Add variants like {Hi|Hello|Hey}, or let the AI write it, to look less like a bulk send.' }]
+    : [];
+}
 
 /**
  * Query for listing a campaign's recipients. `status` narrows to one terminal/pending state, `q`
@@ -114,11 +129,11 @@ export function campaignsRouter(storage: StorageDriver): Router {
     }
     const orgId = req.crm!.orgId;
     const {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId, mediaAfterReply, purpose
     } = parsed.data;
 
     const created = await req.tenant!((tx) => createCampaignDraft(tx, orgId, actionContext(req), {
-      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId
+      name, body, senderIdentityId, fromImportRunId, explicitContactIds, fromTagId, fromSegmentId, aiTemplateId, mediaAssetId, mediaAfterReply, purpose
     }));
 
     if ('error' in created) {
@@ -130,7 +145,7 @@ export function campaignsRouter(storage: StorageDriver): Router {
       res.status(404).json(problem(req, 404, 'NOT_FOUND', detail));
       return;
     }
-    res.status(201).json({ data: { id: created.id, status: 'draft' } });
+    res.status(201).json({ data: { id: created.id, status: 'draft', warnings: campaignWarnings(body, aiTemplateId ?? null) } });
   });
 
   /**
@@ -218,7 +233,8 @@ export function campaignsRouter(storage: StorageDriver): Router {
                  c.started_at AS "startedAt", c.completed_at AS "completedAt",
                  c.created_at AS "createdAt", c.gate_overrides AS "gateOverrides",
                  c.gate_override_reason AS "gateOverrideReason", c.pause_reason AS "pauseReason",
-                 c.media_asset_id AS "mediaAssetId", ma.filename AS "mediaFilename",
+                 c.media_asset_id AS "mediaAssetId", c.media_after_reply AS "mediaAfterReply", c.purpose,
+                 c.ai_template_id AS "aiTemplateId", ma.filename AS "mediaFilename",
                  ma.content_type AS "mediaContentType", ma.size_bytes AS "mediaSizeBytes"
           FROM campaign c
           LEFT JOIN media_asset ma ON ma.id = c.media_asset_id AND ma.org_id = c.org_id
@@ -227,7 +243,8 @@ export function campaignsRouter(storage: StorageDriver): Router {
         if (!campaign) return null;
 
         const progress = await campaignProgress(tx, orgId, id);
-        return { ...campaign, progress };
+        const warnings = campaignWarnings(String(campaign.body), (campaign.aiTemplateId as string | null) ?? null);
+        return { ...campaign, progress, warnings };
       });
 
       if (data === null) {
@@ -235,6 +252,28 @@ export function campaignsRouter(storage: StorageDriver): Router {
         return;
       }
       res.json({ data });
+    });
+
+  /**
+   * When the campaign finishes, worked out from the gaps stored on its recipients (F6 S3): `finishAt`, how many go now and how many
+   * wait for WhatsApp's next reset (`goNow`, `afterReset`, `resetAt`), what the estimate rests on (`basis`: `quota` or `time_only`),
+   * and why it moved (`delayedBy`: a reason and seconds each). No randomness: the same campaign gives the same answer.
+   */
+  router.get('/:id/eta', requireUuidParam('id'), requireScope('conversations:read'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+      const eta = await req.tenant!((tx) => campaignEta(tx, orgId, id, new Date()));
+      if (eta === null) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such campaign.'));
+        return;
+      }
+      res.json({
+        data: {
+          finishAt: eta.finishAt?.toISOString() ?? null, goNow: eta.goNow, afterReset: eta.afterReset,
+          resetAt: eta.resetAt?.toISOString() ?? null, basis: eta.basis, delayedBy: eta.delayedBy
+        }
+      });
     });
 
   /**

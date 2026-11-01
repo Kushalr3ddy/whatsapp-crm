@@ -17,7 +17,7 @@ packages/
   db/         Drizzle schema, migrations, repositories, RLS helpers.
   core/       Domain logic — contacts, conversations, campaigns, policy, dispatcher.
               May import PORTS; may never import a concrete adapter.
-              Includes the anti-ban policy (antiban.ts).
+              Includes the anti-ban policy (antiban.ts and antiban/); the send lane is in apps/gateway/src/lane.ts.
   baileys/    Vendored Baileys 7.0.0-rc14 source (WhatsApp Web client). Rebuild: npm run baileys:build.
   channels/   The ChannelProvider port.
     {baileys,fake}/
