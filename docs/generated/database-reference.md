@@ -1,9 +1,9 @@
 # Database reference (generated)
 
-Generated from the live database on 2026-10-30 by `npm run db:docs`. **Do not edit by hand**; change the schema or `packages/db/src/table-notes.ts` and regenerate.
+Generated from the live database on 2026-11-01 by `npm run db:docs`. **Do not edit by hand**; change the schema or `packages/db/src/table-notes.ts` and regenerate.
 For the optimisations and the main queries, see [`35-database-and-queries.md`](../35-database-and-queries.md).
 
-**32 tables, 70 foreign keys, 28 row-level-security policies, 3 triggers, 2 functions.**
+**34 tables, 73 foreign keys, 30 row-level-security policies, 3 triggers, 2 functions.**
 
 Every tenant table has `org_id` and a row-level-security policy: the app runs each request as the restricted `crm_app` role with `app.org_id` set, so a forgotten `WHERE org_id` returns nothing instead of leaking.
 
@@ -14,26 +14,27 @@ Every tenant table has `org_id` and a row-level-security policy: the app runs ea
 | Table | What it is for | Rows now |
 |---|---|---|
 | [`ai_run`](#ai_run) | One row each time the AI assistant sends, tries, or is held back (and why), with the model and token counts, so its work and cost can be checked. | 0 |
-| [`audit_log`](#audit_log) | Append-only record of who did what and when: sign-ins, reassignments, overrides, exports. The app role cannot update or delete rows. | 7 |
+| [`audit_log`](#audit_log) | Append-only record of who did what and when: sign-ins, reassignments, overrides, exports. The app role cannot update or delete rows. | 1 |
 | [`key_rotation_state`](#key_rotation_state) | One row for the whole install: whether the background re-encryption of a key rotation is paused, and how much it has moved. Not per org, because the encryption key is not. | 0 |
-| [`sender_health_event`](#sender_health_event) | A timeline of what happened to a number: refused by WhatsApp, logged out unasked, or removed on the phone. | 3 |
+| [`sender_health_event`](#sender_health_event) | A timeline of what happened to a number: refused by WhatsApp, logged out unasked, or removed on the phone. | 0 |
+| [`whatsapp_notice`](#whatsapp_notice) | Every limit warning WhatsApp sent a number, as it arrived: a new-chat timelock or a new-chat cap update. The latest of each is also on the number’s connection row. | 0 |
 
 ### Campaigns
 
 | Table | What it is for | Rows now |
 |---|---|---|
-| [`ai_job`](#ai_job) | The AI assistant’s waiting list: instructions and wording requests, run one at a time per org. Shows who is queued, what is running and what finished; only a queued one can be cancelled. | 2 |
+| [`ai_job`](#ai_job) | The AI assistant’s waiting list: instructions and wording requests, run one at a time per org. Shows who is queued, what is running and what finished; only a queued one can be cancelled. | 0 |
 | [`ai_setting`](#ai_setting) | The AI assistant’s switch for an org: on or off, its instructions, a daily message limit, and who accepted the data-sharing note. Off until an admin accepts. | 1 |
 | [`ai_template`](#ai_template) | A saved AI template: what an owner described in plain words and the instructions the AI wrote from it, kept together to pick again. The locked always-on rules are not stored here; they are added on every reply. | 0 |
-| [`campaign`](#campaign) | A bulk send: the message, the number it goes from, its audience, its state (draft, running, paused…) and results. | 5 |
-| [`campaign_recipient`](#campaign_recipient) | One person in a campaign. Acts as the queue: the gateway turns recipients into messages a small batch at a time, and records why anyone was skipped. | 50 |
+| [`campaign`](#campaign) | A bulk send: the message, the number it goes from, its audience, its state (draft, running, paused…) and results. | 0 |
+| [`campaign_recipient`](#campaign_recipient) | One person in a campaign. Acts as the queue: the gateway turns recipients into messages a small batch at a time, and records why anyone was skipped. | 0 |
 
 ### Contacts
 
 | Table | What it is for | Rows now |
 |---|---|---|
-| [`contact`](#contact) | A person you talk to: display name, custom fields, source and a do-not-contact flag. Phone numbers and emails live in contact_identity, not here. | 63 |
-| [`contact_identity`](#contact_identity) | One way to reach or recognise a contact: a phone number, an email, or a WhatsApp privacy address. A contact can have several. | 63 |
+| [`contact`](#contact) | A person you talk to: display name, custom fields, source and a do-not-contact flag. Phone numbers and emails live in contact_identity, not here. | 0 |
+| [`contact_identity`](#contact_identity) | One way to reach or recognise a contact: a phone number, an email, or a WhatsApp privacy address. A contact can have several. | 0 |
 | [`contact_tag`](#contact_tag) | Which contacts carry which tags. One row per contact and tag. | 0 |
 | [`custom_field`](#custom_field) | The vocabulary of extra fields an org has defined for contacts (city, experience…), with a type, so values are checked and {{city}} works in campaigns. | 0 |
 | [`segment`](#segment) | A saved audience: a stored filter whose matching people are recomputed whenever it is used. | 0 |
@@ -44,37 +45,38 @@ Every tenant table has `org_id` and a row-level-security policy: the app runs ea
 | Table | What it is for | Rows now |
 |---|---|---|
 | [`import_row`](#import_row) | The ledger for one row of an upload: what it said, what the dry run decided, and which contact it produced. | 0 |
-| [`import_run`](#import_run) | One uploaded spreadsheet and what became of it: file hash (to refuse duplicates), counts, and whether it was committed or superseded. | 0 |
+| [`import_run`](#import_run) | One uploaded spreadsheet and what became of it: file hash (to refuse duplicates), counts, and whether it was committed or superseded. | 1 |
 
 ### Inbox
 
 | Table | What it is for | Rows now |
 |---|---|---|
 | [`canned_reply`](#canned_reply) | A saved reply an agent can insert with a shortcut, with {{name}}-style placeholders. | 0 |
-| [`conversation`](#conversation) | One chat thread between one contact and one of your numbers. Holds the owner, open/closed status, unread count and timing. | 64 |
+| [`conversation`](#conversation) | One chat thread between one contact and one of your numbers. Holds the owner, open/closed status, unread count and timing. | 0 |
 | [`conversation_participant`](#conversation_participant) | Extra people on a chat beside its owner. Participants may reply; only admins add or remove them. | 0 |
 | [`conversation_presence`](#conversation_presence) | Who has a chat open right now, refreshed by a heartbeat every few seconds. Throwaway rows, never history. | 0 |
 | [`internal_note`](#internal_note) | A team-only note on a thread. Kept apart from message so a note can never be sent to the customer. | 0 |
 | [`media_asset`](#media_asset) | An attachment file: its type (decided from the file’s bytes), size and storage key. The bytes live in the storage driver, not the database. | 0 |
-| [`message`](#message) | One message in or out of a thread: encrypted body, delivery status, who sent it, optional attachment and campaign. Inserting an outbound queued row wakes the gateway. | 81 |
+| [`message`](#message) | One message in or out of a thread: encrypted body, delivery status, who sent it, optional attachment and campaign. Inserting an outbound queued row wakes the gateway. | 0 |
 
 ### WhatsApp numbers
 
 | Table | What it is for | Rows now |
 |---|---|---|
-| [`channel_auth_state`](#channel_auth_state) | The encrypted login credentials Baileys needs to keep a number linked across restarts. Losing the encryption key loses these. | 0 |
-| [`channel_session`](#channel_session) | The live connection state of a number (connected, QR waiting, unlink requested). Churns constantly; three triggers here wake the gateway. | 0 |
-| [`sender_identity`](#sender_identity) | One of your WhatsApp numbers: its name, phone number and whether it is linked. | 15 |
+| [`antiban_setting`](#antiban_setting) | An org’s sending settings, one row: quiet hours (on by default, 22:00 to 08:00) and the time zone they are read in, the closing message when someone opts out (on or off, the org’s contact number and email, a default purpose) and the org’s own stop and restart words. | 0 |
+| [`channel_auth_state`](#channel_auth_state) | The encrypted login credentials Baileys needs to keep a number linked across restarts. Losing the encryption key loses these. | 4974 |
+| [`channel_session`](#channel_session) | The live connection state of a number (connected, QR waiting, unlink requested). Churns constantly; three triggers here wake the gateway. | 1 |
+| [`sender_identity`](#sender_identity) | One of your WhatsApp numbers: its name, phone number and whether it is linked. | 1 |
 
 ### Workspaces and people
 
 | Table | What it is for | Rows now |
 |---|---|---|
-| [`api_key`](#api_key) | Machine access for integrations such as JobPortal: a hashed secret plus the scopes it may use. Also looked up before the org is known. | 1 |
+| [`api_key`](#api_key) | Machine access for integrations such as JobPortal: a hashed secret plus the scopes it may use. Also looked up before the org is known. | 0 |
 | [`app_user`](#app_user) | A person who can sign in: name, email, password hash. Belongs to an org through org_membership, not directly. | 4 |
-| [`org`](#org) | A customer workspace. Every other table points back to one org, and row-level security keeps each org’s rows invisible to the rest. | 15 |
-| [`org_membership`](#org_membership) | Links a person to an org and gives them a role (admin or agent). Roles live here so one person could join several orgs later. | 4 |
-| [`session`](#session) | A signed-in browser session for the web app. Looked up before the org is known, so it has no row-level security. | 3 |
+| [`org`](#org) | A customer workspace. Every other table points back to one org, and row-level security keeps each org’s rows invisible to the rest. | 1 |
+| [`org_membership`](#org_membership) | Links a person to an org and gives them a role (admin or agent). Roles live here so one person could join several orgs later. | 3 |
+| [`session`](#session) | A signed-in browser session for the web app. Looked up before the org is known, so it has no row-level security. | 139 |
 
 ## Table details
 
@@ -209,6 +211,35 @@ Row-level security: on and forced.
 
 - `ai_template_tenant_isolation` (ALL): (org_id = (current_setting('app.org_id'::text, true))::uuid)
 
+### antiban_setting
+
+_WhatsApp numbers._ An org’s sending settings, one row: quiet hours (on by default, 22:00 to 08:00) and the time zone they are read in, the closing message when someone opts out (on or off, the org’s contact number and email, a default purpose) and the org’s own stop and restart words.
+
+Row-level security: on and forced.
+
+| Column | Type | Null | Default | Key |
+|---|---|---|---|---|
+| `org_id` | uuid | no |  | PK |
+| `quiet_hours_enabled` | boolean | no | true |  |
+| `quiet_hours_start` | text | no | '22:00'::text |  |
+| `quiet_hours_end` | text | no | '08:00'::text |  |
+| `time_zone` | text | no | 'Asia/Kolkata'::text |  |
+| `updated_at` | timestamp with time zone | no | now() |  |
+| `closing_message_enabled` | boolean | no | true |  |
+| `contact_phone` | text | yes |  |  |
+| `contact_email` | text | yes |  |  |
+| `default_purpose` | text | yes |  |  |
+| `stop_words` | _text[] | no | '{}'::text[] |  |
+| `restart_words` | _text[] | no | '{}'::text[] |  |
+
+**References:**
+
+- `org_id` → `org.id` (on delete cascade)
+
+**Policies:**
+
+- `antiban_setting_tenant_isolation` (ALL): (org_id = (current_setting('app.org_id'::text, true))::uuid)
+
 ### api_key
 
 _Workspaces and people._ Machine access for integrations such as JobPortal: a hashed secret plus the scopes it may use. Also looked up before the org is known.
@@ -322,6 +353,8 @@ Row-level security: on and forced.
 | `pause_reason` | text | yes |  |  |
 | `ai_template_id` | uuid | yes |  |  |
 | `media_asset_id` | uuid | yes |  |  |
+| `media_after_reply` | boolean | no | true |  |
+| `purpose` | text | yes |  |  |
 
 **References:**
 
@@ -359,6 +392,8 @@ Row-level security: on and forced.
 | `attempted_at` | timestamp with time zone | yes |  |  |
 | `opening_enc` | bytea | yes |  |  |
 | `opening_tries` | integer | no | 0 |  |
+| `planned_gap_ms` | integer | yes |  |  |
+| `followup_pending` | boolean | no | false |  |
 
 **References:**
 
@@ -453,6 +488,19 @@ Row-level security: on and forced.
 | `unlink_requested_at` | timestamp with time zone | yes |  |  |
 | `decrypt_burst_at` | timestamp with time zone | yes |  |  |
 | `own_decrypt_burst_at` | timestamp with time zone | yes |  |  |
+| `timelock_active` | boolean | no | false |  |
+| `timelock_until` | timestamp with time zone | yes |  |  |
+| `timelock_type` | text | yes |  |  |
+| `capping_status` | text | yes |  |  |
+| `capping_total_quota` | integer | yes |  |  |
+| `capping_used_quota` | integer | yes |  |  |
+| `capping_cycle_start` | timestamp with time zone | yes |  |  |
+| `capping_cycle_end` | timestamp with time zone | yes |  |  |
+| `capping_updated_at` | timestamp with time zone | yes |  |  |
+| `linked_since` | timestamp with time zone | yes |  |  |
+| `many_undelivered_at` | timestamp with time zone | yes |  |  |
+| `many_undelivered_resumed_at` | timestamp with time zone | yes |  |  |
+| `decrypt_wave_at` | timestamp with time zone | yes |  |  |
 
 **References:**
 
@@ -592,6 +640,11 @@ Row-level security: on and forced.
 | `unread_count` | integer | no | 0 |  |
 | `created_at` | timestamp with time zone | no | now() |  |
 | `updated_at` | timestamp with time zone | no | now() |  |
+| `refused_463_at` | timestamp with time zone | yes |  |  |
+| `likely_blocked_at` | timestamp with time zone | yes |  |  |
+| `decrypt_retry_at` | timestamp with time zone | yes |  |  |
+| `profile_snapshot` | jsonb | yes |  |  |
+| `profile_probe_at` | timestamp with time zone | yes |  |  |
 
 **References:**
 
@@ -884,6 +937,13 @@ Row-level security: on and forced.
 | `media_failed_at` | timestamp with time zone | yes |  |  |
 | `retry_requests` | integer | no | 0 |  |
 | `last_retry_at` | timestamp with time zone | yes |  |  |
+| `hold_until` | timestamp with time zone | yes |  |  |
+| `planned_gap_ms` | integer | yes |  |  |
+| `error_detail` | text | yes |  |  |
+| `read_requested_at` | timestamp with time zone | yes |  |  |
+| `read_marked_at` | timestamp with time zone | yes |  |  |
+| `tick_checked_at` | timestamp with time zone | yes |  |  |
+| `tick_verdict` | text | yes |  |  |
 
 **References:**
 
@@ -1104,6 +1164,34 @@ Row-level security: on and forced.
 **Policies:**
 
 - `tag_tenant_isolation` (ALL): (org_id = (current_setting('app.org_id'::text, true))::uuid)
+
+### whatsapp_notice
+
+_Audit and health._ Every limit warning WhatsApp sent a number, as it arrived: a new-chat timelock or a new-chat cap update. The latest of each is also on the number’s connection row.
+
+Row-level security: on and forced.
+
+| Column | Type | Null | Default | Key |
+|---|---|---|---|---|
+| `id` | uuid | no | gen_random_uuid() | PK |
+| `org_id` | uuid | no |  |  |
+| `sender_identity_id` | uuid | no |  |  |
+| `kind` | text | no |  |  |
+| `payload` | jsonb | no | '{}'::jsonb |  |
+| `received_at` | timestamp with time zone | no | now() |  |
+
+**References:**
+
+- `org_id` → `org.id` (on delete cascade)
+- `sender_identity_id` → `sender_identity.id` (on delete cascade)
+
+**Indexes:**
+
+- `whatsapp_notice_sender_idx`: whatsapp_notice USING btree (sender_identity_id, received_at)
+
+**Policies:**
+
+- `whatsapp_notice_tenant_isolation` (ALL): (org_id = (current_setting('app.org_id'::text, true))::uuid)
 
 ## Database functions
 
