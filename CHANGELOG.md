@@ -13,6 +13,25 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-11-02 — redesign: the campaign page, on `claude/whatsapp-crm-visual-redesign-006756`
+The campaign page (`/broadcast/[id]`) in the new look. **No API, database or engine change**; routes, labels and form fields are unchanged. Built from the design at https://claude.ai/artifact/AcRYR6XMbPgBfmzeP7agSv, using only the data the page already has.
+- **Header:** a breadcrumb back to Campaigns, the name, and a status pill with a dot (it dims and returns while the campaign is sending).
+- **Progress card:** "Reached N of total" as a large number, a two-colour bar (sent; failed and skipped) and the percentage. The six count tiles and the status filter bar became one row of chips with counts; each links to the same `?status=` filter as before.
+- **Recipient rows:** avatar, name, phone in the mono face, a status pill (read is blue), the reason a person was skipped or is waiting. The first dozen rows arrive 25 ms apart.
+- **Chat side panel:** clicking a recipient opens that person's chat beside the list, with the reply box (the same `sendReply` action as the inbox). It slides in over 200 ms and out over 150 ms, Esc closes it at once, and focus returns to the row. The rows are matched to conversations by phone number; a recipient with no conversation is a plain row. Opening the chat marks it as read, as in the inbox. New files: `apps/web/app/broadcast/[id]/chat-row.tsx` and `chat-actions.ts`.
+- **Wider page:** this page uses the new `.page-full` width (82rem) instead of the 56rem column.
+- **Test:** `tests/e2e/campaign-page.spec.ts` (progress card, status chips, panel opens and closes on Esc). Typecheck and lint pass; the spec was **not run locally** (no test admin login in this checkout), so it runs for the first time in CI.
+- **Left for the backend:** the ring with minutes left, who is next and the finish time, each row's last message and AI line, the not-sent groups with one fix each, the replies funnel, and AI usage per campaign (only auto-reply and single AI commands record tokens today). They are in the design and marked there.
+
+### 2026-11-02 — redesign step 0: the new look for every screen (PR #12)
+The palette, type, shell and motion, changed in `apps/web/app/globals.css`, `layout.tsx`, `nav.tsx`, `ui.tsx` and `report-problem.tsx` so every screen picks them up. **No API, database or engine change**; routes, labels and test ids are unchanged.
+- **Colour:** "Pulse": one violet accent for buttons, the active item, focus and the progress ring; green, amber, red and blue mean status only. Muted text, warning text and input edges now pass 4.5:1 and 3:1. The dark theme is a neutral graphite.
+- **Type and size:** Geist and Geist Mono replace Inter. The root is 16px, so `text-sm` is 14px and nothing renders under 12px; page widths stay at their old pixel size.
+- **Shell:** the sidebar is dark in both themes. On a phone one menu button opens the same list (44px items, Esc closes). Icons are Lucide 1.59.0 (a new dependency of `apps/web`).
+- **Motion:** four speeds (100, 150, 200, 300 ms), transform and opacity only. Buttons sweep a lighter layer in on hover and show a spinner beside the label after 100 ms; pages fade in over 100 ms instead of sliding; reduced motion falls back to 100 ms fades.
+- **Removed:** the lime stat strip, the button glow, the card hover lift and the empty-state illustration. The sign-in page keeps its old look until its own step.
+- **Test fix in the same PR:** `tests/e2e/send-flow.spec.ts` turns the org's quiet hours off for its run and restores them afterwards. It failed at night India time because the default quiet hours (22:00 to 08:00 Asia/Kolkata) held the message.
+
 ### 2026-10-31 — anti-ban v2: the new engine (stories S1 to S9 of F6), on `feat/antiban-v2`
 The engine that replaces the placeholder. Spec and acceptance cases: `docs/06-features/F6-antiban.md`; where the code is: `docs/08-antiban.md`. **Not in this branch:** the screens (S10: message timeline, campaign recipient list, ETA line, live number card), which come after.
 - **Send lane and priorities:** one lane per number (`apps/gateway/src/lane.ts`) takes every outbound message from any source, in the order reply (answers an inbound from the last 24 h), what an agent typed, the AI, campaign; oldest first inside each. Two sends from one number never leave together. The send path in `work.ts` was cut down to hand the lane its messages.

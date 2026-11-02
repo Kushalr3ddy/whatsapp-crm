@@ -373,10 +373,19 @@ nothing leaves the machine; it refuses a database that is not on this host. The 
 
 ### What the app looks like now
 
-Sign in lands on **Overview**. The sidebar is Overview · Inbox · Contacts · Numbers · Import ·
-Broadcast. **Saved audiences** (what Segments became) is reached from Broadcast; a campaign's audience
-can also be built inline with a live count. **Numbers** shows a banner and a health timeline when a
-number looks restricted, and a red count on the sidebar item.
+Sign in lands on **Overview**. The sidebar is Overview · Inbox · Contacts · Linked numbers · Import ·
+Campaigns · Team · AI assistant · Security · Billing (a placeholder), dark in both themes; on a phone one
+menu button opens the same list. The look is "Pulse" (redesign step 0): one violet accent, Geist and Geist
+Mono at a 16px root, Lucide icons, and four motion speeds (100, 150, 200 and 300 ms) that move only
+transform and opacity. The tokens and shared classes are in `apps/web/app/globals.css`. **Saved audiences**
+(what Segments became) is reached from Campaigns; a campaign's audience can also be built inline with a live
+count.
+
+A **campaign page** (`/broadcast/[id]`) shows a progress card (people reached out of the total, with a
+two-colour bar), one row of status chips that filter the list (Everyone, Sent, Queued, Pending, Skipped,
+Failed), and the recipients. Clicking a recipient opens that person's chat in a side panel beside the list
+(slides in over 200 ms, Esc closes it at once) with the reply box. A recipient with no conversation yet is
+a plain row. The panel reads the same data as the inbox thread, and opening it marks the chat as read.
 
 ### Sample data
 
@@ -388,7 +397,9 @@ use it as the fixture the browser tests upload.
 
 `npm run test:e2e` signs in with `TEST_EMAIL` / `TEST_PASSWORD` from `.env` (the existing local
 admin). Specs scope sidebar links with the `nav(page)` helper and open collapsed panels with
-`openDetails`. It starts the stack itself if it is not already up.
+`openDetails`. It starts the stack itself if it is not already up. `tests/e2e/campaign-page.spec.ts`
+covers the campaign page: the progress card, the status chips, and a recipient row opening and closing the
+chat panel.
 
 ---
 

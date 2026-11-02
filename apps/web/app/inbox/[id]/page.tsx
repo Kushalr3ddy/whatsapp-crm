@@ -244,8 +244,9 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
         <PresenceBeat conversationId={id} />
-        <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-5 py-3">
-          <div className="flex min-w-0 items-center gap-3">
+        {/* The controls wrap under the name when the column is narrow (1280px wide, with the list and the details open); otherwise the name shrinks to nothing and the viewers line goes with it. */}
+        <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-surface px-5 py-3">
+          <div className="flex min-w-[14rem] flex-1 items-center gap-3">
             <span className="avatar size-10 text-sm" aria-hidden>{initialsOf(title)}</span>
             <div className="min-w-0">
               <h2 className="truncate text-base font-semibold">{title}</h2>

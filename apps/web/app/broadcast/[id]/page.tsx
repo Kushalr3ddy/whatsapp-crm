@@ -1,21 +1,20 @@
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
+import type { CSSProperties } from 'react';
 import {
-  getCampaign, listCampaignRecipients, previewCampaign, getMe, CrmApiError, NotAuthenticatedError
+  getCampaign, listCampaignRecipients, previewCampaign, getMe, listConversations, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { Me, CampaignDetail, CampaignRecipient, CampaignPreview } from '@/lib/crm';
+import type { Me, CampaignDetail, CampaignRecipient, CampaignPreview, Conversation } from '@/lib/crm';
 import { campaignStatusBadge } from '../campaign-status';
-import { Meter, initialsOf } from '../../ui';
+import { initialsOf } from '../../ui';
 import { CampaignControls, SendAnywayButton } from '../campaign-controls';
 import { AutoRefresh } from '../auto-refresh';
+import { ChatRow } from './chat-row';
 import { GATE_LABEL } from '../gates';
 import { holdLabel } from '@/lib/hold-label';
 
 /** Rendered per request — progress and the status/search filters come live from the query string. */
 export const dynamic = 'force-dynamic';
-
-/** The recipient statuses, in the order the filter bar shows them. */
-const STATUSES = ['sent', 'queued', 'pending', 'skipped', 'failed'] as const;
 
 /**
  * One campaign's page: its progress, the message it sends, and — the point of this
@@ -38,14 +37,17 @@ export default async function CampaignPage(
   let campaign: CampaignDetail | null = null;
   let recipients: CampaignRecipient[] = [];
   let preview: CampaignPreview | null = null;
+  let conversations: Conversation[] = [];
   let failure: string | null = null;
   let expired = false;
   let missing = false;
   try {
-    [campaign, recipients, me] = await Promise.all([
+    [campaign, recipients, me, conversations] = await Promise.all([
       getCampaign(id),
       listCampaignRecipients(id, { status: activeStatus, q: query }),
-      getMe()
+      getMe(),
+      // Only used to make a row open its chat; a failure here just leaves the rows unlinked.
+      listConversations().catch((): Conversation[] => [])
     ]);
     // A draft has no frozen audience yet, so its progress is all zeros — a dry-run preview is the
     // useful thing to show before start. One extra round trip, and only for drafts.
@@ -64,8 +66,11 @@ export default async function CampaignPage(
   if (missing) notFound();
 
   return (
-    <main className="page">
-      <Link href="/broadcast" className="text-sm text-muted hover:text-ink">← All campaigns</Link>
+    <main className="page page-full">
+      <nav aria-label="Breadcrumb" className="text-sm text-muted">
+        <Link href="/broadcast" className="hover:text-ink">Campaigns</Link>
+        {campaign !== null && <> / <span className="font-medium text-ink">{campaign.name}</span></>}
+      </nav>
 
       {failure !== null && <p className="notice notice-danger mt-4">{failure}</p>}
 
@@ -73,8 +78,8 @@ export default async function CampaignPage(
         <>
           <header className="mb-6 mt-3 flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <h1 className="page-title truncate">{campaign.name}</h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="page-title">{campaign.name}</h1>
                 <StatusBadge status={campaign.status} />
               </div>
               <p className="page-desc">
@@ -131,7 +136,7 @@ export default async function CampaignPage(
             <div className="min-w-0">
               {campaign.status === 'draft' && preview !== null
                 ? <DraftPreview preview={preview} />
-                : <ProgressTiles campaign={campaign} activeStatus={activeStatus} query={query} id={id} />}
+                : <Progress campaign={campaign} activeStatus={activeStatus} query={query} id={id} />}
 
               <section className="mt-6">
                 <div className="mb-3 flex items-center justify-between">
@@ -139,7 +144,6 @@ export default async function CampaignPage(
                   <span className="text-sm text-muted">{recipients.length} shown</span>
                 </div>
 
-                <StatusFilterBar id={id} activeStatus={activeStatus} query={query} />
                 <SearchBox id={id} activeStatus={activeStatus} query={query} />
 
                 {recipients.length === 0 && (
@@ -152,7 +156,12 @@ export default async function CampaignPage(
 
                 {recipients.length > 0 && (
                   <ul className="card list overflow-hidden">
-                    {recipients.map((r) => <RecipientRow key={r.id} recipient={r} />)}
+                    {recipients.map((r, i) => (
+                      <RecipientRow
+                        key={r.id} recipient={r} index={i}
+                        chatId={conversations.find((c) => r.identity !== null && c.contactPhone === r.identity)?.id ?? null}
+                      />
+                    ))}
                   </ul>
                 )}
               </section>
@@ -179,11 +188,12 @@ export default async function CampaignPage(
   );
 }
 
-/** The campaign status badge, reusing the list's colours. */
+/** The campaign status as a pill with a dot; the dot pulses while the campaign is sending. */
 function StatusBadge({ status }: { status: string }) {
   const badge = campaignStatusBadge(status);
   return (
     <span className={`badge ${badge.cls}`}>
+      <span aria-hidden className={`size-1.5 rounded-full bg-current ${status === 'running' ? 'live-dot' : ''}`} />
       {badge.label}
     </span>
   );
@@ -201,63 +211,72 @@ const SKIP_LABEL: Record<string, string> = {
 };
 
 /**
- * The progress counters, each a link that filters the list below to that status — so the summary
- * and the detail are one thing, not two.
+ * The progress card: how many people the campaign has reached, a two-colour bar (reached, not reached),
+ * and the counts as filter chips that narrow the list below. The summary and the detail are one thing.
  */
-function ProgressTiles(
+function Progress(
   { campaign, activeStatus, query, id }:
   { campaign: CampaignDetail; activeStatus: string; query: string; id: string }
 ) {
   const p = campaign.progress;
-  const tiles: Array<{ key: string; label: string; value: number; filter: string }> = [
-    { key: 'total', label: 'Total', value: p.total, filter: '' },
-    { key: 'sent', label: 'Sent', value: p.sent, filter: 'sent' },
-    { key: 'queued', label: 'Queued', value: p.queued, filter: 'queued' },
-    { key: 'pending', label: 'Pending', value: p.pending, filter: 'pending' },
-    { key: 'skipped', label: 'Skipped', value: p.skipped, filter: 'skipped' },
-    { key: 'failed', label: 'Failed', value: p.failed, filter: 'failed' }
+  const chips: Array<{ label: string; value: number; filter: string }> = [
+    { label: 'Everyone', value: p.total, filter: '' },
+    { label: 'Sent', value: p.sent, filter: 'sent' },
+    { label: 'Queued', value: p.queued, filter: 'queued' },
+    { label: 'Pending', value: p.pending, filter: 'pending' },
+    { label: 'Skipped', value: p.skipped, filter: 'skipped' },
+    { label: 'Failed', value: p.failed, filter: 'failed' }
   ];
 
   // The bar counts people actually attempted. Skipped people were never sent anything, so a campaign that skipped everyone
   // must not look finished.
   const done = p.sent + p.failed;
   const allSkipped = p.total > 0 && p.skipped === p.total;
+  const pct = (n: number): string => `${String(p.total === 0 ? 0 : (n / p.total) * 100)}%`;
   return (
     <>
-      <div className="card mb-3 p-4">
-        <div className="mb-2 flex items-baseline justify-between">
-          <p className="font-medium">
-            <span className="tabular-nums">{done}</span> of <span className="tabular-nums">{p.total}</span> sent
-            {p.skipped > 0 && <span className="text-muted"> · {p.skipped} skipped</span>}
-            {p.queued > 0 && <span className="text-muted"> · {p.queued} queued</span>}
-          </p>
-          <p className="text-sm tabular-nums text-muted">
-            {p.total === 0 ? 0 : Math.round((done / p.total) * 100)}%
-          </p>
+      <section className="card mb-4 p-6" aria-label="Progress">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted">Reached</p>
+        <p className="mt-2 font-mono text-5xl font-medium leading-none tracking-tight tabular-nums">
+          {p.sent} <span className="text-lg font-normal tracking-normal text-muted">of {p.total}</span>
+        </p>
+        <div
+          role="progressbar" aria-label="Campaign progress" aria-valuemin={0} aria-valuemax={p.total} aria-valuenow={done}
+          className="mt-4 flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-surface-2"
+        >
+          <div className="h-full bg-success" style={{ width: pct(p.sent) }} />
+          <div className="h-full bg-warning" style={{ width: pct(p.failed + p.skipped) }} />
         </div>
-        <Meter value={done} max={p.total} label="Campaign progress" />
+        <p className="mt-3 text-sm tabular-nums text-muted">
+          <span className="tabular-nums">{done}</span> of <span className="tabular-nums">{p.total}</span> sent
+          {p.skipped > 0 && <> · {p.skipped} skipped</>}
+          {p.queued > 0 && <> · {p.queued} queued</>}
+          {' · '}{p.total === 0 ? 0 : Math.round((done / p.total) * 100)}%
+        </p>
         {allSkipped && (
           <p role="alert" className="mt-2 text-sm text-warning">
             Nothing was sent: all {p.total} people were skipped. See the Skipped list below for why.
           </p>
         )}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {tiles.map((t) => (
-          <Link
-            key={t.key}
-            href={hrefFor(id, t.filter, query)}
-            className={`card px-3 py-2.5 transition-colors ${
-              (activeStatus === t.filter || (t.filter === '' && activeStatus === ''))
-                ? '!border-accent bg-accent-soft'
-                : 'hover:border-accent/50'
-            }`}
-          >
-            <div className="text-xl font-semibold tabular-nums">{t.value}</div>
-            <div className="text-xs text-muted">{t.label}</div>
-          </Link>
-        ))}
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Show">
+        {chips.map((c) => {
+          const active = activeStatus === c.filter;
+          return (
+            <Link
+              key={c.label}
+              href={hrefFor(id, c.filter, query)}
+              aria-current={active ? 'true' : undefined}
+              className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors ${
+                active ? 'border-transparent bg-accent-soft text-accent' : 'border-border bg-surface text-muted hover:text-ink'
+              }`}
+            >
+              {c.label}
+              <b className={`font-mono font-medium tabular-nums ${active ? 'text-accent' : 'text-ink'}`}>{c.value}</b>
+            </Link>
+          );
+        })}
       </div>
     </>
   );
@@ -306,27 +325,10 @@ function MessageBody({ body }: { body: string }) {
   );
 }
 
-/** The row of status filters. "All" clears it; the active one is highlighted. */
-function StatusFilterBar(
-  { id, activeStatus, query }: { id: string; activeStatus: string; query: string }
-) {
-  const chip = (active: boolean): string =>
-    `badge capitalize ${active ? 'badge-accent !border-accent/40 font-semibold' : 'text-muted hover:bg-accent-soft'}`;
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-1.5">
-      <span className="text-xs text-muted">Status:</span>
-      <Link href={hrefFor(id, '', query)} className={chip(activeStatus === '')}>All</Link>
-      {STATUSES.map((s) => (
-        <Link key={s} href={hrefFor(id, s, query)} className={chip(activeStatus === s)}>{s}</Link>
-      ))}
-    </div>
-  );
-}
-
 /** Search by contact name or number, keeping the active status filter. */
 function SearchBox({ id, activeStatus, query }: { id: string; activeStatus: string; query: string }) {
   return (
-    <form className="mb-4 flex gap-2" action={`/broadcast/${id}`}>
+    <form className="mb-4 mt-3 flex gap-2" action={`/broadcast/${id}`}>
       {activeStatus !== '' && <input type="hidden" name="status" value={activeStatus} />}
       <input
         name="q"
@@ -346,9 +348,10 @@ function SearchBox({ id, activeStatus, query }: { id: string; activeStatus: stri
 }
 
 /** One recipient: who they are, where they ended up, and why (for a skip or failure). */
-function RecipientRow({ recipient }: { recipient: CampaignRecipient }) {
-  return (
-    <li className="flex items-center justify-between gap-3 px-4 py-3">
+function RecipientRow({ recipient, index, chatId }: { recipient: CampaignRecipient; index: number; chatId: string | null }) {
+  const rowClass = 'flex min-h-16 items-center justify-between gap-3 px-4 py-3';
+  const inner = (
+    <>
       <div className="flex min-w-0 items-center gap-3">
         <span className="avatar size-9 text-sm" aria-hidden>
           {initialsOf(recipient.displayName ?? recipient.identity ?? '?')}
@@ -356,14 +359,24 @@ function RecipientRow({ recipient }: { recipient: CampaignRecipient }) {
         <div className="min-w-0">
           <p className="truncate font-medium">
             {recipient.displayName ?? recipient.identity ?? 'Unnamed contact'}
+            {recipient.displayName !== null && recipient.identity !== null && (
+              <span className="ml-2 font-mono text-xs font-normal text-muted">{recipient.identity}</span>
+            )}
           </p>
           <p className="truncate text-sm text-muted">
-            {recipient.identity ?? 'no contact details'}
-            {recipient.attemptedAt !== null && <> · {new Date(recipient.attemptedAt).toLocaleString()}</>}
+            {recipient.displayName === null && recipient.identity === null ? 'no contact details' : null}
+            {recipient.attemptedAt !== null && <>{new Date(recipient.attemptedAt).toLocaleString()}</>}
           </p>
         </div>
       </div>
       <RecipientStatus recipient={recipient} />
+    </>
+  );
+  return (
+    <li className="row-in" style={{ '--i': Math.min(index, 12) } as CSSProperties}>
+      {chatId !== null
+        ? <ChatRow chatId={chatId} label={recipient.displayName ?? recipient.identity ?? 'Chat'}>{inner}</ChatRow>
+        : <div className={rowClass}>{inner}</div>}
     </li>
   );
 }
@@ -374,19 +387,23 @@ function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
   // Waiting to go out: say why, in words, instead of a bare "pending".
   const waiting = (status === 'pending' || status === 'queued') && messageStatus === 'queued';
   const cls =
-    status === 'sent' ? 'text-success border-transparent bg-success-soft'
-    : status === 'failed' ? 'text-danger border-danger/50'
-    : status === 'skipped' ? 'text-warning border-warning/40 bg-warning-soft'
-    : 'text-muted border-border';
+    messageStatus === 'read' ? 'badge-info'
+    : status === 'sent' ? 'badge-success'
+    : status === 'failed' ? 'badge-danger'
+    : status === 'skipped' ? 'badge-warning'
+    : 'bg-surface-2 text-muted border-transparent';
   // For a sent recipient the message's own state (delivered/read) is more informative than "sent".
   const label = status === 'sent' && messageStatus !== null && messageStatus !== 'sent'
     ? messageStatus
     : status;
   return (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="flex shrink-0 flex-col items-end gap-1 text-right sm:flex-row sm:items-center sm:gap-2">
       {(skipReason !== null) && <span className="text-xs text-muted">{SKIP_LABEL[skipReason] ?? skipReason}</span>}
       {waiting && <span className="text-xs text-warning">waiting: {holdLabel(holdReason ?? null)}</span>}
-      <span className={`badge capitalize ${cls}`}>{label}</span>
+      <span className={`badge capitalize ${cls}`}>
+        <span aria-hidden className="size-1.5 rounded-full bg-current" />
+        {label}
+      </span>
     </div>
   );
 }
