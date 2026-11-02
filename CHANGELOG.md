@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-11-02 — redesign: the campaigns list, on `redesign/campaigns-list`
+The Campaigns screen (`/broadcast`) in the new look, from the design at https://claude.ai/artifact/LmJSeKAdjQxh3EZrm3ALgN. **No API, database or engine change**; routes and link names are unchanged.
+- **Rows:** a megaphone icon, the name, one meta line (date, how many people, the sending number) and the start of the message, with each {{fill-in}} as a chip. Groups are Sending now, Drafts and Finished, each with a count. Rows arrive one by one.
+- **Dates:** "1 Nov 2026, 9:38 pm", no seconds, in `SEND_TIMEZONE`. Before, the browser's own format showed seconds and could be read as day/month or month/day.
+- **Finish estimate:** a campaign that is sending shows "Finishes about 2:52 pm · 38 min left", from `GET /campaigns/:id/eta` (already in the API since the anti-ban engine; the web app now calls it, once per sending campaign). If it cannot be read, that row shows no finish time. New `getCampaignEta` in `apps/web/lib/crm.ts`.
+- **Status pill:** has a dot that dims and returns while sending; on a phone the pill hides and the full status stays on the campaign page.
+- **Error state:** says "We couldn't load your campaigns. Check your connection and try again." with a Try again link, instead of the raw API error and the `npm run dev` hint.
+- **Wider page:** uses `.page-full` like the campaign page.
+- **Tests:** `apps/web/lib/campaign-time.test.ts` (8 unit tests for the date and estimate wording, passing) and `tests/e2e/campaigns-list.spec.ts` (a draft in its group, its date, people count and sender, and the row opening the campaign; **not run locally**, no test admin login in this checkout, so CI runs it first).
+- **Left for the backend:** a live count on each row ("470 of 500 reached · 5 need you"), and sorting campaigns that need you to the top.
+
 ### 2026-11-02 — redesign: the campaign page, on `claude/whatsapp-crm-visual-redesign-006756`
 The campaign page (`/broadcast/[id]`) in the new look. **No API, database or engine change**; routes, labels and form fields are unchanged. Built from the design at https://claude.ai/artifact/AcRYR6XMbPgBfmzeP7agSv, using only the data the page already has.
 - **Header:** a breadcrumb back to Campaigns, the name, and a status pill with a dot (it dims and returns while the campaign is sending).

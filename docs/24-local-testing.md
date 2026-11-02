@@ -381,6 +381,12 @@ transform and opacity. The tokens and shared classes are in `apps/web/app/global
 (what Segments became) is reached from Campaigns; a campaign's audience can also be built inline with a live
 count.
 
+The **Campaigns list** (`/broadcast`) groups campaigns as Sending now, Drafts and Finished. Each row shows the
+name, a date such as "1 Nov 2026, 9:38 pm" (in `SEND_TIMEZONE`, no seconds), how many people, the sending
+number and the start of the message, with each {{fill-in}} drawn as a chip. A campaign that is sending also
+shows when it finishes ("Finishes about 2:52 pm · 38 min left"), read from `GET /campaigns/:id/eta`; if that
+cannot be read the row shows no finish time. The date and estimate wording is in `apps/web/lib/campaign-time.ts`.
+
 A **campaign page** (`/broadcast/[id]`) shows a progress card (people reached out of the total, with a
 two-colour bar), one row of status chips that filter the list (Everyone, Sent, Queued, Pending, Skipped,
 Failed), and the recipients. Clicking a recipient opens that person's chat in a side panel beside the list
@@ -399,7 +405,9 @@ use it as the fixture the browser tests upload.
 admin). Specs scope sidebar links with the `nav(page)` helper and open collapsed panels with
 `openDetails`. It starts the stack itself if it is not already up. `tests/e2e/campaign-page.spec.ts`
 covers the campaign page: the progress card, the status chips, and a recipient row opening and closing the
-chat panel.
+chat panel. `tests/e2e/campaigns-list.spec.ts` covers the list: a draft in its group, the date, people count and
+sender on its row, and the row opening the campaign. The date and estimate wording has unit tests in
+`apps/web/lib/campaign-time.test.ts` (`npm test`).
 
 ---
 

@@ -1206,6 +1206,23 @@ export async function previewCampaign(id: string): Promise<CampaignPreview> {
   return request<CampaignPreview>(`/campaigns/${encodeURIComponent(id)}/preview`);
 }
 
+/** When a campaign finishes. Mirrors `GET /api/v1/campaigns/:id/eta` (F6 AC-3.2). */
+export interface CampaignEta {
+  /** When the last message is expected to go, or null when nothing is left to send. */
+  finishAt: string | null;
+  goNow: number;
+  afterReset: number;
+  resetAt: string | null;
+  /** `quota` when WhatsApp has told us how many new chats are left, `time_only` when it has not. */
+  basis: 'quota' | 'time_only';
+  delayedBy: Array<{ reason: string; seconds: number }>;
+}
+
+/** The estimate for one campaign: when it finishes, and what moved it. */
+export async function getCampaignEta(id: string): Promise<CampaignEta> {
+  return request<CampaignEta>(`/campaigns/${encodeURIComponent(id)}/eta`);
+}
+
 /**
  * Lists a campaign's recipients — the per-recipient results. `status` narrows to one state and
  * `q` searches the contact's name or number. Returns the first page; keyset paging is a follow-up.
