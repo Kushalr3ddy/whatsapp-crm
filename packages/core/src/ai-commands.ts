@@ -229,33 +229,6 @@ export async function runAiCommand(
   return { message: answer.text, actions };
 }
 
-/**
- * Writes the wording of a campaign message from a short goal ("remind people about Friday's walk-in interview"). Nothing
- * is created or sent: the text goes into the campaign form for a person to read and change. No contact data is shared,
- * only the goal and the org's own instructions.
- */
-export async function draftCampaignText(deps: { db: Database; llm: LlmDriver }, orgId: string, goal: string): Promise<string> {
-  const settings = (await deps.db.execute(sql`
-    SELECT enabled, instructions FROM ai_setting WHERE org_id = ${orgId}`) as unknown as Array<{ enabled: boolean; instructions: string }>)[0];
-  if (settings === undefined || !settings.enabled) throw new AiCommandError('ai_off', 'The AI assistant is switched off for this organisation.');
-  try {
-    const answer = await deps.llm.complete({
-      system: [
-        'You write WhatsApp campaign messages for a business. Reply with only the message text: plain text, no quotes, no markdown, under 600 characters.',
-        'Be warm and specific, and make clear what the reader should do. Use {{name}} where the contact\'s name fits, and {option one|option two} for a few words that can vary between people.',
-        settings.instructions.trim() === '' ? '' : `The organisation's own instructions:\n${settings.instructions.trim()}`
-      ].filter((l) => l !== '').join('\n'),
-      messages: [{ role: 'user', content: goal }], maxTokens: 400
-    });
-    const text = answer.text.trim();
-    if (text === '') throw new AiCommandError('no_model', 'The AI gave no text. Try describing the goal differently.');
-    return text.slice(0, 4096);
-  } catch (error) {
-    if (error instanceof AiCommandError) throw error;
-    throw providerFailure(error);
-  }
-}
-
 /** Turns a model failure into words that say what to do: not configured, slow, busy, or refused. */
 function providerFailure(error: unknown): AiCommandError {
   const code = error instanceof Error && 'code' in error ? String((error as { code: unknown }).code) : 'error';

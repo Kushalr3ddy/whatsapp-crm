@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { signIn, openDetails, CREDS_MISSING } from './helpers';
+import { signIn, openDetails, CREDS_MISSING, fillNewCampaign, createDraft } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
@@ -87,15 +87,8 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     // 5. A broadcast from the mass tag: the dry run shows the audience, start, then cancel.
     await page.goto('/broadcast/new');
     const name = `E2E tag broadcast ${stamp}`;
-    await page.locator('input[name="name"]').fill(name);
-    await page.locator('textarea[name="body"]').fill('Hi {{name}}, a tagged e2e message.');
-    const pick = async (select: string, text: string): Promise<void> => {
-      const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-      await page.locator(`select[name="${select}"]`).selectOption(value ?? '');
-    };
-    await pick('senderIdentityId', SENDER);
-    await pick('fromTagId', massTag);
-    await page.getByRole('button', { name: /create|save|draft/i }).first().click();
+    await fillNewCampaign(page, { name, body: 'Hi {{name}}, a tagged e2e message.', sender: SENDER, tag: massTag });
+    await createDraft(page);
     await expect(page).toHaveURL(/\/broadcast\/[0-9a-f-]{36}/);
     await expect(page.getByText(new RegExp(`${imported}`)).first()).toBeVisible();
     await page.getByRole('button', { name: 'Start', exact: true }).click();

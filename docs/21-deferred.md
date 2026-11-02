@@ -265,7 +265,7 @@ licence then needs every contributor's agreement. Decide before, not after.
 **Built (PRs #86 to #93, all titled `ai-speedrun:`):** a provider-neutral model layer (`@crm/llm`: an OpenAI-format driver that covers
 Gemini, Groq, OpenAI, OpenRouter and Ollama, plus native Anthropic; `none` stays the default); settings with a consent box; a bot user
 that can own chats but cannot sign in; **auto-reply** on open chats assigned to it, with a hand-over tool; **campaign tools** (create,
-pause, resume, edit; start only if the org allows it) and a one-contact `send_message`; "Write with AI" on the campaign form; the
+pause, resume, edit; start only if the org allows it) and a one-contact `send_message`; "Write with AI" on the campaign form (removed 2026-11-02: AI writing lives in templates, written once on the AI page and attached to a campaign); the
 **request queue** (one at a time per org, cancel while waiting); anti-ban warnings in the thread with an admin-only do-not-contact
 override. User guide: `docs/CRM-user-tutorial.pdf`. Design and the list of what exists: `docs/06-features/F12-ai-agent.md`.
 
@@ -2475,7 +2475,7 @@ Together about **3 to 5 working days** for all three, one PR each. The `@newslet
 
 When someone starts a new campaign and no contact has the tag they would pick (or no tags exist at all), the page should
 say so and point them to Contacts to tag people, instead of leaving them with an empty list. Today the "A tag" tab is
-simply hidden when no tags exist (`apps/web/app/broadcast/new/audience-picker.tsx`). Also noted the same day: an imported
+simply hidden when no tags exist (`audience-picker.tsx`, replaced on 2026-11-02 by the New campaign screen's file and tag boxes). Also noted the same day: an imported
 Naukri file only brings in name, phone and email, so its other columns (location, skills, experience…) do not show on
 Contacts; that is D-21 (map a column to a custom field), already a priority.
 

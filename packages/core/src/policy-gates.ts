@@ -11,9 +11,9 @@ import type { Transaction } from '@crm/db';
  *    2026-10-09), per campaign, with a reason, audited;
  *  - **engagement**: another agent owns a live conversation with this person right now, and a
  *    broadcast landing in the middle of it is rude and confusing;
- *  - **cooldown**: this person was already sent a *campaign* message recently — repeating a
- *    broadcast at the same people is what gets a number reported;
- *  - **duplicate_campaign**: they are already waiting in another live campaign.
+ *  - **cooldown**: this person was already sent a *campaign* message recently. It only warns now (CW-6.6a): the form says how many,
+ *    and they are sent;
+ *  - **duplicate_campaign**: they are already waiting in another live campaign *on the same sending number*.
  *
  * A blocked recipient is **skipped with a reason, never silently dropped**, so it shows in the
  * campaign's results.
@@ -48,7 +48,11 @@ export async function blockingPolicyGate(
   tx: Transaction,
   input: {
     orgId: string; campaignId: string; contactId: string;
+    /** The number this campaign sends from: the other-campaign check looks at this number only. */
+    senderIdentityId: string;
     overrides: readonly string[];
+    /** The campaign leaves out people messaged from this number within this many days (`cooldown`). Null = they are sent. */
+    leaveOutRecentDays?: number | null | undefined;
   }
 ): Promise<PolicyGate | null> {
   const on = (g: PolicyGate): boolean => !input.overrides.includes(g);
@@ -70,23 +74,26 @@ export async function blockingPolicyGate(
     if ((r as unknown as unknown[]).length > 0) return 'engagement';
   }
 
-  if (on('cooldown')) {
+  // `cooldown` (messaged lately from this number) is a warning on the form and the people are sent (CW-6.6a AC3), unless the campaign
+  // was set to leave them out: then they are skipped, with the days that campaign chose.
+  if (on('cooldown') && input.leaveOutRecentDays !== null && input.leaveOutRecentDays !== undefined) {
     const r = await tx.execute(sql`
       SELECT 1 FROM message m JOIN conversation v ON v.id = m.conversation_id
-      WHERE v.org_id = ${orgId} AND v.contact_id = ${contactId}
-        AND m.direction = 'outbound' AND m.campaign_id IS NOT NULL
-        AND m.campaign_id <> ${campaignId} AND m.status <> 'failed'
-        AND m.created_at > now() - make_interval(days => ${COOLDOWN_DAYS})
+      WHERE v.org_id = ${orgId} AND v.contact_id = ${contactId} AND v.sender_identity_id = ${input.senderIdentityId}
+        AND m.direction = 'outbound' AND m.campaign_id IS NOT NULL AND m.campaign_id <> ${campaignId} AND m.status <> 'failed'
+        AND m.created_at > now() - make_interval(days => ${input.leaveOutRecentDays})
       LIMIT 1`);
     if ((r as unknown as unknown[]).length > 0) return 'cooldown';
   }
 
+  // Only a live campaign on the SAME sending number counts; the same person in a campaign on another number is a different chat
+  // (CW-6.6a AC1, AC4).
   if (on('duplicate_campaign')) {
     const r = await tx.execute(sql`
       SELECT 1 FROM campaign_recipient cr JOIN campaign cp ON cp.id = cr.campaign_id
       WHERE cr.org_id = ${orgId} AND cr.contact_id = ${contactId}
         AND cr.campaign_id <> ${campaignId} AND cr.status IN ('pending', 'queued')
-        AND cp.status IN ('running', 'paused')
+        AND cp.status IN ('running', 'paused') AND cp.sender_identity_id = ${input.senderIdentityId}
       LIMIT 1`);
     if ((r as unknown as unknown[]).length > 0) return 'duplicate_campaign';
   }

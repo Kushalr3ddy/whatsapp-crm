@@ -406,8 +406,19 @@ admin). Specs scope sidebar links with the `nav(page)` helper and open collapsed
 `openDetails`. It starts the stack itself if it is not already up. `tests/e2e/campaign-page.spec.ts`
 covers the campaign page: the progress card, the status chips, and a recipient row opening and closing the
 chat panel. `tests/e2e/campaigns-list.spec.ts` covers the list: a draft in its group, the date, people count and
-sender on its row, and the row opening the campaign. The date and estimate wording has unit tests in
-`apps/web/lib/campaign-time.test.ts` (`npm test`).
+sender on its row, and the row opening the campaign. `tests/e2e/new-campaign.spec.ts` covers the New campaign screen: the
+review panel following the picks, the fill-in table, a key that is not a column stopping the draft, the draft being created, and
+a draft being edited (Edit opens it with its values, Save changes changes the same draft), and
+"Draft with AI" being gone. The other campaign specs make their drafts through `fillNewCampaign` and `createDraft` in
+`tests/e2e/helpers.ts` (the screen has no form fields named `name`, `body` or `fromTagId` any more). A draft is not made for nobody,
+so a spec needs a person in its tag first. The date and estimate wording has unit tests in `apps/web/lib/campaign-time.test.ts`, and the
+New campaign wording, fill-in checks, months and finish estimate in `apps/web/lib/new-campaign.test.ts` (`npm test`).
+
+**Trying the New campaign screen on its own database.** The shared dev database may be behind this branch's migrations, and the
+API of another checkout does not have the new routes. For a look without touching them: create a database next to the dev one
+(`docker exec <db container> createdb -U dev whatsapp_crm_nc`), run `packages/db/src/migrate.ts` with `DATABASE_URL` pointing at it,
+create an org with `scripts/admin.ts org`, load a CSV through `POST /imports` and `/imports/:id/run` (map the columns you want as
+fill-ins under `fields`), start the API with `PORT=3104` and that `DATABASE_URL`, and the web app with `CRM_API_URL=http://localhost:3104`.
 
 ---
 
@@ -444,7 +455,7 @@ Sign in at `localhost:3001/login` as the test admin, with the seed in place.
   *Tag many at once* previews a count before it applies; export (admin) downloads CSV and vCard.
 - **Import** — upload `tests/fixtures/import-contacts.csv` (add a unique row, same bytes are refused), columns
   map themselves, *Preview* writes nothing, *Import* creates people and tags them.
-- **Broadcast** — new campaign from a tag, from an import, from *Build a filter* (live count), preview, start,
+- **Broadcast** — new campaign from one or several files or tags, or everyone (the review counts each person once), preview, start,
   pause, resume, cancel; per-recipient results filter by status.
 - **Numbers** — the seeded card shows its name, number and whether it is linked.
 - **Saved audiences** — "Seed — replied" is listed; preview count works and a segment can be saved.

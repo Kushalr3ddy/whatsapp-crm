@@ -4,7 +4,7 @@ import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver } from '@crm/llm';
 import type { Logger } from '@crm/shared';
 import {
-  claimNextAiJob, finishAiJob, tidyAiJobs, runAiCommand, draftCampaignText, AiCommandError,
+  claimNextAiJob, finishAiJob, tidyAiJobs, runAiCommand, AiCommandError,
   type ClaimedJob
 } from '@crm/core';
 
@@ -95,9 +95,9 @@ export class AiJobRunner {
   private async run(db: Database, orgId: string, job: ClaimedJob): Promise<void> {
     try {
       const llm = this.deps.getLlm();
-      const result = job.kind === 'command'
-        ? await runAiCommand({ db, kms: this.deps.kms, llm }, orgId, job.requestedBy, job.input)
-        : { body: await draftCampaignText({ db, llm }, orgId, job.input) };
+      // A request of an older kind (campaign wording, removed) that was still waiting is failed, never run.
+      if ((job.kind as string) !== 'command') throw new AiCommandError('no_model', 'That kind of request is no longer available.');
+      const result = await runAiCommand({ db, kms: this.deps.kms, llm }, orgId, job.requestedBy, job.input);
       await finishAiJob(db, orgId, job.id, { status: 'done', result });
     } catch (error) {
       const reason = error instanceof AiCommandError ? error.message : 'Something went wrong. Please try again.';

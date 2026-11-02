@@ -4,6 +4,7 @@ import { AUDIT, writeAudit, type AuditActor } from './audit.js';
 import { campaignProgress, snapshotAudience, type CampaignProgress } from './campaigns.js';
 import type { PolicyGate } from './policy-gates.js';
 import { GAP_MAX_MS, GAP_MIN_MS } from './antiban/constants.js';
+import type { AudienceColumns, ReviewTarget } from './campaign-review.js';
 
 /**
  * The operations on a campaign: create a draft, start or resume it, pause it, cancel it, edit its wording.
@@ -41,6 +42,26 @@ export interface NewCampaign extends CampaignAudience {
   readonly mediaAfterReply?: boolean | undefined;
   /** Why these people are being messaged, in a sentence; said in the closing message if one of them opts out (F6 AC-6.2). */
   readonly purpose?: string | null | undefined;
+  /** What to do for a person with no value for a fill-in the message uses (CW-7.7): `skip` them, or use `fillInFallback`. Unset = send anyway. */
+  readonly blankFillInChoice?: BlankFillInChoice | null | undefined;
+  /** The text that fills the gap when `blankFillInChoice` is `fallback`, e.g. "soon". */
+  readonly fillInFallback?: string | null | undefined;
+  /** What "messaged recently" means for this campaign, in days. Unset = the org's default. */
+  readonly recentDays?: number | undefined;
+  /** Leave out the people messaged recently from this number. Off = they get the message (a warning, not a block). */
+  readonly leaveOutRecent?: boolean | undefined;
+  /** The picks the audience was chosen with, kept so the draft can be edited with them back. */
+  readonly audienceTargets?: readonly ReviewTarget[] | undefined;
+}
+
+/** The three answers to "18 people have no due date": skip them, fill the gap, or send anyway (stored as null). */
+export type BlankFillInChoice = 'skip' | 'fallback';
+
+/** What is stored for the 7.7 choice: the fallback only means something with the `fallback` choice; "send anyway" stores nothing. */
+function blankChoiceColumns(choice: BlankFillInChoice | null | undefined, fallback: string | null | undefined): [string | null, string | null] {
+  if (choice === 'skip') return ['skip', null];
+  if (choice === 'fallback' && fallback !== null && fallback !== undefined && fallback.trim() !== '') return ['fallback', fallback.trim()];
+  return [null, null];
 }
 
 /** Creates a draft. Nothing is sent and no audience is frozen until it is started. */
@@ -80,12 +101,16 @@ export async function createCampaignDraft(
   const existing = (twin as unknown as Array<{ id: string }>)[0];
   if (existing !== undefined) return { id: existing.id };
 
+  const [blankChoice, fallback] = blankChoiceColumns(input.blankFillInChoice, input.fillInFallback);
   const rows = await tx.execute(sql`
     INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, media_after_reply, purpose, status)
+                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, media_after_reply, purpose,
+                          blank_fill_in_choice, fill_in_fallback, recent_days, leave_out_recent, audience_targets, status)
     VALUES (${orgId}, ${input.name}, ${input.body}, ${input.senderIdentityId}, ${input.fromImportRunId ?? null},
             ${input.explicitContactIds === undefined ? null : JSON.stringify(input.explicitContactIds)}::jsonb,
-            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, ${input.mediaAfterReply ?? true}, ${input.purpose ?? null}, 'draft')
+            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, ${input.mediaAfterReply ?? true}, ${input.purpose ?? null},
+            ${blankChoice}, ${fallback}, ${input.recentDays ?? null}, ${input.leaveOutRecent ?? false},
+            ${input.audienceTargets === undefined ? null : JSON.stringify(input.audienceTargets)}::jsonb, 'draft')
     RETURNING id`);
   const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
   await writeAudit(tx, {
@@ -177,25 +202,101 @@ export async function setCampaignStatus(
   return true;
 }
 
+/** What `editCampaign` can change. Name and wording work on a draft or a paused campaign; the rest only on a draft. */
+export interface CampaignEdit {
+  readonly name?: string | undefined;
+  readonly body?: string | undefined;
+  readonly mediaAfterReply?: boolean | undefined;
+  /** The 7.7 choice; `null` goes back to "send anyway". Left out = unchanged. */
+  readonly blankFillInChoice?: BlankFillInChoice | null | undefined;
+  readonly fillInFallback?: string | null | undefined;
+  /** Draft only from here down. `null` takes the template or picture off. */
+  readonly senderIdentityId?: string | undefined;
+  readonly aiTemplateId?: string | null | undefined;
+  readonly mediaAssetId?: string | null | undefined;
+  readonly recentDays?: number | null | undefined;
+  readonly leaveOutRecent?: boolean | undefined;
+  /** A new audience, as `audienceColumnsFromTargets` makes it, with the picks it came from. */
+  readonly audience?: AudienceColumns | undefined;
+  readonly audienceTargets?: readonly ReviewTarget[] | undefined;
+}
+
+/** Why an edit was refused. */
+export type EditError = 'not_found' | 'not_editable' | 'no_sender' | 'no_tag' | 'no_segment' | 'no_template' | 'no_picture';
+
+/** Checks that what a campaign points at belongs to the org: a clean "not found" instead of a foreign-key error. */
+async function missingReference(
+  tx: Transaction, orgId: string,
+  refs: { sender?: string | undefined; tag?: string | undefined; segment?: string | undefined; template?: string | null | undefined; picture?: string | null | undefined }
+): Promise<'no_sender' | 'no_tag' | 'no_segment' | 'no_template' | 'no_picture' | null> {
+  const none = async (q: ReturnType<typeof sql>): Promise<boolean> => (await tx.execute(q) as unknown as unknown[]).length === 0;
+  if (refs.sender !== undefined && await none(sql`SELECT id FROM sender_identity WHERE id = ${refs.sender} AND org_id = ${orgId}`)) return 'no_sender';
+  if (refs.tag !== undefined && await none(sql`SELECT id FROM tag WHERE id = ${refs.tag} AND org_id = ${orgId}`)) return 'no_tag';
+  if (refs.segment !== undefined && await none(sql`SELECT id FROM segment WHERE id = ${refs.segment} AND org_id = ${orgId}`)) return 'no_segment';
+  if (refs.template !== undefined && refs.template !== null && await none(sql`SELECT id FROM ai_template WHERE id = ${refs.template} AND org_id = ${orgId}`)) return 'no_template';
+  if (refs.picture !== undefined && refs.picture !== null && await none(sql`SELECT id FROM media_asset WHERE id = ${refs.picture} AND org_id = ${orgId} AND campaign_picture`)) return 'no_picture';
+  return null;
+}
+
 /**
- * Changes a campaign's name or wording. Only while it is a draft or paused: a running campaign is mid-send, and
- * rewording it under the gateway would make one audience see two different messages, so pause it first.
+ * Changes a campaign. The name and wording can change while it is a draft or paused: a running campaign is mid-send, and rewording it
+ * under the gateway would make one audience see two different messages, so pause it first. Everything else (the number, who gets it,
+ * the picture, the template, "messaged recently") changes only on a draft, before an audience is frozen.
  */
 export async function editCampaign(
-  tx: Transaction, orgId: string, ctx: ActionContext, id: string, change: { name?: string | undefined; body?: string | undefined; mediaAfterReply?: boolean | undefined }
-): Promise<'ok' | 'not_found' | 'not_editable'> {
+  tx: Transaction, orgId: string, ctx: ActionContext, id: string, change: CampaignEdit
+): Promise<'ok' | EditError> {
   const found = (await tx.execute(sql`
     SELECT status, name, body FROM campaign WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`) as unknown as Array<{
     status: string; name: string; body: string;
   }>)[0];
   if (found === undefined) return 'not_found';
   if (found.status !== 'draft' && found.status !== 'paused') return 'not_editable';
+  const draftOnly = change.senderIdentityId !== undefined || change.aiTemplateId !== undefined || change.mediaAssetId !== undefined
+    || change.recentDays !== undefined || change.leaveOutRecent !== undefined || change.audience !== undefined;
+  if (draftOnly && found.status !== 'draft') return 'not_editable';
+
+  const missing = await missingReference(tx, orgId, {
+    sender: change.senderIdentityId, tag: change.audience?.fromTagId, segment: change.audience?.fromSegmentId,
+    template: change.aiTemplateId, picture: change.mediaAssetId
+  });
+  if (missing !== null) return missing;
+
   const name = change.name ?? found.name;
   const body = change.body ?? found.body;
   await tx.execute(sql`
     UPDATE campaign SET name = ${name}, body = ${body}, media_after_reply = coalesce(${change.mediaAfterReply ?? null}::boolean, media_after_reply),
                         updated_at = now()
     WHERE id = ${id} AND org_id = ${orgId}`);
+  if (change.blankFillInChoice !== undefined || change.fillInFallback !== undefined) {
+    const [choice, fallback] = blankChoiceColumns(change.blankFillInChoice, change.fillInFallback);
+    await tx.execute(sql`
+      UPDATE campaign SET blank_fill_in_choice = ${choice}, fill_in_fallback = ${fallback}
+      WHERE id = ${id} AND org_id = ${orgId}`);
+  }
+  if (change.senderIdentityId !== undefined) {
+    await tx.execute(sql`UPDATE campaign SET sender_identity_id = ${change.senderIdentityId} WHERE id = ${id} AND org_id = ${orgId}`);
+  }
+  if (change.aiTemplateId !== undefined) {
+    await tx.execute(sql`UPDATE campaign SET ai_template_id = ${change.aiTemplateId} WHERE id = ${id} AND org_id = ${orgId}`);
+  }
+  if (change.mediaAssetId !== undefined) {
+    await tx.execute(sql`UPDATE campaign SET media_asset_id = ${change.mediaAssetId} WHERE id = ${id} AND org_id = ${orgId}`);
+  }
+  if (change.recentDays !== undefined) {
+    await tx.execute(sql`UPDATE campaign SET recent_days = ${change.recentDays} WHERE id = ${id} AND org_id = ${orgId}`);
+  }
+  if (change.leaveOutRecent !== undefined) {
+    await tx.execute(sql`UPDATE campaign SET leave_out_recent = ${change.leaveOutRecent} WHERE id = ${id} AND org_id = ${orgId}`);
+  }
+  if (change.audience !== undefined) {
+    await tx.execute(sql`
+      UPDATE campaign SET from_import_run_id = ${change.audience.fromImportRunId ?? null}, from_tag_id = ${change.audience.fromTagId ?? null},
+        from_segment_id = ${change.audience.fromSegmentId ?? null},
+        explicit_contact_ids = ${change.audience.explicitContactIds === undefined ? null : JSON.stringify(change.audience.explicitContactIds)}::jsonb,
+        audience_targets = ${change.audienceTargets === undefined ? null : JSON.stringify(change.audienceTargets)}::jsonb
+      WHERE id = ${id} AND org_id = ${orgId}`);
+  }
   await writeAudit(tx, {
     orgId, actor: ctx.actor, action: AUDIT.campaignEdited, targetType: 'campaign', targetId: id,
     // The wording itself is not logged, only that it changed and how long it is now.

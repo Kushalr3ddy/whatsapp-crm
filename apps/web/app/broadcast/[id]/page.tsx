@@ -25,11 +25,11 @@ export const dynamic = 'force-dynamic';
 export default async function CampaignPage(
   { params, searchParams }: {
     params: Promise<{ id: string }>;
-    searchParams: Promise<{ status?: string; q?: string; created?: string }>;
+    searchParams: Promise<{ status?: string; q?: string; created?: string; saved?: string }>;
   }
 ) {
   const { id } = await params;
-  const { status, q, created } = await searchParams;
+  const { status, q, created, saved } = await searchParams;
   const activeStatus = typeof status === 'string' ? status : '';
   const query = typeof q === 'string' ? q : '';
 
@@ -90,6 +90,10 @@ export default async function CampaignPage(
             </div>
             <CampaignControls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
           </header>
+
+          {saved === '1' && campaign.status === 'draft' && (
+            <p role="status" className="mb-4 notice notice-success">Changes saved. Nothing has been sent yet.</p>
+          )}
 
           {created === '1' && campaign.status === 'draft' && (
             <p role="status" className="mb-4 notice notice-success">

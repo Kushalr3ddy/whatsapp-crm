@@ -842,6 +842,19 @@ export const campaign = pgTable('campaign', {
   mediaAfterReply: boolean('media_after_reply').notNull().default(true),
   /** Why these people are being messaged, in a sentence. Said in the closing message if one of them opts out (F6 AC-6.2). Null = the org's default. */
   purpose: text('purpose'),
+  /**
+   * What to do for a person who has no value for a `{{fill-in}}` the message uses (CW-7.7): `skip` them (reason `missing_field`),
+   * or use `fill_in_fallback` in the gap. Null = send anyway, the gap stays blank.
+   */
+  blankFillInChoice: text('blank_fill_in_choice'),
+  /** The text that fills a blank fill-in when `blank_fill_in_choice` is `fallback`, e.g. "soon". */
+  fillInFallback: text('fill_in_fallback'),
+  /** How many days back "messaged recently" looks for this campaign. Null = the org's default (`antiban_setting.recent_days`). */
+  recentDays: integer('recent_days'),
+  /** People messaged from this number within `recent_days` are left out (skipped as `cooldown`) when true; they are sent when false. */
+  leaveOutRecent: boolean('leave_out_recent').notNull().default(false),
+  /** The picks the audience was chosen with on New campaign (files, tags, everyone, people), so a draft can be edited with them back. Null for older campaigns. */
+  audienceTargets: jsonb('audience_targets'),
   /** Why a campaign was paused by the system rather than a person (e.g. `ban_suspected`, `unlinked`). */
   pauseReason: text('pause_reason'),
 
@@ -1034,5 +1047,7 @@ export const antibanSetting = pgTable('antiban_setting', {
   stopWords: text('stop_words').array().notNull().default(sql`'{}'::text[]`),
   /** The org's own words that lift do-not-contact, besides `start` (F6 AC-6.6). */
   restartWords: text('restart_words').array().notNull().default(sql`'{}'::text[]`),
+  /** The default number of days "messaged recently" means on a new campaign. */
+  recentDays: integer('recent_days').notNull().default(14),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });

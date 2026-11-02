@@ -9,7 +9,7 @@ import {
 } from '@crm/llm';
 import {
   enqueueAiJob, listAiJobs, cancelAiJob, AiJobError, type QueueViewer,
-  getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, draftCampaignText, AiCommandError,
+  getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, AiCommandError,
   auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError
 } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
@@ -170,11 +170,10 @@ export function aiRouter(
   });
 
   /**
-   * Puts a request in the AI queue: `command` (an instruction, admins and message-sending API keys) or `draft` (campaign
-   * wording, anyone signed in). It runs when its turn comes, one at a time per org, and answers at once with its id.
+   * Puts a request in the AI queue: `command` (an instruction, admins and message-sending API keys). It runs when its turn comes, one at a time per org, and answers at once with its id.
    */
   router.post('/jobs', requireScope('messages:send'), async (req: Request, res: Response) => {
-    const parsed = z.object({ kind: z.enum(['command', 'draft']), input: z.string().trim().min(3).max(2000) }).safeParse(req.body);
+    const parsed = z.object({ kind: z.enum(['command']), input: z.string().trim().min(3).max(2000) }).safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Say what you want (3 to 2000 characters).'));
       return;
@@ -210,25 +209,6 @@ export function aiRouter(
     if (outcome === 'not_found') { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such request.')); return; }
     if (outcome === 'forbidden') { res.status(403).json(problem(req, 403, 'FORBIDDEN', 'That request is not yours to cancel.')); return; }
     res.status(409).json(problem(req, 409, 'NOT_QUEUED', 'It has already started or finished, so it cannot be cancelled.'));
-  });
-
-  /** Writes campaign wording from a short goal, for the campaign form. Creates and sends nothing. */
-  router.post('/draft-campaign-text', requireScope('messages:send'), async (req: Request, res: Response) => {
-    const parsed = z.object({ goal: z.string().trim().min(3).max(1000) }).safeParse(req.body);
-    if (!parsed.success) {
-      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Describe what the message should do (3 to 1000 characters).'));
-      return;
-    }
-    const orgId = req.crm!.orgId;
-    try {
-      res.json({ data: { body: await draftCampaignText({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.goal) } });
-    } catch (error) {
-      if (error instanceof AiCommandError) {
-        res.status(error.code === 'ai_off' ? 409 : 502).json(problem(req, error.code === 'ai_off' ? 409 : 502, error.code === 'ai_off' ? 'AI_OFF' : 'AI_UNAVAILABLE', error.message));
-        return;
-      }
-      throw error;
-    }
   });
 
   // ---- AI settings: which provider, key and model the install uses (D-9) ---------------------------------------------------

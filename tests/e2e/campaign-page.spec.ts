@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, CREDS_MISSING, fillNewCampaign, createDraft } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
@@ -46,15 +46,8 @@ test.describe('the campaign page, in the browser', () => {
     // Make the draft and start it, through the screens a person would use.
     await page.goto('/broadcast/new');
     const name = `E2E campaign page ${String(Date.now())}`;
-    await page.locator('input[name="name"]').fill(name);
-    await page.locator('textarea[name="body"]').fill(BODY);
-    const pick = async (select: string, text: string): Promise<void> => {
-      const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-      await page.locator(`select[name="${select}"]`).selectOption(value ?? '');
-    };
-    await pick('senderIdentityId', SENDER);
-    await pick('fromTagId', TAG);
-    await page.getByRole('button', { name: /create|save|draft/i }).first().click();
+    await fillNewCampaign(page, { name, body: BODY, sender: SENDER, tag: TAG });
+    await createDraft(page);
     await expect(page).toHaveURL(/\/broadcast\/[0-9a-f-]{36}/);
     await page.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(page.getByText(/Running/i).first()).toBeVisible();

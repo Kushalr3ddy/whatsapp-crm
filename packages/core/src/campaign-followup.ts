@@ -22,8 +22,9 @@ export async function queueCampaignFollowUp(
       WHERE v.id = ${conversationId} AND v.org_id = ${orgId}
         AND cr.org_id = v.org_id AND cr.contact_id = v.contact_id AND cr.followup_pending
         AND cp.id = cr.campaign_id AND cp.sender_identity_id = v.sender_identity_id
-      RETURNING cr.id, cr.campaign_id AS "campaignId", cr.contact_id AS "contactId", cp.body, cp.media_asset_id AS "pictureId"`
-    ) as unknown as Array<{ id: string; campaignId: string; contactId: string; body: string; pictureId: string | null }>);
+      RETURNING cr.id, cr.campaign_id AS "campaignId", cr.contact_id AS "contactId", cp.body, cp.media_asset_id AS "pictureId",
+                 CASE WHEN cp.blank_fill_in_choice = 'fallback' THEN cp.fill_in_fallback END AS "fallback"`
+    ) as unknown as Array<{ id: string; campaignId: string; contactId: string; body: string; pictureId: string | null; fallback: string | null }>);
     if (claimed.length === 0) return false;
 
     const contact = (await tx.execute(sql`
@@ -35,7 +36,9 @@ export async function queueCampaignFollowUp(
     let queued = false;
     for (const row of claimed) {
       const rendered = renderRecipientBody(row.body, {
-        campaignId: row.campaignId, contactId: row.contactId, displayName: contact.displayName, customFields: contact.customFields
+        campaignId: row.campaignId, contactId: row.contactId, displayName: contact.displayName, customFields: contact.customFields,
+        // The campaign's "use a fallback" choice applies to the rest of the message too (CW-7.7 AC2).
+        fallback: row.fallback
       });
       const split = splitFirstMessage(rendered, row.pictureId !== null);
       if (split === null) continue;

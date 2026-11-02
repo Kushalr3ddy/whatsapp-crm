@@ -90,7 +90,7 @@ beforeEach(async () => {
 });
 
 /** Puts a request in the queue. */
-const enqueue = (h: Record<string, string>, input: string, kind: 'command' | 'draft' = 'command') => request(app).post('/api/v1/ai/jobs').set(h).send({ kind, input });
+const enqueue = (h: Record<string, string>, input: string, kind: 'command' = 'command') => request(app).post('/api/v1/ai/jobs').set(h).send({ kind, input });
 /** The queue as the caller sees it. */
 const jobs = async (h: Record<string, string> = admin) => (await request(app).get('/api/v1/ai/jobs').set(h)).body.data as Array<{ id: string; status: string; input: string; position: number | null; result: unknown; error: string | null; mine: boolean }>;
 /** Waits until the predicate holds, polling the queue. */
@@ -114,7 +114,7 @@ describe('the AI queue', () => {
     await enqueue(admin, 'one');
     await until(async () => (await jobs()).some((j) => j.status === 'running'));
     await enqueue(admin, 'two');
-    await enqueue(agent, 'three', 'draft');
+    await enqueue(admin, 'three');
     const list = await jobs();
     expect(list.find((j) => j.input === 'one')).toMatchObject({ status: 'running', position: null });
     expect(list.find((j) => j.input === 'two')).toMatchObject({ status: 'queued', position: 1 });
@@ -159,29 +159,26 @@ describe('the AI queue', () => {
     expect(list.find((j) => j.input === 'fine')).toMatchObject({ status: 'done' });
   });
 
-  it('writes campaign wording as a draft request', async () => {
-    await enqueue(agent, 'remind people about Friday', 'draft');
-    await app.aiRunner.idle();
-    const [job] = await jobs(agent);
-    expect(job).toMatchObject({ status: 'done' });
-    expect(job!.result).toEqual({ body: 'Wrote: remind people about Friday' });
+  it('no longer takes campaign wording requests', async () => {
+    expect((await request(app).post('/api/v1/ai/jobs').set(admin).send({ kind: 'draft', input: 'remind people about Friday' })).status).toBe(422);
+    expect((await request(app).post('/api/v1/ai/draft-campaign-text').set(agent).send({ goal: 'remind people' })).status).toBe(404);
   });
 
   it('lets people see and cancel only their own, admins everything, and only admins instruct', async () => {
     llm.held = true;
     await enqueue(admin, 'admin one');
     await until(async () => (await jobs()).some((j) => j.status === 'running'));
-    const mineId = (await enqueue(agent, 'agent draft', 'draft')).body.data.id as string;
+    const mineId = (await enqueue(keyHeader, 'key request')).body.data.id as string;
     const adminsId = (await enqueue(admin, 'admin two')).body.data.id as string;
 
-    expect((await jobs(agent)).map((j) => j.input)).toEqual(['agent draft']);
-    expect((await jobs(admin)).map((j) => j.input).sort()).toEqual(['admin one', 'admin two', 'agent draft']);
-    expect((await jobs(agent))[0]!.position).toBe(1);
+    expect((await jobs(agent)).map((j) => j.input)).toEqual([]);
+    expect((await jobs(admin)).map((j) => j.input).sort()).toEqual(['admin one', 'admin two', 'key request']);
+    expect((await jobs(admin)).find((j) => j.input === 'key request')!.position).toBe(1);
     expect((await jobs(admin)).find((j) => j.input === 'admin two')!.position).toBe(2);
 
     expect((await enqueue(agent, 'sneaky instruction')).status).toBe(403);
     expect((await request(app).post(`/api/v1/ai/jobs/${adminsId}/cancel`).set(agent)).status).toBe(403);
-    expect((await request(app).post(`/api/v1/ai/jobs/${mineId}/cancel`).set(agent)).status).toBe(200);
+    expect((await request(app).post(`/api/v1/ai/jobs/${mineId}/cancel`).set(admin)).status).toBe(200);
     expect((await enqueue(keyHeader, 'from an api key')).status).toBe(202);
     expect((await request(app).get('/api/v1/ai/jobs')).status).toBe(401);
     llm.held = false; llm.release();

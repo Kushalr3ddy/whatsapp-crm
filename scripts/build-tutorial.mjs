@@ -241,15 +241,14 @@ ${fig('11-campaigns', 'The Campaigns list: Sending now, Drafts and Finished.')}
 <h3>Creating a campaign</h3>
 ${fig('12-campaign-new', 'The new campaign form.')}
 ${markers([
-  [1, '<b>Write with AI</b> (appears when the AI assistant is on): describe the goal and the text lands in the message box for you to edit.'],
-  [2, '<b>Name</b>: for you, not sent to anyone.'],
-  [3, '<b>Message</b>: what each person receives.'],
-  [4, 'Audience: <b>A tag</b>, <b>An import</b>, <b>A saved audience</b>…'],
-  [5, '…or <b>Build a filter</b> on the spot.']
+  [1, '<b>Name</b>: for you, not sent to anyone.'],
+  [2, '<b>Message</b>: what each person receives. The preview on the right shows it as WhatsApp will, for a real person.'],
+  [3, 'Who gets it: <b>A file</b> or <b>A tag</b>, as many as you like. A person in more than one is counted once.'],
+  [4, '<b>Review</b>: who it reaches, who is skipped and why, how long it takes, then <b>Create draft</b>. A draft has an <b>Edit</b> button, on its page and on its row in the list.']
 ])}
 ${steps([
   '<b>Write the message.</b> Use <code>{{name}}</code> for the person’s name and <code>{Hi|Hey|Hello}</code> to vary wording: each person gets a slightly different message, which is safer than hundreds of identical ones. Custom fields work too, as <code>{{city}}</code>.',
-  '<b>Choose who gets it.</b> Pick exactly one: a tag, an import, a saved audience, or a filter you build (has tag, reply status, "messaged in the last N days"; a live count shows "N people match right now"). The audience freezes the moment you start, so later changes never alter a running campaign. People marked do-not-contact are always left out.',
+  '<b>Choose who gets it.</b> Pick one or more files or tags (or send to everyone, or pick people in Contacts): the review panel shows how many people it reaches, how many are left out and why, and offers a list to download for anyone missing a fill-in. The audience freezes the moment you start, so later changes never alter a running campaign. People marked do-not-contact are always left out.',
   '<b>Send from.</b> Choose the number.',
   'Press <b>Create draft</b>. Nothing is sent yet.'
 ])}
@@ -348,7 +347,6 @@ ${table(['You see', 'It means'], [
   ['<b>— cancelled</b>', 'Cancelled before it started.']
 ])}
 <p><b>Cancel</b> appears on every waiting request. One that has started cannot be stopped, but it can be undone from the campaign or chat. Requests stay listed for 24 hours. Up to 20 can wait at once. Admins see everyone’s; others see only their own.</p>
-<p><b>Write with AI</b> on the new-campaign form uses the same queue: it shows "Waiting in the AI queue, 2 ahead of you" (with Cancel), then a spinner, then the text appears in the message box. Read and edit it; nothing is sent until you create and start the campaign.</p>
 <h3>Warnings above the message box</h3>
 ${table(['The banner says', 'What it means and what to do'], [
   ['<b>…it’s night where the contact is</b>', 'It waits for their morning.'],

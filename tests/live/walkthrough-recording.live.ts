@@ -148,12 +148,15 @@ test.describe('recorded walkthrough', () => {
       await go('Campaigns');
       await page.goto('/broadcast/new');
       await rest();
-      await page.locator('input[name="name"]').pressSequentially(`Walkthrough campaign ${stamp}`, { delay: 30 });
-      await page.locator('textarea[name="body"]').pressSequentially('{Hi|Hello} {{name}}, this is a CRM demo message. No reply needed.', { delay: 25 });
+      await page.locator('#nc-nm').pressSequentially(`Walkthrough campaign ${stamp}`, { delay: 30 });
+      await page.locator('#nc-body').pressSequentially('{Hi|Hello} {{name}}, this is a CRM demo message. No reply needed.', { delay: 25 });
       await rest(800);
       const pick = async (select: string, text: string): Promise<void> => {
-        const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-        await page.locator(`select[name="${select}"]`).selectOption(value ?? '');
+        // New campaign has no <select>s: the number is a card, the audience a tag chosen from a list.
+        if (select === 'senderIdentityId') { await page.locator('.nc-opt', { hasText: text }).first().click(); return; }
+        await page.getByRole('button', { name: 'A tag', exact: true }).click();
+        await page.locator('#nc-aq').click();
+        await page.getByRole('option', { name: new RegExp(text) }).first().click();
       };
       await pick('senderIdentityId', sender.label ?? '');
       await page.getByRole('tab', { name: 'A tag' }).click();

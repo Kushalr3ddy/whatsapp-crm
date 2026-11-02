@@ -40,7 +40,7 @@ test.describe('ai assistant settings', () => {
     await expect(queue.getByText(/Instruction · (waiting|working|done|failed)/).first()).toBeVisible();
 
     await page.goto('/broadcast/new');
-    await expect(page.getByLabel('Write with AI', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Write with AI', { exact: true })).toHaveCount(0);
 
     await page.goto('/team');
     const row = page.getByRole('listitem').filter({ hasText: 'AI assistant' });

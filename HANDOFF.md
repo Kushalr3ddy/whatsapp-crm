@@ -235,7 +235,7 @@ himself (not our concern); the container image `whatsapp-crm:alpha-p1` built cle
 - **Contacts (D-70 part 1, #84):** Refresh, rows as columns that open, date added/imported range and order (server side). Admin-chosen columns pinned as **D-79**.
 - **Docs:** new [`35-database-and-queries.md`](docs/35-database-and-queries.md) (the 32 tables by group, how tenancy works, the optimisations that exist, the main queries, the known gaps),
   [`36-workflows.md`](docs/36-workflows.md) (seven diagrams), and `docs/generated/database-reference.md` (generated from the live database by `npm run db:docs`, which also writes `schema.html`).
-  Pins this session: D-80 (contact page, unknown senders), D-85 (templates, per chat and per campaign, gallery, "Draft with AI"), D-86 (orders box), D-87 (**every mass message goes to a tag**, rule),
+  Pins this session: D-80 (contact page, unknown senders), D-85 (templates, per chat and per campaign, gallery; "Draft with AI" was removed on 2026-11-02), D-86 (orders box), D-87 (**every mass message goes to a tag**, rule),
   notes on D-57, D-20, D-63 (SMB), D-67 (back to pinned).
 
 ### Decisions he made (do not re-ask)
@@ -290,7 +290,7 @@ and the assistant's instructions are a recruiter script (confirm interest in a d
 
 ### What was built (all PRs titled `ai-speedrun:`; search git history for it)
 `@crm/llm` (any OpenAI-format endpoint plus Anthropic); AI settings and consent; a bot user; auto-reply on chats assigned to it; anti-ban warnings; campaign
-tools; `send_message` (takes a **name, never an id**: Groq's small model once passed the number's id); Write with AI; the request queue (`ai_job`); `llm:check`; the **lead-the-conversation** prompt; a
+tools; `send_message` (takes a **name, never an id**: Groq's small model once passed the number's id); the request queue (`ai_job`); `llm:check`; the **lead-the-conversation** prompt; a
 resend hook so a recipient's "Waiting for this message" clears (#96); one "please type that" reply to photos and voice notes (#96). Migrations **0031, 0032, 0033** (run `npm run db:migrate`; the dev script does it
 on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/CRM-user-tutorial.pdf`. Pins: D-4 (built), D-42 (partly), **D-81 to D-84**.
 

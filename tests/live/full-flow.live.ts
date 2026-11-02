@@ -188,11 +188,14 @@ test.describe('live walkthrough', () => {
     await unlessTourOnly('broadcast to the tagged people', async () => {
       await page.goto('/broadcast/new');
       const name = `Live broadcast ${stamp}`;
-      await page.locator('input[name="name"]').fill(name);
-      await page.locator('textarea[name="body"]').fill('{Hi|Hello} {{name}}, this is a CRM broadcast test. No reply needed.');
+      await page.locator('#nc-nm').fill(name);
+      await page.locator('#nc-body').fill('{Hi|Hello} {{name}}, this is a CRM broadcast test. No reply needed.');
       const pick = async (select: string, text: string): Promise<void> => {
-        const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-        await page.locator(`select[name="${select}"]`).selectOption(value ?? '');
+        // New campaign has no <select>s: the number is a card, the audience a tag chosen from a list.
+        if (select === 'senderIdentityId') { await page.locator('.nc-opt', { hasText: text }).first().click(); return; }
+        await page.getByRole('button', { name: 'A tag', exact: true }).click();
+        await page.locator('#nc-aq').click();
+        await page.getByRole('option', { name: new RegExp(text) }).first().click();
       };
       await pick('senderIdentityId', sender.label ?? '');
       await pick('fromTagId', castTag);

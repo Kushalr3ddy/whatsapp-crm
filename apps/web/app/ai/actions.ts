@@ -74,7 +74,7 @@ export async function takeChatBackAction(conversationId: string, myUserId: strin
 }
 
 /** Puts a request in the AI queue. */
-export async function enqueueJobAction(kind: 'command' | 'draft', input: string): Promise<AiResult & { id?: string }> {
+export async function enqueueJobAction(kind: 'command', input: string): Promise<AiResult & { id?: string }> {
   if (input.trim().length < 3) return { ok: false, error: 'Write what you want the assistant to do.' };
   try {
     return { ok: true, id: (await enqueueAiJob(kind, input.trim())).id };

@@ -31,7 +31,8 @@ test.describe('contacts: tags', () => {
     await expect(page.getByRole('region', { name: 'Next step' })).toContainText('Ready to message');
     await page.getByRole('link', { name: 'Start a new campaign' }).click();
     await expect(page).toHaveURL(/\/broadcast\/new\?tag=/);
-    await expect(page.locator('select[name="fromTagId"]')).not.toHaveValue('');
+    // The tag is already picked as the audience (a chip in Who gets it).
+    await expect(page.locator('.nc-chosen .nc-pill')).toHaveCount(1);
 
     // 2. Removing the tag asks first; "Keep it" leaves it, "Yes, remove" takes it off.
     await page.goBack();

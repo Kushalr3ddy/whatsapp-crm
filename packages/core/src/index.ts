@@ -43,7 +43,7 @@ export {
 
 export {
   createCampaignDraft, startCampaign, setCampaignStatus, editCampaign,
-  type ActionContext, type CampaignAudience, type NewCampaign, type StartedCampaign
+  type ActionContext, type CampaignAudience, type NewCampaign, type StartedCampaign, type BlankFillInChoice
 } from './campaign-actions.js';
 
 export {
@@ -52,7 +52,7 @@ export {
 } from './ai-jobs.js';
 
 export {
-  runAiCommand, draftCampaignText, AiCommandError, type CommandAction, type CommandResult
+  runAiCommand, AiCommandError, type CommandAction, type CommandResult
 } from './ai-commands.js';
 
 export { autoReply, getAiNotice, type AutoReplyResult, type AiNotice } from './ai-reply.js';
@@ -109,7 +109,9 @@ export {
   type AntiBanSettings, type AntiBanSettingsPatch
 } from './antiban/settings.js';
 
-export { renderBody, resolveSpintax, fillVariables } from './body-variation.js';
+export {
+  renderBody, resolveSpintax, fillVariables, fillInKeys, usedFillIns, unknownFillIns, suggestFillIn, blankFillIns, BUILTIN_FILL_INS
+} from './body-variation.js';
 
 export {
   buildSegmentPredicate, countSegmentMatches, type SegmentDefinition
@@ -130,10 +132,14 @@ export {
 } from './ingestion.js';
 
 export {
-  campaignProgress, previewAudience, snapshotAudience, dispatchCampaign,
+  campaignProgress, previewAudience, snapshotAudience, dispatchCampaign, fillInReport,
   reconcileCampaign,
-  type CampaignProgress, type AudiencePreview
+  type CampaignProgress, type AudiencePreview, type FillInReport, type FillInReportField, type FillInAudience
 } from './campaigns.js';
+export {
+  reviewCampaign, resolveTargetContactIds, audienceColumnsFromTargets, blankFillInPeople, audienceHistory,
+  type AudienceColumns, type ReviewTarget, type CampaignReview, type ReviewPerson, type BlankPerson, type AudienceHistory
+} from './campaign-review.js';
 export {
   searchPredicate, resolveTarget, countMatching, bulkTag, bulkUntag, tagImportRun, ensureTag, deleteTag,
   type TagTarget

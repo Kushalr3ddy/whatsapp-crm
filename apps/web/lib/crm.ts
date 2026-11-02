@@ -250,6 +250,19 @@ export interface CampaignDetail {
   mediaFilename: string | null;
   mediaContentType: string | null;
   mediaSizeBytes: number | null;
+  /** What the draft was made with, so it can be edited with it all back. */
+  mediaAfterReply: boolean;
+  aiTemplateId: string | null;
+  /** The picks it was chosen with on New campaign; null for a campaign made another way (then the columns below say who). */
+  audienceTargets: ReviewTarget[] | null;
+  fromImportRunId: string | null;
+  fromTagId: string | null;
+  fromSegmentId: string | null;
+  explicitContactIds: string[] | null;
+  recentDays: number | null;
+  leaveOutRecent: boolean;
+  blankFillInChoice: BlankFillInChoice | null;
+  fillInFallback: string | null;
 }
 
 /** The prospective audience of a draft — a dry run's counts. Mirrors the `preview` route. */
@@ -262,12 +275,30 @@ export interface CampaignPreview {
     reachable: number;
     /** The rest: no number, so they would be recorded as skipped, never dropped. */
     unreachable: number;
-    /** Reachable people another campaign messaged in the last 14 days (they would be skipped). */
+    /** Reachable people another campaign messaged from this same number in the last 14 days, nothing live (a warning; they are sent). */
     recentlyMessaged?: number;
     /** The campaign that most of them were messaged by. */
     recentCampaign?: string | null;
+    /** Reachable people still waiting in a live campaign on this same number (the red confirm). */
+    sameNumberLive?: number;
+    /** The live campaign most of them are in. */
+    sameNumberLiveCampaign?: string | null;
+    /** The phone number this campaign sends from. */
+    senderPhone?: string | null;
+    /** People already in a campaign or messaged lately from a different number (a small note). */
+    otherNumberOverlap?: number;
   };
+  /** `{{keys}}` in the message that are not a column, with the closest real one. */
+  unknownFillIns?: Array<{ key: string; suggestion: string | null }>;
 }
+
+/** One fill-in for the Insert list. Mirrors `GET /api/v1/campaigns/fill-ins`. */
+export interface FillInField { key: string; label: string; sample: string | null; have: number; type: string }
+/** The fill-ins an audience offers, and how many people it has. */
+export interface FillInReport { total: number; fields: FillInField[] }
+
+/** What to do for a person with no value for a fill-in the message uses. Unset = send anyway. */
+export type BlankFillInChoice = 'skip' | 'fallback';
 
 /** One recipient's outcome. Mirrors a row of `GET /api/v1/campaigns/:id/recipients`. */
 export interface CampaignRecipient {
@@ -649,6 +680,7 @@ export async function getAiStatus(): Promise<{ enabled: boolean }> {
 /** One request in the AI queue. Mirrors `GET /api/v1/ai/jobs`. */
 export interface AiJob {
   id: string;
+  /** `draft` is an older kind (campaign wording, removed): its rows still show in the list. */
   kind: 'command' | 'draft';
   input: string;
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
@@ -668,7 +700,7 @@ export async function listAiJobs(): Promise<AiJob[]> {
 }
 
 /** Puts a request in the AI queue; it runs when its turn comes. */
-export async function enqueueAiJob(kind: 'command' | 'draft', input: string): Promise<{ id: string }> {
+export async function enqueueAiJob(kind: 'command', input: string): Promise<{ id: string }> {
   return request<{ id: string }>('/ai/jobs', { method: 'POST', body: JSON.stringify({ kind, input }) });
 }
 
@@ -1271,6 +1303,56 @@ export async function uploadCampaignPicture(bytes: ArrayBuffer, filename: string
   return (payload as { data: CampaignPicture }).data;
 }
 
+/** One pick of the audience on New campaign: a file, a tag, a saved list, or every contact. */
+export type ReviewTarget =
+  | { kind: 'import'; id: string }
+  | { kind: 'tag'; id: string }
+  | { kind: 'segment'; id: string }
+  | { kind: 'people'; ids: string[] }
+  | { kind: 'everyone' };
+
+/** What the picks would reach from one number, before a draft exists. Mirrors `POST /api/v1/campaigns/review`. */
+export interface CampaignReview {
+  total: number;
+  askedToStop: number;
+  noNumber: number;
+  recentlyMessaged: number;
+  recentDays: number;
+  defaultRecentDays: number;
+  quietHours: { enabled: boolean; start: string; end: string; timeZone: string };
+  gapMinMs: number;
+  gapMaxMs: number;
+  fields: FillInField[];
+  /** A few real people to preview as: `values` has a key for each fill-in they have a value for. */
+  people: Array<{ name: string | null; values: Record<string, string> }>;
+}
+
+/** Reads the review for some picks from one number (writes nothing). */
+export async function reviewCampaign(targets: ReviewTarget[], senderIdentityId: string, days?: number): Promise<CampaignReview> {
+  return request<CampaignReview>('/campaigns/review', {
+    method: 'POST', body: JSON.stringify({ targets, senderIdentityId, ...(days !== undefined ? { days } : {}) })
+  });
+}
+
+/** The people the picks reach who have no value for a fill-in, as rows to fix. */
+export async function listBlankFillIns(targets: ReviewTarget[], key: string): Promise<Array<{ name: string | null; phone: string | null }>> {
+  return request<Array<{ name: string | null; phone: string | null }>>('/campaigns/review/blanks', {
+    method: 'POST', body: JSON.stringify({ targets, key })
+  });
+}
+
+/** The last campaign each file, tag and saved list was used for. */
+export interface AudienceHistory {
+  imports: Record<string, { name: string; at: string }>;
+  tags: Record<string, { name: string; at: string }>;
+  segments: Record<string, { name: string; at: string }>;
+}
+
+/** Reads where each file and tag was last used. */
+export async function getAudienceHistory(): Promise<AudienceHistory> {
+  return request<AudienceHistory>('/campaigns/audience-history');
+}
+
 /** How a campaign's audience is chosen. Exactly one field is set — never "everyone" implicitly. */
 export type CampaignTarget =
   | { fromTagId: string }
@@ -1283,11 +1365,35 @@ export type CampaignTarget =
  * Throws `CrmApiError` (`NOT_FOUND`) if the sender or the tag does not belong to the org.
  */
 export async function createCampaign(
-  input: { name: string; body: string; senderIdentityId: string; aiTemplateId?: string; mediaAssetId?: string } & CampaignTarget
+  input: {
+    name: string; body: string; senderIdentityId: string; aiTemplateId?: string; mediaAssetId?: string;
+    /** Why these people are messaged, in a sentence. */
+    purpose?: string;
+    /** A picture or link goes after the first reply to a new chat (on by default). */
+    mediaAfterReply?: boolean;
+    /** What to do for people with a blank fill-in (CW-7.7), and the text for `fallback`. */
+    blankFillInChoice?: BlankFillInChoice;
+    fillInFallback?: string;
+    /** What "messaged recently" means for this campaign, and whether those people are left out. */
+    recentDays?: number;
+    leaveOutRecent?: boolean;
+  } & (CampaignTarget | { targets: ReviewTarget[] })
 ): Promise<{ id: string; status: string }> {
   return request<{ id: string; status: string }>('/campaigns', {
     method: 'POST', body: JSON.stringify(input)
   });
+}
+
+/** What a draft can be changed to from the New campaign screen. `null` takes a template or picture off. */
+export interface CampaignEditInput {
+  name: string; body: string; senderIdentityId: string; targets: ReviewTarget[];
+  aiTemplateId: string | null; mediaAssetId: string | null; mediaAfterReply: boolean;
+  blankFillInChoice: BlankFillInChoice | null; fillInFallback: string | null; recentDays: number; leaveOutRecent: boolean;
+}
+
+/** Saves changes to a draft (`PATCH /campaigns/:id`). Throws `CrmApiError` (`NOT_EDITABLE` once it has started). */
+export async function editCampaignDraft(id: string, input: CampaignEditInput): Promise<void> {
+  await request<unknown>(`/campaigns/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
 }
 
 /**
@@ -1295,11 +1401,17 @@ export async function createCampaign(
  * begin. Resuming a paused campaign does not re-snapshot.
  */
 export async function startCampaign(
-  id: string, override?: { overrideGates: string[]; reason: string }
+  id: string, override?: { overrideGates?: string[]; reason?: string; confirmUnknownFillIns?: boolean }
 ): Promise<{ status: string }> {
   return request<{ status: string }>(`/campaigns/${encodeURIComponent(id)}/start`, {
     method: 'POST', ...(override ? { body: JSON.stringify(override) } : {})
   });
+}
+
+/** The fill-ins an audience offers, each with a sample and how many people have it (CW-7.6). */
+export async function getFillIns(audience: { fromTagId?: string; fromImportRunId?: string; fromSegmentId?: string }): Promise<FillInReport> {
+  const q = new URLSearchParams(Object.entries(audience).filter(([, v]) => v !== undefined && v !== '') as Array<[string, string]>);
+  return request<FillInReport>(`/campaigns/fill-ins?${q.toString()}`);
 }
 
 /** Pauses a running campaign. Instant — pending recipients are simply not dispatched. */

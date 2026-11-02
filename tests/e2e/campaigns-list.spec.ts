@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, CREDS_MISSING, fillNewCampaign, createDraft } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
@@ -41,21 +41,14 @@ test.describe('the campaigns list, in the browser', () => {
 
     await page.goto('/broadcast/new');
     const name = `E2E campaigns list ${String(Date.now())}`;
-    await page.locator('input[name="name"]').fill(name);
-    await page.locator('textarea[name="body"]').fill('Hi {{name}}, this is the campaigns list e2e.');
-    const pick = async (select: string, text: string): Promise<void> => {
-      const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-      await page.locator(`select[name="${select}"]`).selectOption(value ?? '');
-    };
-    await pick('senderIdentityId', SENDER);
-    await pick('fromTagId', TAG);
-    await page.getByRole('button', { name: /create|save|draft/i }).first().click();
+    await fillNewCampaign(page, { name, body: 'Hi {{name}}, this is the campaigns list e2e.', sender: SENDER, tag: TAG });
+    await createDraft(page);
     await expect(page).toHaveURL(/\/broadcast\/[0-9a-f-]{36}/);
 
     await page.goto('/broadcast');
     await expect(page.getByRole('heading', { name: 'Campaigns', level: 1 })).toBeVisible();
     const drafts = page.getByRole('region', { name: 'Drafts' });
-    const row = drafts.getByRole('link', { name: new RegExp(name) });
+    const row = drafts.getByRole('link', { name: new RegExp(`^${name}`) });
     await expect(row).toBeVisible();
 
     // The meta line: a date with the month as a word and no seconds, the people count and the sending number.
@@ -64,6 +57,14 @@ test.describe('the campaigns list, in the browser', () => {
     await expect(row).toContainText(`from ${SENDER}`);
     // The fill-in in the message start is a chip, not raw brackets.
     await expect(row).not.toContainText('{{');
+
+    // A draft has its own Edit link on the row, to the screen with the draft's values.
+    const edit = drafts.getByRole('link', { name: `Edit ${name}` });
+    await expect(edit).toBeVisible();
+    await edit.click();
+    await expect(page).toHaveURL(/\/broadcast\/new[?]edit=[0-9a-f-]{36}/);
+    await expect(page.locator('#nc-nm')).toHaveValue(name);
+    await page.goBack();
 
     await row.click();
     await expect(page).toHaveURL(/\/broadcast\/[0-9a-f-]{36}/);

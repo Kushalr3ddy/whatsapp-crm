@@ -400,6 +400,7 @@ One row per org (0040, extended in 0041): how that org's numbers send. RLS force
 | `closing_message_enabled` | bool | Whether one closing message is sent when someone opts out (default on). The opt-out itself happens either way. |
 | `contact_phone`, `contact_email`, `default_purpose` | text NULL | Quoted in the closing message. A line is left out when its value is not set. |
 | `stop_words`, `restart_words` | text[] | The org's own words, added to the built-in `stop`, `unsubscribe`, `opt out` and `start`. |
+| `recent_days` | int | What "messaged recently" means on a new campaign, in days. 14 unless changed (0043). Read by the New campaign review and set with `PUT /antiban/settings`. |
 | `updated_at` | timestamptz | Last change. |
 
 ## `channel_auth_state` ✅
@@ -545,6 +546,9 @@ into a browser and never persisted, so nothing was reusable, auditable or A/B-te
 | `sender_pool` | jsonb | Which numbers may send, and their weights. Spreading load across numbers is how volume scales safely. |
 | `scheduled_at` | timestamptz NULL | When to start. |
 | `quiet_hours` / `timezone` | jsonb / text | **Not built.** Quiet hours are an org setting (`antiban_setting`), not a campaign column. |
+| `recent_days` | int NULL | How many days back "messaged recently" looks for this campaign; null = the org's default `antiban_setting.recent_days` (0043). |
+| `audience_targets` | jsonb NULL | The picks the audience was chosen with on New campaign (`[{ kind: import\|tag\|segment\|people\|everyone, ... }]`), kept so a draft can be edited with them back; null for a campaign made another way (0044). |
+| `leave_out_recent` | bool | People messaged by another campaign from this same number within `recent_days` are skipped as `cooldown` when true; they are sent (a warning, not a block) when false, the default (0043). |
 | `purpose` | text NULL | One sentence: why these people are messaged. Said in the closing message if someone opts out (0041). |
 | `media_after_reply` | bool | Default true: a new chat gets the text alone and the picture or link follows when they reply (0040). |
 | `created_by` | uuid FK | Who launched it. |
@@ -766,6 +770,9 @@ original shape; these are the deltas.
 | `antiban_setting.closing_message_enabled`, `contact_phone`, `contact_email`, `default_purpose`, `stop_words`, `restart_words`; `campaign.purpose` | 0041 | The opt-out closing message and the words that start and end an opt-out |
 | `channel_session.many_undelivered_at`, `many_undelivered_resumed_at`, `decrypt_wave_at` | 0041 | Number-wide holds |
 | `conversation.likely_blocked_at`, `decrypt_retry_at`, `profile_snapshot`, `profile_probe_at`; `message.tick_checked_at`, `tick_verdict` | 0041 | Per-contact delivery state (ticks, retries, probable block) |
+| `campaign.blank_fill_in_choice`, `fill_in_fallback` | 0042 | What to do for a person with no value for a fill-in the message uses: skip them, or fill the gap with a word. Null = send anyway. |
+| `campaign.audience_targets` | 0044 | The picks a draft was made with, so Edit can open it with them back. |
+| `campaign.recent_days`, `campaign.leave_out_recent`, `antiban_setting.recent_days` | 0043 | "Messaged recently" as a choice with its own number of days, and the org's default for it. |
 | `contact.do_not_contact` with `dnc_reason = 'opt_out'` | — | An opt-out (a STOP word, the classifier, or an agent marking it) sets the flag with this reason; only a flag with this reason is lifted by a restart word |
 
 Contacts also gain behaviour without new columns: a `wa_lid` identity can be linked to a `phone`

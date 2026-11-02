@@ -108,16 +108,17 @@ function CampaignRow({ campaign, index, eta }: { campaign: Campaign; index: numb
   const badge = campaignStatusBadge(campaign.status);
   const when = campaign.startedAt ?? campaign.createdAt;
   const sender = campaign.senderLabel ?? campaign.senderPhone ?? null;
+  const isDraft = campaign.status === 'draft';
   return (
-    <li className="row-in" style={{ '--i': Math.min(index, 12) } as CSSProperties}>
+    <li className="row-in relative" style={{ '--i': Math.min(index, 12) } as CSSProperties}>
       <Link
         href={`/broadcast/${campaign.id}`}
-        className="grid min-h-[4.5rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-[1.125rem] py-3.5 transition-colors hover:bg-surface-2"
+        className={`grid min-h-[4.5rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-[1.125rem] py-3.5 transition-colors hover:bg-surface-2 `}
       >
         <span aria-hidden className="flex size-9 items-center justify-center rounded-[0.625rem] bg-accent-soft text-accent">
           <Megaphone size={18} strokeWidth={1.75} />
         </span>
-        <div className="min-w-0">
+        <div className={`min-w-0 ${isDraft ? 'mr-14 sm:mr-20' : ''}`}>
           <p className="break-words font-medium">{campaign.name}</p>
           <p className="mt-0.5 flex flex-wrap gap-x-3.5 text-sm text-muted">
             <span>{campaign.startedAt !== null ? 'Started' : 'Created'} {formatWhen(when)}</span>
@@ -141,6 +142,15 @@ function CampaignRow({ campaign, index, eta }: { campaign: Campaign; index: numb
           <ChevronRight aria-hidden size={16} strokeWidth={2} className="text-muted" />
         </span>
       </Link>
+      {/* A draft can be changed from here: its own link, laid over the row (a link inside the row's link is not allowed). */}
+      {isDraft && (
+        <Link
+          href={`/broadcast/new?edit=${campaign.id}`} aria-label={`Edit ${campaign.name}`}
+          className="btn btn-sm absolute right-11 top-1/2 -translate-y-1/2 sm:right-[8.5rem]"
+        >
+          Edit
+        </Link>
+      )}
     </li>
   );
 }

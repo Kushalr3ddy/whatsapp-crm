@@ -373,16 +373,18 @@ test.describe('session audit', () => {
     // ───────────────────────────────────────────────────── 5 · campaign to the imported numbers only
     area = '5 campaigns';
     await press('open Campaigns', nav('Campaigns'), page.getByRole('heading', { name: /campaigns|broadcast/i }).first());
-    await press('New campaign', page.getByRole('link', { name: /new campaign|new broadcast|create/i }).first(), page.locator('input[name="name"]'));
+    await press('New campaign', page.getByRole('link', { name: /new campaign|new broadcast|create/i }).first(), page.locator('#nc-nm'));
     const campaignName = `Session audit ${new Date().toISOString().slice(0, 16)}`;
     let campaignId = '';
     await step('fill the form (name, text, number, the import tag)', async () => {
-      await page.locator('input[name="name"]').fill(campaignName);
-      await page.locator('textarea[name="body"]').fill(CAMPAIGN_TEXT);
+      await page.locator('#nc-nm').fill(campaignName);
+      await page.locator('#nc-body').fill(CAMPAIGN_TEXT);
       const pick = async (select: string, text: string): Promise<void> => {
-        const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-        if (value === null) throw new Error(`no option containing "${text}" in ${select}`);
-        await page.locator(`select[name="${select}"]`).selectOption(value);
+        // New campaign has no <select>s: the number is a card, the audience a tag chosen from a list.
+        if (select === 'senderIdentityId') { await page.locator('.nc-opt', { hasText: text }).first().click(); return; }
+        await page.getByRole('button', { name: 'A tag', exact: true }).click();
+        await page.locator('#nc-aq').click();
+        await page.getByRole('option', { name: new RegExp(text) }).first().click();
       };
       await pick('senderIdentityId', sender?.label ?? SENDER_LABEL);
       await pick('fromTagId', TAG);

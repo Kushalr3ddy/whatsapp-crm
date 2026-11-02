@@ -48,7 +48,8 @@ test.describe('import: flow', () => {
     await expect(page.getByRole('link', { name: /View the \d+ imported contacts/ })).toBeVisible();
     await page.getByRole('link', { name: 'Message these people' }).click();
     await expect(page).toHaveURL(/\/broadcast\/new\?import=/);
-    await expect(page.locator('select[name="fromImportRunId"]')).not.toHaveValue('');
+    // The file is already picked as the audience (a chip in Who gets it).
+    await expect(page.locator('.nc-chosen .nc-pill')).toHaveCount(1);
   });
 
   test('several phone columns, a joined name and personal columns', async ({ page }) => {
