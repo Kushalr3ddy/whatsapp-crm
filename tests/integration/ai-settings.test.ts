@@ -101,7 +101,11 @@ describe('AI assistant settings', () => {
 
     const audit = await db.execute(sql`
       SELECT action FROM audit_log WHERE org_id = ${orgId} AND action LIKE 'ai.%' ORDER BY at`) as unknown as Array<{ action: string }>;
-    expect(audit.map((a) => a.action)).toEqual(['ai.enabled', 'ai.settings_changed', 'ai.disabled', 'ai.enabled']);
+    // The first request writes `ai.enabled` and `ai.settings_changed` in one go, so they can share a timestamp and come back in either
+    // order: compare that pair as a set and the rest in sequence (this test failed at random in CI when it assumed an order).
+    const actions = audit.map((a) => a.action);
+    expect(actions.slice(0, 2).sort()).toEqual(['ai.enabled', 'ai.settings_changed']);
+    expect(actions.slice(2)).toEqual(['ai.disabled', 'ai.enabled']);
   });
 
   it('keeps the daily limit in range', async () => {
