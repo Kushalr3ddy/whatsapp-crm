@@ -2,9 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import {
-  parseCsv, CsvError, parseXlsxRows, rowsToCsv, looksLikeXlsx, profileColumns, suggestColumns
-} from '@crm/shared';
+import { parseCsv, profileColumns, suggestColumns } from '@crm/shared';
 import {
   runImport, writeAudit, AUDIT, ensureTag, tagImportRun, type ImportMapping
 } from '@crm/core';
@@ -12,6 +10,15 @@ import { assertValidKey, InvalidKeyError, type StorageDriver } from '@crm/storag
 import { auditActor, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
+import { parseImportIsolated, ImportParseError, type ImportParseOptions } from '../import-parse.js';
+
+/** Answers an upload or a run whose file was not read: 429 when the reader is busy, 422 for anything about the file itself. */
+function refuseFile(req: Request, res: Response, error: ImportParseError): void {
+  const status = error.code === 'IMPORT_BUSY' ? 429 : 422;
+  if (status === 429) res.setHeader('Retry-After', '5');
+  if (error.detail !== undefined) req.log.warn({ code: error.code, detail: error.detail }, 'import file not read');
+  res.status(status).json(problem(req, status, error.code, error.message));
+}
 
 /** A transform a mapping may name. An allowlist — never an expression, never `eval`. */
 const transform = z.enum(['trim', 'lower', 'upper', 'digits']);
@@ -59,7 +66,9 @@ const runSchema = z.object({
  * then commit. The file never round-trips through the browser, so there is no 50 MB JSON POST
  * and no client-side parsing to disagree with the server's.
  */
-export function importsRouter(storage: StorageDriver, maxBytes: number, defaultCountry = 'IN'): Router {
+export function importsRouter(
+  storage: StorageDriver, maxBytes: number, defaultCountry: string, parse: ImportParseOptions
+): Router {
   const router = Router();
 
   /**
@@ -112,30 +121,18 @@ export function importsRouter(storage: StorageDriver, maxBytes: number, defaultC
     // An .xlsx is converted to CSV text here, so everything downstream — this parse, the dry
     // run, the commit — is the one CSV path with one set of edge cases. The dedup hash above was
     // taken on the bytes as received (the .xlsx itself), which is what the design requires.
-    const isXlsx = looksLikeXlsx(body);
-    let table;
-    let stored: Buffer;
+    // The file is first read in a child process within the import limits (R-016); only a file that
+    // passed is parsed here, so this process never meets a shape it cannot hold.
+    let read;
     try {
-      if (isXlsx) {
-        const csvText = rowsToCsv(await parseXlsxRows(body));
-        stored = Buffer.from(csvText, 'utf8');
-        table = parseCsv(csvText);
-      } else {
-        stored = body;
-        table = parseCsv(body.toString('utf8'));
-      }
+      read = await parseImportIsolated(body, parse);
     } catch (error) {
-      if (error instanceof CsvError) {
-        res.status(422).json(problem(req, 422, 'MALFORMED_CSV', error.message));
-        return;
-      }
-      if (isXlsx) {
-        res.status(422).json(problem(req, 422, 'MALFORMED_XLSX',
-          'That file could not be read as an .xlsx spreadsheet.'));
-        return;
-      }
+      if (error instanceof ImportParseError) { refuseFile(req, res, error); return; }
       throw error;
     }
+    const isXlsx = read.isXlsx;
+    const stored = read.csvText === null ? body : Buffer.from(read.csvText, 'utf8');
+    const table = parseCsv(stored.toString('utf8'), parse.limits);
 
     const id = randomUUID();
     // Keyed by run id, not by filename: the same unguessable-key reasoning as attachments,
@@ -224,7 +221,15 @@ export function importsRouter(storage: StorageDriver, maxBytes: number, defaultC
         }
       }
 
-      const table = parseCsv(Buffer.from(await storage.get(run.storageKey)).toString('utf8'));
+      // Read through the child again: a file stored before the import limits existed has never been checked.
+      const file = Buffer.from(await storage.get(run.storageKey));
+      try {
+        await parseImportIsolated(file, parse);
+      } catch (error) {
+        if (error instanceof ImportParseError) { refuseFile(req, res, error); return; }
+        throw error;
+      }
+      const table = parseCsv(file.toString('utf8'), parse.limits);
       const mapping = parsed.data.mapping as ImportMapping;
       // One tenant transaction per batch of rows, opened through the same runner every other
       // route uses — so an import is subject to row-level security exactly like a request is.

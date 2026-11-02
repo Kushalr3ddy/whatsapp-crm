@@ -15,8 +15,7 @@ export default tseslint.config(
   // header that it must not be edited, and it uses triple-slash references our rules forbid,
   // so linting it would fail `npm run check` after every build. `*.config.mjs` files sit
   // outside every tsconfig, so the type-aware parser cannot resolve them.
-  // `site/` is the documentation site (Astro Starlight): its own project with its own package.json, not part of the app's type-checked code.
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**', 'site/**', 'mockups/**',
+  { ignores: ['packages/baileys/**', '**/dist/**', '**/node_modules/**', '**/migrations/**', 'docs/**', 'mockups/**',
               '*.config.js', '**/*.config.mjs', 'scripts/*.mjs', 'tests/fixtures/*.mjs', 'tests/live/*.mjs', 'tests/regression/*.mjs', 'tools/**', '**/.next/**', '**/next-env.d.ts'] },
 
   eslint.configs.recommended,

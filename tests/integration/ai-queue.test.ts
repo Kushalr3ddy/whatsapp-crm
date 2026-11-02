@@ -20,8 +20,7 @@ const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:543
 const API_KEY = randomBytes(32).toString('hex');
 const kms = new LocalKms({ keyHex: randomBytes(32).toString('hex'), indexKeyHex: randomBytes(32).toString('hex') });
 const config = {
-  PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test', API_KEY, DEFAULT_COUNTRY: 'IN',
-  SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+  PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test', API_KEY, DEFAULT_COUNTRY: 'IN'
 } as unknown as Config;
 const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 const hasher = new BuiltinPasswordHasher();

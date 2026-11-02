@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm';
 import { createDatabase, inspectDatabaseSecurity, resolveTenantRole, type Database } from '@crm/db';
 import { LocalKms } from '@crm/kms-local';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
-import { createOrgWithAdmin, createSession, markDecryptBurst, markOwnDecryptBurst, recordRetryRequest, scoreSenderHealth } from '@crm/core';
+import { createOrgWithAdmin, createSession, markDecryptBurst, markOwnDecryptBurst, recordRetryRequest } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
 import { tempStorage, type TempStorage } from '../fixtures/storage.js';
@@ -90,14 +90,5 @@ describe('a broken encryption session', () => {
     expect((await senderStatus()).sessionTrouble).toBe('contacts');
     await db.execute(sql`UPDATE channel_session SET decrypt_burst_at = now() - interval '1 hour', own_decrypt_burst_at = now() - interval '1 hour' WHERE sender_identity_id = ${senderId}`);
     expect((await senderStatus()).sessionTrouble).toBeNull();
-  });
-
-  it('does not count the owner\'s own-device failures towards the ban risk score, but does count people\'s', async () => {
-    await markOwnDecryptBurst(db, senderId, new Date());
-    const own = await scoreSenderHealth(db, senderId, new Date());
-    expect(own?.riskScore ?? 0).toBe(0);
-    await markDecryptBurst(db, senderId, new Date());
-    const contacts = await scoreSenderHealth(db, senderId, new Date());
-    expect(contacts?.riskScore ?? 0).toBeGreaterThanOrEqual(60);
   });
 });

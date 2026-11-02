@@ -75,7 +75,7 @@ async function newPerson(browser: Browser): Promise<{ context: BrowserContext; p
  * then the admin brings them on as a participant, takes them off, and hands the chat over.
  *
  * The `zz-` prefix is deliberate: Playwright runs files alphabetically, and this one queues a
- * handful of messages that the pacing engine drains over a few minutes. Run last, they cannot
+ * handful of messages that the gateway drains a few seconds apart. Run last, they cannot
  * delay the other send tests' single message past its wait.
  *
  * Typing and the "send anyway?" warning (D-54) are exercised too: each person sees the other
@@ -142,8 +142,7 @@ test.describe('two roles on one chat: admin and agent', () => {
       });
 
     // ── 1 · the first message was accepted (live: it really reaches your phone) ────────
-    // On the fake number the pacing engine may hold a message for a minute or two (a fresh
-    // stack eases back after "reconnecting"), and delivery speed is send-flow's concern, so here
+    // On the fake number the gateway spaces messages a few seconds apart, and delivery speed is send-flow's concern, so here
     // "accepted" is enough. On the real number the point is that your phone buzzes, so wait.
     await test.step(LIVE ? 'the admin’s message reaches the real number' : 'the admin’s message is accepted', async () => {
       await expect.poll(async () => {
@@ -187,8 +186,6 @@ test.describe('two roles on one chat: admin and agent', () => {
       const refusals: Array<[string, CallResult]> = [
         ['add a participant', await agent.call('POST', `/conversations/${conv}/participants`, { userId: agent.userId })],
         ['remove a participant', await agent.call('DELETE', `/conversations/${conv}/participants/${admin.userId}`)],
-        ['switch a number to advisory mode', await agent.call('POST', `/senders/${sender!.id}/enforcement`,
-          { mode: 'advisory', reason: 'agent trying to lift the guard rails' })],
         ['create a user', await agent.call('POST', '/admin/users', {
           email: 'nobody@test.local', password: 'x'.repeat(14), displayName: 'Nobody', role: 'admin' })],
         ['override a campaign gate', await agent.call('POST', '/campaigns/00000000-0000-4000-8000-000000000000/start',

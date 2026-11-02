@@ -17,7 +17,7 @@ import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 /**
  * Do-not-contact is enforced on every path that can message someone, and only an admin — signed
  * in, with a reason, audited — can knowingly lift it, per message or per campaign. Never an agent,
- * never an API key, and never advisory mode.
+ * and never an API key.
  */
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const kms = new LocalKms({
@@ -25,8 +25,7 @@ const kms = new LocalKms({
 });
 const config = {
   PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test',
-  API_KEY: randomBytes(32).toString('hex'), DEFAULT_COUNTRY: 'IN',
-  SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+  API_KEY: randomBytes(32).toString('hex'), DEFAULT_COUNTRY: 'IN'
 } as unknown as Config;
 const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 const hasher = new BuiltinPasswordHasher();
@@ -77,8 +76,8 @@ beforeEach(async () => {
   key = (await issueApiKey(db, { orgId, name: 'k', scopes: ['messages:send', 'conversations:read', 'contacts:write'] })).secret;
 
   senderId = (await rows<{ id: string }>(sql`
-    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-    VALUES (${orgId}, 'fake', 's', '+919000000001', 'active', now() - interval '30 days')
+    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+    VALUES (${orgId}, 'fake', 's', '+919000000001', 'active')
     RETURNING id`))[0]!.id;
   flagged = await makeContact('Flagged', FLAGGED_PHONE, true);
   normal = await makeContact('Normal', '+919876500002', false);
@@ -90,8 +89,7 @@ beforeEach(async () => {
 function ctx(): WorkContext {
   return {
     db, provider: new FakeChannelProvider(), logger, kms,
-    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
-    limits: { perMinute: 8, perDay: 1500 }, sweepBatchSize: 50
+    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)), sweepBatchSize: 50
   };
 }
 const sendReply = (token: string, extra: object = {}) => request(app).post('/api/v1/messages')
@@ -188,10 +186,9 @@ describe('the gateway backstop', () => {
     expect((c.provider as FakeChannelProvider).sent).toHaveLength(0);
   });
 
-  it('still refuses in advisory mode, and sends only when an admin overrode it', async () => {
-    await db.execute(sql`UPDATE sender_identity SET enforcement = 'advisory' WHERE id = ${senderId}`);
+  it('refuses a flagged contact whatever the anti-ban policy says, and sends only when an admin overrode it', async () => {
     const blocked = await queue(false);
-    const c = await connected();
+    const c = { ...(await connected()), antiBan: { beforeSend: () => Promise.resolve({ action: 'send' as const }), campaignBatch: () => 20 } };
     await handleSend(c, blocked);
     expect((c.provider as FakeChannelProvider).sent).toHaveLength(0);
 

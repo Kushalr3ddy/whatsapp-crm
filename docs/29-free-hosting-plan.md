@@ -292,7 +292,7 @@ Several write-ups (blogs and forums, not WhatsApp) describe the same symptom: a 
 running from a cloud IP connects and "sends" successfully but messages quietly do not arrive. The
 number is not banned. A residential IP is reported not to have the problem. Unproven for us.
 
-That is the failure the silent-restriction tracker detects from delivery evidence ([27](27-restriction-tracking.md)).
+That failure is not detected by the system.
 So before moving anything to a cloud VM: link **one spare number**, send a few messages to your own
 phones, and watch it for **72 hours**. If anything looks restricted, use combination A or B.
 

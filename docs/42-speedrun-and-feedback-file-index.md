@@ -18,14 +18,10 @@ A list so nothing gets lost. "Mikhil's prod" in older files means **Mikhil's own
 | [`35-database-and-queries.md`](35-database-and-queries.md) | Database shape, optimisations, main queries; section 7: why there is no cache or extra data layer, and when to add one |
 | [`36-workflows.md`](36-workflows.md) | The product's workflows, step by step |
 | [`37-session-audit-findings.md`](37-session-audit-findings.md) | First timed audit (dev server): bugs and bottlenecks |
-| [`38-session-audit-production-build.md`](38-session-audit-production-build.md) | The same audit on a production build; why dev mode feels slow |
 | [`39-bug-workflow.md`](39-bug-workflow.md) | From a bug report to a merged fix |
 | [`40-testing-and-bug-guide.md`](40-testing-and-bug-guide.md) | Tests, bugs, CI and reporting: the guide for Kushal and Mikhil |
-| [`41-overnight-automation-run-2026-10-22.md`](41-overnight-automation-run-2026-10-22.md) | The unattended night run: rules, log, outcome |
-| [`plans/2026-10-22-bug-workflow-plan.md`](plans/2026-10-22-bug-workflow-plan.md) | The agreed plan behind docs 39 and 40 |
 | [`generated/database-reference.md`](generated/database-reference.md) | Generated schema reference (`npm run db:docs`) |
 | [`../tests/regression/README.md`](../tests/regression/README.md), [`REGISTRY.md`](../tests/regression/REGISTRY.md) | The regression suite and the bug registry (R-001 to R-011) |
-| [`../OVERNIGHT.md`](../OVERNIGHT.md) | Plain-language summary of the overnight run |
 | [`../.github/pull_request_template.md`](../.github/pull_request_template.md) | PR template added for the bug workflow |
 
 ## Slow on a laptop?

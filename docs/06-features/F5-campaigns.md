@@ -27,9 +27,9 @@ mid-run must not change who is being messaged.
 **Every send is an idempotent job** keyed on `(campaign_id, contact_id, template_version)`.
 Re-enqueueing is a no-op; a worker restart cannot duplicate.
 
-**Execution is deliberately slow.** The anti-ban limiter paces it. A 10,000-recipient campaign
-over 5 warmed numbers takes days, and the dry run says so up front. This is a feature, and the
-UI must make it feel like one rather than a bug.
+**Execution is deliberately slow.** The anti-ban policy queues a small batch per number and spaces the
+sends by a random 1 to 50 seconds, drawn once at launch (`planned_gap_ms`), so `GET /campaigns/:id/eta` can say when it finishes. A 10,000-recipient campaign takes days, not hours, from one number. This is a feature,
+and the UI must make it feel like one rather than a bug.
 
 **Pause/resume acts on the queue**, not by mutating rows, so in-flight jobs finish cleanly.
 
@@ -37,9 +37,9 @@ UI must make it feel like one rather than a bug.
 
 ## Acceptance criteria
 
-- **AC-1** Dry run returns recipient count, estimated cost (per provider), estimated duration
-  given current warmup and caps, and a risk assessment — before any write.
-- **AC-2** Launch enqueues 10,000 recipients in under 5 seconds; execution is paced by the engine.
+- **AC-1** Dry run returns recipient count, estimated cost (per provider), and who would be
+  skipped and why — before any write.
+- **AC-2** Launch enqueues 10,000 recipients in under 5 seconds; execution is spaced out by the anti-ban policy.
 - **AC-3** Killing every worker mid-campaign and restarting produces zero duplicates and zero
   lost recipients.
 - **AC-4** Pause stops new sends within one poll interval; resume continues from the exact point.
@@ -47,7 +47,7 @@ UI must make it feel like one rather than a bug.
 - **AC-6** Quiet hours and the recipient's timezone are respected; a campaign scheduled into
   quiet hours waits rather than sending.
 - **AC-7** A sender crossing risk High auto-pauses the campaign on that sender and alerts.
-- **AC-8** An opt-out received mid-campaign removes that contact from all pending sends immediately.
+- **AC-8** An opt-out received mid-campaign removes that contact from all pending sends immediately. *(Built in anti-ban v2: the contact goes on do-not-contact and each pending message to them fails as `do_not_contact` when the lane reaches it.)*
 - **AC-9** Cost actuals are reconciled against estimates and visible after completion.
 
 ## API surface

@@ -2,10 +2,9 @@ import { sql } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
 
 /**
- * The recipient-experience gates (docs/08-antiban.md, "two classes of gate").
+ * The recipient-experience gates.
  *
- * These protect the *person's* experience, not the number's survival, which is why — unlike the
- * pacing ceilings — an admin may lift them, knowingly, per campaign, with a reason and an audit row:
+ * These protect the *person's* experience, which is why an admin may lift them, knowingly, per campaign, with a reason and an audit row:
  *
  *  - **dnc**: the contact is flagged do-not-contact. Unlike the others this protects the person, not the
  *    number, so it is the one an admin should think hardest about lifting — but it is liftable (Kushal,

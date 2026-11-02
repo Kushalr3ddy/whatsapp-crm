@@ -11,14 +11,12 @@ import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { createOrgWithAdmin, addUserToOrg, createSession, issueApiKey } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
-import { dispatchCampaigns, handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
+import { dispatchCampaigns, type WorkContext } from '../../apps/gateway/src/work.js';
 import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 
 /**
  * The recipient-experience gates (engagement lock, cooldown, duplicate-campaign) an admin may lift
- * per campaign, and advisory mode (D-29). The line under test: a lifted gate sends, a skipped
- * recipient is reported with a reason, and the number-protecting limits stay hard for everybody —
- * except on a number an admin has knowingly set to advisory.
+ * per campaign. The line under test: a lifted gate sends, and a skipped recipient is reported with a reason.
  */
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const kms = new LocalKms({
@@ -26,8 +24,7 @@ const kms = new LocalKms({
 });
 const config = {
   PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test',
-  API_KEY: randomBytes(32).toString('hex'), DEFAULT_COUNTRY: 'IN',
-  SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+  API_KEY: randomBytes(32).toString('hex'), DEFAULT_COUNTRY: 'IN'
 } as unknown as Config;
 const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 const hasher = new BuiltinPasswordHasher();
@@ -69,8 +66,8 @@ beforeEach(async () => {
   key = (await issueApiKey(db, { orgId, name: 'k', scopes: ['messages:send', 'conversations:read'] })).secret;
 
   senderId = (await rows<{ id: string }>(sql`
-    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-    VALUES (${orgId}, 'fake', 's', '+919000000001', 'active', now() - interval '30 days')
+    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+    VALUES (${orgId}, 'fake', 's', '+919000000001', 'active')
     RETURNING id`))[0]!.id;
   contacts = [];
   for (let i = 0; i < 3; i++) {
@@ -86,8 +83,7 @@ beforeEach(async () => {
 function ctx(): WorkContext {
   return {
     db, provider: new FakeChannelProvider(), logger, kms,
-    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
-    limits: { perMinute: 8, perDay: 1500 }, sweepBatchSize: 50
+    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)), sweepBatchSize: 50
   };
 }
 
@@ -183,62 +179,5 @@ describe('overriding a gate', () => {
     // None of that started it.
     const st = await rows<{ status: string }>(sql`SELECT status FROM campaign WHERE id = ${id}`);
     expect(st[0]!.status).toBe('draft');
-  });
-});
-
-describe('advisory mode (D-29)', () => {
-  async function queueOne(): Promise<string> {
-    const conv = (await rows<{ id: string }>(sql`
-      INSERT INTO conversation (org_id, contact_id, sender_identity_id)
-      VALUES (${orgId}, ${contacts[0]!}, ${senderId}) RETURNING id`))[0]!.id;
-    return (await rows<{ id: string }>(sql`
-      INSERT INTO message (org_id, conversation_id, direction, status, content_type, body_enc)
-      VALUES (${orgId}, ${conv}, 'outbound', 'queued', 'text',
-              ${Buffer.from(kms.encrypt(new TextEncoder().encode('hi')))}) RETURNING id`))[0]!.id;
-  }
-  async function connected(): Promise<WorkContext> {
-    const c = ctx();
-    await (c.provider as FakeChannelProvider).connect({ id: senderId, phoneE164: '+919000000001' });
-    return c;
-  }
-
-  it('an enforcing quarantined number holds; an advisory one sends and counts the bypass', async () => {
-    await db.execute(sql`UPDATE sender_identity SET status = 'quarantined' WHERE id = ${senderId}`);
-    const held = await queueOne();
-    const c1 = await connected();
-    await handleSend(c1, held);
-    expect((await rows<{ status: string }>(sql`SELECT status FROM message WHERE id = ${held}`))[0]!.status)
-      .toBe('queued');
-
-    await db.execute(sql`UPDATE sender_identity SET enforcement = 'advisory' WHERE id = ${senderId}`);
-    const c2 = await connected();
-    await handleSend(c2, held);
-    expect((await rows<{ status: string }>(sql`SELECT status FROM message WHERE id = ${held}`))[0]!.status)
-      .toBe('sent');
-    const s = (await rows<{ n: number; last: string }>(sql`
-      SELECT advisory_bypass_count AS n, advisory_last_bypass AS last FROM sender_identity WHERE id = ${senderId}`))[0]!;
-    expect(s).toMatchObject({ n: 1, last: 'quarantined' });
-  });
-
-  it('only an admin can switch it, with a reason, audited; enforcing again clears it', async () => {
-    const path = `/api/v1/senders/${senderId}/enforcement`;
-    expect((await request(app).post(path).set(asSession(agentToken))
-      .send({ mode: 'advisory', reason: 'a perfectly good reason' })).status).toBe(403);
-    expect((await request(app).post(path).set(asSession(adminToken))
-      .send({ mode: 'advisory' })).status).toBe(422);
-    const ok = await request(app).post(path).set(asSession(adminToken))
-      .send({ mode: 'advisory', reason: 'throwaway test number' });
-    expect(ok.status).toBe(200);
-
-    const list = await request(app).get('/api/v1/senders').set(asSession(adminToken));
-    expect(list.body.data[0]).toMatchObject({ enforcement: 'advisory', advisoryReason: 'throwaway test number' });
-    const audit = await rows<{ after: { enforcement: string } }>(sql`
-      SELECT after FROM audit_log WHERE org_id = ${orgId} AND action = 'sender.enforcement_changed'`);
-    expect(audit).toHaveLength(1);
-
-    await request(app).post(path).set(asSession(adminToken)).send({ mode: 'enforce' });
-    const back = await rows<{ enforcement: string; reason: string | null }>(sql`
-      SELECT enforcement, advisory_reason AS reason FROM sender_identity WHERE id = ${senderId}`);
-    expect(back[0]).toEqual({ enforcement: 'enforce', reason: null });
   });
 });

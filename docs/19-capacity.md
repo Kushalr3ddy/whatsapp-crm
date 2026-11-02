@@ -90,8 +90,8 @@ for classification and tagging, but not for holding a conversation.
 **2 GB/year**. Postgres itself ~200 MB; 1 M contacts ≈ 400–800 MB with indexes. **Media
 dominates if retained** — set a retention policy.
 
-**CPU** is rarely the constraint: the anti-ban engine spends most of its time deliberately
-sleeping. One vCPU handles ~8 msg/min/number comfortably. Encryption and spreadsheet parsing
+**CPU** is rarely the constraint: the gateway spends most of its time deliberately
+sleeping between sends. One vCPU handles ~11 msg/min/number comfortably. Encryption and spreadsheet parsing
 are the spiky parts.
 
 ## Sizing tiers
@@ -105,15 +105,16 @@ are the spiky parts.
 
 ## The two numbers that matter more than the table
 
-**1. The anti-ban engine caps Baileys at ~1,500 messages/day/number by design.**
-So "50k messages/day" is not a hardware question — it needs roughly **34 warmed numbers**.
-Throughput here is bought with numbers and patience, not with RAM.
+**1. A Baileys number sends one message every few seconds at most.**
+The anti-ban policy leaves a random 1 to 50 second gap between sends from one number (about 25 s on
+average; the typing sits inside the wait), so a number carries at most ~3,400 messages/day if it sent around the clock, about
+2,000 for campaigns with the default 14 hours outside quiet hours, and fewer while WhatsApp's new-chat warnings stretch the gaps. "50k messages/day" is not a hardware question — it needs several numbers. Throughput here is
+bought with numbers, not with RAM. There is no daily cap, by design.
 
 **2. Meta's messaging tier caps you long before your server does** — 250/day unverified, then
 1k, 10k, 100k. A bigger box does not move that.
 
-Both are enforced in software, and both appear as inline warnings in the calculator, because
-this is the single most common sizing mistake.
+Both appear as inline warnings in the calculator, because this is the single most common sizing mistake.
 
 ## Growth planning
 

@@ -8,9 +8,10 @@ nothing to operate.
 > receive, and media (both directions), verified against a real phone. Built: the shared inbox
 > (assignment, status, filters, notes, canned replies, thread lock, attachments in and out),
 > contacts with search, tags and dynamic segments, CSV/Excel import, campaigns with a full Broadcast
-> UI (spintax, dry-run preview, per-recipient results), and the whole anti-ban engine — all six
-> layers plus an offline simulation that proves it. Not built: the Meta Cloud API, message templates,
-> webhooks and the OpenAPI/SDK, opt-out automation, inbox search, deployment. Build phases are tracked in
+> UI (spintax, dry-run preview, per-recipient results), and the anti-ban v2 engine (send lane, WhatsApp's
+> warnings, exact schedule and ETA, delivery checks, decrypt-retry holds, STOP handling; built on `feat/antiban-v2`,
+> its screens are not built yet). Not built: the Meta Cloud API, message templates,
+> webhooks and the OpenAPI/SDK, keyword-pack automation beyond STOP, inbox search, deployment. Build phases are tracked in
 > [`docs/17-roadmap.md`](docs/17-roadmap.md); current state and the work ledger are
 > [`HANDOFF.md`](HANDOFF.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -21,9 +22,9 @@ A messaging CRM that treats WhatsApp as **one adapter behind a port**, not as th
 - **Shared inbox** — two-way conversations, assignment, collision detection, internal notes.
 - **Contacts** — custom fields, tags, segments, identity-based dedup. No domain assumptions.
 - **Campaigns** — segment, schedule, drip, opt-out, per-recipient status, cost estimate.
-- **Anti-ban engine** — warmup, Gaussian jitter, circadian pacing (the sender's day *and* the
-  recipient's), contact-graph gates, risk scoring, auto-throttle and recovery, human-like typing,
-  read receipts and idle presence — proven by an offline simulation (`npm run test:sim`). See [`docs/08-antiban.md`](docs/08-antiban.md).
+- **Anti-ban engine** — one send lane per number (replies first), a stored random gap of 1 to 50 seconds,
+  typing and presence, holds when WhatsApp warns or a contact's phone cannot read us, STOP handling, and no daily
+  caps. Behind one interface. See [`docs/08-antiban.md`](docs/08-antiban.md).
 - **Pluggable ingestion** — Excel/CSV, Google Sheets, REST, webhooks, scheduled syncs, with
   a mapping UI, dry run, and a per-row error ledger.
 - **Public API + webhooks** — everything the UI can do, any other app can do.
@@ -260,11 +261,11 @@ everything from zero: the technology, the jargon, and what all the `M`/`P`/`F` c
 | [05 Data model](docs/05-data-model.md) | Every table, every column, and why |
 | [06 Features](docs/06-features/) | One file per module, F1–F12, with acceptance criteria |
 | [07 Ingestion](docs/07-ingestion.md) | Connector framework, mapping, identity resolution |
-| [08 Anti-ban](docs/08-antiban.md) | The engine, every number in it, and the research behind them |
+| [08 Anti-ban](docs/08-antiban.md) | How a message goes out, what the engine reacts to, and where a different policy plugs in |
 | [09 Security](docs/09-security.md) | Threat model, controls, and why compliance is the operator's |
 | [10 Stack](docs/10-stack.md) | Every technology choice and the alternative that lost |
 | [11 Conventions](docs/11-conventions.md) | Code standards, the comment rule |
-| [12 Testing](docs/12-testing.md) | The pyramid, and the ban-simulation harness |
+| [12 Testing](docs/12-testing.md) | The pyramid |
 | [13 Deployment](docs/13-deployment.md) | Compose profiles, upgrades, backup and restore |
 | [14 Runbooks](docs/14-runbooks.md) | One entry per alert |
 | [15 API](docs/15-api.md) | The public API guide |

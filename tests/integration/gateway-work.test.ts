@@ -31,10 +31,8 @@ function ctxWith(provider: FakeChannelProvider) {
     // thing that makes row-level security apply, and it proves `crm_app` holds every grant
     // the gateway's queries need.
     tenantRole: 'crm_app',
-    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
-    // High enough that the pacing gate never fires by accident; the tests that care about
-    // pacing set their own. Sleep is omitted so jitter costs these tests no real seconds.
-    limits: { perMinute: 1000, perDay: 10_000 }
+    // Sleep is omitted, so the anti-ban policy's gap between sends costs these tests no real seconds.
+    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c))
   };
 }
 
@@ -131,29 +129,7 @@ describe('handleSend', () => {
   });
 });
 
-describe('held messages are retried on time, not at the next sweep', () => {
-  it('sends a message held by the per-minute cap as soon as the window frees', async () => {
-    const provider = new FakeChannelProvider();
-    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
-    // One send already went out 58 s ago, so with a ceiling of 1 a minute the next must wait ~2 s.
-    await db.execute(sql`
-      INSERT INTO message (org_id, conversation_id, direction, status, content_type, sent_by, sent_at)
-      VALUES (${orgId}, ${conversationId}, 'outbound', 'sent', 'text', 'api', now() - interval '58 seconds')`);
-    const id = await queueOutbound('waits for the window');
-    const ctx = { ...ctxWith(provider), limits: { perMinute: 1, perDay: 10_000 } };
-
-    await handleSend(ctx, id);
-    // Held, with its reason recorded, and nothing sent yet.
-    expect(provider.sent).toHaveLength(0);
-    expect((await statusOf(id)).status).toBe('queued');
-
-    // No sweep is run. The retry timer alone must deliver it.
-    const stop = Date.now() + 8_000;
-    while (provider.sent.length === 0 && Date.now() < stop) await new Promise((r) => setTimeout(r, 200));
-    expect(provider.sent).toHaveLength(1);
-    expect((await statusOf(id)).status).toBe('sent');
-  }, 15_000);
-
+describe('concurrent sends', () => {
   it('never sends one message twice when it is handled concurrently', async () => {
     const provider = new FakeChannelProvider();
     await provider.connect({ id: senderId, phoneE164: '+910000000000' });
@@ -164,23 +140,6 @@ describe('held messages are retried on time, not at the next sweep', () => {
     await Promise.all([handleSend(ctx, id), handleSend(ctx, id), handleSend(ctx, id)]);
 
     expect(provider.sent).toHaveLength(1);
-  });
-
-  it('never lets messages checked together overshoot the per-minute ceiling', async () => {
-    const provider = new FakeChannelProvider();
-    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
-    const ids: string[] = [];
-    for (let i = 0; i < 6; i++) ids.push(await queueOutbound(`burst ${String(i)}`));
-    // A real pause before each send, so without per-number serialising every call would pass the
-    // check before any had counted, and all six would go against a ceiling of two a minute.
-    const ctx = {
-      ...ctxWith(provider), limits: { perMinute: 2, perDay: 10_000 },
-      sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, Math.min(ms, 120)))
-    };
-
-    await Promise.all(ids.map((id) => handleSend(ctx, id)));
-
-    expect(provider.sent).toHaveLength(2);
   });
 });
 
@@ -459,8 +418,7 @@ describe('link failures and stale sessions', () => {
     await db.execute(sql`
       INSERT INTO channel_session (sender_identity_id, connection_state, link_requested_mode, link_requested_at, link_error)
       VALUES (${senderId}, 'connecting', 'qr', now(), 'old failure')`);
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
 
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
 
@@ -473,8 +431,7 @@ describe('link failures and stale sessions', () => {
 
   it('records the phone number the connection belongs to, when the sender has none', async () => {
     await db.execute(sql`UPDATE sender_identity SET phone_e164 = NULL WHERE id = ${senderId}`);
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
 
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, phoneE164: '+12025550188', at: new Date() });
 
@@ -484,8 +441,7 @@ describe('link failures and stale sessions', () => {
   });
 
   it('leaves a phone number someone typed in alone, and a number another sender already has', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
     await db.execute(sql`UPDATE sender_identity SET phone_e164 = '+12025550177' WHERE id = ${senderId}`);
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, phoneE164: '+12025550188', at: new Date() });
     const kept = (await db.execute(sql`SELECT phone_e164 AS p FROM sender_identity WHERE id = ${senderId}`)
@@ -506,8 +462,7 @@ describe('link failures and stale sessions', () => {
   });
 
   it('records one ban-suspected event per logout, not one per failed re-login', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
     await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state) VALUES (${senderId}, 'open')`);
 
     for (let i = 0; i < 4; i++) {
@@ -521,12 +476,30 @@ describe('link failures and stale sessions', () => {
     expect(n[0]!.n).toBe(1);
   });
 
+  it('calls a device removed on the phone an unlink, not a possible ban (R-017)', async () => {
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
+    await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state) VALUES (${senderId}, 'open')`);
+
+    await applyConnectionEvent(ctx, {
+      senderId, state: 'logged_out', reason: 'logged_out', code: 401, detail: 'device_removed', at: new Date()
+    });
+
+    const kinds = (await db.execute(sql`
+      SELECT kind, severity FROM sender_health_event WHERE sender_identity_id = ${senderId}`)
+    ) as unknown as Array<{ kind: string; severity: string }>;
+    expect(kinds).toEqual([{ kind: 'unlinked_on_phone', severity: 'warning' }]);
+    const state = (await db.execute(sql`
+      SELECT connection_state AS s FROM channel_session WHERE sender_identity_id = ${senderId}`)
+    ) as unknown as Array<{ s: string }>;
+    expect(state[0]!.s).toBe('logged_out');
+  });
+
   it('clears the dead credentials when WhatsApp logs the number out', async () => {
     const authStore = new PostgresAuthStateStore(db, kms);
     await authStore.set(senderId, 'creds', new TextEncoder().encode('revoked'));
     const provider = new FakeChannelProvider({}, authStore);
     await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state) VALUES (${senderId}, 'open')`);
-    const ctx = { db, provider, logger, decrypt: () => '', limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider, logger, decrypt: () => '' };
 
     await applyConnectionEvent(ctx, { senderId, state: 'logged_out', reason: 'logged_out', code: 401, at: new Date() });
 
@@ -535,8 +508,7 @@ describe('link failures and stale sessions', () => {
 });
 
 describe('a 403 or an unasked logout means a possible ban', () => {
-  const ctxFor = () => ({ db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-    limits: { perMinute: 1000, perDay: 10_000 } });
+  const ctxFor = () => ({ db, provider: new FakeChannelProvider(), logger, decrypt: () => '' });
 
   /** A running campaign on this number, so there is something to pause. */
   async function runningCampaign(): Promise<string> {
@@ -711,8 +683,7 @@ describe('connection state', () => {
   }
 
   it('records an open socket, which is the only way to know a number is linked', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
     await applyConnectionEvent(ctx, {
       senderId, state: 'open', reason: null, at: new Date()
     });
@@ -724,8 +695,7 @@ describe('connection state', () => {
 
   it('promotes a sender that is still linking, so it becomes usable for sending', async () => {
     await db.execute(sql`UPDATE sender_identity SET status = 'linking' WHERE id = ${senderId}`);
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
 
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
 
@@ -741,8 +711,7 @@ describe('connection state', () => {
       VALUES (${senderId}, 'connecting', ${'{"mode":"qr","qr":"x"}'}::jsonb)
       ON CONFLICT (sender_identity_id) DO UPDATE
         SET link_challenge = ${'{"mode":"qr","qr":"x"}'}::jsonb`);
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
 
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
 
@@ -750,8 +719,7 @@ describe('connection state', () => {
   });
 
   it('demotes a logged-out number rather than leaving it looking active', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
     await applyConnectionEvent(ctx, {
       senderId, state: 'logged_out', reason: 'logged_out', at: new Date()
     });
@@ -763,8 +731,7 @@ describe('connection state', () => {
   });
 
   it('clears a stale open socket, which no running process is actually holding', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
     expect((await sessionRow()).state).toBe('open');
 
@@ -777,8 +744,7 @@ describe('connection state', () => {
   });
 
   it('keeps the last successful connection time across a later disconnect', async () => {
-    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '',
-      limits: { perMinute: 1000, perDay: 10_000 } };
+    const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, at: new Date() });
     const connectedAt = (await sessionRow()).lastConnectedAt;
 
@@ -791,69 +757,5 @@ describe('connection state', () => {
     expect(row.reason).toBe('connection_closed');
     // Answering "when did this number last work?" needs the timestamp to survive the drop.
     expect(row.lastConnectedAt).toEqual(connectedAt);
-  });
-});
-
-describe('recovery orchestration in the send path (Layer 6)', () => {
-  it('holds a queued send while the sender is in a recovery pause', async () => {
-    const provider = new FakeChannelProvider();
-    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
-    // Cooling off after a 463: pause not yet lifted.
-    await db.execute(sql`
-      UPDATE sender_identity
-      SET recovery_incident = 'timelock_463', recovery_until = now() + interval '10 hours'
-      WHERE id = ${senderId}`);
-
-    const id = await queueOutbound('during the recovery pause');
-    await handleSend(ctxWith(provider), id);
-
-    // Held exactly like a quarantined sender — left queued, never failed.
-    expect(provider.sent).toHaveLength(0);
-    expect((await statusOf(id)).status).toBe('queued');
-  });
-
-  it('sends once the pause has lifted (ramping phase)', async () => {
-    const provider = new FakeChannelProvider();
-    await provider.connect({ id: senderId, phoneE164: '+910000000000' });
-    // Pause lifted an hour ago; now ramping at a reduced cap, which is well above one send.
-    await db.execute(sql`
-      UPDATE sender_identity
-      SET recovery_incident = 'timelock_463', recovery_until = now() - interval '1 hour'
-      WHERE id = ${senderId}`);
-
-    const id = await queueOutbound('ramping back up');
-    await handleSend(ctxWith(provider), id);
-    expect(provider.sent).toHaveLength(1);
-    expect((await statusOf(id)).status).toBe('sent');
-  });
-
-  it('opens a timed recovery when a 463 timelock disconnect arrives', async () => {
-    await applyConnectionEvent(ctxWith(new FakeChannelProvider()), {
-      senderId, state: 'closed', reason: 'reachout_timelock', at: new Date()
-    });
-
-    const rows = await db.execute(sql`
-      SELECT recovery_incident AS i, recovery_until AS u FROM sender_identity WHERE id = ${senderId}`);
-    const row = (rows as unknown as Array<{ i: string | null; u: string | null }>)[0]!;
-    expect(row.i).toBe('timelock_463');
-    expect(new Date(row.u!).getTime()).toBeGreaterThan(Date.now());
-  });
-
-  it('does not reset the pause when the same incident fires again while cooling off', async () => {
-    const ctx = ctxWith(new FakeChannelProvider());
-    await applyConnectionEvent(ctx, {
-      senderId, state: 'closed', reason: 'reachout_timelock', at: new Date()
-    });
-    const first = (await db.execute(sql`
-      SELECT recovery_until AS u FROM sender_identity WHERE id = ${senderId}`) as unknown as Array<{ u: string }>)[0]!.u;
-
-    await applyConnectionEvent(ctx, {
-      senderId, state: 'closed', reason: 'reachout_timelock', at: new Date()
-    });
-    const second = (await db.execute(sql`
-      SELECT recovery_until AS u FROM sender_identity WHERE id = ${senderId}`) as unknown as Array<{ u: string }>)[0]!.u;
-
-    // The guard makes the second event a no-op — the pause is not perpetually reset.
-    expect(second).toEqual(first);
   });
 });

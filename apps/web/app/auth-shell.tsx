@@ -33,7 +33,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
       </section>
 
       <aside aria-hidden className="auth-aside hidden flex-col justify-between gap-6 overflow-hidden p-10 text-white lg:flex">
-        <p className="relative z-10 text-sm font-medium opacity-90">One inbox. Every number. Paced to stay safe.</p>
+        <p className="relative z-10 text-sm font-medium opacity-90">One inbox. Every number.</p>
         <div className="relative z-10 flex flex-col gap-6">
           <h2 className="max-w-xl text-4xl font-semibold leading-tight tracking-tight">
             Talk to everyone you work with, from one place.
@@ -41,7 +41,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           <LeadScene />
           <ul className="flex max-w-xl flex-col gap-2.5 text-[15px]">
             <li className="flex gap-2.5"><Tick /> A shared inbox with assignment, notes and saved replies.</li>
-            <li className="flex gap-2.5"><Tick /> Campaigns paced by an anti-ban engine, not blasted.</li>
+            <li className="flex gap-2.5"><Tick /> Campaigns sent a few at a time, not blasted.</li>
             <li className="flex gap-2.5"><Tick /> Tags, segments and imports to keep your book organised.</li>
           </ul>
         </div>

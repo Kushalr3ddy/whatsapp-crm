@@ -71,8 +71,7 @@ async function ctxFor(...senderIds: string[]) {
   return {
     ctx: {
       db, provider, logger, tenantRole: 'crm_app',
-      decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
-      limits: { perMinute: 1000, perDay: 10_000 }
+      decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c))
     },
     provider
   };

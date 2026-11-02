@@ -345,7 +345,7 @@ const ASSUMPTIONS = {
     overheadPct:     0.30      // WAL, backups, indexes, slack
   },
   limits: {
-    baileysPerNumberPerDay: 1500,   // docs/08-antiban.md steady-state cap
+    baileysPerNumberPerDay: 15000,  // docs/08-antiban.md: a 3-8 s gap between sends (5.5 s mean) allows at most 86,400 / 5.5 a day
     metaTiers: [250, 1000, 10000, 100000]
   },
   money: {
@@ -490,14 +490,14 @@ function computeFlags(i, ram){
   if (i.msgs > capacity){
     const need = Math.ceil(i.msgs / L.baileysPerNumberPerDay);
     out.push(['d', 'Not enough numbers for this volume',
-      `The anti-ban engine caps Baileys at ${fmtN(L.baileysPerNumberPerDay)} messages/day per number by design.
+      `The anti-ban policy spaces a number's sends 3 to 8 seconds apart, which carries at most about ${fmtN(L.baileysPerNumberPerDay)} messages/day per number.
        ${i.numbers} number${i.numbers>1?'s':''} carries ${fmtN(capacity)}/day — you want ${fmtN(i.msgs)}.
-       You need about <b>${need} warmed numbers</b>, or you route the overflow through the paid Meta API.
+       You need about <b>${need} numbers</b>, or you route the overflow through the paid Meta API.
        This is bought with numbers and patience, not with a bigger server.`]);
   } else if (i.msgs > capacity * 0.7 && i.msgs > 0){
-    out.push(['w', 'Close to the safe send ceiling',
-      `Using ${Math.round(i.msgs/capacity*100)}% of what ${i.numbers} number${i.numbers>1?'s':''} can safely carry.
-       Leave headroom — a number entering warmup or getting quarantined cuts capacity immediately.`]);
+    out.push(['w', 'Close to what the gap between sends allows',
+      `Using ${Math.round(i.msgs/capacity*100)}% of what ${i.numbers} number${i.numbers>1?'s':''} can carry.
+       Leave headroom — a number that is unlinked or refused by WhatsApp cuts capacity immediately.`]);
   }
 
   if (i.msgs > 0){

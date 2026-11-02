@@ -68,7 +68,7 @@ POST   /api/v1/conversations/{id}/classify   manual override
 
 | id | Case | Expect |
 |---|---|---|
-| TC-9.1 | "STOP" | DNC set, confirmation sent, all pending sends cancelled |
+| TC-9.1 | "STOP" | DNC set, confirmation sent, all pending sends cancelled *(built in anti-ban v2 for the whole message "stop", "unsubscribe", "opt out" and the org's words; pending sends fail as `do_not_contact`)* |
 | TC-9.2 | "band karo" / "mujhe nahi chahiye" | Same as TC-9.1 via the Hindi pack |
 | TC-9.3 | "haan interested hu" | Classified affirmative; matched rule shown |
 | TC-9.4 | "asdkjh" | No rule matched; recorded as defaulted, not as a confident result |

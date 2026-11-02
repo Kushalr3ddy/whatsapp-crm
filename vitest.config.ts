@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   test: {
     include: ['packages/**/*.test.ts', 'apps/**/*.test.ts', 'tests/**/*.test.ts'],
+    // Vendored Baileys keeps its own Jest suite; it is not ours to run here.
+    exclude: ['**/node_modules/**', 'packages/baileys/**'],
     environment: 'node',
 
     // Test FILES run one at a time, not in parallel.

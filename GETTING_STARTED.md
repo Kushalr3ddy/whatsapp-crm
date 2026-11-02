@@ -6,7 +6,7 @@ is unfamiliar, [`20-orientation.md`](docs/20-orientation.md) explains the whole 
 
 > **Read this first.** This runs **Baileys**, an unofficial WhatsApp client. Pointing it at a real
 > number can get that number **banned permanently, with no appeal** ([`08-antiban.md`](docs/08-antiban.md)).
-> Use a number you can afford to lose. The anti-ban engine reduces the risk; it cannot remove it.
+> Use a number you can afford to lose. The anti-ban policy reduces the risk; it cannot remove it.
 
 ---
 
@@ -177,9 +177,7 @@ including linked numbers — it asks for confirmation because it is irreversible
 | `npm run web:build` fails while the UI runs | Both write `apps/web/.next`; stop the dev server first |
 | Sends work but nothing ever arrives | Check the gateway log for `Bad MAC`; unlink and re-link the number ([`26-linking-lifecycle.md`](docs/26-linking-lifecycle.md)) |
 
-One more, easy to hit in the cloud: **`SEND_TIMEZONE` is set explicitly, not read from the server
-region.** If you deploy to a different timezone, set it to the number's real local zone or the
-"quiet overnight" pacing lands on the wrong hours ([`08-antiban.md`](docs/08-antiban.md)).
+One more: **`SEND_TIMEZONE` is set explicitly, not read from the server region.** It sets the day the home page greeting uses.
 
 ---
 

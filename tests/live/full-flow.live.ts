@@ -234,7 +234,7 @@ test.describe('live walkthrough', () => {
     // ── 7 · walk every tab and click what is safe to click ────────────────────────────────
     await timed('tour: every tab and button', async () => {
       // Controls that change data, send, or end the session are never clicked by the tour.
-      const UNSAFE = /delete|remove|cancel|sign out|start|send|confirm|import|unlink|resolve|reopen|do not contact|\badd\b|save|create|override|enforce|advisory|block|link this|upload|export|apply|tag |note|merge|close|preview|campaign from/i;
+      const UNSAFE = /delete|remove|cancel|sign out|start|send|confirm|import|unlink|resolve|reopen|do not contact|\badd\b|save|create|override|block|link this|upload|export|apply|tag |note|merge|close|preview|campaign from/i;
       const pages = ['Overview', 'Inbox', 'Contacts', 'Linked numbers', 'Import', 'Campaigns', 'Billing'];
       const clicked: string[] = [];
       for (const name of pages) {

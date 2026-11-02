@@ -127,20 +127,6 @@ export interface CannedReply {
   updatedAt: string;
 }
 
-/**
- * The health scorer's evidence, stored on `sender_identity.health` (docs/08-antiban.md). Empty
- * (`{}`) until the number has been scored at least once, so every field is optional.
- */
-export interface SenderHealth {
-  score?: number;
-  band?: 'low' | 'medium' | 'high' | 'critical';
-  deliveryRatio?: number;
-  sentRecent?: number;
-  deliveredRecent?: number;
-  failedRecent?: number;
-  computedAt?: string;
-}
-
 /** Why a link attempt failed, in plain words. Mirrors `link_error` as the API decodes it. */
 export interface LinkError {
   code: string;
@@ -160,20 +146,8 @@ export interface Sender {
   provider: string;
   /** The number itself. Null until a link completes — WhatsApp reports it, we do not set it. */
   phoneE164: string | null;
-  /**
-   * The *business* status the health scorer drives: `active` (healthy), `degraded` (elevated
-   * risk, throttled), `quarantined` (sends held), or `linking`. Says nothing on its own about
-   * whether the socket is up — that is `connectionState`.
-   */
+  /** The lifecycle: `linking` or `active`. Says nothing on its own about whether the socket is up — that is `connectionState`. */
   status: string;
-  /** 0–100 risk score from the health scorer; the band lives in `health`. */
-  riskScore: number;
-  /** The scorer's evidence behind `riskScore` and `status`. */
-  health: SenderHealth;
-  /** Contacts on this number who have replied — a real two-way relationship. */
-  knownContacts: number;
-  /** Contacts we have messaged who have never replied — the outbound-only, riskier shape. */
-  contactedContacts: number;
   /**
    * The live socket state: `open`, `connecting`, `closed`, or null when the number has never
    * been linked at all. This — not `status` — decides whether a message can actually go out.
@@ -187,26 +161,6 @@ export interface Sender {
    * number that was connected before into the "previously linked" group.
    */
   linked: boolean;
-  /** The silent-restriction verdict: `ok`, `suspected` (WhatsApp may be limiting it) or `likely`. */
-  restrictionState: 'ok' | 'suspected' | 'likely';
-  restrictionSince: string | null;
-  /** `enforce` (the default) or `advisory` (D-29): the anti-ban holds are recorded, not obeyed. */
-  enforcement: 'enforce' | 'advisory';
-  advisoryReason: string | null;
-  /** How many sends went out past a hold the engine would have enforced, and the latest one. */
-  advisoryBypassCount: number;
-  advisoryLastBypass: string | null;
-  /**
-   * Layer 6 recovery state, or null when the number is not recovering. `paused` = cooling off and
-   * sending nothing until `resumesAt`; `ramping` = sending at `capFraction` of its cap, climbing
-   * back weekly. Distinct from `status` — a number can be `active` yet paused by a recent incident.
-   */
-  recovery: {
-    incident: 'timelock_463' | 'rate_429' | 'soft_ban';
-    phase: 'paused' | 'ramping';
-    capFraction: number;
-    resumesAt: string | null;
-  } | null;
 }
 
 /** One way to reach a contact — a phone or email. */
@@ -275,17 +229,7 @@ export interface CampaignProgress {
   skipped: number;
 }
 
-/** The engine's estimate of how long a campaign has left. Mirrors `forecast` on the detail route. */
-export interface CampaignForecast {
-  remaining: number;
-  allowanceToday: number;
-  /** Whole days before the last message goes out. 0 means it finishes today. */
-  daysToFinish: number;
-  /** True while the sender is still ramping up (warmup), which is why the daily allowance is low. */
-  inWarmup: boolean;
-}
-
-/** One campaign in full, with its live progress and forecast. Mirrors `GET /api/v1/campaigns/:id`. */
+/** One campaign in full, with its live progress. Mirrors `GET /api/v1/campaigns/:id`. */
 export interface CampaignDetail {
   id: string;
   name: string;
@@ -296,11 +240,10 @@ export interface CampaignDetail {
   completedAt: string | null;
   createdAt: string;
   progress: CampaignProgress;
-  forecast: CampaignForecast;
   /** Recipient-experience gates an admin lifted for this campaign, and why. */
   gateOverrides: string[];
   gateOverrideReason: string | null;
-  /** Set when the system, not a person, paused it (`restriction_likely` or `ban_suspected`). */
+  /** Set when the system, not a person, paused it (`ban_suspected` or `unlinked`). */
   pauseReason: string | null;
   /** The picture or GIF sent with every message (the body is its caption), or null for a text-only campaign. */
   mediaAssetId: string | null;
@@ -324,7 +267,6 @@ export interface CampaignPreview {
     /** The campaign that most of them were messaged by. */
     recentCampaign?: string | null;
   };
-  forecast: CampaignForecast;
 }
 
 /** One recipient's outcome. Mirrors a row of `GET /api/v1/campaigns/:id/recipients`. */
@@ -338,7 +280,7 @@ export interface CampaignRecipient {
   displayName: string | null;
   /** The underlying message's own delivery state (`sent`/`delivered`/`read`/`failed`), if any. */
   messageStatus: string | null;
-  /** Why a queued message is still waiting (`paced:per_minute`, `sender_not_connected`, …), or null. */
+  /** Why a queued message is still waiting (`sender_not_connected`, …), or null. */
   holdReason?: string | null;
   /** The contact's primary phone or email, for identifying them in the list. */
   identity: string | null;
@@ -680,10 +622,8 @@ export interface SenderStatus {
   label: string;
   connectionState: string | null;
   status: string;
-  /** Whether delivery from this number looks restricted (`ok` | `suspected` | `likely`). */
-  restrictionState: 'ok' | 'suspected' | 'likely';
   canSend: boolean;
-  /** `not_connected`, `quarantined`, or null when it can send. */
+  /** `not_connected`, or null when it can send. */
   reason: string | null;
   /** The encryption session is broken right now: `contacts` (their messages cannot be read), `own` (the owner's phone or Web messages cannot), or null. */
   sessionTrouble?: 'contacts' | 'own' | null;
@@ -697,7 +637,6 @@ export async function getSenderStatus(conversationId: string): Promise<SenderSta
 /** Why the AI assistant is stuck on a conversation. Mirrors `GET /api/v1/ai/conversations/:id/notice`. */
 export interface AiNotice {
   code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error' | 'no_answer';
-  antiBan: boolean;
   reason: string;
   canOverride: boolean;
 }
@@ -1254,13 +1193,13 @@ export async function listCampaigns(tagId?: string): Promise<Campaign[]> {
   return request<Campaign[]>(tagId === undefined ? '/campaigns' : `/campaigns?tagId=${encodeURIComponent(tagId)}`);
 }
 
-/** Fetches one campaign with its live progress and forecast. */
+/** Fetches one campaign with its live progress. */
 export async function getCampaign(id: string): Promise<CampaignDetail> {
   return request<CampaignDetail>(`/campaigns/${encodeURIComponent(id)}`);
 }
 
 /**
- * A dry run: the audience a draft would freeze, and the forecast — computed without writing
+ * A dry run: the audience a draft would freeze, computed without writing
  * anything, so an operator sees who and how long before pressing start.
  */
 export async function previewCampaign(id: string): Promise<CampaignPreview> {
@@ -1336,7 +1275,7 @@ export async function createCampaign(
 
 /**
  * Starts (or resumes) a campaign: freezes the audience on the first start and lets the gateway
- * begin. Resuming a paused campaign does not re-snapshot. The response carries the forecast.
+ * begin. Resuming a paused campaign does not re-snapshot.
  */
 export async function startCampaign(
   id: string, override?: { overrideGates: string[]; reason: string }
@@ -1344,16 +1283,6 @@ export async function startCampaign(
   return request<{ status: string }>(`/campaigns/${encodeURIComponent(id)}/start`, {
     method: 'POST', ...(override ? { body: JSON.stringify(override) } : {})
   });
-}
-
-/** Admin only: switches a number between `enforce` and `advisory` (D-29). Advisory needs a reason. */
-export async function setSenderEnforcement(
-  senderId: string, mode: 'enforce' | 'advisory', reason?: string
-): Promise<{ senderId: string; enforcement: string }> {
-  return request<{ senderId: string; enforcement: string }>(
-    `/senders/${encodeURIComponent(senderId)}/enforcement`,
-    { method: 'POST', body: JSON.stringify({ mode, ...(reason ? { reason } : {}) }) }
-  );
 }
 
 /** Pauses a running campaign. Instant — pending recipients are simply not dispatched. */

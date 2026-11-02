@@ -152,7 +152,7 @@ describe('the gateway sweep', () => {
   /** A gateway context with the given key ring, running as the restricted role. */
   const ctxWith = (kms: LocalKms) => ({
     db, provider: new FakeChannelProvider(), logger, kms, tenantRole: 'crm_app',
-    decrypt: (c: Uint8Array) => dec(kms, c), limits: { perMinute: 1000, perDay: 10_000 }
+    decrypt: (c: Uint8Array) => dec(kms, c)
   });
 
   it('re-encrypts every org’s values in the background, and stops when nothing is left', async () => {

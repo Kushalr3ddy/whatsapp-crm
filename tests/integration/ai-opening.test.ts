@@ -37,7 +37,7 @@ beforeAll(() => { db = createDatabase(url, { max: 4 }); });
 afterAll(async () => { await db.$client.end(); });
 
 const rows = async <T>(q: ReturnType<typeof sql>): Promise<T[]> => (await db.execute(q)) as unknown as T[];
-const dispatch = (): Promise<number> => dispatchCampaign(tenant as never, kms, { orgId, campaignId, senderIdentityId: senderId, body: 'FIXED CRM BODY', limit: 10, identicalBodyCap: 100 });
+const dispatch = (): Promise<number> => dispatchCampaign(tenant as never, kms, { orgId, campaignId, senderIdentityId: senderId, body: 'FIXED CRM BODY', limit: 10 });
 const sentTexts = async (): Promise<string[]> =>
   (await rows<{ body_enc: Uint8Array }>(sql`SELECT body_enc FROM message WHERE org_id = ${orgId} AND campaign_id = ${campaignId} ORDER BY created_at`))
     .map((r) => new TextDecoder().decode(kms.decrypt(r.body_enc)));

@@ -48,7 +48,7 @@ const HAND_OVER_TOOL = {
  * case returns `skipped` quietly. Then, in order: a do-not-contact contact is never messaged, the org's daily limit
  * is respected, and the model is asked. Customer text only ever travels as `user` messages, never inside the system
  * text (F12 AC-2). The reply is queued as an ordinary outbound message from the assistant's user, so the gateway's
- * own gates (pacing, do-not-contact, a number that is down) still decide whether and when it goes out.
+ * own gates (do-not-contact, a number that is down, the anti-ban policy) still decide whether and when it goes out.
  *
  * `db` must be pinned to the org. Never throws for a model problem: that is recorded and nothing is sent.
  */
@@ -229,9 +229,7 @@ export function systemText(orgName: string, instructions: string): string {
 export interface AiNotice {
   /** `held` = queued but waiting on the number; the rest are why the assistant did not write or send. */
   readonly code: 'held' | 'do_not_contact' | 'daily_cap' | 'model_error' | 'no_answer';
-  /** True when the anti-ban engine is what is holding it back (so the warning names the ban risk). */
-  readonly antiBan: boolean;
-  /** The hold or failure reason as recorded (e.g. `paced:per_minute`). */
+  /** The hold or failure reason as recorded (e.g. `sender_not_connected`). */
   readonly reason: string;
   /** True when an admin can let it through for this one message, at the risk of the number being banned or reported. */
   readonly canOverride: boolean;
@@ -241,9 +239,9 @@ export interface AiNotice {
  * The reason the AI assistant is stuck on a conversation, or null when it is not.
  *
  * Only for a conversation assigned to the assistant. A reply it queued that the gateway is holding comes first
- * (spacing, a quarantined number, ...); otherwise the last thing it tried was blocked or failed and nothing has
- * been sent in the thread since. The anti-ban limits (pacing, caps, warmup) have no override: they clear on their own.
- * Only the do-not-contact block can be lifted, by an admin, per message.
+ * (the number is not connected, or the anti-ban policy is holding it); otherwise the last thing it tried was blocked or
+ * failed and nothing has been sent in the thread since. A hold clears on its own. Only the do-not-contact block can be
+ * lifted, by an admin, per message.
  */
 export async function getAiNotice(db: Database, orgId: string, conversationId: string): Promise<AiNotice | null> {
   const bot = (await db.execute(sql`
@@ -258,8 +256,7 @@ export async function getAiNotice(db: Database, orgId: string, conversationId: s
       AND status = 'queued' AND hold_reason IS NOT NULL
     ORDER BY created_at DESC LIMIT 1`) as unknown as Array<{ reason: string }>)[0];
   if (held !== undefined) {
-    // Not connected is the number's own state, not the anti-ban engine; everything else here is.
-    return { code: 'held', antiBan: held.reason !== 'sender_not_connected', reason: held.reason, canOverride: false };
+    return { code: 'held', reason: held.reason, canOverride: false };
   }
 
   const last = (await db.execute(sql`
@@ -269,10 +266,10 @@ export async function getAiNotice(db: Database, orgId: string, conversationId: s
                       AND m.direction = 'outbound' AND m.created_at > r.created_at)
     ORDER BY r.created_at DESC LIMIT 1`) as unknown as Array<{ outcome: string; reason: string | null }>)[0];
   if (last === undefined) return null;
-  if (last.outcome === 'blocked' && last.reason === 'do_not_contact') return { code: 'do_not_contact', antiBan: true, reason: last.reason, canOverride: true };
-  if (last.outcome === 'blocked' && last.reason === 'daily_cap') return { code: 'daily_cap', antiBan: false, reason: last.reason, canOverride: false };
-  if (last.outcome === 'failed') return { code: 'model_error', antiBan: false, reason: last.reason ?? 'model_error', canOverride: false };
+  if (last.outcome === 'blocked' && last.reason === 'do_not_contact') return { code: 'do_not_contact', reason: last.reason, canOverride: true };
+  if (last.outcome === 'blocked' && last.reason === 'daily_cap') return { code: 'daily_cap', reason: last.reason, canOverride: false };
+  if (last.outcome === 'failed') return { code: 'model_error', reason: last.reason ?? 'model_error', canOverride: false };
   // The model answered but with no text (R-012): nothing was sent, so say so instead of leaving the chat looking quiet.
-  if (last.outcome === 'skipped' && last.reason === 'empty_answer') return { code: 'no_answer', antiBan: false, reason: last.reason, canOverride: false };
+  if (last.outcome === 'skipped' && last.reason === 'empty_answer') return { code: 'no_answer', reason: last.reason, canOverride: false };
   return null;
 }

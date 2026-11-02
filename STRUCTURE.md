@@ -1,17 +1,14 @@
 # Repository structure
 
-> This is the short sketch. **For every directory and file, see [`docs/31-codebase-map.md`](docs/31-codebase-map.md).**
+> This is the short sketch. **To find any file or symbol, query the CodeGraph index: `codegraph explore "<question or symbol names>"`** (build it with `codegraph init .`).
 
-What belongs where. `packages/shared`, `packages/db`, `packages/core`, `channels/baileys`,
-`providers/{storage,kms}`, and `apps/{api,gateway,web}` carry code; the remaining packages
-(`worker`, `sdk`, `antiban` as its own package, the other channels, ingestion connectors and
-the rest of the provider drivers) are scaffolded and waiting for their phase
-(`docs/17-roadmap.md`).
+What belongs where. Empty placeholder packages (worker, sdk, a separate antiban package, the
+Meta channel, ingestion connectors, unused provider drivers) were removed on 2026-10-26; the
+anti-ban policy lives in `packages/core`.
 
 ```
 apps/
   api/        Express HTTP layer. Auth, validation, OpenAPI. THIN — no business logic.
-  worker/     Queue consumers. THIN — orchestration only.
   gateway/    Baileys socket supervisor. Owns sockets and auth state, nothing else.
   web/        Next.js UI. A client of the public API, nothing more.
 
@@ -20,30 +17,23 @@ packages/
   db/         Drizzle schema, migrations, repositories, RLS helpers.
   core/       Domain logic — contacts, conversations, campaigns, policy, dispatcher.
               May import PORTS; may never import a concrete adapter.
-  antiban/    The engine: limiter, warmup, pacing, risk scoring, recovery. 100% covered.
-  ingestion/  The SourceConnector port.
-    connectors/{excel,csv,gsheets,rest,webhook}/
+              Includes the anti-ban policy (antiban.ts and antiban/); the send lane is in apps/gateway/src/lane.ts.
+  baileys/    Vendored Baileys 7.0.0-rc14 source (WhatsApp Web client). Rebuild: npm run baileys:build.
   channels/   The ChannelProvider port.
-    {baileys,meta,fake}/
+    {baileys,fake}/
   providers/  Infrastructure drivers, one directory per port (docs/18-providers.md).
-    {storage,auth,queue,cache,email,sms,llm,kms,secrets,scanner}/
-  sdk/        Generated typed API client.
+    {storage,auth,llm,kms}/
 
 infra/
   docker/     Dockerfiles.
   compose/    docker-compose.yml + per-profile overlays (docs/13-deployment.md).
   scripts/    setup, migrate, backup, restore-drill, context-append.
-  grafana/    Dashboard JSON — shipped whether or not Grafana is running.
-  prometheus/ Scrape config and alert rules.
 
 tests/
   contract/   One conformance suite per port. Every adapter and driver must pass.
   e2e/        Playwright. Runs against all three presets.
-  simulation/ The virtual WhatsApp that bans you if you misbehave. Highest-value test here.
-  load/       k6 scenarios.
   fixtures/   Synthetic data generators. NEVER real PII (docs/00-prior-art.md, M19).
 
-config/       preset.yml and driver configuration.
 docs/         The design. Start at docs/README or the table in ../README.md.
 ```
 
@@ -52,7 +42,7 @@ docs/         The design. Start at docs/README or the table in ../README.md.
 Lint-enforced via `no-restricted-imports`:
 
 ```
-apps/*    →  core, shared, db, sdk
+apps/*    →  core, shared, db
 core      →  shared, db, PORTS only — never a concrete adapter
 adapters  →  shared (+ their own vendor SDK)
 db        →  shared

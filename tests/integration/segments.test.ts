@@ -28,7 +28,7 @@ const kms = new LocalKms({
 });
 const config = {
   PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test',
-  API_KEY, DEFAULT_COUNTRY: 'IN', SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+  API_KEY, DEFAULT_COUNTRY: 'IN'
 } as unknown as Config;
 const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 
@@ -89,8 +89,8 @@ beforeEach(async () => {
   orgId = (await db.execute(sql`
     INSERT INTO org(name,slug) VALUES ('s','segments') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
   senderId = (await db.execute(sql`
-    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-    VALUES (${orgId}, 'fake', 's', '+919000000001', 'active', now() - interval '30 days')
+    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+    VALUES (${orgId}, 'fake', 's', '+919000000001', 'active')
     RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
   const tags = (await db.execute(sql`
     INSERT INTO tag (org_id, name) VALUES (${orgId}, 'pune'), (${orgId}, 'mumbai')

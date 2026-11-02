@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseCsv, parseCsvRows, CsvError } from './csv.js';
+import { IMPORT_LIMITS, ImportLimitError } from './import-limits.js';
 
 /**
  * The CSV grammar is small and completely specified, which is the only reason writing the
@@ -110,5 +111,24 @@ describe('scale', () => {
 
     expect(table.rows).toHaveLength(50_000);
     expect(table.rows[49_999]!.name).toBe('Person 49999');
+  });
+});
+
+describe('[R-016] the import limits, checked during the one scan', () => {
+  const small = { ...IMPORT_LIMITS, maxColumns: 3, maxRows: 2, maxCellChars: 5, maxCells: 7 };
+  const kindOf = (text: string): string | undefined => {
+    try { parseCsvRows(text, small); return undefined; } catch (error) { return error instanceof ImportLimitError ? error.kind : 'other'; }
+  };
+
+  it('[R-016] stops at the first column, row, long cell or cell over the limit', () => {
+    expect(kindOf('a,b,c,d\n')).toBe('columns');
+    expect(kindOf('h\n1\n2\n3\n')).toBe('rows');             // the header does not count, the third data row does
+    expect(kindOf('abcdef\n')).toBe('cell');
+    expect(kindOf('a,b,c\nd,e,f\ng,h,i\n')).toBe('cells');    // nine cells over a limit of seven, within the row limit
+  });
+
+  it('[R-016] lets a file inside every limit through unchanged', () => {
+    expect(kindOf('a,b\nc,d\ne,f\n')).toBeUndefined();
+    expect(parseCsv('Name\nAsha\n', small).rows).toEqual([{ Name: 'Asha' }]);
   });
 });

@@ -85,27 +85,23 @@ async function main(): Promise<void> {
     return;
   }
 
-  // ── the fake number: provider 'fake', connected, long past warmup ─────────────────────
+  // ── the fake number: provider 'fake', connected ─────────────────────
   const found = (await db.execute(sql`
     SELECT id FROM sender_identity WHERE org_id = ${orgId} AND label = ${SENDER_LABEL}`)) as unknown as
     Array<{ id: string }>;
   let senderId = found[0]?.id;
   if (senderId === undefined) {
     senderId = ((await db.execute(sql`
-      INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-      VALUES (${orgId}, 'fake', ${SENDER_LABEL}, ${SENDER_PHONE}, 'active', now() - interval '30 days')
+      INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+      VALUES (${orgId}, 'fake', ${SENDER_LABEL}, ${SENDER_PHONE}, 'active')
       RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
     await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state)
       VALUES (${senderId}, 'open')`);
   }
   say(`✓ number "${SENDER_LABEL}" (${SENDER_PHONE}, fake provider)`);
 
-  // The fixture must start every run healthy. The fake number never receives a real delivery
-  // receipt for sends made before the fake gateway reported them, and the health scorer reads a
-  // day of undelivered sends as a delivery collapse: it stamps a 48-hour soft-ban pause on the
-  // number, and every later send test then sits queued. So each run (1) counts the fake's past
-  // sends as delivered, which is what a fake number would have reported, and (2) clears any
-  // recovery pause it was given. Scoped to this one fake sender by id; nothing real is touched.
+  // The fixture starts every run connected and active, and counts the fake's past sends as delivered, which is what a
+  // fake number would have reported. Scoped to this one fake sender by id; nothing real is touched.
   await db.execute(sql`
     UPDATE message m
     SET status = 'delivered', delivered_at = COALESCE(m.delivered_at, m.sent_at)
@@ -113,14 +109,7 @@ async function main(): Promise<void> {
     WHERE v.id = m.conversation_id AND v.sender_identity_id = ${senderId}
       AND m.direction = 'outbound' AND m.status = 'sent'`);
   await db.execute(sql`
-    UPDATE sender_identity
-    SET recovery_incident = NULL, recovery_started_at = NULL, recovery_until = NULL,
-        status = 'active',
-        -- A number that has never received a reply is held to 20 sends a day (the outbound-only
-        -- clamp), which a day of verify runs uses up and leaves everything queued. A real number
-        -- earns its first reply; the fake one is given one, once.
-        last_inbound_at = COALESCE(last_inbound_at, now()),
-        updated_at = now()
+    UPDATE sender_identity SET status = 'active', updated_at = now()
     WHERE id = ${senderId} AND provider = 'fake'`);
 
   // ── the real API in-process, signed in as the test admin ──────────────────────────────

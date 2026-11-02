@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 const STATUSES = ['sent', 'queued', 'pending', 'skipped', 'failed'] as const;
 
 /**
- * One campaign's page: its progress and forecast, the message it sends, and — the point of this
+ * One campaign's page: its progress, the message it sends, and — the point of this
  * slice — the **per-recipient results**: every recipient in a terminal or pending state, none
  * silently absent, filterable by status and searchable by name or number. This is how an operator
  * answers "who did this reach, and why not the rest?" (F5 AC-5).
@@ -105,18 +105,18 @@ export default async function CampaignPage(
             </div>
           )}
 
-          {campaign.pauseReason === 'restriction_likely' && campaign.status === 'paused' && (
-            <p role="alert" className="mb-4 notice notice-danger">
-              Paused automatically: delivery from this number looks restricted by WhatsApp. Check the Numbers
-              page before resuming.
-            </p>
-          )}
-
           {campaign.pauseReason === 'ban_suspected' && campaign.status === 'paused' && (
             <p role="alert" className="mb-4 notice notice-danger">
               Paused automatically: WhatsApp refused or logged out the sending number, which can mean a ban.
               Open WhatsApp on that phone and look for a notice before resuming anything. The Numbers page has
               the details.
+            </p>
+          )}
+
+          {campaign.pauseReason === 'unlinked' && campaign.status === 'paused' && (
+            <p role="alert" className="mb-4 notice notice-warning">
+              Paused automatically: the sending number was removed under Linked devices on the phone. Link it
+              again on the Numbers page, then resume.
             </p>
           )}
 
@@ -202,7 +202,7 @@ const SKIP_LABEL: Record<string, string> = {
 
 /**
  * The progress counters, each a link that filters the list below to that status — so the summary
- * and the detail are one thing, not two. The forecast sits alongside while the campaign runs.
+ * and the detail are one thing, not two.
  */
 function ProgressTiles(
   { campaign, activeStatus, query, id }:
@@ -217,7 +217,6 @@ function ProgressTiles(
     { key: 'skipped', label: 'Skipped', value: p.skipped, filter: 'skipped' },
     { key: 'failed', label: 'Failed', value: p.failed, filter: 'failed' }
   ];
-  const showForecast = campaign.status === 'running' || campaign.status === 'paused';
 
   // The bar counts people actually attempted. Skipped people were never sent anything, so a campaign that skipped everyone
   // must not look finished.
@@ -260,28 +259,17 @@ function ProgressTiles(
           </Link>
         ))}
       </div>
-
-      {showForecast && (
-        <p className="mt-3 text-sm text-muted">
-          {campaign.forecast.remaining} left ·{' '}
-          {campaign.forecast.daysToFinish === 0
-            ? 'finishes today'
-            : `about ${campaign.forecast.daysToFinish} day${campaign.forecast.daysToFinish === 1 ? '' : 's'} to finish`}
-          {' '}at {campaign.forecast.allowanceToday}/day
-          {campaign.forecast.inWarmup && ' (number still warming up, so the daily cap is low)'}.
-        </p>
-      )}
     </>
   );
 }
 
 /**
- * The dry-run preview shown for a draft: who it would reach and how long, before anything is
+ * The dry-run preview shown for a draft: who it would reach, before anything is
  * frozen. The unreachable count is called out because a tag of contacts with no numbers is a
  * mistake worth catching before pressing Start, not after.
  */
 function DraftPreview({ preview }: { preview: CampaignPreview }) {
-  const { audience, forecast } = preview;
+  const { audience } = preview;
   return (
     <div className="rounded-lg border border-border bg-surface px-4 py-3">
       <p className="text-xs font-medium text-muted">Dry run — nothing sent yet</p>
@@ -293,15 +281,6 @@ function DraftPreview({ preview }: { preview: CampaignPreview }) {
         )}
         {' '}· {audience.total} in the audience.
       </p>
-      {audience.reachable > 0 && (
-        <p className="mt-1 text-xs text-muted">
-          {forecast.daysToFinish === 0
-            ? 'Finishes today'
-            : `About ${forecast.daysToFinish} day${forecast.daysToFinish === 1 ? '' : 's'} to finish`}
-          {' '}at {forecast.allowanceToday}/day
-          {forecast.inWarmup && ' (number still warming up, so the daily cap is low)'}.
-        </p>
-      )}
       {audience.reachable === 0 && (
         <p className="mt-1 text-xs text-danger">
           Nobody in this audience has a number — starting would send to no one. Check the tag.

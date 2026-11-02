@@ -5,7 +5,7 @@ import type { LlmDriver } from '@crm/llm';
 import type { Logger } from '@crm/shared';
 import {
   claimNextAiJob, finishAiJob, tidyAiJobs, runAiCommand, draftCampaignText, AiCommandError,
-  type CampaignLimits, type ClaimedJob
+  type ClaimedJob
 } from '@crm/core';
 
 /** What the runner needs to carry out a job. */
@@ -15,7 +15,6 @@ export interface AiRunnerDeps {
   readonly kms: KmsDriver;
   /** Built on first use, so a server with no model configured still boots. */
   readonly getLlm: () => LlmDriver;
-  readonly limits: CampaignLimits;
   readonly logger: Logger;
 }
 
@@ -97,7 +96,7 @@ export class AiJobRunner {
     try {
       const llm = this.deps.getLlm();
       const result = job.kind === 'command'
-        ? await runAiCommand({ db, kms: this.deps.kms, llm, limits: this.deps.limits }, orgId, job.requestedBy, job.input)
+        ? await runAiCommand({ db, kms: this.deps.kms, llm }, orgId, job.requestedBy, job.input)
         : { body: await draftCampaignText({ db, llm }, orgId, job.input) };
       await finishAiJob(db, orgId, job.id, { status: 'done', result });
     } catch (error) {

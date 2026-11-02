@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import type { AiNotice } from '@/lib/crm';
 import { allowAiReplyAction } from '../../ai/actions';
 
-/** The plain-words explanation for why the assistant is stuck, and whether the ban risk applies. */
+/** The plain-words explanation for why the assistant is stuck. */
 function explain(n: AiNotice): { title: string; detail: string } {
   if (n.code === 'do_not_contact') {
     return {
       title: 'The AI assistant did not reply: this contact is marked do-not-contact.',
-      detail: 'The anti-ban engine blocks messages to people who asked not to be contacted. Only an admin can let one reply through, and doing so puts this number at risk of reports and a ban.'
+      detail: 'Messages to people who asked not to be contacted are blocked. Only an admin can let one reply through, and doing so puts this number at risk of reports and a ban.'
     };
   }
   if (n.code === 'daily_cap') {
@@ -34,18 +34,9 @@ function explain(n: AiNotice): { title: string; detail: string } {
   if (n.reason === 'sender_not_connected') {
     return { title: 'The AI’s reply is waiting: the number isn’t connected.', detail: 'It will be sent when the number is linked again.' };
   }
-  if (n.reason === 'quarantined') {
-    return { title: 'The AI’s reply is waiting: the anti-ban engine has quarantined this number.', detail: 'It will go out once the number has recovered. This cannot be overridden: sending now would risk a ban.' };
-  }
-  if (n.reason.startsWith('recovery_pause')) {
-    return { title: 'The AI’s reply is waiting: the number is cooling off after an incident.', detail: 'It will go out when the pause ends. This cannot be overridden: sending now would risk a ban.' };
-  }
-  if (n.reason === 'recipient_hours') {
-    return { title: 'The AI’s reply is waiting: it’s night where the contact is.', detail: 'It will go out in their morning to protect the number.' };
-  }
   return {
-    title: 'The AI’s reply is waiting: the anti-ban engine is spacing out sends on this number.',
-    detail: 'It will go out on its own. These limits protect the number from a ban and cannot be overridden by anyone.'
+    title: 'The AI’s reply is waiting.',
+    detail: `It will go out on its own (${n.reason}).`
   };
 }
 

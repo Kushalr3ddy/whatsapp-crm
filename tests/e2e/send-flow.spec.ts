@@ -8,17 +8,30 @@ const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
  *
  * Needs the gateway running with `GATEWAY_CHANNEL=fake` and the seeded number
  * (`npm run local:seed`): the fake channel "sends" in memory, so nothing real leaves the machine,
- * but pacing, gates, dispatch and the status round-trip all run. It skips itself when that number is
+ * but the anti-ban policy, gates, dispatch and the status round-trip all run. It skips itself when that number is
  * not connected, so a stack without the fake gateway still passes.
  *
  * Run the gateway with the day/night and typing behaviours off so the test does not depend on the
- * clock: `SEND_CIRCADIAN=false SEND_RECIPIENT_TIMEZONE=false SEND_TYPING_SIMULATION=false`
+ * clock: `SEND_TYPING_SIMULATION=false`
  * and `GATEWAY_SWEEP_SECONDS=3` so the dispatch and reconcile sweeps do not each wait a minute.
+ * The org's quiet hours (on by default, 22:00 to 08:00 Asia/Kolkata) hold a campaign message until morning, so the test switches them
+ * off for its run and puts them back afterwards: it is about the send pipeline, not the clock.
  * One brand-new person per run: a stranger counts against the number's new-contact allowance (5 a day
  * until people reply), so `npm run local:seed -- --reset` then a re-seed starts a clean day.
  */
 test.describe('sending, end to end on the fake number', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
+
+  type QuietHours = { enabled: boolean; start: string; end: string; timeZone: string };
+  let originalQuiet: QuietHours | null = null;
+  let adminHeaders: Record<string, string> = {};
+
+  // Runs even when the test fails or skips, so the org's quiet hours are never left switched off.
+  test.afterEach(async ({ page }) => {
+    if (originalQuiet === null) return;
+    await page.request.put(`${API}/antiban/settings`, { headers: adminHeaders, data: { quietHours: originalQuiet } });
+    originalQuiet = null;
+  });
 
   test('a started broadcast is delivered to a new contact', async ({ page }) => {
     test.setTimeout(120_000);
@@ -33,6 +46,12 @@ test.describe('sending, end to end on the fake number', () => {
     const seeded = senders.find((s) => s.label === 'Seed number');
     test.skip(seeded === undefined || seeded.connectionState !== 'open',
       'needs the seeded number connected: run the gateway with GATEWAY_CHANNEL=fake after `npm run local:seed`');
+
+    // Quiet hours would hold the message until morning (holdReason quiet_hours) when this runs at night: switch them off, restore after.
+    originalQuiet = (await json<{ quietHours: QuietHours }>(await page.request.get(`${API}/antiban/settings`, { headers }))).quietHours;
+    adminHeaders = headers;
+    const quietOff = await page.request.put(`${API}/antiban/settings`, { headers, data: { quietHours: { enabled: false } } });
+    expect(quietOff.status()).toBe(200);
 
     // One brand-new contact, so the duplicate-campaign / cooldown gates have no history to block on.
     // 0180 to 0198: never 0199, which is the seeded sending number itself (a number is never sent to from itself: R-002).

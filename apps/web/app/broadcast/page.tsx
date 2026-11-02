@@ -37,7 +37,7 @@ export default async function BroadcastPage() {
     <main className="page">
       <PageHeader
         title="Campaigns"
-        description="Send one message to many people, paced by the anti-ban engine so a burst can never go out at once."
+        description="Send one message to many people, a few at a time, so a burst never goes out at once."
         actions={
           <>
             <Link href="/segments" className="btn">Saved audiences</Link>
@@ -45,15 +45,6 @@ export default async function BroadcastPage() {
           </>
         }
       />
-
-      <details className="card mb-6 px-4 py-2.5 text-sm">
-        <summary className="cursor-pointer font-medium">How sending is paced</summary>
-        <p className="mt-2 text-muted">
-          Every send passes the anti-ban engine: warmup, per-minute/hour/day caps, jitter, circadian
-          pacing, contact-graph gates, health scoring and a human-like typing delay. A campaign is
-          deliberately slow; the forecast on each one says how long it will take.
-        </p>
-      </details>
 
       {failure !== null && <p className="notice notice-danger">{failure}</p>}
 

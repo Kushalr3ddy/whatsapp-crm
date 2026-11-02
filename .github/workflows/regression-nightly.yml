@@ -40,9 +40,6 @@ jobs:
       NODE_ENV: development
       GATEWAY_CHANNEL: fake
       GATEWAY_SWEEP_SECONDS: '3'
-      SEND_CIRCADIAN: 'false'
-      SEND_RECIPIENT_TIMEZONE: 'false'
-      SEND_BACKGROUND_ENTROPY: 'false'
       TEST_EMAIL: e2e@test.local
       TEST_PASSWORD: E2eTest!pass99
     steps:

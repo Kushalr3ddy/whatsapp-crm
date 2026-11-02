@@ -89,21 +89,18 @@ describe('authentication', () => {
     expect(r.status).toBe(200);
   });
 
-  it('derives Layer 6 recovery state onto each sender, hiding the raw columns', async () => {
+  it('lists a sender with its live state, and none of the old engine\'s fields', async () => {
     await db.execute(sql`
-      INSERT INTO sender_identity (org_id, provider, label, status, recovery_incident, recovery_until)
-      VALUES (${orgId}, 'baileys', 'cooling', 'active', 'rate_429', now() + interval '3 hours')`);
+      INSERT INTO sender_identity (org_id, provider, label, status)
+      VALUES (${orgId}, 'baileys', 'plain', 'active')`);
 
     const r = await request(app).get('/api/v1/senders').set(...auth());
-    const sender = (r.body.data as Array<{
-      label: string; recovery: { incident: string; phase: string } | null;
-      recoveryUntil?: unknown; recoveryIncident?: unknown;
-    }>).find((s) => s.label === 'cooling')!;
+    const sender = (r.body.data as Array<Record<string, unknown>>).find((s) => s.label === 'plain')!;
 
-    // The client gets the derived phase, not the raw schedule inputs.
-    expect(sender.recovery).toMatchObject({ incident: 'rate_429', phase: 'paused' });
-    expect(sender.recoveryUntil).toBeUndefined();
-    expect(sender.recoveryIncident).toBeUndefined();
+    expect(sender).toMatchObject({ status: 'active', linked: false });
+    for (const gone of ['riskScore', 'health', 'enforcement', 'recovery', 'restrictionState', 'advisoryReason', 'warmupStartedAt']) {
+      expect(sender, gone).not.toHaveProperty(gone);
+    }
   });
 
   it('serves a second org without complaint, because the key names its own tenant', async () => {
@@ -209,7 +206,7 @@ describe('sending', () => {
   }
 
   it('refuses a landline before it ever reaches WhatsApp', async () => {
-    // A doomed send costs the sender's delivery ratio, which feeds its health score.
+    // A doomed send would only fail later.
     await activeSender();
     const r = await request(app).post('/api/v1/messages').set(...auth())
       .send({ to: '+911123456789', body: 'hi' });

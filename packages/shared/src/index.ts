@@ -17,4 +17,7 @@ export {
   profileColumns, suggestColumns, type ColumnProfile, type ColumnSuggestions
 } from './column-guess.js';
 export { parseCsv, parseCsvRows, CsvError, type CsvTable } from './csv.js';
-export { parseXlsxRows, rowsToCsv, looksLikeXlsx } from './xlsx.js';
+export { parseXlsxRows, rowsToCsv, looksLikeXlsx, readImportFile } from './xlsx.js';
+export {
+  IMPORT_LIMITS, ImportLimitError, SpreadsheetError, type ImportLimits, type ImportLimitKind
+} from './import-limits.js';

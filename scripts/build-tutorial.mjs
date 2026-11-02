@@ -93,16 +93,14 @@ ${steps([
   '<b>Invite your team</b> ' + admin + ' — add the people who will answer messages.',
   '<b>Send your first campaign</b> — pick an audience, write the message, preview and start.'
 ])}
-<p>Two warnings can appear on this page. <b>"One number needs attention"</b> means a number is quarantined or degraded: open
-<b>Linked numbers</b>. <b>"N messages are queued and not sent yet"</b> usually means a number is not connected or is pacing itself.</p>
+<p>One warning can appear on this page: <b>"N messages are queued and not sent yet"</b> usually means a number is not connected. Open <b>Linked numbers</b>.</p>
 `);
 
 chapter('Linked numbers: connecting WhatsApp', `
 ${fig('10-link', 'Linked numbers.')}
 ${markers([
   [1, '<b>Add a number</b>.'],
-  [2, 'The health badge ("Healthy", "Degraded", "Quarantined") and the risk score out of 100.'],
-  [3, '<b>Advisory mode</b> (admins only; read the warning before touching it).']
+  [2, 'The badge: <b>Linked</b>, <b>Linking…</b> or <b>Not linked</b>.']
 ])}
 <h3>Adding and linking a number</h3>
 ${steps([
@@ -116,20 +114,11 @@ ${tip('If the QR or code expires, nothing was connected. Press <b>Try again</b> 
 <h3>Reading a number’s card</h3>
 ${table(['You see', 'It means'], [
   ['<b>Linked / Linking… / Not linked</b>', 'Whether the CRM is connected to that number right now.'],
-  ['<b>Healthy / Degraded / Quarantined</b>', 'How safe the number looks to WhatsApp. Degraded sends slower. Quarantined holds sending until it recovers.'],
-  ['<b>Risk N/100</b>', 'Green under 30, amber 30 to 59, red 60 or more. It rises when messages fail or are not replied to.'],
-  ['<b>Delivery, Sent · 24h, Failed · 24h</b>', 'How the last day went.'],
-  ['<b>Contacts: N replied · N no reply</b>', 'People who answer protect the number. A number that only sends and never gets replies looks like spam.'],
-  ['<b>Cooling off after…</b>', 'WhatsApp pushed back (for example a rate limit). Sending pauses, then ramps back up.'],
-  ['<b>WhatsApp may be limiting this number</b>', 'Delivery slowed or stuck. Sending is slowed. It clears itself if delivery recovers.'],
-  ['<b>This number looks restricted by WhatsApp</b>', 'Messages are not being delivered. Its campaigns are paused. Do not push more through it.'],
   ['<b>WhatsApp refused / logged this number out</b>', 'Open WhatsApp on that phone and look for a ban notice. If there is one, stop and do not relink. If not, someone unlinked the device: link once more.']
 ])}
 <h3>Unlinking</h3>
 <p><b>Unlink / reset this number</b> logs it out and clears the stored sign-in, so linking again shows a fresh QR. Conversations stay in the
 inbox under <b>Previously linked numbers</b>.</p>
-<h3>Advisory mode ${admin}</h3>
-${care('Under <b>Advisory mode…</b> an admin can turn anti-ban enforcement <b>off</b> for one number (a written reason is required). This is for throwaway test numbers only: a ban is permanent. Do-not-contact is never relaxed, even then.')}
 `);
 
 chapter('Importing contacts', `
@@ -242,8 +231,6 @@ Admins and people added to the chat are never locked.</li>
 <h3>Warnings you may meet in a chat</h3>
 ${table(['You see', 'What it means and what to do'], [
   ['<b>"Someone else is on this chat. Send anyway?"</b>', 'A colleague is typing or just replied. Press <b>Wait</b> to avoid answering twice, or <b>Send anyway</b>.'],
-  ['<b>⚠ waiting: pacing — spacing sends to protect the number</b>', 'The number is pacing itself. Nothing to do; it sends on its own.'],
-  ['<b>⚠ waiting: the number is quarantined / cooling off / isn’t connected</b>', 'The number needs attention. See <b>Linked numbers</b>. A message waits safely until it can go.'],
   ['<b>⚠ waiting: it’s night where they are</b>', 'It will go in their morning.'],
   ['<b>This contact is marked do not contact</b>', 'Replies are blocked. You can still add a note. ' + admin + ' An admin can tick <b>Send anyway (override do-not-contact)</b> and give a reason.'],
   ['<b>sent · no delivery for 30m</b>', 'WhatsApp has not confirmed delivery. The person may be offline.'],
@@ -255,7 +242,7 @@ chapter('Campaigns: sending to many people', `
 <p>A campaign sends one message to everyone in an audience. It is never instant: the CRM sends at a safe pace and tells you how long it will take.</p>
 ${fig('11-campaigns', 'The Campaigns list: Sending now, Drafts and Finished.')}
 <p>Campaigns are grouped as <b>Sending now</b> (running or paused), <b>Drafts</b> and <b>Finished</b>. <b>Saved audiences</b> (top right) manages reusable audiences,
-and <b>How sending is paced</b> explains the protections.</p>
+</p>
 <h3>Creating a campaign</h3>
 ${fig('12-campaign-new', 'The new campaign form.')}
 ${markers([
@@ -275,7 +262,7 @@ ${steps([
 ])}
 <h3>Checking and starting</h3>
 ${fig('13-campaign-detail', 'A draft campaign: the dry run and the Start button.')}
-<p>A draft shows a <b>dry run</b>: "Would message N people · N skipped (no number) · N in the audience", and a <b>forecast</b>, for example "About 3 days to finish at 40/day (number still warming up, so the daily cap is low)". New numbers send few messages a day on purpose and build up over time.</p>
+<p>A draft shows a <b>dry run</b>: "Would message N people · N skipped (no number) · N in the audience". Messages go out a few seconds apart, not all at once.</p>
 ${steps([
   'Read the message and the numbers. If nobody is reachable, the page says so: check the tag.',
   'Press <b>Start</b>. The audience is frozen and sending begins at the safe pace.',
@@ -298,7 +285,7 @@ ${table(['Reason', 'Meaning'], [
 <h3>Automatic pauses</h3>
 <p>A campaign pauses itself if WhatsApp seems to be limiting the number, or has refused or logged the number out. Open <b>Linked numbers</b> before resuming anything.</p>
 <h3>Start with overrides ${admin}</h3>
-${care('An admin can start a campaign <b>lifting</b> some people-protection gates (do-not-contact, an agent mid-conversation, the 14-day cooldown, a duplicate campaign) with a written reason of at least 10 characters. The daily limits, pacing and warm-up still apply and cannot be lifted by anyone. Messaging people who asked you to stop is the quickest way to get a number reported and banned.')}
+${care('An admin can start a campaign <b>lifting</b> some people-protection gates (do-not-contact, an agent mid-conversation, the 14-day cooldown, a duplicate campaign) with a written reason of at least 10 characters. Messaging people who asked you to stop is the quickest way to get a number reported and banned.')}
 <h3>Saved audiences</h3>
 <p>Under <b>Campaigns → Saved audiences</b> you can name a filter once and reuse it. Fill in the name, choose <b>Has tag</b>, <b>Reply status</b> and <b>Contacted within (days)</b> (all conditions must match; "any" drops a condition), press <b>Preview count</b>, then <b>Save segment</b>. A saved audience is re-evaluated each time and freezes when a campaign starts.</p>
 `);
@@ -378,8 +365,6 @@ ${table(['You see', 'It means'], [
 <p><b>Write with AI</b> on the new-campaign form uses the same queue: it shows "Waiting in the AI queue, 2 ahead of you" (with Cancel), then a spinner, then the text appears in the message box. Read and edit it; nothing is sent until you create and start the campaign.</p>
 <h3>Warnings above the message box</h3>
 ${table(['The banner says', 'What it means and what to do'], [
-  ['<b>…the anti-ban engine is spacing out sends</b>', 'The number paces itself like a human. Nothing to do. Nobody can override it.'],
-  ['<b>…the number is quarantined / cooling off</b>', 'The number is resting. Wait. See Linked numbers.'],
   ['<b>…it’s night where the contact is</b>', 'It waits for their morning.'],
   ['<b>…the number isn’t connected</b>', 'Re-link it on Linked numbers.'],
   ['<b>The AI assistant reached its daily message limit</b>', 'Wait, or an admin raises the limit.'],
@@ -404,13 +389,11 @@ ${fig('16-security', 'The Security page: encryption keys.')}
 chapter('Safety rules in plain words', `
 <p>These protect your numbers. They are not bugs and mostly cannot be switched off.</p>
 ${table(['Rule', 'Why it exists'], [
-  ['<b>Sending is paced</b>', 'A human types one message at a time. The CRM spaces messages out, adds small random gaps, slows down at night and "types" before sending.'],
+  ['<b>Sending is spaced out</b>', 'A human types one message at a time. The CRM leaves a few random seconds between messages and "types" before sending.'],
   ['<b>New numbers start slowly</b>', 'A brand-new number that suddenly sends hundreds of messages is the classic ban pattern. The daily allowance grows with time and with replies received.'],
-  ['<b>Daily and hourly limits</b>', 'A ceiling per number. Nobody, including admins, can raise it.'],
   ['<b>Messages vary</b>', 'Hundreds of identical messages look like spam. Use <code>{{name}}</code> and <code>{option|option}</code> in campaigns.'],
   ['<b>Do-not-contact</b>', 'Being reported is the fastest route to a ban. People who asked to stop are never messaged. Only an admin can knowingly override it, per message or per campaign, with a reason.'],
   ['<b>Mid-conversation and cooldown protection</b>', 'Campaigns skip people a colleague is talking to, and people messaged in the last 14 days.'],
-  ['<b>Health scoring</b>', 'The CRM watches delivery and replies for each number, slows or quarantines a number that looks risky, and pauses its campaigns if WhatsApp pushes back.'],
   ['<b>Everything is recorded</b>', 'Overrides, assignments, imports, exports and what the AI did are saved in an audit log with who did them.']
 ])}
 ${tip('The best protection is a number that people reply to. Message people who expect to hear from you, and answer replies promptly.')}
@@ -420,7 +403,7 @@ chapter('Troubleshooting and common questions', `
 ${table(['Problem', 'What to try'], [
   ['I cannot sign in', 'Check the email (not your name). Ask an admin to reset your password on the Team page. The message "Email or password is wrong" is the same whether the email exists or not, on purpose.'],
   ['"Could not reach the API"', 'The server is not running or not reachable. Tell whoever runs it.'],
-  ['My message is stuck on "⚠ waiting"', 'Read the reason after "waiting:". Pacing and night hours clear themselves. "The number isn’t connected" means re-link it on Linked numbers.'],
+  ['My message is stuck on "⚠ waiting"', 'Read the reason after "waiting:". A wait for its turn clears itself. "The number isn’t connected" means re-link it on Linked numbers.'],
   ['I cannot reply: the box is greyed out', 'Either the chat is assigned to someone else (reassign it to yourself or ask an admin), the number is not connected, or the contact is do-not-contact. The notice above the box says which.'],
   ['Import says "no rows to import"', 'The sheet needs a header row and at least one person under it.'],
   ['Import says the file was already imported', 'The same file cannot be imported twice. Change something in it, or press <b>Upload anyway</b> if you really want to run it again.'],
@@ -441,20 +424,17 @@ ${table(['Word', 'Meaning'], [
   ['<b>Participant</b>', 'An extra person added to a chat who may reply but does not own it.'],
   ['<b>Audience</b>', 'The group of people a campaign goes to: a tag, an import, a saved audience or a filter.'],
   ['<b>Audit log</b>', 'A permanent record of who did what and when.'],
-  ['<b>Campaign</b>', 'One message sent to many people, paced for safety.'],
+  ['<b>Campaign</b>', 'One message sent to many people, a few at a time.'],
   ['<b>Cooldown</b>', 'People messaged by a campaign in the last 14 days are skipped by a new one.'],
   ['<b>Custom field</b>', 'An extra column of your own on each contact, usable in messages as <code>{{field}}</code>.'],
   ['<b>Do not contact</b>', 'A flag meaning never message this person.'],
   ['<b>Draft</b>', 'A campaign that has been created but not started. Nothing is sent.'],
   ['<b>Gate</b>', 'A safety check a message must pass before it is sent.'],
   ['<b>Linked number</b>', 'A WhatsApp number connected to the CRM so it can send and receive.'],
-  ['<b>Pacing</b>', 'Spacing messages out over time like a person would.'],
   ['<b>Queue (AI)</b>', 'The waiting list of requests to the AI assistant, run one at a time.'],
-  ['<b>Quarantined</b>', 'A number the CRM has paused because it looks risky.'],
   ['<b>Saved audience (segment)</b>', 'A filter you name and reuse.'],
   ['<b>Spintax</b>', 'The <code>{Hi|Hey|Hello}</code> notation that makes each person get slightly different wording.'],
-  ['<b>Tag</b>', 'A label on a contact such as "pune".'],
-  ['<b>Warm-up</b>', 'The slow start of a new number: a low daily allowance that grows with time.']
+  ['<b>Tag</b>', 'A label on a contact such as "pune".']
 ])}
 `);
 

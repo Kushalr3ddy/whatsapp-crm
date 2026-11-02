@@ -4,7 +4,7 @@ import type { SenderRef, NormalisedStatusEvent } from '@crm/channels';
 
 /**
  * `autoDeliverAfterMs`: the fake gateway reports a delivery receipt for every accepted send, so a
- * healthy fake number is not read as a delivery collapse by the health scorer. Off by default,
+ * healthy fake number shows delivered like a real one. Off by default,
  * so tests that drive receipts by hand are unaffected.
  */
 const sender: SenderRef = { id: 'sender-1', phoneE164: '+12025550100' };

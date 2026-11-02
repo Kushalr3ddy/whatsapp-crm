@@ -69,8 +69,7 @@ export function CampaignControls({ id, status, isAdmin }: { id: string; status: 
           >
             <h2 className="text-base font-semibold">Start with overrides</h2>
             <p className="text-muted">
-              Send to people these rules would normally skip. The daily cap, rate limits, warmup and do-not-contact
-              protections for the number still apply.
+              Send to people these rules would normally skip.
             </p>
             {Object.entries(GATE_LABEL).map(([gate, label]) => (
               <label key={gate} className="flex items-start gap-2">

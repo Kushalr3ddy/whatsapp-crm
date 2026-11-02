@@ -30,7 +30,7 @@ export function ReportProblem() {
     <button
       type="button" onClick={open}
       title="Opens a form on GitHub with this screen filled in. Nothing is sent until you press submit there."
-      className="btn btn-ghost btn-sm w-full whitespace-nowrap"
+      className="btn btn-ghost btn-sm w-full justify-start whitespace-nowrap"
     >
       Report a problem
     </button>

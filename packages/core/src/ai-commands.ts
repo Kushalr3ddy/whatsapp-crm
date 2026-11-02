@@ -4,7 +4,7 @@ import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver, LlmTool } from '@crm/llm';
 import { AUDIT, writeAudit, type AuditActor } from './audit.js';
 import { findCampaignPictures, type CampaignPicture } from './campaign-media.js';
-import { createCampaignDraft, startCampaign, setCampaignStatus, editCampaign, type CampaignLimits } from './campaign-actions.js';
+import { createCampaignDraft, startCampaign, setCampaignStatus, editCampaign } from './campaign-actions.js';
 
 /** One thing the assistant did (or was refused) while carrying out an instruction. */
 export interface CommandAction {
@@ -96,7 +96,7 @@ function str(v: unknown): string | undefined {
  * including refusals, and logged in `ai_run`. `db` must be pinned to the org.
  */
 export async function runAiCommand(
-  deps: { db: Database; kms: KmsDriver; llm: LlmDriver; limits: CampaignLimits },
+  deps: { db: Database; kms: KmsDriver; llm: LlmDriver },
   orgId: string, requestedBy: string | null, instruction: string
 ): Promise<CommandResult> {
   const { db, llm } = deps;
@@ -168,7 +168,7 @@ export async function runAiCommand(
           }));
           if ('error' in created) action = { tool: call.name, ok: false, detail: 'Could not create it: the number, tag, segment or picture was not found.' };
           else if (a.start === true && settings.mayStart) {
-            const started = await db.transaction((tx) => startCampaign(tx, orgId, { actor: bot }, created.id, deps.limits));
+            const started = await db.transaction((tx) => startCampaign(tx, orgId, { actor: bot }, created.id));
             action = 'error' in started
               ? { tool: call.name, ok: false, detail: 'Created, but it could not be started.', campaignId: created.id }
               : { tool: call.name, ok: true, detail: `Created and started: ${String(started.progress.total)} people, ${String(started.progress.pending)} waiting to be sent at the safe rate.`, campaignId: created.id };
@@ -192,7 +192,7 @@ export async function runAiCommand(
         if (!known(campaigns, id)) action = { tool: call.name, ok: false, detail: 'No such campaign.' };
         else if (!settings.mayStart) action = { tool: call.name, ok: false, campaignId: id, detail: 'Not done: the organisation has not allowed the assistant to start campaigns. An admin must press Start.' };
         else {
-          const started = await db.transaction((tx) => startCampaign(tx, orgId, { actor: bot }, id, deps.limits));
+          const started = await db.transaction((tx) => startCampaign(tx, orgId, { actor: bot }, id));
           action = 'error' in started
             ? { tool: call.name, ok: false, campaignId: id, detail: started.error === 'already_running' ? 'It is already running.' : started.error === 'finished' ? 'It has finished and cannot restart.' : 'No such campaign.' }
             : { tool: call.name, ok: true, campaignId: id, detail: `Running: ${String(started.progress.pending)} people waiting to be sent at the safe rate.` };
@@ -274,7 +274,7 @@ function providerFailure(error: unknown): AiCommandError {
  * Refused, with the reason, when: the contact cannot be found or the name is ambiguous; they are do-not-contact (the
  * assistant has no override; an admin must send it themselves); there is no chat with them yet; the chat belongs to a
  * person (the assistant does not barge into someone else's conversation); or the org's daily AI limit is used up.
- * Otherwise the message is queued like any other (the gateway's pacing and anti-ban gates still decide when it goes out)
+ * Otherwise the message is queued like any other (the gateway's gates and the anti-ban policy still decide when it goes out)
  * and the chat is assigned to the assistant, so the contact's reply is answered by it.
  */
 async function sendOne(

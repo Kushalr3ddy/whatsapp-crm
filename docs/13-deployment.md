@@ -61,30 +61,19 @@ Required in every deploy: `DATABASE_URL`, `APP_SECRET`, `ENCRYPTION_KEY`, `PUBLI
 Everything else has a documented default. **A missing required secret is a hard crash with a
 readable message, never a silent random fallback.**
 
-> **⚠️ `SEND_TIMEZONE` is set explicitly, not inferred from the host or cloud region.** Circadian
-> pacing ([`08-antiban.md`](08-antiban.md)) reads the number's local day from this value, not from
-> the server clock. **If you move a deployment to a cloud region in a different timezone, or a
-> number starts serving a different region, set `SEND_TIMEZONE` to the number's real local zone** —
-> otherwise the overnight quiet window lands on the wrong hours (silent during the local working
-> day, sending at local 3 a.m.), which is the exact pattern the pacing exists to avoid.
+> **`SEND_TIMEZONE`** is the install's local day, set explicitly, not inferred from the host or cloud region. The home
+> page greeting (good morning / afternoon / evening) is worked out in it.
 
 ### Key `org_setting` defaults
 
 | Setting | Default | Editable |
 |---|---|---|
-| `warmup_factor` / `warmup_days` | 1.8 / 7 | within a safe range |
-| `rate_per_minute` / `_hour` / `_day` | 8 / 200 / 1500 | **ceiling not raisable** |
-| `send_delay_ms` | 1500–4000 Gaussian | floor not lowerable |
 | `cooldown_days` | 14 | yes |
 | `quiet_hours` | 21:00–09:00 local | yes |
-| `new_contacts_per_hour` / `_day` | 5 / 20 | **ceiling not raisable** |
-| *(env today)* `NEW_CONTACT_REPLY_FLOOR` | on | the 20/day is earned by ≥30 % replies from ≥10 recent new contacts, else 5/day |
-| *(env today)* `SEND_READ_RECEIPTS` · `SEND_BACKGROUND_ENTROPY` · `SEND_RECIPIENT_TIMEZONE` | on | human-behaviour layers; `false` turns each off |
 | `retention_raw_events_days` | 30 | yes |
 | `optout_keywords` | locale packs | yes |
 
-The split between "tunable policy" and "hard safety limit" is enforced in code, not by
-convention — see [`08-antiban.md`](08-antiban.md).
+What decides how fast a number sends is the anti-ban policy — see [`08-antiban.md`](08-antiban.md).
 
 ## Upgrades — zero downtime (M21a)
 
@@ -150,8 +139,7 @@ Exposed at `/metrics` whether or not Prometheus is running, so `lean` users can 
 
 - **Business** — messages sent/delivered/read/failed by provider and template; campaign
   progress; reply rate; inbox response time; import rows/sec; Meta spend.
-- **Safety** — per-sender risk score, warmup day, cap utilisation, delivery ratio, quality
-  rating, tier headroom.
+- **Safety** — per-sender delivery ratio, quality rating, tier headroom.
 - **Technical** — HTTP p50/p95/p99 by route, queue depth and job age, worker saturation, DB
   pool usage, slow queries, error rate.
 
@@ -164,7 +152,7 @@ service, USE per resource, and **Sender Health** — the one an operator keeps o
 |---|---|---|
 | **Critical** | Sender risk Critical or 401 logged out · session down > 5 min · DB down · queue depth > 10k · error rate > 5% · disk > 90% · webhook DLQ growing | Page |
 | **Warning** | Risk High · delivery ratio < 85% · Meta quality dropped to Medium · tier headroom < 20% · p95 > 2 s · import failure rate > 10% · cert expiry < 14 d | Same day |
-| **Info** | Campaign completed · warmup finished · sync done · new sender linked | Digest |
+| **Info** | Campaign completed · sync done · new sender linked | Digest |
 
 Every alert links to an entry in [`14-runbooks.md`](14-runbooks.md) — **the alert says what to
 do, not merely that something is wrong**. `make test-alerts` fires each one so the routing is

@@ -89,49 +89,19 @@ const configSchema = z.object({
   LLM_ALLOW_PRIVATE_BASE_URL: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   SMS_DRIVER: z.enum(['none', 'twilio', 'msg91']).default('none'),
 
-  // ---- messaging safety (docs/08-antiban.md) ---------------------------------------
-  // Defaults, not ceilings. The hard limits the engine enforces are not configurable to
-  // an unsafe value by anyone, including an admin.
+  // ---- messaging -------------------------------------------------------------------
   DEFAULT_COUNTRY: z.string().length(2).default('IN'),
-  SEND_RATE_PER_MINUTE: z.coerce.number().int().positive().max(20).default(8),
-  SEND_RATE_PER_DAY: z.coerce.number().int().positive().max(2000).default(1500),
-  // Circadian pacing (docs/08-antiban.md): shape *when* a number sends across the day, not only
-  // how much. `SEND_TIMEZONE` is the number's local day — single-tenant India defaults to IST;
-  // `SEND_CIRCADIAN=false` turns the day/night curve off and leaves layers 1–2 unchanged.
+  // The install's local day: the web app's greeting (good morning / afternoon / evening) is worked out in it. Any IANA zone.
   SEND_TIMEZONE: z.string().default('Asia/Kolkata').refine(isValidTimezone, {
     message: 'must be a valid IANA timezone, e.g. Asia/Kolkata'
   }),
-  SEND_CIRCADIAN: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  // Contact-graph gates (docs/08-antiban.md): how many brand-new strangers one number may START
-  // messaging per hour / day. Cold-blasting a fresh list is a top ban signal; these cap it.
-  NEW_CONTACTS_PER_HOUR: z.coerce.number().int().positive().max(100).default(5),
-  NEW_CONTACTS_PER_DAY: z.coerce.number().int().positive().max(500).default(20),
-  // Reply-ratio floor: the daily new-contact cap above is only earned once ~30% of recent new
-  // contacts have replied; until then a lower starting allowance applies. `false` = flat cap.
-  NEW_CONTACT_REPLY_FLOOR: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  CONTACT_GRAPH_GATES: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  // Typing simulation (docs/08-antiban.md, D-24): emit a "typing…" presence and pause a beat
-  // proportional to the message length before each send, so a send looks human rather than
-  // instant. Cosmetic anti-ban; `SEND_TYPING_SIMULATION=false` turns it off (e.g. to send faster).
+  // Typing simulation (D-24): emit a "typing…" presence and pause a beat proportional to the message
+  // length before each send, so a send looks human rather than instant. `SEND_TYPING_SIMULATION=false` turns it off.
   SEND_TYPING_SIMULATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   // Number fallback (D-60): before the first send to a contact that has more than one phone number,
   // ask WhatsApp whether the primary one has an account, and message the next one that does. One lookup
   // per number, cached, only when a fallback exists. `false` always messages the primary number.
-  SEND_VERIFY_FALLBACK_NUMBERS: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  // Recipient timezone (docs/08-antiban.md, Layer 3): also respect the recipient's day, inferred from
-  // their phone number's country, on top of SEND_TIMEZONE (the sender's). Only adds caution.
-  SEND_RECIPIENT_TIMEZONE: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  // Read behaviour (docs/08-antiban.md, Layer 3): mark inbound messages read after a per-message
-  // 10–60 minute delay, only in active hours. `false` = never send read receipts from the gateway.
-  SEND_READ_RECEIPTS: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  // Background entropy (docs/08-antiban.md, Layer 3): every 2–6 h per connected number, in active
-  // hours, an abandoned "typing…" and a brief online blip. `false` = no idle-time presence at all.
-  SEND_BACKGROUND_ENTROPY: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
-  // Body-variation backstop (docs/08-antiban.md, Layer 3 / D-26): the most identical message bodies
-  // one number may queue within a rolling 24h. Beyond it, further identical-body recipients are left
-  // pending until the window frees up or the operator adds spintax. Only bites a no-variation blast —
-  // spintax/`{{name}}` make bodies differ, so it never fires on a varied campaign.
-  IDENTICAL_BODY_DAILY_CAP: z.coerce.number().int().positive().max(100000).default(50)
+  SEND_VERIFY_FALLBACK_NUMBERS: z.enum(['true', 'false']).default('true').transform((v) => v === 'true')
 }).refine((c) => !(c.GATEWAY_CHANNEL === 'fake' && c.NODE_ENV === 'production'), {
   path: ['GATEWAY_CHANNEL'],
   message: 'the fake channel sends nothing real and must never run with NODE_ENV=production'

@@ -95,7 +95,7 @@ function DeliveryState({ message }: { message: Message }) {
   // 'queued' is the one status people misread as done. It means the API accepted the message
   // and nothing has left yet — so it is spelled out rather than shown as a bare word.
   const queued = message.status === 'queued';
-  // "sent" with no delivery after a while is the silent-restriction symptom, so say how long.
+  // "sent" with no delivery after a while means the message is stuck, so say how long.
   // A message typed on the owner's phone may never report delivery to the CRM, so it is never flagged as stuck.
   const stuckHours = message.status === 'sent' && message.sentAt !== null && message.sentBy !== 'phone'
     ? (Date.now() - new Date(message.sentAt).getTime()) / 3_600_000 : 0;
@@ -238,7 +238,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
   const connected = senderStatus?.canSend === true;
   const statusLabel = senderStatus === null ? null
     : connected ? 'Linked'
-    : senderStatus.reason === 'quarantined' ? 'Quarantined' : 'Not linked';
+    : 'Not linked';
 
   return (
     <div className="flex min-h-0 flex-1">

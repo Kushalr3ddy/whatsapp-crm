@@ -29,11 +29,10 @@ const DAILY_CAP = 1500;
 async function resolveInboundContact(orgId: string, identity: Identity) { ... }
 
 /**
- * Steady-state daily send ceiling per sender identity, once warmup completes.
- * Chosen from observed ban thresholds, not from throughput needs — see
- * docs/08-antiban.md. This is a hard limit: no admin override path exists.
+ * The shortest gap between two sends from one sender identity, in milliseconds. A number needs its source and the reason it is
+ * that number (docs/08-antiban.md).
  */
-const STEADY_STATE_DAILY_CAP = 1500;
+const BASIC_GAP_MIN_MS = 3_000;
 ```
 
 ### Enforcement
@@ -141,7 +140,7 @@ so there is one place to look and nothing to cross-reference.
 
 ## Tests
 
-- Co-located `*.test.ts` for units; `tests/` for integration, E2E, load and simulation.
+- Co-located `*.test.ts` for units; `tests/` for integration, E2E and load.
 - Test names read as sentences: `refuses a freeform send outside the Meta window`.
 - No mocks at architectural boundaries — use Testcontainers and the `fake` adapters.
 - Every bug fix starts with a failing test; every `M*` defect from `00-prior-art.md` has a

@@ -7,21 +7,21 @@ import { tenantDatabase } from './tenant.js';
 import { localKmsFromConfig } from '@crm/kms-local';
 import { BaileysChannelProvider } from '@crm/channel-baileys';
 import { FakeChannelProvider } from '@crm/channel-fake';
-import { storeInboundMessage, storeOwnMessage, claimCampaignReply, applyDeliveryStatus, storeMedia, DEFAULT_REPLY_FLOOR,
-  DecryptFailureTracker, markDecryptBurst, markOwnDecryptBurst, recordRetryRequest, EntropyScheduler, linkLidToPhone,
-  markMessageFailedByProviderId, assertKeyRingCoversData, autoReply, sentMessageText } from '@crm/core';
+import { storeInboundMessage, storeOwnMessage, claimCampaignReply, storeMedia,
+  DecryptFailureTracker, markDecryptBurst, markOwnDecryptBurst, linkLidToPhone,
+  assertKeyRingCoversData, autoReply, sentMessageText, queueCampaignFollowUp } from '@crm/core';
 import { LiveLlm } from '@crm/llm';
 import { createStorage } from '@crm/storage';
 import type { ChannelProvider, NormalisedInboundEvent } from '@crm/channels';
 import {
-  applyConnectionEvent, handleLinkRequest, handleUnlinkRequest, handleSend,
+  applyConnectionEvent, applyInboundEffects, applyNoticeEvent, applyRetryEvent, applyStatusEvent, handleLinkRequest, handleUnlinkRequest, handleSend, handleReadRequest, kickLane,
   markAllSessionsClosed, restoreSessions, sweepPendingWork,
   type WorkContext
 } from './work.js';
 
 /** A command arriving on the Postgres NOTIFY channel. */
 interface GatewayCommand {
-  readonly kind: 'link' | 'unlink' | 'send';
+  readonly kind: 'link' | 'unlink' | 'send' | 'read';
   readonly id: string;
 }
 
@@ -37,7 +37,7 @@ const OWN_MESSAGE_SETTLE_MS = 10_000;
  * WhatsApp connection on each keystroke (docs/04-architecture.md).
  *
  * It is also intentionally dumb. It owns sockets and knows nothing about campaigns, consent,
- * pacing or policy. Work arrives as rows in the database; results go back the same way. Every
+ * policy. Work arrives as rows in the database; results go back the same way. Every
  * safety gate lives above it in the dispatcher, so nothing can bypass them by reaching a
  * provider directly (M12).
  */
@@ -65,12 +65,11 @@ async function main(): Promise<void> {
   // dropped too early, D-31). Better a loud boot failure than messages that silently won't open.
   await assertKeyRingCoversData(db, kms);
   const authStore = new PostgresAuthStateStore(db, kms);
-  // Layer 5: Baileys drops undecryptable frames before the app sees them, so its logger is the only
-  // place a diverged session shows. Three "Bad MAC" in a minute is recorded on the session row and
-  // scored by the next health sweep, which degrades the number and later lets it recover.
+  // Baileys drops undecryptable frames before the app sees them, so its logger is the only place a diverged
+  // session shows. Three "Bad MAC" in a minute is recorded on the session row, where the composer reads it.
   const decryptTracker = new DecryptFailureTracker();
   // The same count for messages from this account's OWN other devices (the owner's phone, WhatsApp Web): not ban evidence, so it is
-  // kept apart and never scored, but the owner is told (D-102): those messages are missing from the inbox until the number is relinked.
+  // kept apart, but the owner is told (D-102): those messages are missing from the inbox until the number is relinked.
   const ownDecryptTracker = new DecryptFailureTracker();
   // `GATEWAY_CHANNEL=fake` swaps in the in-memory channel so CI and local UI tests can watch a
   // broadcast really go through the engine without touching WhatsApp. Config refuses it in production.
@@ -99,19 +98,6 @@ async function main(): Promise<void> {
             logger.error({ err, senderId }, 'could not record decrypt-failure burst');
           });
       },
-      // A recipient's phone could not read a message we sent: note it on the message so the thread says so (their phone shows "Waiting for this message").
-      onRetryRequest: (senderId, messageId, at) => {
-        orgForSender(db, senderId)
-          .then((org) => (org === null ? undefined : recordRetryRequest(inOrg(org), senderId, messageId, at)))
-          .then((found) => {
-            // Only a message this CRM sent is worth a warning. A retry request for one the owner typed on their phone is not ours to answer.
-            if (found === true) logger.warn({ senderId, messageId }, 'the recipient\'s phone could not decrypt a message and asked for it again');
-            else logger.debug({ senderId, messageId }, 'a retry request for a message this CRM did not send');
-          })
-          .catch((err: unknown) => {
-            logger.error({ err, senderId, messageId }, 'could not record a retry request');
-          });
-      },
       // A recipient could not decrypt something we sent and asks again: give the text back so it is re-sent (their phone shows
       // "Waiting for this message" until then).
       resendText: async (senderId, messageId) => {
@@ -130,33 +116,15 @@ async function main(): Promise<void> {
   const ctx: WorkContext = {
     db, provider, logger, storage, tenantRole,
     decrypt: (cipher) => new TextDecoder().decode(kms.decrypt(cipher)),
-    // The anti-ban ceilings. Configurable per deployment, but a ceiling either way — nothing
-    // in the send path can raise them (docs/08-antiban.md).
-    limits: {
-      perMinute: config.SEND_RATE_PER_MINUTE, perDay: config.SEND_RATE_PER_DAY,
-      identicalBodyCap: config.IDENTICAL_BODY_DAILY_CAP,
-      circadianTimezone: config.SEND_CIRCADIAN ? config.SEND_TIMEZONE : null
-    },
-    contactGraph: config.CONTACT_GRAPH_GATES
-      ? {
-          newContactsPerHour: config.NEW_CONTACTS_PER_HOUR,
-          newContactsPerDay: config.NEW_CONTACTS_PER_DAY,
-          // Lower the daily allowance until recent new contacts actually reply (Layer 4).
-          ...(config.NEW_CONTACT_REPLY_FLOOR ? { replyFloor: DEFAULT_REPLY_FLOOR } : {})
-        }
-      : null,
-    // Make each send look human — a "typing…" beat before it lands (docs/08-antiban.md, D-24).
+    // Make each send look human — a "typing…" beat before it lands (D-24).
     typingSimulation: config.SEND_TYPING_SIMULATION,
     verifyFallbackNumbers: config.SEND_VERIFY_FALLBACK_NUMBERS,
-    // Blue-tick inbound messages only after a human-like 10–60 min delay, in active hours.
-    readReceipts: config.SEND_READ_RECEIPTS,
-    // Also respect the recipient's day, inferred from their number's country.
-    recipientTimezone: config.SEND_RECIPIENT_TIMEZONE,
-    // Idle-time presence noise every 2–6 h per number, in active hours.
-    ...(config.SEND_BACKGROUND_ENTROPY ? { entropy: new EntropyScheduler() } : {}),
     // Campaign bodies are encrypted on their way into a message, exactly like any other.
     kms, llm,
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    // The typing beat and the pause before a read receipt; the longer waits (the gap between sends, a timelock) are scheduled instead.
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    // A number's lane comes back to a waiting message when it is due, rather than holding a sweep open (F6 S1).
+    schedule: (ms, run) => { setTimeout(run, ms).unref(); }
   };
 
   // ── identity links: a person shared their number, so a privacy address now has one ───────
@@ -253,9 +221,27 @@ async function main(): Promise<void> {
             { senderId: event.senderId, conversationId: stored.conversationId },
             'inbound message stored'
           );
-          await inOrg(org).execute(sql`
-            UPDATE sender_identity SET last_inbound_at = now() WHERE id = ${event.senderId}`);
-
+          // An opt-out, a restart, or just a message that decrypts (clearing a retry hold): before anything else reads it, so the AI and a
+        // campaign follow-up never answer someone who just said STOP (F6 S5, S6).
+        let optedOut = false;
+        if (stored.isNew) {
+          try {
+            optedOut = (await applyInboundEffects(ctx, {
+              senderId: event.senderId, conversationId: stored.conversationId, messageId: stored.messageId, body: event.body, contentType: event.contentType
+            })).outcome === 'opted_out';
+          } catch (error) {
+            logger.error({ conversationId: stored.conversationId, err: error instanceof Error ? error.message : String(error) }, 'could not handle an opt-out');
+          }
+        }
+        // A new chat that got a campaign's text alone has just replied: the picture or link that was held back goes now (F6 AC-7.3).
+          try {
+            if (await queueCampaignFollowUp(inOrg(org), kms, org, stored.conversationId)) {
+              logger.info({ senderId: event.senderId, conversationId: stored.conversationId }, 'a campaign follow-up was queued after the contact replied');
+              void kickLane(ctx, event.senderId).catch(() => undefined);
+            }
+          } catch (error) {
+            logger.error({ conversationId: stored.conversationId, err: error instanceof Error ? error.message : String(error) }, 'could not queue a campaign follow-up');
+          }
           // Only for a message that was actually inserted. A redelivery already has its file,
           // and fetching it again would cost a round trip to WhatsApp to produce a duplicate.
           if (event.mediaRef !== null && stored.messageId !== null) {
@@ -264,7 +250,7 @@ async function main(): Promise<void> {
 
           // The AI assistant answers only conversations assigned to it; autoReply checks that, and
           // everything else, itself. Not awaited: a slow model must never hold up the inbound stream.
-          if (llm.name !== 'none' && stored.messageId !== null) {
+          if (llm.name !== 'none' && stored.messageId !== null && !optedOut) {
             const conversationId = stored.conversationId;
             // A reply to a campaign that has an AI template: hand the chat to the assistant first, so it answers this very message (R-011).
             try {
@@ -357,15 +343,8 @@ async function main(): Promise<void> {
   void (async () => {
     for await (const event of provider.status()) {
       try {
-        const org = await orgForSender(db, event.senderId);
-        if (org === null) continue;
-        // A delivery ERROR ack from the server: the message did not go. Recorded as a failed send so
-        // the health score and the restriction detector see it, instead of leaving it at "sent".
-        if (event.status === 'failed') {
-          await markMessageFailedByProviderId(inOrg(org), org, event.providerMessageId, 'delivery_error');
-          continue;
-        }
-        await applyDeliveryStatus(inOrg(org), org, event.providerMessageId, event.status);
+        // A failed ack is recorded as a failed send; a delivered or read receipt also lifts a retry hold and takes a profile snapshot.
+        await applyStatusEvent(ctx, event);
       } catch (error) {
         logger.error(
           { err: error instanceof Error ? error.message : String(error) },
@@ -374,6 +353,32 @@ async function main(): Promise<void> {
       }
     }
   })();
+
+  // ── contacts asking for a message again because their phone could not read it (F6 S5) ──────
+  if (provider.retries) {
+    void (async () => {
+      for await (const retry of provider.retries!()) {
+        try {
+          await applyRetryEvent(ctx, retry);
+        } catch (error) {
+          logger.error({ err: error instanceof Error ? error.message : String(error) }, 'failed to record a retry request');
+        }
+      }
+    })();
+  }
+
+  // ── WhatsApp's limit warnings: the reachout timelock and the new-chat cap (F6 S2) ──────────
+  if (provider.notices) {
+    void (async () => {
+      for await (const notice of provider.notices!()) {
+        try {
+          await applyNoticeEvent(ctx, notice);
+        } catch (error) {
+          logger.error({ err: error instanceof Error ? error.message : String(error) }, 'failed to record a WhatsApp limit notice');
+        }
+      }
+    })();
+  }
 
   // ── connection state ────────────────────────────────────────────────────────────────
   // Nothing else can see a socket open or close, so this stream is the only way the database —
@@ -414,6 +419,7 @@ async function main(): Promise<void> {
         if (cmd.kind === 'link') await handleLinkRequest(ctx, cmd.id);
         else if (cmd.kind === 'unlink') await handleUnlinkRequest(ctx, cmd.id);
         else if (cmd.kind === 'send') await handleSend(ctx, cmd.id);
+        else if (cmd.kind === 'read') await handleReadRequest(ctx, cmd.id);
       } catch (error) {
         logger.error(
           { payload, err: error instanceof Error ? error.message : String(error) },

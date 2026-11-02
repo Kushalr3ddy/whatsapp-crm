@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
@@ -21,6 +21,9 @@ import { tempStorage, type TempStorage } from '../fixtures/storage.js';
  * ways, a sparse file overwriting richer data, and one bad row aborting fifty thousand good
  * ones (M3/M4/M7/M8/M9).
  */
+// Every upload, dry run and commit is read in a child process (R-016), a few hundred ms each and more on a busy CI machine, and
+// several tests here do four of them: the 5 s default left too little room.
+vi.setConfig({ testTimeout: 15_000 });
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const API_KEY = randomBytes(32).toString('hex');
 const kms = new LocalKms({

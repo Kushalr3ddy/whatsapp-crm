@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# One command to prove the project works: static checks, unit + integration tests, the anti-ban
-# simulation, a scripted no-real-send flow, and the browser suite against a throwaway fake-channel stack.
+# One command to prove the project works: static checks, unit + integration tests,
+# a scripted no-real-send flow, and the browser suite against a throwaway fake-channel stack.
 #
 #   npm run verify              everything (about 10 minutes)
 #   npm run verify -- --fast    typecheck, lint and vitest only (about 90 seconds)
-#   npm run verify -- --no-sim  skip the 4-minute anti-ban simulation
 #   npm run verify -- --no-e2e  skip the browser suite and the scripted flow
 #
 # Footprint: while it runs, memory used, load and inotify instances are sampled every 5 s. One summary line
@@ -16,11 +15,10 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-FAST=0; SIM=1; E2E=1
+FAST=0; E2E=1
 for a in "$@"; do
   case "$a" in
-    --fast) FAST=1; SIM=0; E2E=0 ;;
-    --no-sim) SIM=0 ;;
+    --fast) FAST=1; E2E=0 ;;
     --no-e2e) E2E=0 ;;
     -h|--help) sed -n 2,16p "$0"; exit 0 ;;
     *) echo "unknown option: $a"; exit 2 ;;
@@ -100,9 +98,6 @@ stage "database migrations (twice)" bash -c 'npm run db:migrate:all && npm run d
 stage "typecheck + lint + vitest" npm run check
 stage "web typecheck" npm run typecheck:web
 
-# ── 2 · anti-ban simulation ───────────────────────────────────────────────────────────────
-if [ "$SIM" = 1 ]; then stage "anti-ban simulation" npm run test:sim; else skip "anti-ban simulation"; fi
-
 # ── 3 · the stack: scripted flow, then the browser suite ──────────────────────────────────
 if [ "$E2E" = 1 ]; then
   if port_busy 3000 || port_busy 3001; then
@@ -112,9 +107,8 @@ if [ "$E2E" = 1 ]; then
   else
     stage "scripted flow (no real send)" npm run local:flow
     echo "  starting a throwaway fake-channel stack…"
-    GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 SEND_CIRCADIAN=false SEND_RECIPIENT_TIMEZONE=false \
-      SEND_TYPING_SIMULATION=false SEND_BACKGROUND_ENTROPY=false SIGNUP_ENABLED=true \
-      NEW_CONTACTS_PER_HOUR=100 NEW_CONTACTS_PER_DAY=500 NEW_CONTACT_REPLY_FLOOR=false SEND_RATE_PER_MINUTE=20 \
+    GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 \
+      SEND_TYPING_SIMULATION=false SIGNUP_ENABLED=true \
       setsid npm run dev:all >"$LOG_DIR/stack.log" 2>&1 &
     STACK_PID=$!
     if wait_up; then

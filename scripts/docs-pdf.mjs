@@ -21,7 +21,7 @@ const PARTS = [
   ['Features', ['docs/06-features/README.md', ...readdirSync(join(root, 'docs/06-features'))
     .filter((f) => /^F\d+-/.test(f)).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)))
     .map((f) => `docs/06-features/${f}`)]],
-  ['Anti-ban, ingestion, linking', ['docs/08-antiban.md', 'docs/07-ingestion.md', 'docs/25-ingestion-guide.md', 'docs/26-linking-lifecycle.md', 'docs/27-restriction-tracking.md']],
+  ['Anti-ban, ingestion, linking', ['docs/08-antiban.md', 'docs/07-ingestion.md', 'docs/25-ingestion-guide.md', 'docs/26-linking-lifecycle.md']],
   ['Security and access', ['docs/09-security.md', 'docs/22-encryption.md', 'docs/23-auth.md']],
   ['API and integration', ['docs/15-api.md', 'docs/16-integration-jobportal.md']],
   ['Running it', ['docs/13-deployment.md', 'docs/19-capacity.md', 'docs/14-runbooks.md', 'docs/24-local-testing.md']],

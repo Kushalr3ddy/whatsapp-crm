@@ -104,9 +104,6 @@ jobs:
       - name: migrations are idempotent
         run: npm run db:migrate:test
 
-  # The anti-ban simulation is its own workflow now (.github/workflows/simulation.yml): it takes
-  # several minutes and has its own trigger rules, so it neither slows this job nor hides in it.
-
   # The browser tests, split across 3 machines that run at the same time (each with its own database and stack). GitHub provides these machines:
   # free and parallel on a public repository. The job named `e2e` below is the single check that branch protection requires; it passes only if all 3 shards do.
   e2e-shard:
@@ -143,13 +140,9 @@ jobs:
       SEND_TYPING_SIMULATION: 'false'
       NODE_ENV: development
       # The gateway runs the in-memory fake channel, so a broadcast can be verified end to end with
-      # nothing real sent. The day/night behaviours are off so the run does not depend on the clock,
-      # and sweeps are fast so a campaign finishes in seconds.
+      # nothing real sent. Sweeps are fast so a campaign finishes in seconds.
       GATEWAY_CHANNEL: fake
       GATEWAY_SWEEP_SECONDS: '3'
-      SEND_CIRCADIAN: 'false'
-      SEND_RECIPIENT_TIMEZONE: 'false'
-      SEND_BACKGROUND_ENTROPY: 'false'
       # The Playwright specs sign in with these (see playwright.config.ts).
       TEST_EMAIL: e2e@test.local
       TEST_PASSWORD: E2eTest!pass99
@@ -284,9 +277,6 @@ jobs:
       NODE_ENV: development
       GATEWAY_CHANNEL: fake
       GATEWAY_SWEEP_SECONDS: '3'
-      SEND_CIRCADIAN: 'false'
-      SEND_RECIPIENT_TIMEZONE: 'false'
-      SEND_BACKGROUND_ENTROPY: 'false'
       TEST_EMAIL: e2e@test.local
       TEST_PASSWORD: E2eTest!pass99
     steps:
