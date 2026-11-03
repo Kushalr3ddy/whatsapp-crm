@@ -16,6 +16,7 @@ import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
 import { antibanRouter } from './routes/antiban.js';
 import { messagesRouter } from './routes/messages.js';
+import { inboxRouter } from './routes/inbox.js';
 import { mediaRouter } from './routes/media.js';
 import { importsRouter } from './routes/imports.js';
 import { contactsRouter } from './routes/contacts.js';
@@ -204,6 +205,7 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
   api.use('/encryption', encryptionRouter({ kms: deps.kms }));
   api.use('/segments', segmentsRouter());
   api.use('/campaigns', campaignsRouter(deps.storage));
+  api.use('/', inboxRouter(deps.kms));
   api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY, deps.storage, ATTACHMENT_LIMIT_BYTES));
   app.use('/api/v1', api);
 

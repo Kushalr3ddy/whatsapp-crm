@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 
 /**
  * Exporting everyone the system holds about the people it messages — to CSV for a spreadsheet, or
@@ -105,10 +105,11 @@ interface Executor { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }
 
 /**
  * The next batch of people, in id order after `afterId`. Keyset paging, so a very large book
- * streams in bounded chunks instead of one enormous result. Soft-deleted contacts are excluded.
+ * streams in bounded chunks instead of one enormous result. Soft-deleted contacts are excluded. With a
+ * `predicate` (the Contacts screen's filter, over a contact aliased `c`) only those people are exported.
  */
 export async function fetchExportBatch(
-  tx: Executor, orgId: string, afterId: string | null, limit: number
+  tx: Executor, orgId: string, afterId: string | null, limit: number, predicate: SQL | null = null
 ): Promise<ExportRow[]> {
   const rows = await tx.execute(sql`
     SELECT c.id, c.display_name AS "name", c.source,
@@ -139,6 +140,7 @@ export async function fetchExportBatch(
                 WHERE cr.contact_id = c.id AND cr.status IN ('queued','sent')), '') AS "campaigns"
     FROM contact c
     WHERE c.org_id = ${orgId} AND c.deleted_at IS NULL
+      AND (${predicate ?? sql`true`})
       AND (${afterId}::uuid IS NULL OR c.id > ${afterId}::uuid)
     ORDER BY c.id
     LIMIT ${limit}`);

@@ -29,7 +29,7 @@ cleared, and it is why the ports exist at all.
 | **Contract** | Vitest + LocalStack, Keycloak, MailHog | Every adapter and every driver | One conformance suite per port — `ChannelProvider`, `SourceConnector`, `StorageDriver`, `AuthProvider`, `QueueDriver`, `EmailDriver`, `KmsDriver`. New adapters are correct by construction; swapping drivers provably changes nothing. |
 | **Integration** | Vitest + Testcontainers | Repositories, queues, workers | Real Postgres, real queue, no mocks at the boundary. Migrations up and down. **RLS isolation asserted per table.** |
 | **API** | Supertest + Testcontainers | Every endpoint | Happy path, authz matrix (every role × every endpoint), validation, pagination, idempotency, rate limits, error shapes |
-| **E2E** | Playwright | Critical journeys | **Built (11 specs):** sign in/out, every page renders, import a CSV and tag it, mass-tag, tag one by hand, build a broadcast (from a tag, on the New campaign screen: review panel, fill-in table, draft), flag do-not-contact, define a custom field. **Still to add:** inbox thread flows, sending verified in CI (needs a fake-number gateway) |
+| **E2E** | Playwright | Critical journeys | **Built (11 specs):** sign in/out, every page renders, import a CSV and tag it, mass-tag, tag one by hand, build a broadcast (from a tag, on the New campaign screen: review panel, fill-in table, draft), flag do-not-contact, define a custom field, the Contacts screen (pick a file, search, Filters with a live count, Select all N, Add tag and Undo, saved lists, Columns, the person panel). **Still to add:** inbox thread flows, sending verified in CI (needs a fake-number gateway) |
 | **Load** | k6 | Throughput and soak | 10k campaign · 100 msg/s inbound burst · 50k-row import · 24 h soak |
 | **Security** | ZAP, Semgrep, gitleaks, Trivy, custom | Every PR | OWASP Top 10, cross-tenant IDOR, SSRF, authz bypass, injection |
 | **Chaos** | Scripted | Quarterly | Kill Postgres / queue / gateway mid-campaign |
@@ -51,6 +51,13 @@ Every `M*` in `00-prior-art.md` gets a named regression test. The highest-value 
 | M13 in-process state | Multi-worker run produces correct shared-budget behaviour |
 | M26 poison message | One unresolvable recipient does not affect the session or other sends |
 | M31 context bleed | Two conversations with one contact stay separate |
+
+## The Inbox screen
+
+- `tests/integration/inbox-list.test.ts` (needs a database): search by name, number and last message, the quick views and their counts, filters, paging, the person panel's fill-ins, and the campaign of each message.
+- `tests/integration/thread-lock.test.ts` and `participants.test.ts`: only the owner or an admin may send (a participant may read, not reply), and the first sender in an unowned chat becomes its owner.
+- `apps/web/lib/inbox-format.test.ts`: list times, search highlight and snippet, campaign dividers, reply fill-ins.
+- Playwright: `seeded-pages.spec.ts` (Filters, a note, Resolve and Reopen from Details), `ai-notice.spec.ts`, `zz-roles-flow.spec.ts` (presence and typing are read from the API, the Inbox no longer prints them).
 
 ## Preset and resource testing
 

@@ -69,7 +69,7 @@ test.describe('forms that redirect, on a production build', () => {
     // Originally the button gave no answer. The tag choice is now required in the browser, so no request is made at all (an instant server redirect
     // can hang on a production server: see R-008). The browser's own message stands in for the server's "Choose a tag first".
     await signIn(page);
-    await page.goto('/contacts');
+    await page.goto('/contacts/classic');   // the form this guards lives on the classic Contacts page
     await page.waitForLoadState('networkidle');
     await page.locator('summary', { hasText: 'Tag many at once' }).click();
     const posts: string[] = [];
@@ -85,7 +85,7 @@ test.describe('forms that redirect, on a production build', () => {
   test('[R-007] @smoke a contact row opened by script right after the page loads still shows its panel', async ({ page }) => {
     // The row's panel is built when it is opened (D-89). A row opened before the page finished starting up used to stay empty.
     await signIn(page);
-    await page.goto('/contacts');
+    await page.goto('/contacts/classic');   // the rows with a panel built on open live on the classic Contacts page
     const row = page.locator('li').filter({ has: page.getByLabel(/^Select /) }).first();
     await row.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });
     await expect(row.getByLabel('Add a tag')).toBeVisible({ timeout: 8_000 });

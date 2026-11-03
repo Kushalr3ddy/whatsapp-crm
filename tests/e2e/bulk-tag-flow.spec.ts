@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { signIn, openDetails, CREDS_MISSING, fillNewCampaign, createDraft } from './helpers';
+import { signIn, CREDS_MISSING, fillNewCampaign, createDraft , openContactsFile } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
@@ -54,35 +54,26 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     const imported = Number(/(\d+) tagged/.exec(summary)?.[1] ?? '0');
     expect(imported).toBeGreaterThan(20);
 
-    // 2. Everyone with the import tag is on the contacts page (filter chip).
-    await page.goto('/contacts');
-    await page.getByRole('link', { name: new RegExp(importTag) }).first().click();
-    await expect(page).toHaveURL(/tag=/);
+    // 2. Everyone from the file is on the Contacts screen, picked as a source on the left.
+    await openContactsFile(page, `contacts-${stamp}.csv`);
     await expect(page.getByLabel(/^Select /).first()).toBeVisible();
+    await expect(page.getByText(new RegExp(`Showing 1–${imported} of ${imported} people`))).toBeVisible();
 
-    // 3. Mass-tag everyone matching that filter: preview shows the real count, confirm applies it.
-    await openDetails(page, 'Tag many at once');
-    await page.getByLabel('Add or remove').first().selectOption('add');
-    await page.getByLabel('Tag to apply').selectOption({ label: massTag });
-    await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByText(new RegExp(`Add tag ${massTag} to ${imported} people`))).toBeVisible();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-    await expect(page.getByText(new RegExp(`Done — ${imported} people added`))).toBeVisible();
+    // 3. Mass-tag everyone the file brought in: tick the page, add the tag, and the toast says how many.
+    await page.getByLabel('Select everyone on this page').check();
+    await page.getByRole('button', { name: 'Add tag' }).click();
+    await page.getByLabel('Find a tag, or type a new name').fill(massTag);
+    await page.locator('.ct-menu').getByRole('button', { name: new RegExp(`^${massTag}`) }).click();
+    await expect(page.getByText(new RegExp(`Added “${massTag}” to ${imported} people`))).toBeVisible();
 
     // 4. Tag one person by hand.
-    await page.goto('/contacts');
-    // A row's opened panel (add a tag, do-not-contact, fields) is built only once the row is opened (D-89), so find a row by its checkbox.
-    const rowWithTagPicker = () => page.locator('li').filter({ has: page.getByLabel(/^Select /) }).first();
-    const firstRow = rowWithTagPicker();
-    await firstRow.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });   // the add-a-tag box is inside the opened row
-    await expect(firstRow.getByLabel('Add a tag')).toBeVisible();
-    await firstRow.getByLabel('Add a tag').fill(handTag);
-    await firstRow.getByRole('button', { name: 'Add', exact: true }).click();
-    // Whichever row now carries the chip. The list is not in a stable order (tagging touches the
-    // person, and many rows share a timestamp), so "the first row again" is not the same person.
-    await expect(
-      page.locator('li').filter({ has: page.getByRole('button', { name: new RegExp(handTag) }) }).first()
-    ).toBeVisible();
+    // The list reloads after a tag is added; wait for the ticks to clear before picking one person.
+    await expect(page.getByLabel('Select everyone on this page')).not.toBeChecked();
+    await page.getByLabel(/^Select (?!everyone)/).first().check();
+    await page.getByRole('button', { name: 'Add tag' }).click();
+    await page.getByLabel('Find a tag, or type a new name').fill(handTag);
+    await page.locator('.ct-menu').getByRole('button', { name: new RegExp(`^${handTag}`) }).click();
+    await expect(page.getByText(`Added “${handTag}” to 1 person.`)).toBeVisible();
 
     // 5. A broadcast from the mass tag: the dry run shows the audience, start, then cancel.
     await page.goto('/broadcast/new');

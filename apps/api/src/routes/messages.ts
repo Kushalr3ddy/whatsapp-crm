@@ -71,19 +71,24 @@ async function recentCollision(
 }
 
 /**
- * True when `userId` is one of the extra people on the thread. The thread lock lets the owner,
- * participants and admins reply; this is the participant half. Takes the request's tenant
- * transaction so row-level security scopes the lookup like every other query.
+ * A person who sends in a chat nobody owns becomes its owner (an unowned chat is one a campaign made, or one that was handed to nobody).
+ * Only the owner or an admin may send afterwards. Returns nothing: a lost race (someone claimed it first) is caught by the next send's lock.
  */
-async function isParticipant(
-  tx: { execute: (q: ReturnType<typeof sql>) => PromiseLike<unknown> },
-  conversationId: string, userId: string | null
-): Promise<boolean> {
-  if (userId === null) return false;
-  const rows = (await tx.execute(sql`
-    SELECT 1 FROM conversation_participant
-    WHERE conversation_id = ${conversationId} AND user_id = ${userId}`)) as unknown[];
-  return rows.length > 0;
+async function claimIfUnowned(
+  req: Request, tx: Parameters<typeof writeAudit>[0], orgId: string, conversationId: string
+): Promise<void> {
+  const ctx = req.crm!;
+  if (ctx.kind !== 'session' || ctx.userId === null) return;
+  const claimed = (await tx.execute(sql`
+    UPDATE conversation SET assignee_user_id = ${ctx.userId}, updated_at = now()
+    WHERE id = ${conversationId} AND org_id = ${orgId} AND assignee_user_id IS NULL
+    RETURNING id`)) as unknown[];
+  if (claimed.length === 0) return;
+  await writeAudit(tx, {
+    orgId, actor: auditActor(req), action: AUDIT.conversationAssigned, targetType: 'conversation', targetId: conversationId,
+    before: { assigneeUserId: null }, after: { assigneeUserId: ctx.userId, reason: 'sent the first message in an unowned chat' },
+    ip: req.ip ?? null, requestId: String(req.id)
+  });
 }
 
 /**
@@ -817,6 +822,7 @@ export function messagesRouter(
                m.body_enc AS "bodyEnc", m.sent_by AS "sentBy",
                m.sent_by_user_id AS "sentByUserId", u.display_name AS "sentByName",
                m.created_at AS "createdAt", m.sent_at AS "sentAt", m.read_at AS "readAt",
+               m.campaign_id AS "campaignId", ca.name AS "campaignName",
                m.media_id AS "mediaId", ma.content_type AS "mediaContentType",
                ma.size_bytes AS "mediaSizeBytes", ma.filename AS "mediaFilename",
                m.media_error AS "mediaError"
@@ -824,6 +830,7 @@ export function messagesRouter(
         JOIN conversation v ON v.id = m.conversation_id
         LEFT JOIN media_asset ma ON ma.id = m.media_id
         LEFT JOIN app_user u ON u.id = m.sent_by_user_id
+        LEFT JOIN campaign ca ON ca.id = m.campaign_id
         WHERE v.id = ${conversationId} AND v.org_id = ${orgId}
         ORDER BY m.created_at ASC
         LIMIT 500`);
@@ -935,9 +942,9 @@ export function messagesRouter(
         ) as unknown as Array<{ assigneeUserId: string | null }>;
         if (conv.length === 0) return { notFound: true as const };
         const ctx = req.crm!;
+        // Only the owner or an admin may send; a participant can read the chat but not reply.
         if (ctx.kind === 'session' && ctx.role !== 'admin'
-          && conv[0]!.assigneeUserId !== null && conv[0]!.assigneeUserId !== ctx.userId
-          && !(await isParticipant(tx, conversationId, ctx.userId))) {
+          && conv[0]!.assigneeUserId !== null && conv[0]!.assigneeUserId !== ctx.userId) {
           return { locked: true as const };
         }
 
@@ -947,6 +954,7 @@ export function messagesRouter(
         ) as unknown as Array<{ flagged: boolean }>;
         if (flagged[0]?.flagged === true) return { dnc: true as const };
 
+        await claimIfUnowned(req, tx, orgId, conversationId);
         const stored = await storeOutboundMedia(tx, storage, { orgId, bytes, filename });
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
@@ -1002,9 +1010,8 @@ export function messagesRouter(
         if (conv.length === 0) return { notFound: true as const };
 
         const ctx = req.crm!;
-        const lockedToSomeoneElse = conv[0]!.assigneeUserId !== null
-          && conv[0]!.assigneeUserId !== ctx.userId
-          && !(await isParticipant(tx, conversationId, ctx.userId));
+        // Only the owner or an admin may send; a participant can read the chat but not reply.
+        const lockedToSomeoneElse = conv[0]!.assigneeUserId !== null && conv[0]!.assigneeUserId !== ctx.userId;
         if (ctx.kind === 'session' && ctx.role !== 'admin' && lockedToSomeoneElse) {
           return { locked: true as const };
         }
@@ -1029,6 +1036,7 @@ export function messagesRouter(
           if (clash !== null) return { collision: clash };
         }
 
+        await claimIfUnowned(req, tx, orgIdEarly, conversationId);
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
                                body_enc, body_hmac, sent_by, sent_by_user_id,

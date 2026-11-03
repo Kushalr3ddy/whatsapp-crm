@@ -46,3 +46,10 @@ export async function createDraft(page: Page): Promise<void> {
   await expect(button).toBeEnabled();
   await button.click();
 }
+
+/** Opens Contacts and picks an imported file on the left by the name it was uploaded with. */
+export async function openContactsFile(page: Page, fileName: string): Promise<void> {
+  await page.goto('/contacts');
+  await page.getByRole('button', { name: new RegExp(`^${fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }).click();
+  await expect(page).toHaveURL(/file=/);
+}

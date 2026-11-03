@@ -1,55 +1,63 @@
 import { test, expect } from '@playwright/test';
-import { signIn, openDetails, CREDS_MISSING } from './helpers';
+import { signIn, openContactsFile, CREDS_MISSING } from './helpers';
 
 /**
- * Contacts tag handling from the alpha-testing feedback: a tag chip (a small rounded label with the tag's name) filters and says where to go next, "No tag"
- * explains itself, and removing a tag asks first. Numbers are in the +1 202 555 02xx range reserved for fiction.
+ * Contacts tag handling: tick people and put a tag on them, look at the tag as a source, see it on the person, and start a campaign
+ * aimed at it. Numbers are in the +1 202 555 02xx range reserved for fiction.
  */
 test.describe('contacts: tags', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
 
-  test('filter by a tag, be offered a campaign, confirm before removing, and explain "No tag"', async ({ page }) => {
+  test('tag people from the bar, filter by the tag, find it on the person, and aim a campaign at it', async ({ page }) => {
     const stamp = String(Date.now());
-    const tag = `chip-${stamp}`;
+    const file = `chip-${stamp}`;
+    const tag = `own-${stamp}`;
     const n = Number(stamp.slice(-2)) % 45;
-    const csv = `Name,Mob\nChip One,+1202555${String(290 - n).padStart(4, '0')}\n`;
+    // A per-run column keeps the bytes unique: the same file twice is (rightly) refused as already imported.
+    const csv = `Name,Mob,Batch
+Chip One,+1202555${String(290 - n).padStart(4, '0')},${stamp}
+`;
 
     await signIn(page);
     await page.goto('/import');
-    await page.locator('input[type="file"]').setInputFiles({ name: `${tag}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv) });
+    await page.locator('input[type="file"]').setInputFiles({ name: `${file}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv) });
     await expect(page.getByText(/rows ·/)).toBeVisible();
     await page.getByRole('button', { name: 'Preview' }).click();
     await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
     await page.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(page.getByText(/✓ Imported/)).toBeVisible();
 
-    // 1. The chip filters, is marked as current, and a campaign is offered.
-    await page.goto('/contacts');
-    await page.getByRole('link', { name: new RegExp(tag) }).first().click();
+    // The Import page's own link opens the file's people.
+    await page.getByRole('link', { name: /View the \d+ imported contacts/ }).click();
+    await expect(page.getByText('Showing 1–1 of 1 person')).toBeVisible();
+
+    // 1. Tick the person, make a tag on the way, and see it on the left with one person.
+    await openContactsFile(page, `${file}.csv`);
+    await page.getByLabel('Select Chip One').check();
+    await page.getByRole('button', { name: 'Add tag' }).click();
+    await page.getByLabel('Find a tag, or type a new name').fill(tag);
+    await page.getByRole('button', { name: new RegExp(`Create tag “${tag}”`) }).click();
+    await expect(page.getByText(`Added “${tag}” to 1 person.`)).toBeVisible();
+    await page.getByRole('button', { name: new RegExp(`^${tag}`) }).click();
     await expect(page).toHaveURL(/tag=/);
-    await expect(page.getByRole('link', { name: new RegExp(tag) }).first()).toHaveAttribute('aria-current', 'true');
-    await expect(page.getByRole('region', { name: 'Next step' })).toContainText('Ready to message');
-    await page.getByRole('link', { name: 'Start a new campaign' }).click();
-    await expect(page).toHaveURL(/\/broadcast\/new\?tag=/);
-    // The tag is already picked as the audience (a chip in Who gets it).
+    await expect(page.getByText('Showing 1–1 of 1 person')).toBeVisible();
+    const tagId = new URL(page.url()).searchParams.get('tag') ?? '';
+
+    // 2. The person's panel lists the file's tag first, then theirs.
+    await page.getByRole('button', { name: 'Chip One' }).click();
+    const panel = page.getByRole('dialog', { name: /Chip One/ });
+    await expect(panel.getByText(`${file}, ${tag}`)).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 3. A campaign can still be aimed at the tag: it is already picked as the audience.
+    await page.goto(`/broadcast/new?tag=${tagId}`);
     await expect(page.locator('.nc-chosen .nc-pill')).toHaveCount(1);
 
-    // 2. Removing the tag asks first; "Keep it" leaves it, "Yes, remove" takes it off.
-    await page.goBack();
-    const chip = page.getByRole('button', { name: new RegExp(`^${tag}`) }).first();
-    await chip.click();
-    await expect(page.getByText(/Are you sure\?/)).toBeVisible();
-    await page.getByRole('button', { name: 'Keep it' }).click();
-    await expect(chip).toBeVisible();
-    await chip.click();
-    await page.getByRole('button', { name: 'Yes, remove' }).click();
-    await expect(page.getByText('Chip One').first()).toBeHidden();
-
-    // 3. "No tag" writes nothing and says what that means.
-    await page.goto('/contacts');
-    await openDetails(page, 'Tag many at once');
-    await page.getByLabel('Tag to apply').selectOption({ label: 'No tag' });
-    await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByText(/You chose “No tag”/)).toBeVisible();
+    // 4. Taking the tag away asks first.
+    await page.goto(`/contacts?tag=${tagId}`);
+    await page.getByRole('button', { name: `Delete tag ${tag}` }).click();
+    await expect(page.getByRole('alertdialog')).toContainText('It comes off 1 person.');
+    await page.getByRole('button', { name: 'Delete tag', exact: true }).click();
+    await expect(page.getByText(`Deleted tag “${tag}”.`)).toBeVisible();
   });
 });

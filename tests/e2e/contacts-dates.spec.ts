@@ -1,35 +1,27 @@
 import { test, expect } from '@playwright/test';
-import { signIn, openDetails, CREDS_MISSING } from './helpers';
+import { signIn, CREDS_MISSING } from './helpers';
 
 /**
- * Contacts: the Refresh button, the Dates and order controls, and a row that opens to show its details.
- * Reads only, apart from the one contact it makes.
+ * Contacts: order by name, rows per page, and the two dates in the list (Imported and Last active). Reads only.
  */
-test.describe('contacts: refresh, dates and order', () => {
+test.describe('contacts: order, paging and dates', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
 
-  test('refreshes, limits by date, orders by name, and opens a row', async ({ page }) => {
+  test('orders by name both ways, pages by 100, and shows when they were imported and last wrote', async ({ page }) => {
     await signIn(page);
-    await page.goto('/contacts');
+    await page.goto('/contacts?sort=name_desc');
+    await expect(page.getByRole('columnheader', { name: 'Imported' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Last active' })).toBeVisible();
 
-    // Refresh reloads the list at the same address, keeping what is being looked at.
-    await page.goto('/contacts?sort=name_asc');
-    await page.getByRole('link', { name: 'Refresh' }).click();
-    await expect(page).toHaveURL(/sort=name_asc/);
+    // The Name heading flips the order, and the address says which.
+    await page.getByRole('button', { name: 'Sort by name' }).click();
+    await expect(page).not.toHaveURL(/sort=/);
+    await page.getByRole('button', { name: 'Sort by name' }).click();
+    await expect(page).toHaveURL(/sort=name_desc/);
 
-    // A date range with no one in it says so, and names the range.
-    await openDetails(page, 'Dates and order');
-    await page.getByLabel('From date').fill('2099-01-01');
-    await page.getByRole('button', { name: 'Apply' }).click();
-    await expect(page).toHaveURL(/from=2099-01-01/);
-    await expect(page.getByText('No one matches')).toBeVisible();
-    await expect(page.getByText(/Showing people added from/)).toBeVisible();
-
-    // Clearing brings the list back, and a row opens to show when the person was added and last imported.
-    await page.getByRole('link', { name: 'Clear' }).click();
-    // The opened panel is built only when the row is opened (D-89), so find the row by its checkbox.
-    const row = page.locator('li').filter({ has: page.getByLabel(/^Select /) }).first();
-    await row.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });
-    await expect(row.getByText('Last imported')).toBeVisible();
+    // Rows per page is kept in the address too, and the footer counts from the first row.
+    await page.getByLabel('Rows').selectOption('100');
+    await expect(page).toHaveURL(/size=100/);
+    await expect(page.getByText(/^Showing 1–\d+ of \d+ people?$/)).toBeVisible();
   });
 });

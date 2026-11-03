@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, CREDS_MISSING , openContactsFile } from './helpers';
 
 /**
  * Columns ticked on the import screen come through onto the contact and can be searched; the tag
@@ -38,14 +38,14 @@ test.describe('import: keep columns, default tag', () => {
     await page.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(page.getByText(/✓ Imported/)).toBeVisible();
 
-    // Searching by the City value finds both people.
-    await page.goto(`/contacts?q=${encodeURIComponent(city)}`);
-    // The City value is in each row's opened panel, built only when the row is opened (D-89): open both.
-    await page.locator('li > details').evaluateAll((els) => { for (const el of els) (el as unknown as { open: boolean }).open = true; });
-    await expect(page.locator('summary', { hasText: `City: ${city}` })).toHaveCount(2);
+    // The file is a source on the left; its City column is offered in Columns and shows the value for both people.
+    await openContactsFile(page, `keep-${stamp}.csv`);
+    await page.getByRole('button', { name: 'Columns' }).click();
+    await page.getByLabel('City', { exact: true }).check();
+    await expect(page.getByRole('cell', { name: city })).toHaveCount(2);
 
-    // And the file-named tag is on them.
-    await expect(page.getByRole('link', { name: new RegExp(`keep-${stamp}`) }).first()).toBeVisible();
+    // A column rule on the saved City finds both, and the file-named tag is on them.
+    await expect(page.getByRole('cell', { name: `keep-${stamp}` }).first()).toBeVisible();
   });
 
   test('all columns are stored by default, personal-tagged ones included', async ({ page }) => {
@@ -72,9 +72,10 @@ test.describe('import: keep columns, default tag', () => {
     await page.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(page.getByText(/✓ Imported/)).toBeVisible();
 
-    await page.goto(`/contacts?q=${encodeURIComponent(city)}`);
-    await page.locator('li > details').evaluateAll((els) => { for (const el of els) (el as unknown as { open: boolean }).open = true; });
-    await expect(page.locator('summary', { hasText: `City: ${city}` })).toHaveCount(1);
-    await expect(page.locator('summary', { hasText: 'Gender: female' })).toHaveCount(1);
+    await openContactsFile(page, `all-${stamp}.csv`);
+    await page.getByRole('button', { name: 'All One' }).click();
+    const panel = page.getByRole('dialog', { name: /All One/ });
+    await expect(panel.getByText(city)).toBeVisible();
+    await expect(panel.getByText('female')).toBeVisible();
   });
 });

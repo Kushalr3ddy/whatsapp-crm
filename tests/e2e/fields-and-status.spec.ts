@@ -9,7 +9,7 @@ test.describe('custom fields and the numbers page', () => {
 
   test('an admin defines a custom field, sees its {{variable}}, and removes it', async ({ page }) => {
     await signIn(page);
-    await nav(page).getByRole('link', { name: 'Contacts', exact: true }).click();
+    await page.goto('/contacts/classic');   // defining a column has no place on the new Contacts screen
 
     const label = `E2E City ${String(Date.now())}`;
     const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');

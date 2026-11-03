@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { clientIpHeaders } from './client-ip';
+import { peopleParams } from './contacts-screen';
 
 /**
  * The server-side client for the CRM HTTP API.
@@ -104,6 +105,9 @@ export interface Message {
   mediaUnavailable: boolean;
   /** Why the file could not be fetched, when the gateway recorded a reason (D-30). */
   mediaError?: string | null;
+  /** The campaign that sent this message, when one did. */
+  campaignId?: string | null;
+  campaignName?: string | null;
 }
 
 /** One internal note on a thread. Mirrors `GET /api/v1/conversations/:id/notes`. */
@@ -385,7 +389,7 @@ async function forwardedAuth(): Promise<Record<string, string>> {
  * `cache: 'no-store'` because an inbox is live data — Next would otherwise cache the fetch
  * for the lifetime of the build and show a thread frozen at deploy time.
  */
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = await forwardedAuth();
   const response = await fetch(`${baseUrl()}/api/v1${path}`, {
     ...init,
@@ -413,6 +417,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (payload as { data: T }).data;
+}
+
+/** Like `request`, but also gives back the envelope's `meta` (totals and counts), for the endpoints that send one. */
+export async function requestWithMeta<T, M>(path: string): Promise<{ data: T; meta: M }> {
+  const auth = await forwardedAuth();
+  const response = await fetch(`${baseUrl()}/api/v1${path}`, {
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...auth }
+  });
+  if (response.status === 401) throw new NotAuthenticatedError();
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = payload as Partial<ApiProblem> | null;
+    throw new CrmApiError({
+      code: problem?.code ?? 'UNKNOWN',
+      detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
+      status: response.status
+    });
+  }
+  return payload as { data: T; meta: M };
 }
 
 /**
@@ -505,6 +529,29 @@ export interface SegmentDefinition {
   tagIds?: string[];
   replied?: 'ever' | 'never';
   lastContactedWithinDays?: number;
+  /** Nobody on our side has messaged them within this many days (never messaged counts). */
+  notContactedWithinDays?: number;
+  /** They last wrote to us within, or longer ago than, this many days. */
+  activeWithinDays?: number;
+  activeOlderThanDays?: number;
+  /** In a chat where the last message is theirs. */
+  waitingForUs?: boolean;
+  campaigns?: 'some' | 'never';
+  campaignId?: string;
+  /** `only` the do-not-contact people, or `exclude` them. */
+  dnc?: 'only' | 'exclude';
+  whatsapp?: 'yes' | 'no' | 'unchecked';
+  email?: 'yes' | 'no';
+  importedWithinDays?: number;
+  /** Rules on the person's saved columns. */
+  fieldRules?: FieldRule[];
+}
+
+/** One rule on a saved column, for example City is Pune. */
+export interface FieldRule {
+  key: string;
+  op: 'is' | 'isnot' | 'has' | 'blank' | 'filled';
+  value?: string;
 }
 
 /** A saved criteria-based audience with its live match count. Mirrors a row of `GET /segments`. */
@@ -1032,12 +1079,17 @@ export interface BulkTagResult {
   dryRun: boolean;
   matched: number;
   changed: number;
+  /** For an add: who got the tag now (up to 5000), so an Undo can take it off exactly them. */
+  addedIds?: string[];
 }
 
 /** Who a bulk tag action applies to. */
 export type BulkTarget =
   | { kind: 'all' }
-  | { kind: 'search'; q?: string; tagId?: string; from?: string; to?: string; dateBy?: 'added' | 'imported' }
+  | {
+    kind: 'search'; q?: string; tagId?: string; from?: string; to?: string; dateBy?: 'added' | 'imported';
+    importRunId?: string; criteria?: SegmentDefinition;
+  }
   | { kind: 'ids'; ids: string[] };
 
 /** Previews (default) or applies adding/removing one tag across many contacts. */
@@ -1440,4 +1492,106 @@ export async function getImportProblems(id: string): Promise<ImportProblems> {
     errors?: ImportProblems['errors']; warnings?: ImportProblems['warnings'];
   }>(`/imports/${encodeURIComponent(id)}`);
   return { errors: run.errors ?? [], warnings: run.warnings ?? [] };
+}
+
+// ---- The Contacts screen: people with their file, last campaign and last active; the sources on its left. ----
+
+/** One person as the Contacts table shows them. Mirrors a row of `GET /api/v1/contacts`. */
+export interface PersonRow {
+  id: string;
+  displayName: string | null;
+  doNotContact: boolean;
+  createdAt: string;
+  identities: ContactIdentity[];
+  /** The file's own tag comes first; `isFile` marks it. */
+  tags: Array<Tag & { isFile: boolean }>;
+  customFields: Record<string, string | number>;
+  /** When they last wrote to us; null if they never did. */
+  lastActiveAt: string | null;
+  /** The file that last brought them in. */
+  file: { id: string; filename: string | null; importedAt: string } | null;
+  lastCampaign: { id: string; name: string; at: string } | null;
+  /** With a file picked: this person's row of that file, every column as it was read. */
+  fileValues: Record<string, string> | null;
+}
+
+/** What narrows the people on the Contacts screen. The same view the count, bulk tagging and the export read. */
+export interface PeopleView {
+  q?: string;
+  /** One imported file's people. */
+  file?: string;
+  /** One tag's people. */
+  tag?: string;
+  filter?: SegmentDefinition;
+  sort?: 'name_asc' | 'name_desc';
+  limit?: number;
+  offset?: number;
+}
+
+/** One page of the people a view matches, with how many match in all. */
+export async function listPeople(v: PeopleView): Promise<{ rows: PersonRow[]; total: number }> {
+  const auth = await forwardedAuth();
+  const response = await fetch(`${baseUrl()}/api/v1/contacts${peopleParams(v)}`, {
+    cache: 'no-store', headers: { 'Content-Type': 'application/json', ...auth }
+  });
+  if (response.status === 401) throw new NotAuthenticatedError();
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = payload as Partial<ApiProblem> | null;
+    throw new CrmApiError({
+      code: problem?.code ?? 'UNKNOWN', detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
+      status: response.status
+    });
+  }
+  const body = payload as { data: PersonRow[]; total: number };
+  return { rows: body.data, total: body.total };
+}
+
+/** One imported file on the left: its people, its tag and the columns it had beyond name, phone and email. */
+export interface SourceFile {
+  id: string;
+  filename: string | null;
+  importedAt: string;
+  count: number;
+  /** The tag the import put on its people (named after the file); null if it was imported without one. */
+  tagId: string | null;
+  /** The tag's name (the file's name without its extension). */
+  tagName: string | null;
+  columns: string[];
+}
+
+/** Everything the left list and the Filters need to name. Mirrors `GET /api/v1/contacts/sources`. */
+export interface ContactSources {
+  total: number;
+  files: SourceFile[];
+  /** The person's own tags (a file's tag is not here). */
+  tags: Array<{ id: string; name: string; colour: string | null; count: number }>;
+  lists: Array<{ id: string; name: string; definition: SegmentDefinition; count: number }>;
+  campaigns: Array<{ id: string; name: string }>;
+  /** The saved columns a column rule can name. */
+  fields: Array<{ key: string; label: string }>;
+}
+
+/** Files, own tags and saved lists with counts. */
+export async function getContactSources(): Promise<ContactSources> {
+  return request<ContactSources>('/contacts/sources');
+}
+
+/** What the side panel shows for one person. Mirrors `GET /api/v1/contacts/:id/detail`. */
+export interface PersonDetail {
+  source: {
+    fileId: string; filename: string | null; importedAt: string;
+    columns: Array<{ header: string; value: string }>;
+  } | null;
+  campaigns: Array<{
+    id: string; name: string; campaignStatus: string; numberLabel: string; at: string;
+    outcome: 'replied' | 'read' | 'delivered' | 'sent' | 'failed' | 'skipped' | 'pending' | 'queued';
+  }>;
+  /** Their latest chat, or null when there is none yet. */
+  conversationId: string | null;
+}
+
+/** One person for the side panel. */
+export async function getPersonDetail(id: string): Promise<PersonDetail> {
+  return request<PersonDetail>(`/contacts/${encodeURIComponent(id)}/detail`);
 }

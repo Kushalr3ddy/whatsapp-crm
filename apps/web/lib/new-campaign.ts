@@ -101,8 +101,11 @@ export const BLANK_WORD = 'soon';
  * their name ("there" when they have none), another fill-in is their value or a red "blank" tag, and a key that is not a column is a red
  * "key?" tag. With no person to preview as, the fill-ins stay as typed.
  */
-export function previewHtml(body: string, person: PreviewPerson | null, columns: readonly Column[], index: number, choice: BlankChoice): string {
-  const spun = body.replace(/\{([^{}|]+(?:\|[^{}|]+)+)\}/g, (_m, g: string) => {
+export function previewHtml(
+  body: string, person: PreviewPerson | null, columns: readonly Column[], index: number, choice: BlankChoice, spin = true
+): string {
+  // A reply to one person has no wording variations: `{a|b}` stays as typed there (`spin` off).
+  const spun = !spin ? body : body.replace(/\{([^{}|]+(?:\|[^{}|]+)+)\}/g, (_m, g: string) => {
     const options = g.split('|');
     return options[index % options.length] ?? options[0]!;
   });
@@ -119,6 +122,19 @@ export function previewHtml(body: string, person: PreviewPerson | null, columns:
     return mark('<span class="nc-miss">blank</span>');
   });
   return whatsappHtml(filled).replace(/(\d+)/g, (_m, n: string) => marks[Number(n)] ?? '');
+}
+
+/**
+ * The message as plain text for one person, the way it is sent: each fill-in is their value, a missing name reads "there", and any other
+ * missing value is left empty (the Inbox keeps a message like that from being sent, see `checkFillIns`).
+ */
+export function fillInText(body: string, person: PreviewPerson): string {
+  return body.replace(FILL_IN, (_whole, k: string) => {
+    const key = k.toLowerCase();
+    const value = person.values[key];
+    if (value !== undefined && value !== '') return value;
+    return key === 'name' || key === 'first_name' ? 'there' : '';
+  });
 }
 
 /** The greeting at the start of a message, which wording variations replace. */

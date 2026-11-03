@@ -277,7 +277,7 @@ it when an operator chooses to keep one.
 
 ## `segment` ✅ (minimal slice)
 
-> **Built differently from the spec below:** a `definition` jsonb holding an allowlisted AND-only filter (has-tag, replied ever/never, last-contacted-within-N-days), evaluated on read — no `kind`, no cached count. See D-28.
+> **Built differently from the spec below:** a `definition` jsonb holding an allowlisted AND-only filter, evaluated on read — no cached count. Keys: `tagIds`, `replied`, `lastContactedWithinDays`, `notContactedWithinDays`, `activeWithinDays`, `activeOlderThanDays`, `waitingForUs`, `campaigns`, `campaignId`, `dnc`, `whatsapp`, `email`, `importedWithinDays`, `fieldRules` (rules on `contact.custom_fields`; the column key is a bound parameter). See D-28. The Contacts screen saves its filter here ("Save as a list"); `segmentCriteria` is the filter alone, `buildSegmentPredicate` adds "never a removed or do-not-contact person" for campaign audiences. "On WhatsApp" reads `contact_identity.wa_registered`, which is only filled for a contact with more than one number (D-60), so most people read "not checked".
 
 A saved audience. What a campaign targets.
 

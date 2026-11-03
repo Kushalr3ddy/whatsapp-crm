@@ -4,9 +4,12 @@ import { sql } from 'drizzle-orm';
 import { normalisePhone } from '@crm/shared';
 import { writeAudit, AUDIT, csvHeader, csvLine, vcardEntry, fetchExportBatch } from '@crm/core';
 import { requireScope, requireRole, auditActor } from '../auth.js';
-import { loadCustomFields, validateCustomFields, searchPredicate } from '@crm/core';
+import {
+  loadCustomFields, validateCustomFields, searchPredicate, countSegmentCriteria, type SegmentDefinition
+} from '@crm/core';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
+import { contactViewQuery, readView } from './contact-view.js';
 
 /**
  * Body for creating a contact.
@@ -30,23 +33,33 @@ const createContact = z.object({
  * Query for listing / searching contacts. `q` is a free-text substring; `cursor` is the
  * `createdAt` of the last row seen, for keyset paging without offsets on an unbounded list.
  */
-const listContactsQuery = z.object({
-  q: z.string().trim().min(1).max(100).optional(),
-  /** Narrow to contacts carrying this tag — the "select people by label" path. */
-  tag: z.string().uuid().optional(),
-  /** First and last day (`YYYY-MM-DD`, both included) of the date range, on `dateBy`. */
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  /** Which date `from` / `to` apply to: when the person was added, or when they were last imported. */
-  dateBy: z.enum(['added', 'imported']).optional(),
-  /** Newest added first (default), oldest first, name A to Z, or most recently imported first. */
-  sort: z.enum(['added_desc', 'added_asc', 'name_asc', 'imported_desc']).default('added_desc'),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+const listContactsQuery = contactViewQuery.extend({
+  /** Newest added first (default), oldest first, name A to Z or Z to A, or most recently imported first. */
+  sort: z.enum(['added_desc', 'added_asc', 'name_asc', 'name_desc', 'imported_desc']).default('added_desc'),
+  limit: z.coerce.number().int().min(1).max(250).default(50),
+  /** Skips this many people, for paging by number (the Contacts screen). */
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
   cursor: z.string().datetime().optional()
 });
 
 /** Body for attaching a tag to a contact. */
 const attachTag = z.object({ tagId: z.string().uuid() });
+
+/**
+ * The columns of a file worth showing as extra columns: all its headers except the ones already shown as Name,
+ * Phone and Email (the columns the import read the name and the identities from).
+ */
+export function fileColumns(headers: unknown, mapping: unknown): string[] {
+  if (!Array.isArray(headers)) return [];
+  const m = (mapping ?? {}) as {
+    displayName?: { from?: string }; nameParts?: { first?: string; last?: string };
+    identities?: Array<{ from?: string }>;
+  };
+  const used = new Set<string>([
+    m.displayName?.from, m.nameParts?.first, m.nameParts?.last, ...(m.identities ?? []).map((i) => i.from)
+  ].filter((x): x is string => typeof x === 'string'));
+  return (headers as unknown[]).filter((h): h is string => typeof h === 'string' && !used.has(h));
+}
 
 /**
  * Creating a contact over HTTP.
@@ -70,6 +83,13 @@ export function contactsRouter(defaultCountry: string): Router {
    * same posture as a stored file.
    */
   router.get('/export', requireRole('admin'), async (req: Request, res: Response) => {
+    const view = readView(req);
+    if ('error' in view) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', view.error));
+      return;
+    }
+    const narrowed = ['q', 'tag', 'file', 'filter', 'from', 'to'].some((k) => req.query[k] !== undefined);
+    const filter = narrowed ? searchPredicate(req.crm!.orgId, view.filter) : null;
     const format = req.query.format === 'vcf' ? 'vcf' : req.query.format === undefined || req.query.format === 'csv' ? 'csv' : null;
     if (format === null) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'format must be `csv` or `vcf`.'));
@@ -84,11 +104,11 @@ export function contactsRouter(defaultCountry: string): Router {
           AND at > now() - interval '1 hour'`)) as unknown as Array<{ n: number }>;
       if ((recent[0]?.n ?? 0) >= 5) return { limited: true as const };
       const total = (await tx.execute(sql`
-        SELECT count(*)::int AS n FROM contact WHERE org_id = ${orgId} AND deleted_at IS NULL`)
+        SELECT count(*)::int AS n FROM contact c WHERE ${filter ?? sql`c.org_id = ${orgId} AND c.deleted_at IS NULL`}`)
       ) as unknown as Array<{ n: number }>;
       await writeAudit(tx, {
         orgId, actor: auditActor(req), action: AUDIT.contactsExported, targetType: 'contact',
-        after: { format, people: total[0]?.n ?? 0 }, ip: req.ip ?? null, requestId: String(req.id)
+        after: { format, people: total[0]?.n ?? 0, ...(narrowed ? { filtered: true } : {}) }, ip: req.ip ?? null, requestId: String(req.id)
       });
       return { limited: false as const };
     });
@@ -108,7 +128,7 @@ export function contactsRouter(defaultCountry: string): Router {
 
     let after: string | null = null;
     for (;;) {
-      const batch = await req.tenant!((tx) => fetchExportBatch(tx, orgId, after, 500));
+      const batch = await req.tenant!((tx) => fetchExportBatch(tx, orgId, after, 500, filter));
       if (batch.length === 0) break;
       for (const row of batch) {
         const chunk = format === 'csv' ? csvLine(row) : vcardEntry(row);
@@ -208,20 +228,75 @@ export function contactsRouter(defaultCountry: string): Router {
     });
   });
 
-  /** How many contacts match a search / tag filter — the number a bulk action would affect. */
+  /** How many contacts match a search / source / filter — the number a bulk action would affect. */
   router.get('/count', requireScope('contacts:read'), async (req: Request, res: Response) => {
-    const parsed = listContactsQuery.pick({ q: true, tag: true, from: true, to: true, dateBy: true }).safeParse(req.query);
-    if (!parsed.success) {
-      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Invalid filter.'));
+    const view = readView(req);
+    if ('error' in view) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', view.error));
       return;
     }
     const orgId = req.crm!.orgId;
     const rows = await req.tenant!((tx) => tx.execute(sql`
-      SELECT count(*)::int AS n FROM contact c
-      WHERE ${searchPredicate(orgId, {
-        q: parsed.data.q, tagId: parsed.data.tag, from: parsed.data.from, to: parsed.data.to, dateBy: parsed.data.dateBy
-      })}`));
+      SELECT count(*)::int AS n FROM contact c WHERE ${searchPredicate(orgId, view.filter)}`));
     res.json({ data: { total: (rows as unknown as Array<{ n: number }>)[0]!.n } });
+  });
+
+  /**
+   * What the Contacts screen offers to look at: every imported file (with its columns and how many people it
+   * brought in), the person's own tags, the saved lists, and what the filters need to name (campaigns, saved
+   * columns). A file is also a tag named after it, so it is left out of "tags"; those cannot be deleted.
+   */
+  router.get('/sources', requireScope('contacts:read'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const data = await req.tenant!(async (tx) => {
+      const all = (await tx.execute(sql`
+        SELECT count(*)::int AS n FROM contact c WHERE c.org_id = ${orgId} AND c.deleted_at IS NULL`)
+      ) as unknown as Array<{ n: number }>;
+      const files = (await tx.execute(sql`
+        SELECT ir.id, ir.filename, ir.created_at AS "importedAt", ir.headers, ir.mapping,
+               CASE WHEN ir.summary ->> 'tagId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                    THEN ir.summary ->> 'tagId' END AS "tagId",
+               (SELECT t.name FROM tag t WHERE t.org_id = ${orgId} AND t.id::text = ir.summary ->> 'tagId') AS "tagName",
+               (SELECT count(DISTINCT r.contact_id)::int FROM import_row r
+                 JOIN contact c ON c.id = r.contact_id AND c.deleted_at IS NULL
+                 WHERE r.import_run_id = ir.id AND r.contact_id IS NOT NULL
+                   AND r.outcome IN ('created', 'updated', 'skipped')) AS "count"
+        FROM import_run ir
+        WHERE ir.org_id = ${orgId} AND ir.status = 'committed' AND ir.superseded_at IS NULL
+        ORDER BY ir.created_at DESC LIMIT 200`)) as unknown as Array<{
+          id: string; filename: string | null; importedAt: string; headers: unknown; mapping: unknown;
+          tagId: string | null; tagName: string | null; count: number;
+        }>;
+      const tags = await tx.execute(sql`
+        SELECT t.id, t.name, t.colour,
+               (SELECT count(*)::int FROM contact_tag ct JOIN contact c ON c.id = ct.contact_id AND c.deleted_at IS NULL
+                 WHERE ct.tag_id = t.id) AS "count"
+        FROM tag t
+        WHERE t.org_id = ${orgId}
+          AND NOT EXISTS (SELECT 1 FROM import_run r WHERE r.org_id = ${orgId} AND r.summary ->> 'tagId' = t.id::text)
+        ORDER BY lower(t.name) ASC`);
+      const lists = (await tx.execute(sql`
+        SELECT id, name, definition FROM segment WHERE org_id = ${orgId} AND saved ORDER BY lower(name) ASC`)
+      ) as unknown as Array<{ id: string; name: string; definition: SegmentDefinition }>;
+      const campaigns = await tx.execute(sql`
+        SELECT id, name FROM campaign WHERE org_id = ${orgId} AND status <> 'draft'
+        ORDER BY coalesce(started_at, created_at) DESC LIMIT 200`);
+      const fields = await loadCustomFields(tx, orgId);
+      return {
+        total: all[0]?.n ?? 0,
+        files: files.map((f) => ({
+          id: f.id, filename: f.filename, importedAt: f.importedAt, count: f.count, tagId: f.tagId, tagName: f.tagName,
+          columns: fileColumns(f.headers, f.mapping)
+        })),
+        tags,
+        lists: await Promise.all(lists.map(async (l) => ({
+          id: l.id, name: l.name, definition: l.definition, count: await countSegmentCriteria(tx, orgId, l.definition)
+        }))),
+        campaigns,
+        fields: fields.map((f) => ({ key: f.key, label: f.label }))
+      };
+    });
+    res.json({ data });
   });
 
   /**
@@ -239,49 +314,138 @@ export function contactsRouter(defaultCountry: string): Router {
         (i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
       return;
     }
-    const { q, tag, from, to, dateBy, sort, limit, cursor } = parsed.data;
+    const view = readView(req);
+    if ('error' in view) {
+      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', view.error));
+      return;
+    }
+    const { sort, limit, offset, cursor, file } = parsed.data;
     const orgId = req.crm!.orgId;
-    // Paging by cursor follows the added date, newest first; other orders return the first page only.
-    const before = sort === 'added_desc' ? cursor ?? null : null;
-    // The same search / tag / date rule bulk tagging resolves, so what is listed is what gets tagged.
-    const filter = searchPredicate(orgId, { q, tagId: tag, from, to, dateBy });
+    // Paging by cursor follows the added date, newest first; other orders page by offset.
+    const before = sort === 'added_desc' && offset === 0 ? cursor ?? null : null;
+    // The same search / source / filter rule bulk tagging resolves, so what is listed is what gets tagged.
+    const filter = searchPredicate(orgId, view.filter);
     const importedAt = sql`(SELECT max(r.created_at) FROM import_row ir JOIN import_run r ON r.id = ir.import_run_id
                             WHERE ir.contact_id = c.id)`;
     const order = {
       added_desc: sql`c.created_at DESC`,
       added_asc: sql`c.created_at ASC`,
-      name_asc: sql`lower(c.display_name) ASC NULLS LAST, c.created_at DESC`,
+      name_asc: sql`lower(c.display_name) ASC NULLS LAST, c.created_at DESC, c.id ASC`,
+      name_desc: sql`lower(c.display_name) DESC NULLS LAST, c.created_at DESC, c.id ASC`,
       imported_desc: sql`${importedAt} DESC NULLS LAST, c.created_at DESC`
     }[sort];
+    // With a file picked, each person's row of that file (every column as it was read); else nothing.
+    const fileValues = file === undefined ? sql`NULL::jsonb` : sql`(
+      SELECT ir.raw FROM import_row ir
+      WHERE ir.contact_id = c.id AND ir.import_run_id = ${file}::uuid AND ir.raw IS NOT NULL
+      ORDER BY ir.row_number DESC LIMIT 1)`;
+    const isFileTag = sql`EXISTS (SELECT 1 FROM import_run r2
+                                  WHERE r2.org_id = ${orgId} AND r2.summary ->> 'tagId' = t.id::text)`;
 
-    const rows = await req.tenant!((tx) => tx.execute(sql`
-      SELECT c.id, c.display_name AS "displayName", c.source,
-             c.do_not_contact AS "doNotContact", c.created_at AS "createdAt",
-             c.custom_fields AS "customFields",
-             ${importedAt} AS "lastImportedAt",
-             coalesce((
-               SELECT json_agg(json_build_object('kind', ci.kind, 'value', ci.value_normalized)
-                               ORDER BY ci.is_primary DESC)
-               FROM contact_identity ci
-               WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
-             ), '[]'::json) AS identities,
-             coalesce((
-               SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'colour', t.colour)
-                               ORDER BY t.name ASC)
-               FROM contact_tag ct JOIN tag t ON t.id = ct.tag_id
-               WHERE ct.contact_id = c.id AND ct.org_id = ${orgId}
-             ), '[]'::json) AS tags
-      FROM contact c
-      WHERE ${filter}
-        AND (${before}::timestamptz IS NULL OR c.created_at < ${before}::timestamptz)
-      ORDER BY ${order}
-      LIMIT ${limit}`));
+    const [rows, counted] = await req.tenant!(async (tx) => [
+      await tx.execute(sql`
+        SELECT c.id, c.display_name AS "displayName", c.source,
+               c.do_not_contact AS "doNotContact", c.created_at AS "createdAt",
+               c.custom_fields AS "customFields",
+               c.last_inbound_at AS "lastActiveAt",
+               ${importedAt} AS "lastImportedAt",
+               (SELECT json_build_object('id', r.id, 'filename', r.filename, 'importedAt', r.created_at)
+                FROM import_row ir JOIN import_run r ON r.id = ir.import_run_id
+                WHERE ir.contact_id = c.id AND r.status = 'committed'
+                ORDER BY r.created_at DESC LIMIT 1) AS file,
+               (SELECT json_build_object('id', cam.id, 'name', cam.name,
+                                         'at', coalesce(cam.started_at, cam.created_at))
+                FROM campaign_recipient cr JOIN campaign cam ON cam.id = cr.campaign_id
+                WHERE cr.contact_id = c.id AND cr.status IN ('pending', 'queued', 'sent')
+                ORDER BY coalesce(cam.started_at, cam.created_at) DESC LIMIT 1) AS "lastCampaign",
+               ${fileValues} AS "fileValues",
+               coalesce((
+                 SELECT json_agg(json_build_object('kind', ci.kind, 'value', ci.value_normalized)
+                                 ORDER BY ci.is_primary DESC)
+                 FROM contact_identity ci
+                 WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
+               ), '[]'::json) AS identities,
+               coalesce((
+                 SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'colour', t.colour, 'isFile', ${isFileTag})
+                                 ORDER BY ${isFileTag} DESC, t.name ASC)
+                 FROM contact_tag ct JOIN tag t ON t.id = ct.tag_id
+                 WHERE ct.contact_id = c.id AND ct.org_id = ${orgId}
+               ), '[]'::json) AS tags
+        FROM contact c
+        WHERE ${filter}
+          AND (${before}::timestamptz IS NULL OR c.created_at < ${before}::timestamptz)
+        ORDER BY ${order}
+        LIMIT ${limit} OFFSET ${offset}`),
+      await tx.execute(sql`SELECT count(*)::int AS n FROM contact c WHERE ${filter}`)
+    ] as const);
 
     const data = rows as unknown as Array<{ createdAt: string }>;
+    const total = (counted as unknown as Array<{ n: number }>)[0]!.n;
     // A full page means there may be more; hand back the last row's timestamp as the next cursor.
     const nextCursor = sort === 'added_desc' && data.length === limit ? data[data.length - 1]!.createdAt : null;
-    res.json({ data, nextCursor });
+    res.json({ data, total, nextCursor });
   });
+
+  /**
+   * One person for the side panel: the file they came from with every column as it was read, every campaign
+   * they have been in, and their latest chat (what Open chat links to).
+   */
+  router.get('/:id/detail', requireUuidParam('id'), requireScope('contacts:read'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+      const data = await req.tenant!(async (tx) => {
+        const exists = await tx.execute(sql`
+          SELECT 1 FROM contact WHERE id = ${id} AND org_id = ${orgId} AND deleted_at IS NULL`);
+        if ((exists as unknown as unknown[]).length === 0) return null;
+        const sources = (await tx.execute(sql`
+          SELECT r.id, r.filename, r.created_at AS "importedAt", r.headers, ir.raw
+          FROM import_row ir JOIN import_run r ON r.id = ir.import_run_id
+          WHERE ir.contact_id = ${id} AND ir.org_id = ${orgId} AND r.status = 'committed'
+          ORDER BY r.created_at DESC, ir.row_number DESC LIMIT 1`)) as unknown as Array<{
+            id: string; filename: string | null; importedAt: string; headers: unknown;
+            raw: Record<string, string> | null;
+          }>;
+        const campaigns = await tx.execute(sql`
+          SELECT cam.id, cam.name, cam.status AS "campaignStatus", s.label AS "numberLabel",
+                 coalesce(cam.started_at, cam.created_at) AS "at",
+                 CASE
+                   WHEN cr.status = 'skipped' THEN 'skipped'
+                   WHEN EXISTS (SELECT 1 FROM message im JOIN conversation iv ON iv.id = im.conversation_id
+                                WHERE iv.contact_id = cr.contact_id AND im.direction = 'inbound'
+                                  AND im.created_at > coalesce(m.sent_at, cr.attempted_at, cam.started_at)) THEN 'replied'
+                   WHEN m.status IN ('read', 'delivered', 'sent', 'failed') THEN m.status
+                   ELSE cr.status
+                 END AS "outcome"
+          FROM campaign_recipient cr
+          JOIN campaign cam ON cam.id = cr.campaign_id
+          JOIN sender_identity s ON s.id = cam.sender_identity_id
+          LEFT JOIN message m ON m.id = cr.message_id
+          WHERE cr.contact_id = ${id} AND cr.org_id = ${orgId}
+          ORDER BY coalesce(cam.started_at, cam.created_at) DESC LIMIT 100`);
+        const chat = (await tx.execute(sql`
+          SELECT id FROM conversation WHERE contact_id = ${id} AND org_id = ${orgId}
+          ORDER BY coalesce(last_inbound_at, last_outbound_at, created_at) DESC LIMIT 1`)
+        ) as unknown as Array<{ id: string }>;
+        const src = sources[0];
+        return {
+          source: src === undefined ? null : {
+            fileId: src.id, filename: src.filename, importedAt: src.importedAt,
+            // Every column the file had, in its order, with this person's value ('' when blank or not kept).
+            columns: Array.isArray(src.headers)
+              ? (src.headers as string[]).map((h) => ({ header: h, value: src.raw?.[h] ?? '' }))
+              : Object.entries(src.raw ?? {}).map(([header, value]) => ({ header, value }))
+          },
+          campaigns,
+          conversationId: chat[0]?.id ?? null
+        };
+      });
+      if (data === null) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such contact.'));
+        return;
+      }
+      res.json({ data });
+    });
 
   /**
    * Attaches a tag to a contact. Idempotent — re-applying the same tag is a no-op, not an error,

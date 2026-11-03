@@ -124,9 +124,30 @@ describe('a thread assigned to one agent', () => {
 });
 
 describe('an unassigned thread', () => {
-  it('lets any agent reply', async () => {
+  const owner = async (): Promise<string | null> =>
+    (await db.execute(sql`SELECT assignee_user_id AS a FROM conversation WHERE id = ${conv}`) as unknown as Array<{ a: string | null }>)[0]!.a;
+
+  it('lets an agent reply, and that agent then owns it: nobody else but an admin can reply after', async () => {
     await db.execute(sql`UPDATE conversation SET assignee_user_id = NULL WHERE id = ${conv}`);
-    const r = await reply(asSession(agent2Token));
-    expect(r.status).toBe(202);
+    expect((await reply(asSession(agent2Token))).status).toBe(202);
+    expect(await owner()).not.toBeNull();
+    expect((await reply(asSession(agent1Token))).status).toBe(409);
+    expect((await reply(asSession(agent2Token))).status).toBe(202);
+    // An admin may always send (here seconds after the owner, so the collision warning is acknowledged).
+    const viaAdmin = await request(app).post('/api/v1/messages').set(asSession(adminToken))
+      .send({ conversationId: conv, body: 'hi', acknowledgeCollision: true });
+    expect(viaAdmin.status).toBe(202);
+  });
+
+  it('is not claimed by an API key, which is not a person', async () => {
+    await db.execute(sql`UPDATE conversation SET assignee_user_id = NULL WHERE id = ${conv}`);
+    expect((await reply({ Authorization: `Bearer ${key}` })).status).toBe(202);
+    expect(await owner()).toBeNull();
+  });
+
+  it('an admin reply to a chat owned by an agent does not take it from them', async () => {
+    await db.execute(sql`UPDATE conversation SET assignee_user_id = ${agent1} WHERE id = ${conv}`);
+    expect((await reply(asSession(adminToken))).status).toBe(202);
+    expect(await owner()).toBe(agent1);
   });
 });

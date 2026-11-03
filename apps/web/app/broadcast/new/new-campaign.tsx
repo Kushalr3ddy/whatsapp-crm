@@ -1,13 +1,14 @@
 'use client';
 
 import './new-campaign.css';
+import { FormatButtons, useMessageBox } from '@/components/message-box';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { AiTemplate, AudienceHistory, BlankFillInChoice, CampaignReview, ImportRun, ReviewTarget, Segment, Sender, Tag } from '@/lib/crm';
 import {
-  applyVariations, BLANK_WORD, checkFillIns, esc, estimateFinish, insertFillIn, lastUsedDay, monthHeading, monthOf,
-  monthOptions, previewHtml, quietHoursText, removeVariations, shortDay, wrapSelection, type BlankChoice, type Column
+  applyVariations, BLANK_WORD, checkFillIns, esc, estimateFinish, lastUsedDay, monthHeading, monthOf,
+  monthOptions, previewHtml, quietHoursText, removeVariations, shortDay, type BlankChoice, type Column
 } from '@/lib/new-campaign';
 import { blankListAction, createCampaignAction, reviewAction, saveCampaignAction, uploadPictureAction } from '../actions';
 
@@ -74,7 +75,6 @@ export function NewCampaign(props: NewCampaignProps) {
   const [varsOpen, setVarsOpen] = useState(false);
   const [varsText, setVarsText] = useState('Hi, Hey, Hello');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [braceTyped, setBraceTyped] = useState(false);
   const [picture, setPicture] = useState<Picture | null>(startPicture);
   const [picNote, setPicNote] = useState<string | null>(startPicture === null ? null : `${startPicture.filename ?? 'picture'} · ${(startPicture.sizeBytes / 1048576).toFixed(2)} MB`);
   const [uploading, startUpload] = useTransition();
@@ -101,7 +101,6 @@ export function NewCampaign(props: NewCampaignProps) {
   const [saved, setSaved] = useState<string | null>(null);
   const [clock, setClock] = useState('');
 
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const comboRef = useRef<HTMLDivElement>(null);
 
@@ -152,34 +151,8 @@ export function NewCampaign(props: NewCampaignProps) {
   const ready = name.trim() !== '' && body.trim() !== '' && unknownKeys.length === 0 && reach > 0 && sender !== undefined;
 
   // ---- the message box -------------------------------------------------------------------------------------------------------
-  /** Applies a change made by a helper (toolbar, menu) to the box and puts the cursor back. */
-  /** Sets the message and puts the cursor back where a helper left it. */
-  function put(value: string, from: number, to: number): void {
-    setBody(value);
-    requestAnimationFrame(() => { bodyRef.current?.focus(); bodyRef.current?.setSelectionRange(from, to); });
-  }
-  /** Wraps the selected words in a WhatsApp marker (bold, italic, strike, mono). */
-  function wrap(marker: string): void {
-    const t = bodyRef.current;
-    if (t === null) return;
-    const r = wrapSelection(body, t.selectionStart, t.selectionEnd, marker);
-    put(r.value, r.start, r.end);
-  }
-  /** Puts a fill-in at the cursor. */
-  function insert(key: string, brace: boolean): void {
-    const t = bodyRef.current;
-    if (t === null) return;
-    const r = insertFillIn(body, t.selectionStart, t.selectionEnd, key, brace);
-    setMenuOpen(false);
-    put(r.value, r.cursor, r.cursor);
-  }
-  /** Reads typing in the message box; a brace opens the fill-in list. */
-  function onBodyChange(value: string, cursor: number): void {
-    setBody(value);
-    const brace = value.charAt(cursor - 1) === '{' && value.charAt(cursor - 2) !== '{';
-    setBraceTyped(brace);
-    if (brace) setMenuOpen(true); else if (value.charAt(cursor - 1) !== '{') setMenuOpen(false);
-  }
+  // The toolbar, Ctrl+B / Ctrl+I, the fill-in list and the cursor handling are the shared message box (`components/message-box.tsx`).
+  const box = useMessageBox(body, setBody, setMenuOpen);
 
   // ---- the picture -----------------------------------------------------------------------------------------------------------
   /** Checks the size, then uploads the chosen picture; the server checks everything else from its bytes. */
@@ -327,20 +300,15 @@ export function NewCampaign(props: NewCampaignProps) {
                 <div className="nc-tools">
                   <label className="nc-l" htmlFor="nc-body" style={{ margin: 0 }}>Message</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <span className="nc-fmt" role="group" aria-label="Format">
-                      <button type="button" aria-label="Bold" title="Bold (Ctrl+B)" onClick={() => { wrap('*'); }}><b>B</b></button>
-                      <button type="button" aria-label="Italic" title="Italic (Ctrl+I)" onClick={() => { wrap('_'); }}><i>I</i></button>
-                      <button type="button" aria-label="Strikethrough" title="Strikethrough" onClick={() => { wrap('~'); }}><s>S</s></button>
-                      <button type="button" aria-label="Monospace" title="Monospace" onClick={() => { wrap('```'); }}>&lt;/&gt;</button>
-                    </span>
-                    <button type="button" className="nc-chipbtn" onClick={() => { setBraceTyped(false); setMenuOpen(!menuOpen); }}>{'{ }'} Insert fill-in</button>
+                    <FormatButtons className="nc-fmt" onWrap={box.wrap} />
+                    <button type="button" className="nc-chipbtn" onClick={() => { box.setBraceTyped(false); setMenuOpen(!menuOpen); }}>{'{ }'} Insert fill-in</button>
                     <button type="button" className="nc-chipbtn" style={{ color: 'var(--mu)', fontFamily: 'var(--fu)' }} onClick={() => { setVarsOpen(!varsOpen); }}>Add wording variations</button>
                   </div>
                 </div>
                 {menuOpen && (
                   <div className="nc-menu" style={{ margin: '8px 0' }}>
                     {columns.map((c) => (
-                      <button key={c.key} type="button" onClick={() => { insert(c.key, braceTyped); }}>
+                      <button key={c.key} type="button" onClick={() => { box.insert(c.key, box.braceTyped); }}>
                         <b>{`{{${c.key}}}`}</b><span>{c.label}{review !== null ? ` · ${c.have.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} have it` : ''}</span>
                       </button>
                     ))}
@@ -356,15 +324,10 @@ export function NewCampaign(props: NewCampaignProps) {
                     </span>
                   </div>
                 )}
-                <textarea ref={bodyRef} className="nc-in" id="nc-body" value={body} style={{ marginTop: 8 }} maxLength={4096}
+                <textarea ref={box.ref} className="nc-in" id="nc-body" value={body} style={{ marginTop: 8 }} maxLength={4096}
                   placeholder="What every recipient receives…"
-                  onChange={(e) => { onBodyChange(e.target.value, e.target.selectionStart); }}
-                  onKeyDown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-                      const k = e.key.toLowerCase();
-                      if (k === 'b') { e.preventDefault(); wrap('*'); } else if (k === 'i') { e.preventDefault(); wrap('_'); }
-                    }
-                  }} />
+                  onChange={(e) => { box.onChange(e.target.value, e.target.selectionStart); }}
+                  onKeyDown={(e) => { box.onKeyDown(e); }} />
                 <div className="nc-meter" style={{ marginTop: 6 }}>
                   <span>{body.length.toLocaleString('en-US')} characters</span>
                   <span>Like WhatsApp: <code>*bold*</code> <code>_italic_</code> <code>~strike~</code> · type <code>{'{'}</code> for a fill-in</span>
@@ -560,11 +523,7 @@ export function NewCampaign(props: NewCampaignProps) {
           <tbody>
             {review !== null && columns.map((c) => {
               const ex = example(c.key);
-              const click = (): void => {
-                const t = bodyRef.current;
-                const r = insertFillIn(body, t?.selectionStart ?? body.length, t?.selectionEnd ?? body.length, c.key, false);
-                put(r.value, r.cursor, r.cursor);
-              };
+              const click = (): void => { box.insert(c.key, false); };
               return (
                 <tr key={c.key}>
                   <td><button type="button" onClick={click}><code>{`{{${c.key}}}`}</code></button></td>

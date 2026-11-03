@@ -107,7 +107,7 @@ test.describe('recorded walkthrough', () => {
     await test.step('contacts: search, then tag your own phones', async () => {
       await go('Contacts');
       await look(page);
-      await page.goto(`/contacts?q=${encodeURIComponent('Live Test')}`);
+      await page.goto(`/contacts/classic?q=${encodeURIComponent('Live Test')}`);
       await rest();
       await openDetails(page, /^New tag/);
       await page.getByPlaceholder('New tag name…').pressSequentially(tag, { delay: 30 });

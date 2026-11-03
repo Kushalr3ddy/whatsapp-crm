@@ -223,6 +223,12 @@ assigned to someone else; the composer disables Reply and offers a note instead.
 
 ---
 
+## The Inbox screen (2026-11)
+
+Run a production build of the web app, the API and a gateway with `GATEWAY_CHANNEL=fake`, then `npm run local:seed` for three chats. Check at 1280 px and 375 px: search (`/` jumps to it), the chips, Filters, opening a chat, Details, Take over and Hand back to AI, a reply with a fill-in (the Preview line shows the person's values), a note, a pasted picture (up to five), Resolve and Undo.
+
+Give every process its own `STORAGE_PATH` (an absolute path) when several stacks share one machine: a gateway that reads another checkout's `./storage` fails a picture send with `no object at key`. A gateway left running from an earlier checkout will also pick up your database's messages, so check `pg_stat_activity` for `listen "gateway"` connections.
+
 ## Creating a contact
 
 The single-person route the host app uses (`contacts:write`). At least one of `phone` / `email`;
@@ -413,6 +419,8 @@ a draft being edited (Edit opens it with its values, Save changes changes the sa
 `tests/e2e/helpers.ts` (the screen has no form fields named `name`, `body` or `fromTagId` any more). A draft is not made for nobody,
 so a spec needs a person in its tag first. The date and estimate wording has unit tests in `apps/web/lib/campaign-time.test.ts`, and the
 New campaign wording, fill-in checks, months and finish estimate in `apps/web/lib/new-campaign.test.ts` (`npm test`).
+
+`tests/e2e/contacts-screen.spec.ts` covers the Contacts screen (each run imports its own file, so it can count exactly): a file as a source, search, Filters with a live count and a chip, Select all and Add tag with Create tag and Undo, deleting a tag of your own (the file's own tag has no delete), Save as a list and opening it, Columns, and the person panel. The controls the design has no place for (do-not-contact switch, defining saved columns) are exercised at `/contacts/classic`. On a busy machine these specs need longer waits than the default 10 s (the import step alone can take longer): run them with a config that sets `expect.timeout` to 45 s. The screen's rules (what a filter control means, chips, the address, dates) have unit tests in `apps/web/lib/contacts-screen.test.ts`; the API and the SQL rules in `tests/integration/contacts-screen.test.ts` (the filters, paging and total, "Select all N" tagging exactly the filtered set, bound parameters, the file's tag refusing delete, export with the same filter).
 
 **Trying the New campaign screen on its own database.** The shared dev database may be behind this branch's migrations, and the
 API of another checkout does not have the new routes. For a look without touching them: create a database next to the dev one

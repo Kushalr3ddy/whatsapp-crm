@@ -109,10 +109,19 @@ function reply(headers: Record<string, string>) {
 }
 
 describe('participants', () => {
-  it('lets a participant reply to a thread owned by someone else', async () => {
+  it('lets a participant read a thread owned by someone else but not reply to it: only the owner or an admin send', async () => {
     expect((await reply(asSession(agent2Token))).status).toBe(409);
     expect((await addParticipant(asSession(adminToken), agent2)).status).toBe(201);
-    expect((await reply(asSession(agent2Token))).status).toBe(202);
+    const read = await request(app).get(`/api/v1/conversations/${conv}/messages`).set(asSession(agent2Token));
+    expect(read.status).toBe(200);
+    const refused = await reply(asSession(agent2Token));
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('THREAD_ASSIGNED');
+    // A file is a message too: the same rule.
+    const file = await request(app).post(`/api/v1/conversations/${conv}/attachments?filename=a.pdf`)
+      .set(asSession(agent2Token)).set('Content-Type', 'application/octet-stream').send(Buffer.from('%PDF-1.4 1 0 obj <<>> endobj %%EOF'));
+    expect(file.status).toBe(409);
+    expect((await reply(asSession(agent1Token))).status).toBe(202);
   });
 
   it('is admin-only to add or remove', async () => {

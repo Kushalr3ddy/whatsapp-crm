@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, openDetails, CREDS_MISSING } from './helpers';
+import { signIn, CREDS_MISSING } from './helpers';
 
 /** The feedback fixes: Preview explained, Import only after Preview, a new tag says so, bulk Preview always answers. */
 test.describe('feedback fixes', () => {
@@ -18,20 +18,19 @@ test.describe('feedback fixes', () => {
     await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
   });
 
-  test('contacts: new tag shows a banner, bulk Preview says when no one matches', async ({ page }) => {
+  test('contacts: a new tag says so, and a search nobody matches says so', async ({ page }) => {
     const tag = `e2e-fb-${String(Date.now())}`;
     await signIn(page);
     await page.goto('/contacts');
-    await openDetails(page, /^New tag/);
-    await page.getByPlaceholder('New tag name…').fill(tag);
-    await page.getByRole('button', { name: 'Add tag' }).click();
-    await expect(page.getByText(`Tag “${tag}” is ready`)).toBeVisible();
+    await page.getByRole('button', { name: 'New tag' }).click();
+    await page.getByLabel('New tag name').fill(tag);
+    await page.keyboard.press('Enter');
+    await expect(page.getByText(`Tag “${tag}” created.`)).toBeVisible();
+    await expect(page.getByRole('button', { name: new RegExp(`^${tag}`) })).toBeVisible();
 
-    // A search nobody matches, then Preview a bulk add over "everyone matching".
     await page.goto('/contacts?q=zzz-nobody-matches-this');
-    await openDetails(page, 'Tag many at once');
-    await page.getByLabel('Tag to apply').selectOption({ label: tag });
-    await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByText('No one matches, so nothing would change.')).toBeVisible();
+    await expect(page.getByText('No people match')).toBeVisible();
+    await page.getByRole('button', { name: 'Clear all filters' }).click();
+    await expect(page.getByText('No people match')).toHaveCount(0);
   });
 });

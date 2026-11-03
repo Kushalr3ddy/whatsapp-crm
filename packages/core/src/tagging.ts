@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
+import { buildSegmentPredicate, segmentCriteria, type SegmentDefinition } from './segments.js';
 
 /**
  * Mass tagging: add or remove one tag across many contacts in a single set-based statement.
@@ -26,15 +26,22 @@ export interface ContactFilter {
   readonly from?: string | undefined;
   readonly to?: string | undefined;
   readonly dateBy?: 'added' | 'imported' | undefined;
+  /** Only people a file's import created, updated or matched (the people carrying that file's tag). */
+  readonly importRunId?: string | undefined;
+  /** The grouped filters of the Contacts screen. The same criteria a saved list stores (do-not-contact people stay in). */
+  readonly criteria?: SegmentDefinition | undefined;
 }
+
+/** The outcomes that put a person in a file: the ones `tagImportRun` tags. */
+const FILE_OUTCOMES = sql`ir.outcome IN ('created', 'updated', 'skipped')`;
 
 /** Anything that can run a query — a request's tenant transaction. */
 interface Executor { execute: (q: SQL) => Promise<unknown> }
 
 /**
- * The list screen's search and tag-filter rule, over a contact aliased `c`. One definition shared by
- * the contact list, its count and bulk tagging, so "the 37 people I can see" and "the 37 people it
- * will tag" can never drift apart.
+ * The list screen's search, source and filter rule, over a contact aliased `c`. One definition shared by
+ * the contact list, its count, bulk tagging and the export, so "the 37 people I can see" and "the 37 people
+ * it will tag" can never drift apart. Search matches the name and the phone or email only.
  */
 export function searchPredicate(orgId: string, filter: ContactFilter): SQL {
   const like = filter.q === undefined || filter.q === '' ? null : `%${filter.q}%`;
@@ -42,10 +49,12 @@ export function searchPredicate(orgId: string, filter: ContactFilter): SQL {
   const from = filter.from === undefined || filter.from === '' ? null : filter.from;
   const to = filter.to === undefined || filter.to === '' ? null : filter.to;
   const imported = filter.dateBy === 'imported';
+  const importRunId = filter.importRunId ?? null;
+  const criteria = filter.criteria === undefined ? [] : segmentCriteria(filter.criteria, orgId);
+  const extra = criteria.length === 0 ? sql`` : sql`AND ${sql.join(criteria, sql` AND `)}`;
   return sql`c.org_id = ${orgId} AND c.deleted_at IS NULL
     AND (${like}::text IS NULL
          OR c.display_name ILIKE ${like}
-         OR EXISTS (SELECT 1 FROM jsonb_each_text(c.custom_fields) cf WHERE cf.value ILIKE ${like})
          OR EXISTS (SELECT 1 FROM contact_identity ci2
                     WHERE ci2.contact_id = c.id AND ci2.value_normalized ILIKE ${like}))
     AND (${tagId}::uuid IS NULL
@@ -59,7 +68,12 @@ export function searchPredicate(orgId: string, filter: ContactFilter): SQL {
                SELECT 1 FROM import_row ir JOIN import_run r ON r.id = ir.import_run_id
                WHERE ir.contact_id = c.id
                  AND (${from}::date IS NULL OR r.created_at >= ${from}::date)
-                 AND (${to}::date IS NULL OR r.created_at < ${to}::date + 1))))`;
+                 AND (${to}::date IS NULL OR r.created_at < ${to}::date + 1))))
+    AND (${importRunId}::uuid IS NULL
+         OR EXISTS (SELECT 1 FROM import_row ir
+                    WHERE ir.contact_id = c.id AND ir.org_id = ${orgId}
+                      AND ir.import_run_id = ${importRunId}::uuid AND ${FILE_OUTCOMES}))
+    ${extra}`;
 }
 
 /** Turns a target into a predicate over `c`, or null when it names a segment that does not exist. */
@@ -91,14 +105,31 @@ export async function countMatching(tx: Executor, predicate: SQL): Promise<numbe
 
 /** Adds the tag to everyone the predicate matches; returns how many did not already carry it. */
 export async function bulkTag(tx: Executor, orgId: string, tagId: string, predicate: SQL): Promise<number> {
+  return (await bulkTagIds(tx, orgId, tagId, predicate)).length;
+}
+
+/**
+ * As `bulkTag`, but returns the people who did not already carry the tag, so an Undo can take the tag off
+ * exactly them and nobody else.
+ */
+export async function bulkTagIds(tx: Executor, orgId: string, tagId: string, predicate: SQL): Promise<string[]> {
   const rows = await tx.execute(sql`
-    WITH ins AS (
-      INSERT INTO contact_tag (org_id, contact_id, tag_id)
-      SELECT ${orgId}, c.id, ${tagId} FROM contact c WHERE ${predicate}
-      ON CONFLICT (contact_id, tag_id) DO NOTHING
-      RETURNING 1)
-    SELECT count(*)::int AS n FROM ins`);
-  return (rows as unknown as Array<{ n: number }>)[0]!.n;
+    INSERT INTO contact_tag (org_id, contact_id, tag_id)
+    SELECT ${orgId}, c.id, ${tagId} FROM contact c WHERE ${predicate}
+    ON CONFLICT (contact_id, tag_id) DO NOTHING
+    RETURNING contact_id AS id`);
+  return (rows as unknown as Array<{ id: string }>).map((r) => r.id);
+}
+
+/**
+ * Whether a tag is the one an import added to its file's people (the tag is named after the file). Those are
+ * not the person's to delete: the file keeps its tag as long as the file exists.
+ */
+export async function isFileTag(tx: Executor, orgId: string, tagId: string): Promise<boolean> {
+  const rows = await tx.execute(sql`
+    SELECT 1 FROM import_run
+    WHERE org_id = ${orgId} AND summary ->> 'tagId' = ${tagId}::text LIMIT 1`);
+  return (rows as unknown as unknown[]).length > 0;
 }
 
 /** Removes the tag from everyone the predicate matches; returns how many carried it. */

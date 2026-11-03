@@ -18,9 +18,9 @@ async function run(fn: () => Promise<unknown>): Promise<void> {
   try {
     await fn();
   } catch (error) {
-    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts/classic');
   }
-  revalidatePath('/contacts');
+  revalidatePath('/contacts/classic');
 }
 
 /** Creates a tag from the "new tag" form. */
@@ -28,7 +28,7 @@ export async function createTagAction(formData: FormData): Promise<void> {
   const name = String(formData.get('name') ?? '').trim();
   if (name === '') return;
   await run(() => createTag(name));
-  redirect(`/contacts?tagMade=${encodeURIComponent(name)}`);
+  redirect(`/contacts/classic?tagMade=${encodeURIComponent(name)}`);
 }
 
 /**
@@ -80,7 +80,7 @@ export async function createCampaignFromSelectionAction(formData: FormData): Pro
   const ids = formData.getAll('contactId').map((v) => String(v)).filter((v) => v !== '');
 
   if (name === '' || body === '' || senderIdentityId === '' || ids.length === 0) {
-    redirect('/contacts?campaignError=missing');
+    redirect('/contacts/classic?campaignError=missing');
   }
 
   let id: string;
@@ -88,9 +88,9 @@ export async function createCampaignFromSelectionAction(formData: FormData): Pro
     const created = await createCampaign({ name, body, senderIdentityId, explicitContactIds: ids });
     id = created.id;
   } catch (error) {
-    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts/classic');
     const code = error instanceof CrmApiError ? error.code : 'ERROR';
-    redirect(`/contacts?campaignError=${encodeURIComponent(code)}`);
+    redirect(`/contacts/classic?campaignError=${encodeURIComponent(code)}`);
   }
   redirect(`/broadcast/${id}`);
 }
@@ -152,7 +152,7 @@ function matchingTarget(v: View) {
   };
 }
 
-/** Builds the `/contacts` URL to return to, keeping the current search, tag and date filter. */
+/** Builds the `/contacts/classic` URL to return to, keeping the current search, tag and date filter. */
 function backTo(v: View, extra: Record<string, string>): string {
   const p = new URLSearchParams();
   if (v.q !== '') p.set('q', v.q);
@@ -161,7 +161,7 @@ function backTo(v: View, extra: Record<string, string>): string {
   if (v.to !== '') p.set('to', v.to);
   if ((v.from !== '' || v.to !== '') && v.dateBy === 'imported') p.set('dateBy', 'imported');
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
-  return `/contacts?${p.toString()}`;
+  return `/contacts/classic?${p.toString()}`;
 }
 
 /**
@@ -184,7 +184,7 @@ export async function bulkTagPreviewAction(formData: FormData): Promise<void> {
       : matchingTarget(view);
     matched = (await bulkTagContacts(bulkTag, { action: bulkAction, target, dryRun: true })).matched;
   } catch (error) {
-    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts/classic');
     redirect(backTo(view, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
   }
   redirect(backTo(view, { bulkTag, bulkAction, bulkScope, bulkCount: String(matched) }));
@@ -207,10 +207,10 @@ export async function bulkTagConfirmAction(formData: FormData): Promise<void> {
       action: bulkAction, target, dryRun: false, expectedCount: expected
     })).changed;
   } catch (error) {
-    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts/classic');
     redirect(backTo(view, { bulkError: error instanceof CrmApiError ? error.code : 'ERROR' }));
   }
-  revalidatePath('/contacts');
+  revalidatePath('/contacts/classic');
   redirect(backTo(view, { bulkDone: String(changed), bulkAction }));
 }
 
@@ -219,17 +219,17 @@ export async function bulkTagCheckedAction(formData: FormData): Promise<void> {
   const ids = formData.getAll('contactId').map(String).filter((v) => v !== '');
   const bulkTag = String(formData.get('bulkTag') ?? '');
   const bulkAction = formData.get('bulkAction') === 'remove' ? 'remove' : 'add';
-  if (ids.length === 0 || bulkTag === '') redirect('/contacts?bulkError=pick_people');
-  if (bulkTag === 'none') redirect('/contacts?bulkError=no_tag');
+  if (ids.length === 0 || bulkTag === '') redirect('/contacts/classic?bulkError=pick_people');
+  if (bulkTag === 'none') redirect('/contacts/classic?bulkError=no_tag');
   let changed: number;
   try {
     changed = (await bulkTagContacts(bulkTag, {
       action: bulkAction, target: { kind: 'ids', ids }, dryRun: false
     })).changed;
   } catch (error) {
-    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts');
-    redirect(`/contacts?bulkError=${error instanceof CrmApiError ? error.code : 'ERROR'}`);
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/contacts/classic');
+    redirect(`/contacts/classic?bulkError=${error instanceof CrmApiError ? error.code : 'ERROR'}`);
   }
-  revalidatePath('/contacts');
-  redirect(`/contacts?bulkDone=${String(changed)}&bulkAction=${bulkAction}`);
+  revalidatePath('/contacts/classic');
+  redirect(`/contacts/classic?bulkDone=${String(changed)}&bulkAction=${bulkAction}`);
 }

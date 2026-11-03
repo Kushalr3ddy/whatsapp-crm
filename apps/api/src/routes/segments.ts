@@ -6,17 +6,36 @@ import { requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
 
+/** A column rule on the person's saved details. The column key is a lower-case slug, like every custom field key. */
+const fieldRuleSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+  op: z.enum(['is', 'isnot', 'has', 'blank', 'filled']),
+  value: z.string().max(200).optional()
+}).strict();
+
 /**
  * The allowlisted segment filter. `.strict()` rejects any unknown key with a clean 422 — so a
  * definition can only ever contain the criteria the engine understands. Safety does not depend on
  * this (the engine binds every value and ignores unknown keys), but it turns a typo into a clear
  * error rather than a silently-ignored filter.
  */
-const definitionSchema = z.object({
+export const segmentDefinitionSchema = z.object({
   tagIds: z.array(z.string().uuid()).max(20).optional(),
   replied: z.enum(['ever', 'never']).optional(),
-  lastContactedWithinDays: z.coerce.number().int().min(1).max(3650).optional()
+  lastContactedWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
+  notContactedWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
+  activeWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
+  activeOlderThanDays: z.coerce.number().int().min(1).max(3650).optional(),
+  waitingForUs: z.boolean().optional(),
+  campaigns: z.enum(['some', 'never']).optional(),
+  campaignId: z.string().uuid().optional(),
+  dnc: z.enum(['only', 'exclude']).optional(),
+  whatsapp: z.enum(['yes', 'no', 'unchecked']).optional(),
+  email: z.enum(['yes', 'no']).optional(),
+  importedWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
+  fieldRules: z.array(fieldRuleSchema).max(10).optional()
 }).strict();
+const definitionSchema = segmentDefinitionSchema;
 
 /** Body for creating a segment: a name and its filter. */
 const createSegment = z.object({

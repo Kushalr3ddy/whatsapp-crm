@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { SubmitButton } from './submit-button';
+import { SubmitButton } from '../submit-button';
 
 /**
  * A tag chip (a small rounded label showing a tag's name) on a contact, whose "×" asks first.

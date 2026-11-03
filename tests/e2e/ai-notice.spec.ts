@@ -42,17 +42,19 @@ test.describe('ai assistant warning in a thread', () => {
       await page.goto(`/inbox/${held}`);
       const banner = page.getByRole('alert', { name: 'AI assistant warning' });
       await expect(banner).toContainText('the number isn’t connected');
-      await expect(banner.getByRole('button')).toHaveCount(0);
+      // Only "Reply myself" (the person takes the chat over): there is no override and no retry for a waiting reply.
+      await expect(banner.getByRole('button')).toHaveCount(1);
+      await expect(banner.getByRole('button', { name: 'Reply myself' })).toBeVisible();
 
       await page.goto(`/inbox/${dnc}`);
-      await expect(banner).toContainText('do-not-contact');
+      await expect(banner).toContainText('do not contact');
       await expect(banner).toContainText('risk of reports and a ban');
       await banner.getByRole('button', { name: /Allow reply anyway/ }).click();
       // A reason is required: a too-short one cannot be submitted, so the form stays and nothing is sent.
       await banner.getByLabel(/Why is this OK/).fill('short');
       await banner.getByRole('button', { name: 'Allow this one reply' }).click();
       await expect(banner.getByRole('button', { name: 'Allow this one reply' })).toBeVisible();
-      await expect(banner).toContainText('do-not-contact');
+      await expect(banner).toContainText('do not contact');
     } finally {
       await sql.end({ timeout: 2 });
     }

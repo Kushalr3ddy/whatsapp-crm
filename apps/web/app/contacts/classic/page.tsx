@@ -7,10 +7,10 @@ import {
   bulkTagPreviewAction, bulkTagConfirmAction, bulkTagCheckedAction,
   createTagAction, attachTagAction, detachTagAction, createCampaignFromSelectionAction
 } from './actions';
-import { PageHeader, EmptyState, initialsOf } from '../ui';
+import { PageHeader, EmptyState, initialsOf } from '../../ui';
 import { TagChip } from './tag-chip';
 import { RemoveTag } from './remove-tag';
-import { SubmitButton } from './submit-button';
+import { SubmitButton } from '../submit-button';
 import { LazyDetails } from './lazy-details';
 import { FieldsPanel } from './fields-panel';
 import { TagManager } from './tag-manager';
@@ -29,7 +29,7 @@ const SORTS: ReadonlyArray<{ value: View['sort']; label: string }> = [
   { value: 'name_asc', label: 'Name A to Z' }
 ];
 
-/** The `/contacts` address for a view, changing only what `over` names; empty parts are left out. */
+/** The `/contacts/classic` address for a view, changing only what `over` names; empty parts are left out. */
 function viewHref(v: View, over: Partial<View> = {}): string {
   const n = { ...v, ...over };
   const p = new URLSearchParams();
@@ -40,7 +40,7 @@ function viewHref(v: View, over: Partial<View> = {}): string {
   if ((n.from !== '' || n.to !== '') && n.dateBy === 'imported') p.set('dateBy', 'imported');
   if (n.sort !== 'added_desc') p.set('sort', n.sort);
   const qs = p.toString();
-  return `/contacts${qs === '' ? '' : `?${qs}`}`;
+  return `/contacts/classic${qs === '' ? '' : `?${qs}`}`;
 }
 
 /** A day like "21 Oct 2026", or a dash when there is none. */
@@ -103,7 +103,7 @@ export default async function ContactsPage(
       : 'Could not reach the API. Is it running? Start it with: npm run dev';
   }
 
-  if (expired) redirect('/login?next=/contacts');
+  if (expired) redirect('/login?next=/contacts/classic');
 
   // Campaigns already aimed at the tag being looked at, so the page can offer to reuse one instead of starting another.
   let tagCampaigns: Campaign[] = [];
@@ -164,7 +164,7 @@ export default async function ContactsPage(
               <button type="submit" className="btn btn-sm">Apply</button>
             </div>
           </details>
-          {(filtered || view.sort !== 'added_desc') && <Link href="/contacts" className="btn btn-ghost">Clear</Link>}
+          {(filtered || view.sort !== 'added_desc') && <Link href="/contacts/classic" className="btn btn-ghost">Clear</Link>}
         </form>
         <TagFilterBar tags={tags} view={view} />
         {activeTagName !== undefined && (
@@ -315,7 +315,7 @@ function BulkTagBar(
             {preview.scope === 'all' ? ' (everyone)' : narrowed ? ' (matching the current filter)' : ' (everyone listed)'}?
           </span>}
           {preview.count > 0 && <SubmitButton className="btn btn-sm btn-primary" pendingLabel="Applying…">Confirm</SubmitButton>}
-          <a href="/contacts" className="text-xs text-muted underline">Cancel</a>
+          <a href="/contacts/classic" className="text-xs text-muted underline">Cancel</a>
         </form>
       ) : (
         <form action={bulkTagPreviewAction} className="mt-2 flex flex-col items-stretch gap-2">
