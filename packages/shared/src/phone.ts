@@ -53,9 +53,8 @@ export function normalisePhone(
     return ok({
       e164: parsed.number,
       type,
-      // A landline cannot receive WhatsApp. Catching it here saves a send attempt, a
-      // delivery failure, and the delivery-ratio penalty that failure would cost the
-      // sender's health score (docs/08-antiban.md).
+      // A landline cannot receive WhatsApp. Catching it here saves a send attempt and a
+      // delivery failure.
       reachableOnWhatsApp: type !== 'fixed_line'
     });
   } catch {

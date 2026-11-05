@@ -5,6 +5,7 @@ import { assertKeyRingCoversData } from '@crm/core';
 import { createStorage } from '@crm/storage';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
 import { buildApp } from './app.js';
+import { IMPORT_PARSE_DEFAULTS, warmImportParsers } from './import-parse.js';
 
 /** Thrown when the database does not match this build of the code. Always fatal. */
 class SchemaMismatchError extends Error {
@@ -75,6 +76,8 @@ async function main(): Promise<void> {
   });
   // Picks up AI requests left waiting by a restart, and keeps the queue tidy.
   app.aiRunner.start();
+  // Uploaded contact files are read in child processes (R-016); start them now, not on the first upload.
+  warmImportParsers(IMPORT_PARSE_DEFAULTS);
   const server = app.listen(config.PORT, config.HOST, () => {
     logger.info(
       { port: config.PORT, preset: config.PRESET, role: config.PROCESS_ROLE, env: config.NODE_ENV },

@@ -143,7 +143,7 @@ export function AiQueue({ initial, mayStart }: { initial: AiJob[]; mayStart: boo
         For example: “Send the Friday interview reminder to everyone tagged pune”, “message Asha and ask if she can start Monday”,
         “pause the Diwali campaign”, or “change the wording of the walk-in campaign to mention parking”.
         {mayStart
-          ? ' It may start campaigns itself; every anti-ban limit still applies.'
+          ? ' It may start campaigns itself.'
           : ' It prepares campaigns and you press Start; it cannot start one itself.'}
       </p>
       <form onSubmit={send} className="mt-3 flex flex-col gap-2">

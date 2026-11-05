@@ -12,7 +12,7 @@ never knows which one it is talking to. Two adapters in v1 (Baileys, Meta Cloud 
 
 - As an operator I link a WhatsApp number by scanning a QR **or** by entering a pairing code
   on my phone, so I can link a number I am not physically holding.
-- As an operator I see each number's live connection state, health and risk score.
+- As an operator I see each number's live connection state.
 - As an operator my numbers reconnect themselves after a restart, with no manual step.
 - As an admin I reassign a number from one user to another when someone leaves.
 - As a developer I add a new transport by writing one class that passes the contract suite.
@@ -64,7 +64,7 @@ DELETE /api/v1/senders/{id}                retire (never hard-delete: history re
 POST   /api/v1/senders/{id}/link           start linking → {mode: qr|pairing, payload}
 POST   /api/v1/senders/{id}/reconnect
 POST   /api/v1/senders/{id}/logout
-GET    /api/v1/senders/{id}/health         state, risk score, recent risk events
+GET    /api/v1/senders/{id}/health-events   what has happened to the number (refused, logged out, device removed)
 ```
 
 ## Test cases
@@ -75,7 +75,7 @@ GET    /api/v1/senders/{id}/health         state, risk score, recent risk events
 | TC-1.2 | Link via pairing code | Same end state as TC-1.1 |
 | TC-1.3 | Kill gateway mid-conversation, restart | Session restores, no message lost, no duplicate |
 | TC-1.4 | Provider returns 401 | Sender → `retired`, Critical alert, no reconnect loop |
-| TC-1.5 | Provider returns 429 | Backoff applied, risk score raised, campaign paused on that sender |
+| TC-1.5 | Provider returns 429 | Backoff applied |
 | TC-1.6 | Send to unresolvable `@lid` recipient | That recipient fails; session stays `active`; other sends unaffected |
 | TC-1.7 | Freeform send outside Meta's 24h window | Rejected by the dispatcher; provider never called |
 | TC-1.8 | Contract suite across `baileys`, `meta`, `fake` | Identical behaviour for every shared assertion |

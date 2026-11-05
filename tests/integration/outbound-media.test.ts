@@ -71,8 +71,8 @@ beforeEach(async () => {
   agent2Token = (await createSession(db, { userId: agent2, orgId })).token;
   key = (await issueApiKey(db, { orgId, name: 'k', scopes: ['messages:send', 'conversations:read'] })).secret;
   senderId = ((await db.execute(sql`
-    INSERT INTO sender_identity(org_id, provider, label, status, warmup_started_at, phone_e164)
-    VALUES (${orgId}, 'fake', 'n', 'active', now() - interval '30 days', '+919000000011') RETURNING id`)
+    INSERT INTO sender_identity(org_id, provider, label, status, phone_e164)
+    VALUES (${orgId}, 'fake', 'n', 'active', '+919000000011') RETURNING id`)
   ) as unknown as Array<{ id: string }>)[0]!.id;
   const c = ((await db.execute(sql`
     INSERT INTO contact(org_id, display_name, source) VALUES (${orgId}, 'x', 'test') RETURNING id`)
@@ -160,8 +160,7 @@ describe('the gateway sending a queued attachment', () => {
   function ctx(provider: FakeChannelProvider): WorkContext {
     return {
       db, provider, logger, storage: media.storage,
-      decrypt: (c) => new TextDecoder().decode(kms.decrypt(c)),
-      limits: { perMinute: 8, perDay: 1500 }, sleep: async () => {}
+      decrypt: (c) => new TextDecoder().decode(kms.decrypt(c)), sleep: async () => {}
     };
   }
 

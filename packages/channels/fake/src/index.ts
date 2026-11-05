@@ -1,7 +1,7 @@
 import type {
   AuthStateStore, ChannelCapabilities, ChannelProvider, DisconnectReason, LinkChallenge,
-  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedStatusEvent, OutboundContent,
-  ProviderHealth,
+  NormalisedConnectionEvent, NormalisedInboundEvent, NormalisedNoticeEvent, NormalisedRetryEvent, NormalisedStatusEvent, OutboundContent,
+  ProfileVisibility, ProviderHealth,
   Recipient, SenderRef, SendResult, InboundMedia } from '@crm/channels';
 
 /**
@@ -30,6 +30,8 @@ export interface FakeOptions {
    * undelivered sends as a delivery collapse and pauses the number for 48 hours.
    */
   readonly autoDeliverAfterMs?: number;
+  /** The time the fake stamps on what it records. A test with a fake clock passes it, so presence, typing and sends line up with the lane's. */
+  readonly clock?: () => Date;
 }
 
 /** Baileys-like defaults: free, unofficial, no window, no template requirement. */
@@ -40,7 +42,6 @@ const DEFAULT_CAPABILITIES: ChannelCapabilities = {
   supportsDeliveryReceipts: true,
   supportsMedia: true,
   supportsInteractive: false,
-  perSenderDailyCap: null,
   costPerMessage: false
 };
 
@@ -48,7 +49,7 @@ const DEFAULT_CAPABILITIES: ChannelCapabilities = {
  * An in-memory ChannelProvider. Sends nothing; records everything.
  *
  * This is the single most useful object in the test suite. With it, the dispatcher, the
- * anti-ban engine, campaigns, the inbox and the whole inbound pipeline are testable with no
+ * anti-ban policy, campaigns, the inbox and the whole inbound pipeline are testable with no
  * WhatsApp account, no phone and no ban risk. The previous system had no such thing, which is
  * why its own docs describe changes as "verified live against the real OpenWA session" —
  * i.e. by messaging real people (docs/00-prior-art.md, M20).
@@ -64,19 +65,27 @@ export class FakeChannelProvider implements ChannelProvider {
   readonly sent: FakeSentMessage[] = [];
 
   /** Every typing-presence call, in order, so a test can assert composing fired before the send. */
-  readonly typingCalls: Array<{ senderId: string; to: Recipient; state: 'composing' | 'paused' }> = [];
+  readonly typingCalls: Array<{ senderId: string; to: Recipient; state: 'composing' | 'paused'; at: Date }> = [];
+  /** Every presence call, in order: the number going online before a run and offline after it (F6 AC-1.6). */
+  readonly presenceCalls: Array<{ senderId: string; state: 'available' | 'unavailable'; at: Date }> = [];
+  /** Every read receipt asked for, in order: who, which of their messages, when (F6 AC-1.7). */
+  readonly markReadCalls: Array<{ senderId: string; from: Recipient; providerMessageIds: readonly string[]; at: Date }> = [];
+  /** Numbers (E.164) whose sends WhatsApp refuses with a 463 until removed from this set. */
+  readonly refuse463 = new Set<string>();
   /** Numbers (E.164) this fake reports as having no WhatsApp account; every other number is registered. */
   readonly unregistered = new Set<string>();
   /** Every registration lookup, in order, so a test can assert how many were made and for which numbers. */
   readonly registrationChecks: string[] = [];
   /** When set, lookups answer "could not tell" (null), as a closed socket or a failed query would. */
   registrationUnknown = false;
-
-  /** Every read receipt sent, in order, so a test can assert when (and whether) one went out. */
-  readonly readCalls: Array<{ senderId: string; to: Recipient; providerMessageId: string }> = [];
-
-  /** Every own-presence call, in order, so a test can assert the entropy blip fired. */
-  readonly presenceCalls: Array<{ senderId: string; state: 'available' | 'unavailable' }> = [];
+  /** What each contact's profile shows (by E.164): a number not listed shows both photo and about, as most contacts do. */
+  readonly profiles = new Map<string, ProfileVisibility>();
+  /** Every profile lookup, in order (the contact's E.164), so a test can assert how many were made (F6 AC-4.2). */
+  readonly profileChecks: string[] = [];
+  /** When set, profile lookups answer "could not tell" (null). */
+  profileUnknown = false;
+  /** Every encryption session the gateway asked to be recreated, in order (F6 AC-5.3). */
+  readonly sessionResets: Array<{ senderId: string; to: Recipient; at: Date }> = [];
 
   private readonly health_ = new Map<string, ProviderHealth>();
   private readonly inboundQueue: NormalisedInboundEvent[] = [];
@@ -84,6 +93,8 @@ export class FakeChannelProvider implements ChannelProvider {
   private readonly media = new Map<string, InboundMedia>();
   private readonly statusQueue: NormalisedStatusEvent[] = [];
   private readonly connectionQueue: NormalisedConnectionEvent[] = [];
+  private readonly noticeQueue: NormalisedNoticeEvent[] = [];
+  private readonly retryQueue: NormalisedRetryEvent[] = [];
   private readonly waiters: Array<() => void> = [];
   private readonly options: FakeOptions;
   private counter = 0;
@@ -148,11 +159,14 @@ export class FakeChannelProvider implements ChannelProvider {
     if (this.health_.get(sender.id)?.state !== 'open') {
       throw new Error(`sender ${sender.id} is not connected`);
     }
+    if (this.refuse463.has(to.phoneE164)) {
+      throw Object.assign(new Error('WhatsApp refused the message (463)'), { statusCode: 463 });
+    }
     if (this.options.failAll || this.options.failFor?.includes(to.phoneE164)) {
       throw new Error(`fake send failure for ${to.phoneE164}`);
     }
     const providerMessageId = `fake-msg-${this.run}-${++this.counter}`;
-    this.sent.push({ senderId: sender.id, to, content, providerMessageId, at: new Date() });
+    this.sent.push({ senderId: sender.id, to, content, providerMessageId, at: this.now() });
     this.emitStatus({
       providerMessageId, senderId: sender.id, status: 'sent', errorCode: null, at: new Date()
     });
@@ -170,20 +184,25 @@ export class FakeChannelProvider implements ChannelProvider {
   }
 
   /**
-   * Records a typing-presence call instead of sending one, so a test can assert the anti-ban
-   * typing simulation (docs/08-antiban.md, D-24) fired `composing` before the send. A disconnected
+   * Records a typing-presence call instead of sending one, so a test can assert the
+   * typing simulation (D-24) fired `composing` before the send. A disconnected
    * sender is a silent no-op, exactly as the real adapter treats a closed socket.
    */
   async typing(sender: SenderRef, to: Recipient, state: 'composing' | 'paused'): Promise<void> {
     if (this.health_.get(sender.id)?.state !== 'open') return;
-    this.typingCalls.push({ senderId: sender.id, to, state });
+    this.typingCalls.push({ senderId: sender.id, to, state, at: this.now() });
   }
 
-  /** Records an own-presence call; false (like the real adapter) when not connected. */
-  async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<boolean> {
-    if (this.health_.get(sender.id)?.state !== 'open') return false;
-    this.presenceCalls.push({ senderId: sender.id, state });
-    return true;
+  /** Records a presence call; a disconnected sender is a silent no-op, as with the real adapter. */
+  async presence(sender: SenderRef, state: 'available' | 'unavailable'): Promise<void> {
+    if (this.health_.get(sender.id)?.state !== 'open') return;
+    this.presenceCalls.push({ senderId: sender.id, state, at: this.now() });
+  }
+
+  /** Records a read receipt instead of sending one. */
+  async markRead(sender: SenderRef, from: Recipient, providerMessageIds: readonly string[]): Promise<void> {
+    if (this.health_.get(sender.id)?.state !== 'open') return;
+    this.markReadCalls.push({ senderId: sender.id, from, providerMessageIds, at: this.now() });
   }
 
   /** Answers a registration lookup from `unregistered`, recording it; null when set to be unable to tell. */
@@ -193,11 +212,16 @@ export class FakeChannelProvider implements ChannelProvider {
     return !this.unregistered.has(phoneE164);
   }
 
-  /** Records a read receipt; false (like the real adapter) when the sender is not connected. */
-  async markRead(sender: SenderRef, to: Recipient, providerMessageId: string): Promise<boolean> {
-    if (this.health_.get(sender.id)?.state !== 'open') return false;
-    this.readCalls.push({ senderId: sender.id, to, providerMessageId });
-    return true;
+  /** Answers a profile lookup from `profiles`, recording it; null when set to be unable to tell. */
+  async profileSnapshot(_sender: SenderRef, to: Recipient): Promise<ProfileVisibility | null> {
+    this.profileChecks.push(to.phoneE164);
+    if (this.profileUnknown) return null;
+    return this.profiles.get(to.phoneE164) ?? { photo: true, about: true };
+  }
+
+  /** Records that the session with a contact was thrown away. */
+  async resetSession(sender: SenderRef, to: Recipient): Promise<void> {
+    this.sessionResets.push({ senderId: sender.id, to, at: this.now() });
   }
 
   /**
@@ -223,6 +247,16 @@ export class FakeChannelProvider implements ChannelProvider {
   /** Streams delivery-state events until shutdown. */
   async *status(): AsyncIterable<NormalisedStatusEvent> {
     yield* this.drain(this.statusQueue);
+  }
+
+  /** Streams WhatsApp's limit warnings until shutdown. */
+  async *notices(): AsyncIterable<NormalisedNoticeEvent> {
+    yield* this.drain(this.noticeQueue);
+  }
+
+  /** Streams contacts' requests to have a message sent again until shutdown. */
+  async *retries(): AsyncIterable<NormalisedRetryEvent> {
+    yield* this.drain(this.retryQueue);
   }
 
   /** Streams connection state changes until shutdown. */
@@ -283,6 +317,39 @@ export class FakeChannelProvider implements ChannelProvider {
     this.media.delete(mediaRef);
   }
 
+  /** Simulates WhatsApp's reachout timelock for a number: active until a time, or lifted (`active: false`). */
+  emitTimelock(
+    senderId: string,
+    n: { active: boolean; until?: Date | null; enforcementType?: string | null; at?: Date }
+  ): void {
+    this.noticeQueue.push({
+      kind: 'timelock', senderId, active: n.active, until: n.until ?? null,
+      enforcementType: n.enforcementType ?? 'DEFAULT', at: n.at ?? this.now()
+    });
+    this.release();
+  }
+
+  /** Simulates WhatsApp's new-chat cap update for a number. */
+  emitCapping(
+    senderId: string,
+    n: {
+      status: 'NONE' | 'FIRST_WARNING' | 'SECOND_WARNING' | 'CAPPED'; totalQuota?: number | null; usedQuota?: number | null;
+      cycleStart?: Date | null; cycleEnd?: Date | null; at?: Date
+    }
+  ): void {
+    this.noticeQueue.push({
+      kind: 'capping', senderId, status: n.status, totalQuota: n.totalQuota ?? null, usedQuota: n.usedQuota ?? null,
+      cycleStart: n.cycleStart ?? null, cycleEnd: n.cycleEnd ?? null, at: n.at ?? this.now()
+    });
+    this.release();
+  }
+
+  /** Simulates a contact's phone asking for one of our messages again because it could not decrypt it (F6 S5). */
+  emitRetry(senderId: string, providerMessageId: string, at?: Date): void {
+    this.retryQueue.push({ senderId, providerMessageId, at: at ?? this.now() });
+    this.release();
+  }
+
   /** Simulates a delivery-state change from the provider. */
   emitStatus(event: NormalisedStatusEvent): void {
     this.statusQueue.push(event);
@@ -300,6 +367,11 @@ export class FakeChannelProvider implements ChannelProvider {
   }
 
   // ---- internals ---------------------------------------------------------------------
+
+  /** The time to stamp on a recorded call: the test's clock when it gave one. */
+  private now(): Date {
+    return this.options.clock?.() ?? new Date();
+  }
 
   /** Yields queued items, waiting for more until shutdown. */
   private async *drain<T>(queue: T[]): AsyncIterable<T> {

@@ -96,7 +96,7 @@ export function LinkPanel(
       setStatus(next);
       if (next.state === 'connected') {
         setActive(false); setRemaining(null); setJustLinked(true);
-        // The card around this panel (badge, health, "Linked" line) is server-rendered, so re-read it now
+        // The card around this panel (badge, "Linked" line) is server-rendered, so re-read it now
         // instead of leaving it saying "Not linked" until someone reloads the page.
         router.refresh();
       }
@@ -121,6 +121,26 @@ export function LinkPanel(
     return () => { clearInterval(timer); };
   }, [status?.expiresAt]);
 
+  // The server wins over this tab's memory of a scan (R-017). Once the page's own data says linked, `justLinked` has done its job; if it
+  // says the number was unlinked (the phone removed it, WhatsApp ended the session), the "Linked" this tab remembers is no longer true.
+  const wasLinked = useRef(linked || alreadyOpen);
+  useEffect(() => {
+    const now = linked || alreadyOpen;
+    if (now) setJustLinked(false);
+    else if (wasLinked.current && !active) {
+      setJustLinked(false);
+      setStatus((s) => (s?.state === 'connected' ? null : s));
+    }
+    wasLinked.current = now;
+  }, [linked, alreadyOpen, active]);
+
+  // Fallback: the scan's own "Linked" pin never outlives the moment it covers, even if the page's data never catches up.
+  useEffect(() => {
+    if (!justLinked) return;
+    const timer = setTimeout(() => { setJustLinked(false); }, 15_000);
+    return () => { clearTimeout(timer); };
+  }, [justLinked]);
+
   // Once it has expired there is nothing left to poll for.
   useEffect(() => { if (expired) setActive(false); }, [expired]);
 
@@ -130,7 +150,9 @@ export function LinkPanel(
   // after a refresh rather than relying on session state.
   // `justLinked` covers the moment between the scan and the page's data catching up, when `linked` is still the old value.
   const isLinked = linked || justLinked;
-  const connected = isLinked && ((alreadyOpen && status === null) || status?.state === 'connected' || justLinked);
+  // Only the server's data or the scan's short-lived `justLinked` can say connected: a remembered 'connected' status
+  // would keep saying it while the socket is down (R-017).
+  const connected = (linked && alreadyOpen) || justLinked;
   const showChallenge = active && !expired && status?.state === 'challenge_ready';
 
   return (

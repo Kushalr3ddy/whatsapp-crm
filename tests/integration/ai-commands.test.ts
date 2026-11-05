@@ -20,8 +20,7 @@ const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:543
 const API_KEY = randomBytes(32).toString('hex');
 const kms = new LocalKms({ keyHex: randomBytes(32).toString('hex'), indexKeyHex: randomBytes(32).toString('hex') });
 const config = {
-  PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test', API_KEY, DEFAULT_COUNTRY: 'IN',
-  SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+  PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test', API_KEY, DEFAULT_COUNTRY: 'IN'
 } as unknown as Config;
 const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 const hasher = new BuiltinPasswordHasher();
@@ -79,7 +78,7 @@ beforeEach(async () => {
   agent = asSession((await createSession(db, { userId: a.userId, orgId })).token);
   keyHeader = { Authorization: `Bearer ${(await issueApiKey(db, { orgId, name: 'k', scopes: ['messages:send'] })).secret}` };
   botId = (await saveAiSettings(db, orgId, { enabled: true, acceptConsent: true }, { type: 'user', id: adminId })).botUserId!;
-  senderId = ((await db.execute(sql`INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at) VALUES (${orgId}, 'fake', 'Main', '+919000000001', 'active', now() - interval '30 days') RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
+  senderId = ((await db.execute(sql`INSERT INTO sender_identity (org_id, provider, label, phone_e164, status) VALUES (${orgId}, 'fake', 'Main', '+919000000001', 'active') RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
   tagId = ((await db.execute(sql`INSERT INTO tag (org_id, name) VALUES (${orgId}, 'pune') RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
   segmentId = ((await db.execute(sql`INSERT INTO segment (org_id, name, definition) VALUES (${orgId}, 'warm', '{"match":"all","rules":[]}'::jsonb) RETURNING id`)) as unknown as Array<{ id: string }>)[0]!.id;
   for (let i = 0; i < 3; i++) {

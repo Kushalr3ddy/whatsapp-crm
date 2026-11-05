@@ -2,9 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signIn, nav, CREDS_MISSING } from './helpers';
 
 /**
- * The two operator-facing additions: defining a custom field on the Contacts page, and the
- * Numbers page's advisory-mode control (the loud banner itself is covered by the integration
- * tests; here we check the screen offers the control without turning anything on).
+ * Defining a custom field on the Contacts page, and the Numbers page opening for an admin.
  */
 test.describe('custom fields and the numbers page', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
@@ -39,12 +37,9 @@ test.describe('custom fields and the numbers page', () => {
     await expect(page.locator(`li[title*="{{${key}}}"]`)).toHaveCount(0);
   });
 
-  test('the Numbers page offers advisory mode to an admin', async ({ page }) => {
+  test('the Numbers page opens for an admin', async ({ page }) => {
     await signIn(page);
     await nav(page).getByRole('link', { name: 'Linked numbers', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Linked numbers', exact: true })).toBeVisible();
-    // Only present when at least one number exists; the control is hidden behind a disclosure.
-    const any = await page.getByText('Advisory mode…').count();
-    if (any > 0) await expect(page.getByText('Advisory mode…').first()).toBeVisible();
   });
 });

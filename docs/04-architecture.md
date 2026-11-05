@@ -55,8 +55,7 @@ process** (`PROCESS_ROLE=all`). In `standard` they split. Nothing in the code kn
 packages/
   shared/      types, zod schemas, errors, result types, phone/E.164 utils
   db/          drizzle schema, migrations, repositories, RLS helpers
-  core/        domain logic — contacts, conversations, campaigns, policy, dispatcher
-  antiban/     the engine: limiter, warmup, pacing, risk, recovery
+  core/        domain logic — contacts, conversations, campaigns, policy, dispatcher, the anti-ban policy (antiban.ts)
   ingestion/   the SourceConnector port + connectors
   channels/    the ChannelProvider port + baileys | meta | fake
   providers/   infrastructure drivers: storage auth email sms llm kms secrets scanner
@@ -141,13 +140,14 @@ OutboundDispatcher.enqueue(intent, contact, content, sender?)
       └─ 5. Enqueue         job keyed idempotently on (campaign, contact, template_version)
                 │
                 ▼
-        worker-send  ──► antiban.acquire(sender)   token bucket, warmup, circadian,
-                │                                   contact-graph multiplier, jitter
-                ├──────► typing simulation
+        worker-send  ──► the number's lane       one at a time, replies first
+                ├──────► gates                   do-not-contact (fails), number connected
+                ├──────► antiban.beforeSend(...) send, wait or hold (with a reason)
+                ├──────► typing inside the wait
                 ├──────► provider.send(...)
                 ├──────► persist message + provider_message_id
                 └──────► on failure: classify → retry w/ backoff → DLQ after N
-                                   → feed risk score → maybe auto-throttle/pause sender
+
 ```
 
 ## Key flows
@@ -185,8 +185,8 @@ create (draft) → dry run (count, cost, duration, risk) → schedule
 boot → load auth state from Postgres → connect → restore
 link → QR or pairing code → auth state written to Postgres per key
 disconnect → classify (401 logged-out / 403 / 408 / 429 / 463 / 515 …)
-           → backoff, or quarantine, or retire the sender
-           → feed risk score; alert if down > 5 min
+           → backoff, or retire the sender
+           → alert if down > 5 min
 ```
 
 ## Cross-cutting decisions

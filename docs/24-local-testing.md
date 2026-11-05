@@ -85,12 +85,12 @@ one with its first admin, and prints a generated password.
 
 `tools/insomnia-collection.json` imports as a collection with everything below already set up —
 the inbox group (filters, assignment, notes, canned replies), the refusals that must stay refused
-(401, 403, 422, 404) and a group for exercising the pacing gate. Fill in `base_url`,
+(401, 403, 422, 404) and a group for sending a burst. Fill in `base_url`,
 `bootstrap_key`, `org_key` in the environment, plus `conversation_id` and `user_id` for the inbox
 requests. The key minted by "mint an org key" now carries `conversations:write`, which the
 assignment, notes and canned-reply writes need.
 
-**The pacing group queues real messages.** With the gateway running and a number linked they
+**The burst group queues real messages.** With the gateway running and a number linked they
 are actually sent, so point `test_recipient` at a number you control.
 
 ## Exercise the API
@@ -332,11 +332,9 @@ npm run wa:link
 ```
 
 QR or pairing code. **Read [`08 · Anti-ban`](08-antiban.md) first if you are pointing this at a
-number you care about** — Baileys is unofficial and a ban has no appeal. The full anti-ban engine now
-exists — all six layers (warmup and ceilings, jitter, typing/circadian/read behaviour, contact-graph
-gates, health scoring, timed recovery) — and `npm run test:sim` proves it against a simulated WhatsApp.
-That makes a burst impossible and a campaign slow by design, but it reduces the risk of a ban; it
-cannot remove it.
+number you care about** — Baileys is unofficial and a ban has no appeal. The v2 engine spaces sends from one
+number by a random 1 to 50 seconds (a campaign of 50 people takes about 20 minutes), shows "typing…" first, holds
+new chats when WhatsApp warns the number, and has no daily cap. That reduces the risk of a ban; it cannot remove it.
 
 Two things that have cost time before, both now handled but worth recognising:
 
@@ -402,9 +400,9 @@ whose provider is `fake`, and the app refuses `GATEWAY_CHANNEL=fake` when `NODE_
 
 ```bash
 npm run local:seed                    # a fake connected number, 20 people, 3 tags, a field, 3 conversations, an audience
-npm run local:seed -- --reset         # remove exactly what the seed made (also clears the number's new-contact count)
-GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 SEND_CIRCADIAN=false SEND_RECIPIENT_TIMEZONE=false \
-  SEND_TYPING_SIMULATION=false npm run dev:all
+npm run local:seed -- --reset         # remove exactly what the seed made 
+GATEWAY_CHANNEL=fake GATEWAY_SWEEP_SECONDS=3 \
+  SEND_TYPING_SIMULATION=false npm run dev:all   # the gaps between sends still apply; tests that send several messages wait for them
 npm run test:e2e
 ```
 
@@ -429,7 +427,7 @@ Sign in at `localhost:3001/login` as the test admin, with the seed in place.
   map themselves, *Preview* writes nothing, *Import* creates people and tags them.
 - **Broadcast** — new campaign from a tag, from an import, from *Build a filter* (live count), preview, start,
   pause, resume, cancel; per-recipient results filter by status.
-- **Numbers** — the seeded card shows its risk meter and health stats; advisory mode is behind its disclosure.
+- **Numbers** — the seeded card shows its name, number and whether it is linked.
 - **Saved audiences** — "Seed — replied" is listed; preview count works and a segment can be saved.
 
 ---
@@ -440,9 +438,8 @@ Runs everything that does not need a real WhatsApp number, prints a pass/fail ta
 anything failed.
 
 ```bash
-npm run verify              # everything, about 12 minutes
+npm run verify              # everything, about 5 minutes
 npm run verify -- --fast    # typecheck, lint and vitest only, about 90 seconds
-npm run verify -- --no-sim  # skip the 7-minute anti-ban simulation, about 4 minutes
 npm run verify -- --no-e2e  # skip the scripted flow and the browser suite
 ```
 
@@ -451,7 +448,6 @@ npm run verify -- --no-e2e  # skip the scripted flow and the browser suite
 | database migrations (twice) | migrations apply, and re-applying is a no-op |
 | typecheck + lint + vitest | the code compiles, follows the rules, and the 600+ unit and integration tests pass |
 | web typecheck | the Next.js app compiles |
-| anti-ban simulation | the engine survives nine scenarios against a virtual WhatsApp |
 | scripted flow | login, contacts, broadcast, a fake number "sends" (`local:flow`) |
 | seed test org | `local:seed` is idempotent |
 | browser suite | every Playwright spec, against a throwaway fake-channel stack |

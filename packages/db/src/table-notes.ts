@@ -107,11 +107,11 @@ export const TABLE_NOTES: Record<string, TableNote> = {
   },
   campaign: {
     group: 'Campaigns',
-    purpose: 'A bulk send: the message, the number it goes from, its audience, its state (draft, running, paused…) and pacing results.'
+    purpose: 'A bulk send: the message, the number it goes from, its audience, its state (draft, running, paused…) and results.'
   },
   campaign_recipient: {
     group: 'Campaigns',
-    purpose: 'One person in a campaign. Acts as the queue: the gateway turns recipients into messages only as fast as the anti-ban limits allow, and records why anyone was skipped.'
+    purpose: 'One person in a campaign. Acts as the queue: the gateway turns recipients into messages a small batch at a time, and records why anyone was skipped.'
   },
   import_run: {
     group: 'Import',
@@ -123,7 +123,7 @@ export const TABLE_NOTES: Record<string, TableNote> = {
   },
   sender_identity: {
     group: 'WhatsApp numbers',
-    purpose: 'One of your WhatsApp numbers and its reputation: warm-up stage, health score, risk band, restriction state and recovery pauses.'
+    purpose: 'One of your WhatsApp numbers: its name, phone number and whether it is linked.'
   },
   channel_session: {
     group: 'WhatsApp numbers',
@@ -139,6 +139,14 @@ export const TABLE_NOTES: Record<string, TableNote> = {
   },
   sender_health_event: {
     group: 'Audit and health',
-    purpose: 'A timeline of what happened to a number’s health: restriction suspected or cleared, possible ban, recovery started.'
+    purpose: 'A timeline of what happened to a number: refused by WhatsApp, logged out unasked, or removed on the phone.'
+  },
+  whatsapp_notice: {
+    group: 'Audit and health',
+    purpose: 'Every limit warning WhatsApp sent a number, as it arrived: a new-chat timelock or a new-chat cap update. The latest of each is also on the number’s connection row.'
+  },
+  antiban_setting: {
+    group: 'WhatsApp numbers',
+    purpose: 'An org’s sending settings, one row: quiet hours (on by default, 22:00 to 08:00) and the time zone they are read in, the closing message when someone opts out (on or off, the org’s contact number and email, a default purpose) and the org’s own stop and restart words.'
   }
 };

@@ -151,7 +151,7 @@ await page.getByRole('button', { name: 'Start over' }).click();
 
 // 10 · linked numbers -----------------------------------------------------------------------------
 await go('/link', 760);
-await mark([[1, page.getByRole('link', { name: 'Add a number' }).or(page.getByRole('button', { name: 'Add a number' }))], [2, page.getByText('Healthy').first()], [3, page.getByText('Advisory mode')]]);
+await mark([[1, page.getByRole('link', { name: 'Add a number' }).or(page.getByRole('button', { name: 'Add a number' }))], [2, page.getByText(/^(Linked|Linking…|Not linked)$/).first()]]);
 await shot('10-link');
 
 // 11 · campaigns ----------------------------------------------------------------------------------

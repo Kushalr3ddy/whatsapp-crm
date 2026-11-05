@@ -202,19 +202,9 @@ export function Composer(
         </p>
       )}
 
-      {!numberDown && senderStatus !== null && senderStatus.restrictionState !== 'ok' && (
-        <p role="status" className="mb-2 notice notice-warning text-[13px]">
-          WhatsApp may be limiting <strong>{senderStatus.label}</strong> — messages from it could arrive
-          late or not at all. You can still send; they are being paced more slowly.
-          {(senderStatus.sessionTrouble ?? null) !== null && ' This may be a result of the encryption problem above, not a judgement by WhatsApp.'}
-        </p>
-      )}
-
       {numberDown && (
         <p role="alert" className="mb-2 notice notice-danger">
-          {senderStatus.reason === 'quarantined'
-            ? <>The number <strong>{senderStatus.label}</strong> is quarantined — replies are paused until it recovers.</>
-            : <>The number <strong>{senderStatus.label}</strong> isn&apos;t connected — a reply wouldn&apos;t be sent. Reconnect it on the Numbers page.</>}
+          The number <strong>{senderStatus.label}</strong> isn&apos;t connected — a reply wouldn&apos;t be sent. Reconnect it on the Numbers page.
           {' '}You can still add an internal note.
         </p>
       )}

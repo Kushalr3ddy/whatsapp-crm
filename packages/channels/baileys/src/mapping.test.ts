@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  extractBody, extractStatusCode, isNotAPerson, linkedPhoneFor, mapDisconnectReason, mapStatus, phoneFromJid, toDate
+  extractBody, extractCloseDetail, extractStatusCode, isNotAPerson, linkedPhoneFor, mapDisconnectReason, mapStatus, phoneFromJid, toDate
 } from './index.js';
 
 describe('mapDisconnectReason', () => {
@@ -32,6 +32,20 @@ describe('extractStatusCode', () => {
     expect(extractStatusCode(undefined)).toBeNull();
     expect(extractStatusCode({})).toBeNull();
     expect(extractStatusCode({ error: {} })).toBeNull();
+  });
+});
+
+describe('extractCloseDetail', () => {
+  it('reads why WhatsApp ended the stream: <conflict type="device_removed"/> is an unlink on the phone (R-017)', () => {
+    // Baileys puts the stream error's child node on the Boom error's `data` (Socket/socket.ts, CB:stream:error).
+    const removed = { error: { output: { statusCode: 401 }, data: { tag: 'conflict', attrs: { type: 'device_removed' } } } };
+    expect(extractCloseDetail(removed)).toBe('device_removed');
+    expect(extractCloseDetail({ error: { data: { tag: 'conflict', attrs: { type: 'replaced' } } } })).toBe('replaced');
+  });
+  it('returns null when there is no such detail', () => {
+    expect(extractCloseDetail(undefined)).toBeNull();
+    expect(extractCloseDetail({ error: { output: { statusCode: 401 } } })).toBeNull();
+    expect(extractCloseDetail({ error: { data: { reason: '401' } } })).toBeNull();
   });
 });
 

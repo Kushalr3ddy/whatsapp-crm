@@ -54,7 +54,7 @@ Build phases, in [`17-roadmap.md`](17-roadmap.md). The order work happens in.
 | **P3** | **Channels — the Baileys adapter. First code that touches WhatsApp** | **done** — link, send, receive, media all verified |
 | **P4** | Inbox (the screen agents use) | mostly (search + realtime left) |
 | **P5** | Data import (spreadsheets and other sources) | first slice (CSV + Excel) |
-| **P6** | The anti-ban engine | **✅ complete** — all six layers, plus an offline simulation (`npm run test:sim`) |
+| **P6** | The anti-ban engine | **v2 engine built** (`feat/antiban-v2`) — the first engine was removed on 2026-10-30; the screens for the new one are not built yet |
 | P7 | Campaigns | first slice |
 | P8–P12 | Official Meta API, public API, automation, hardening, release | not started |
 
@@ -234,24 +234,17 @@ codes, order updates, anything a client sees) goes through the paid official cha
 outreach goes through Baileys, wrapped in the safety engine described in
 [`08-antiban.md`](08-antiban.md).
 
-**What that engine actually does, in plain terms** — six layers, all built, all at the one point
-every message passes through (plus human touches: typing, delayed read receipts, idle presence, and
-respecting the *recipient's* day too):
+**What is in place now, in plain terms** — the first engine was removed and the v2 engine replaced it. Every message of a number waits in
+that number's **lane**, one at a time, and the lane:
 
-1. **Warmup** — a brand-new number starts slow (about 20 messages the first day) and speeds up
-   over a week, like a real new account, instead of blasting on day one.
-2. **Rate limits** — hard caps per minute, hour and day, so it can never send too fast.
-3. **Jitter** — a random, human-like pause before each message, never a robotic fixed interval.
-4. **Circadian pacing** — it follows a day/night rhythm: busy in the daytime, silent overnight.
-   A number that messages at 3 a.m. looks like a bot.
-5. **Contact-graph gates** — it messages people who have replied at full speed, goes slower with
-   strangers, and caps how many brand-new strangers it starts messaging per day. Cold-blasting a
-   list is the fastest way to get banned.
-6. **Health scoring** — it watches how the number is doing (are messages being delivered? did
-   sends fail? did the connection drop badly?) and automatically slows down or pauses a number
-   that looks in trouble — and lets it recover when things improve.
+1. **Puts replies first**, then what a person typed, then the AI, then campaign messages.
+2. **Leaves a gap** — a random 1 to 50 second pause, drawn once when a campaign starts so the finish time is known, with "typing…" shown inside the wait.
+3. **Holds, with a reason, and never drops** — when WhatsApp warns the number (new-chat timelock or cap), when a contact's phone could not read our last message, when the contact probably blocked us, or in quiet hours.
+4. **Handles STOP** — a contact who writes STOP gets one closing message and is not messaged again.
 
-**That engine reduces the risk. It cannot remove it.** Never point this at a number you cannot
+There are no daily caps, by design. Do-not-contact and the other protections for the people being messaged stay as they were.
+
+**Nothing here removes the risk.** Never point this at a number you cannot
 afford to lose.
 
 ---

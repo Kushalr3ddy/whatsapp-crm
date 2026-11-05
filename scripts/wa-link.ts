@@ -178,7 +178,7 @@ async function link(mode: 'qr' | 'pairing_code', phone?: string): Promise<void> 
       if (h.state === 'open') {
         clearInterval(poll);
         await ctx.db.execute(sql`
-          UPDATE sender_identity SET status = 'active', warmup_started_at = COALESCE(warmup_started_at, now())
+          UPDATE sender_identity SET status = 'active'
           WHERE id = ${ctx.senderId}`);
         say('  ✓ LINKED. Credentials are encrypted in Postgres — this survives a restart.');
         say('  Send a WhatsApp message to this number from another phone and watch it appear.');

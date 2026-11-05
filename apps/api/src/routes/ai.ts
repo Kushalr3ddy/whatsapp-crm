@@ -10,8 +10,7 @@ import {
 import {
   enqueueAiJob, listAiJobs, cancelAiJob, AiJobError, type QueueViewer,
   getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, draftCampaignText, AiCommandError,
-  auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError,
-  type CampaignLimits
+  auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError
 } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
@@ -32,7 +31,7 @@ const changeSettings = z.object({
  * switch the assistant on, because accepting the data-sharing note is a decision for a person.
  */
 export function aiRouter(
-  db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null, limits: CampaignLimits, runner: AiJobRunner,
+  db: Database, kms: KmsDriver, getLlm: () => LlmDriver, tenantRole: string | null, runner: AiJobRunner,
   llmSettings: { live: LiveLlm; envFile: string; allowPrivate: boolean; injected: boolean }
 ): Router {
   const router = Router();
@@ -65,7 +64,7 @@ export function aiRouter(
   });
 
   /**
-   * Why the assistant is stuck on a conversation (anti-ban spacing, a do-not-contact flag, its daily limit, a model
+   * Why the assistant is stuck on a conversation (a number that is not connected, a do-not-contact flag, its daily limit, a model
    * error), or null. Anyone who can read the thread may see it: it is a warning, not a control.
    */
   router.get('/conversations/:id/notice', requireUuidParam('id'), requireScope('conversations:read'), async (req: Request, res: Response) => {
@@ -154,7 +153,7 @@ export function aiRouter(
     }
     const orgId = req.crm!.orgId;
     try {
-      const result = await runAiCommand({ db: tenantDatabase(db, orgId, tenantRole), kms, llm: getLlm(), limits }, orgId, req.crm!.userId, parsed.data.instruction);
+      const result = await runAiCommand({ db: tenantDatabase(db, orgId, tenantRole), kms, llm: getLlm() }, orgId, req.crm!.userId, parsed.data.instruction);
       res.json({ data: result });
     } catch (error) {
       if (error instanceof AiCommandError) {

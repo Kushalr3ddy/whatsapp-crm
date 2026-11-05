@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { recoveryState, writeAudit, AUDIT, decodeLinkError } from '@crm/core';
+import { writeAudit, AUDIT, decodeLinkError, numberHints, resumeNumber } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
@@ -11,17 +11,6 @@ const createSender = z.object({
   label: z.string().min(1).max(100),
   provider: z.enum(['baileys', 'meta']).default('baileys'),
   phoneE164: z.string().regex(/^\+[1-9]\d{6,14}$/).optional()
-});
-
-/**
- * Body for switching a number between enforcing the anti-ban engine and advisory mode (D-29).
- * A reason is mandatory when going advisory — it is read back out of the audit log later.
- */
-const setEnforcement = z.object({
-  mode: z.enum(['enforce', 'advisory']),
-  reason: z.string().trim().min(10).max(500).optional()
-}).refine((v) => v.mode === 'enforce' || v.reason !== undefined, {
-  message: 'a reason of at least 10 characters is required to enter advisory mode', path: ['reason']
 });
 
 /** Body for starting the linking handshake. */
@@ -41,122 +30,45 @@ const startLink = z.object({
 export function sendersRouter(): Router {
   const router = Router();
 
-  /** Lists senders with their live connection state and risk score. */
+  /** Lists senders with their live connection state. */
   router.get('/', requireScope('senders:read'), async (req: Request, res: Response) => {
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT si.id, si.label, si.provider, si.phone_e164 AS "phoneE164", si.status,
-             si.risk_score AS "riskScore", si.warmup_started_at AS "warmupStartedAt",
-             si.last_inbound_at AS "lastInboundAt",
-             -- Advisory mode (D-29): enforcement state plus what the engine would have held.
-             si.enforcement, si.advisory_reason AS "advisoryReason",
-             si.advisory_set_at AS "advisorySetAt",
-             si.advisory_bypass_count AS "advisoryBypassCount",
-             si.advisory_last_bypass AS "advisoryLastBypass",
-             -- Silent-restriction verdict (docs/27-restriction-tracking.md).
-             si.restriction_state AS "restrictionState", si.restriction_since AS "restrictionSince",
-             -- Layer 6 recovery state, turned into a phase/fraction below for the health panel.
-             si.recovery_incident AS "recoveryIncident", si.recovery_until AS "recoveryUntil",
-             -- The health scorer's evidence (band, delivery ratio, counts), for the health panel.
-             si.health AS health,
              cs.connection_state AS "connectionState", cs.disconnect_reason AS "disconnectReason",
              cs.last_connected_at AS "lastConnectedAt",
              cs.link_error AS "linkErrorRaw",
+             -- What WhatsApp last said about this number's limits (F6 S2).
+             cs.timelock_active AS "timelockActive", cs.timelock_until AS "timelockUntil", cs.timelock_type AS "timelockType",
+             cs.capping_status AS "cappingStatus", cs.capping_total_quota AS "cappingTotalQuota",
+             cs.capping_used_quota AS "cappingUsedQuota", cs.capping_cycle_end AS "cappingCycleEnd",
+             cs.linked_since AS "linkedSince",
              -- Whether credentials are stored: the truth of "is this number linked", independent
              -- of the live socket. A corrupt session can be connected but this is the one that
              -- says there is something to unlink, and drives the button state in the UI.
-             EXISTS (SELECT 1 FROM channel_auth_state a WHERE a.sender_identity_id = si.id) AS linked,
-             -- Relationship breakdown for the health panel: contacts who have replied vs. those
-             -- we have only messaged. A healthy number has replies; outbound-only is the risky shape.
-             (SELECT count(*)::int FROM conversation v
-                WHERE v.sender_identity_id = si.id
-                  AND EXISTS (SELECT 1 FROM message m
-                              WHERE m.conversation_id = v.id AND m.direction = 'inbound')
-             ) AS "knownContacts",
-             (SELECT count(*)::int FROM conversation v
-                WHERE v.sender_identity_id = si.id
-                  AND NOT EXISTS (SELECT 1 FROM message m
-                                  WHERE m.conversation_id = v.id AND m.direction = 'inbound')
-                  AND EXISTS (SELECT 1 FROM message m
-                              WHERE m.conversation_id = v.id AND m.direction = 'outbound'
-                                AND m.sent_at IS NOT NULL)
-             ) AS "contactedContacts"
+             EXISTS (SELECT 1 FROM channel_auth_state a WHERE a.sender_identity_id = si.id) AS linked
       FROM sender_identity si
       LEFT JOIN channel_session cs ON cs.sender_identity_id = si.id
       WHERE si.org_id = ${req.crm!.orgId} AND si.status <> 'removed'
       ORDER BY si.created_at ASC`));
 
-    // Turn the two raw recovery columns into the derived phase/fraction the UI shows, so the client
-    // never re-implements the Layer 6 schedule. The raw columns are dropped from the response.
-    const data = (rows as unknown as Array<Record<string, unknown> & {
-      recoveryIncident: string | null; recoveryUntil: string | null; linkErrorRaw: string | null;
-    }>).map(({ recoveryIncident, recoveryUntil, linkErrorRaw, ...sender }) => {
-      const state = recoveryState({
-        incident: recoveryIncident,
-        recoveryUntil: recoveryUntil === null ? null : new Date(recoveryUntil)
-      });
-      return {
+    const data = (rows as unknown as Array<Record<string, unknown> & { linkErrorRaw: string | null }>)
+      .map(({ linkErrorRaw, ...sender }) => ({
         ...sender,
+        // Advice only, never blocking (F6 AC-7.6): a number linked in the last 7 days, a timelock that wants the phone used too.
+        hints: numberHints({
+          linkedSince: typeof sender.linkedSince === 'string' ? new Date(sender.linkedSince) : null,
+          timelockType: typeof sender.timelockType === 'string' ? sender.timelockType : null,
+          now: new Date()
+        }),
         // The last link failure, in plain words, so the Numbers page can say why a number is not up.
-        linkError: decodeLinkError(linkErrorRaw),
-        recovery: state.phase === 'none' ? null : {
-          incident: state.incident, phase: state.phase,
-          capFraction: state.capFraction,
-          resumesAt: state.resumesAt === null ? null : state.resumesAt.toISOString()
-        }
-      };
-    });
+        linkError: decodeLinkError(linkErrorRaw)
+      }));
     res.json({ data });
   });
 
   /**
-   * Switches a number between `enforce` (the default) and `advisory` (D-29): the engine keeps
-   * computing every signal, but the number-protecting holds are recorded instead of obeyed.
-   * Admin-only, needs a reason, audited. Do-not-contact and consent are never relaxed. Returning
-   * to `enforce` clears the reason and the bypass counters.
-   */
-  router.post('/:id/enforcement', requireUuidParam('id'), requireRole('admin'),
-    async (req: Request, res: Response) => {
-      const parsed = setEnforcement.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 
-          parsed.error.issues.map((i) => i.message).join('; ')));
-        return;
-      }
-      const { mode, reason } = parsed.data;
-      const orgId = req.crm!.orgId;
-      const id = String(req.params.id);
-      const done = await req.tenant!(async (tx) => {
-        const before = (await tx.execute(sql`
-          SELECT enforcement FROM sender_identity WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`
-        ) as unknown as Array<{ enforcement: string }>)[0];
-        if (!before) return false;
-        await tx.execute(sql`
-          UPDATE sender_identity SET
-            enforcement = ${mode},
-            advisory_reason = ${mode === 'advisory' ? reason! : null},
-            advisory_set_by = ${mode === 'advisory' ? req.crm!.userId ?? null : null},
-            advisory_set_at = ${mode === 'advisory' ? sql`now()` : null},
-            advisory_bypass_count = 0, advisory_last_bypass = NULL, updated_at = now()
-          WHERE id = ${id} AND org_id = ${orgId}`);
-        await writeAudit(tx, {
-          orgId, actor: auditActor(req), action: AUDIT.senderEnforcementChanged,
-          targetType: 'sender_identity', targetId: id,
-          before: { enforcement: before.enforcement },
-          after: { enforcement: mode, ...(reason !== undefined ? { reason } : {}) },
-          ip: req.ip ?? null, requestId: String(req.id)
-        });
-        return true;
-      });
-      if (!done) {
-        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such sender.'));
-        return;
-      }
-      res.json({ data: { senderId: id, enforcement: mode } });
-    });
-
-  /**
-   * The timeline for one number: restrictions suspected or cleared, possible hard bans, newest
-   * first. This is how an operator reads *what happened and when*, rather than only today's score.
+   * The timeline for one number: refused connections, sessions ended unasked, devices removed on the phone, newest
+   * first. This is how an operator reads *what happened and when*.
    */
   router.get('/:id/health-events', requireUuidParam('id'), requireScope('senders:read'),
     async (req: Request, res: Response) => {
@@ -166,6 +78,30 @@ export function sendersRouter(): Router {
         WHERE sender_identity_id = ${String(req.params.id)} AND org_id = ${req.crm!.orgId}
         ORDER BY at DESC LIMIT 30`));
       res.json({ data: rows });
+    });
+
+  /**
+   * Lifts the hold on a number's campaigns that was raised because many messages were not reaching people (F6 AC-4.6, AC-4.7). The
+   * number card's Resume. Says whether anything was held; only the sends from now on count toward holding it again.
+   */
+  router.post('/:id/resume', requireUuidParam('id'), requireScope('senders:write'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const id = String(req.params.id);
+      const out = await req.tenant!(async (tx) => {
+        const found = await tx.execute(sql`SELECT id FROM sender_identity WHERE id = ${id} AND org_id = ${orgId}`);
+        if ((found as unknown as unknown[]).length === 0) return null;
+        const resumed = await resumeNumber(tx, orgId, id, new Date());
+        if (resumed) {
+          await writeAudit(tx, {
+            orgId, actor: auditActor(req), action: AUDIT.senderResumed, targetType: 'sender_identity', targetId: id,
+            ip: req.ip ?? null, requestId: String(req.id)
+          });
+        }
+        return resumed;
+      });
+      if (out === null) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such number.')); return; }
+      res.json({ data: { resumed: out } });
     });
 
   /** Creates a sender. It exists but is not connected until it has been linked. */

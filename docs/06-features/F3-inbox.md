@@ -26,7 +26,7 @@ The parts of the inbox and what they are for. Status as of this writing in brack
   in `24-local-testing.md`).
 - **Sending files** *(built, D-25)* — the 📎 button in the composer sends an image, video, audio file, PDF or
   Office document into the thread, with the typed text as its caption. The file's type is decided from its
-  bytes (HTML and unknown types are refused) and it goes through the same anti-ban pacing as any message.
+  bytes (HTML and unknown types are refused) and it goes through the same anti-ban policy as any message.
 - **Internal notes** *(built)* — team-only comments inside a thread that the contact never sees —
   "spoke on call, sending CV tomorrow". How two agents hand a thread off. They live in
   `internal_note`, a table the send path never reads, so a note can never be transmitted (AC-4).

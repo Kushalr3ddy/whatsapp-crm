@@ -190,29 +190,32 @@ export async function storeOwnMessage(
 
 /** Marks a queued outbound message as accepted by the provider. */
 export async function markMessageSent(
-  db: Database, messageId: string, providerMessageId: string
+  db: Database, messageId: string, providerMessageId: string, at: Date = new Date()
 ): Promise<void> {
+  // The send time comes from the caller's clock, not the database's, so the gap to the next send is measured on one clock.
   await db.execute(sql`
-    UPDATE message SET status = 'sent', provider_message_id = ${providerMessageId}, sent_at = now(),
-        hold_reason = NULL
+    UPDATE message SET status = 'sent', provider_message_id = ${providerMessageId}, sent_at = ${at.toISOString()},
+        hold_reason = NULL, hold_until = NULL
     WHERE id = ${messageId}`);
   await db.execute(sql`
-    UPDATE conversation SET last_outbound_at = now(), updated_at = now()
+    UPDATE conversation SET last_outbound_at = ${at.toISOString()}, updated_at = now()
     WHERE id = (SELECT conversation_id FROM message WHERE id = ${messageId})`);
 }
 
 /**
- * Marks a queued outbound message as failed, recording why.
+ * Marks a queued outbound message as failed, recording why (F6 AC-1.9). `detail` is the provider's own words, kept apart from the
+ * code so the code stays a short fixed list a screen can match on. A failed message is never retried automatically.
  *
  * Failure is per-message and never touches the connection. In the previous system one
  * unsendable recipient threw and took down the whole engine, so the watchdog restarted it, the
  * recruiter retried, and it died again — a permanent crash loop for one contact (M26).
  */
 export async function markMessageFailed(
-  db: Database, messageId: string, errorCode: string
+  db: Database, messageId: string, errorCode: string, detail?: string
 ): Promise<void> {
   await db.execute(sql`
-    UPDATE message SET status = 'failed', error_code = ${errorCode.slice(0, 200)}
+    UPDATE message SET status = 'failed', error_code = ${errorCode.slice(0, 200)},
+        error_detail = ${detail === undefined ? null : detail.slice(0, 500)}, hold_reason = NULL, hold_until = NULL
     WHERE id = ${messageId}`);
 }
 
@@ -265,4 +268,21 @@ export async function sentMessageText(
   const body = rows[0]?.bodyEnc;
   if (body === undefined) return undefined;
   try { return new TextDecoder().decode(kms.decrypt(body)); } catch { return undefined; }
+}
+
+/**
+ * An agent opened a chat: ask the gateway to tell WhatsApp its inbound messages were read (F6 AC-1.7). The API cannot call the
+ * provider, so the request is left on the messages and the gateway is woken; if it is down, its next sweep finds them. Messages are
+ * never marked read when they arrive, only through this or the reply path in the send lane.
+ */
+export async function requestRead(
+  db: Pick<Database, 'execute'>, orgId: string, conversationId: string
+): Promise<void> {
+  const asked = await db.execute(sql`
+    UPDATE message SET read_requested_at = now()
+    WHERE org_id = ${orgId} AND conversation_id = ${conversationId} AND direction = 'inbound'
+      AND read_requested_at IS NULL AND read_marked_at IS NULL
+    RETURNING id`);
+  if ((asked as unknown as unknown[]).length === 0) return;
+  await db.execute(sql`SELECT pg_notify('gateway', json_build_object('kind', 'read', 'id', ${conversationId}::text)::text)`);
 }

@@ -26,9 +26,8 @@ Conversations handled, first-response time, resolution time, messages sent, curr
 Presented as workload, not as a leaderboard.
 
 ### Sender health
-The dashboard an operator keeps open: per number — state, warmup day, risk score, cap
-utilisation, delivery ratio, reply ratio, recent risk events, Meta quality rating and tier
-headroom.
+The dashboard an operator keeps open: per number — state, delivery ratio, reply ratio, recent
+events, Meta quality rating and tier headroom.
 
 ### Cost report — the differentiator
 Meta spend by template category against free Baileys volume, with a **"what this would have

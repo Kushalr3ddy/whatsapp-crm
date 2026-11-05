@@ -38,6 +38,8 @@
   "include": ["packages/**/*.ts", "apps/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "*.ts"],
   "exclude": [
     "node_modules",
+    // Vendored Baileys (packages/baileys) builds with its own tsconfig: npm run baileys:build.
+    "packages/baileys",
     "**/dist",
     // apps/web is a Next.js app: it needs the DOM lib, JSX and React types, none of
     // which belong in the Node-only server config. It typechecks against its own

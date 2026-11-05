@@ -103,5 +103,5 @@ screenshots, pros and cons, and what it suggests building next).
 - The `lean` preset runs the Solo tier inside 2 GB, proven by a CI memory-limit test.
 - A developer drives the full product through the API without reading application source.
 - A 10,000-recipient campaign completes over warmed numbers without a ban, and the
-  simulation harness catches it if the engine ever regresses.
+  the tests catch it if the policy ever regresses.
 - Someone forks it, writes a `SourceConnector` and a `StorageDriver`, and never touches core.

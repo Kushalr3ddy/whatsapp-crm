@@ -403,8 +403,8 @@
       "_id": "grp_p6",
       "_type": "request_group",
       "parentId": "wrk_crm",
-      "name": "5 \u00b7 Send pacing (P6) \u2014 READ THIS FIRST",
-      "description": "These queue REAL messages. With the gateway running and a number linked they will be SENT to whoever test_recipient names. Use a number you control.\n\nThe gate is in the gateway, not the API, so the API always answers 202. What pacing changes is WHEN the gateway drains the queue \u2014 and whether it drains it at all.",
+      "name": "5 \u00b7 Sending a burst \u2014 READ THIS FIRST",
+      "description": "These queue REAL messages. With the gateway running and a number linked they will be SENT to whoever test_recipient names. Use a number you control.\n\nThe anti-ban policy is in the gateway, not the API, so the API always answers 202. What it changes is WHEN the gateway drains the queue.",
       "metaSortKey": -50,
       "environment": {},
       "modified": 0,
@@ -476,7 +476,7 @@
       "created": 0,
       "url": "{{ _.base_url }}/messages",
       "name": "queue a burst, then watch it drain slowly",
-      "description": "Send this 10+ times quickly, then poll the thread.\n\nWITHOUT pacing every one would go at machine speed \u2014 which is how a number is lost permanently.\n\nWITH pacing you should see:\n  \u00b7 a 1.5-4s gap between each send (Gaussian, not a fixed interval)\n  \u00b7 no more than SEND_RATE_PER_MINUTE (default 8) in any minute\n  \u00b7 the rest sitting at status 'queued' \u2014 NOT failed\n\nA paced message is left queued on purpose: early is not wrong, and failing it would lose it. Watch the gateway log for 'send paced'.",
+      "description": "Send this 10+ times quickly, then poll the thread.\n\nWITHOUT the anti-ban policy every one would go at machine speed \u2014 which is how a number is lost permanently.\n\nWITH it you should see:\n  \u00b7 a random 3-8s gap between each send (not a fixed interval)\n  \u00b7 the rest sitting at status 'queued' \u2014 NOT failed\n\nA message waiting its turn is left queued on purpose: early is not wrong, and failing it would lose it.",
       "method": "POST",
       "headers": [
         {
@@ -505,7 +505,7 @@
       "created": 0,
       "url": "{{ _.base_url }}/conversations/{{ _.conversation_id }}/messages",
       "name": "poll the thread to watch statuses move",
-      "description": "There is currently NO API that says why a message is still queued \u2014 paced and 'sender disconnected' look identical from here. Only the gateway log distinguishes them. That gap is recorded in HANDOFF.md.",
+      "description": "There is currently NO API that says why a message is still queued \u2014 waiting its turn and 'sender disconnected' look identical from here. Only the gateway log distinguishes them. That gap is recorded in HANDOFF.md.",
       "method": "GET",
       "headers": [
         {

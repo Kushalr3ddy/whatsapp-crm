@@ -12,9 +12,8 @@ import { buildApp } from '../../apps/api/src/app.js';
 import { tempStorage, type TempStorage } from '../fixtures/storage.js';
 
 /**
- * The AI assistant's warnings: when the anti-ban engine (or its own limit, or the provider) holds it back, the
- * thread says so; the hard anti-ban limits can never be overridden, and a do-not-contact block can be lifted
- * only by a signed-in admin, for one message, with a reason.
+ * The AI assistant's warnings: when a hold on the number, its own limit or the provider holds it back, the
+ * thread says so; only a do-not-contact block can be lifted, by a signed-in admin, for one message, with a reason.
  */
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const API_KEY = randomBytes(32).toString('hex');
@@ -104,20 +103,20 @@ describe('AI assistant warnings', () => {
     expect((await notice()).body.data).toBeNull();
   });
 
-  it('a reply the gateway is pacing is an anti-ban warning with no override', async () => {
-    await addMessage('outbound', 'Yes!', 'queued', { holdReason: 'paced:per_minute', sentBy: 'agent' });
-    expect((await notice()).body.data).toEqual({ code: 'held', antiBan: true, reason: 'paced:per_minute', canOverride: false });
+  it('a reply the anti-ban policy is holding is a warning with no override', async () => {
+    await addMessage('outbound', 'Yes!', 'queued', { holdReason: 'policy_hold', sentBy: 'agent' });
+    expect((await notice()).body.data).toEqual({ code: 'held', reason: 'policy_hold', canOverride: false });
   });
 
-  it('a number that is not connected is a hold, not an anti-ban one', async () => {
+  it('a number that is not connected is a hold too', async () => {
     await addMessage('outbound', 'Yes!', 'queued', { holdReason: 'sender_not_connected', sentBy: 'agent' });
-    expect((await notice()).body.data).toMatchObject({ code: 'held', antiBan: false, canOverride: false });
+    expect((await notice()).body.data).toEqual({ code: 'held', reason: 'sender_not_connected', canOverride: false });
   });
 
   it('do-not-contact: warns everyone, and only an admin can allow the one reply', async () => {
     await db.execute(sql`UPDATE contact SET do_not_contact = true WHERE id = ${contact}`);
     expect((await run()).outcome).toBe('blocked');
-    expect((await notice(agent)).body.data).toEqual({ code: 'do_not_contact', antiBan: true, reason: 'do_not_contact', canOverride: true });
+    expect((await notice(agent)).body.data).toEqual({ code: 'do_not_contact', reason: 'do_not_contact', canOverride: true });
 
     // Not an agent, not an API key, not without a reason.
     expect((await allow(agent, { reason: 'the customer asked us to reply' })).status).toBe(403);
@@ -146,10 +145,10 @@ describe('AI assistant warnings', () => {
 
   it('shows the daily limit and a provider failure as warnings with no override', async () => {
     await db.execute(sql`INSERT INTO ai_run (org_id, conversation_id, kind, outcome, reason) VALUES (${orgId}, ${conv}, 'reply', 'blocked', 'daily_cap')`);
-    expect((await notice()).body.data).toEqual({ code: 'daily_cap', antiBan: false, reason: 'daily_cap', canOverride: false });
+    expect((await notice()).body.data).toEqual({ code: 'daily_cap', reason: 'daily_cap', canOverride: false });
     await db.execute(sql`DELETE FROM ai_run`);
     await db.execute(sql`INSERT INTO ai_run (org_id, conversation_id, kind, outcome, reason) VALUES (${orgId}, ${conv}, 'reply', 'failed', 'model_timeout')`);
-    expect((await notice()).body.data).toEqual({ code: 'model_error', antiBan: false, reason: 'model_timeout', canOverride: false });
+    expect((await notice()).body.data).toEqual({ code: 'model_error', reason: 'model_timeout', canOverride: false });
   });
 
   it('clears once something has been sent in the thread since', async () => {

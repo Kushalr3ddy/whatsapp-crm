@@ -80,7 +80,7 @@ find the whole story (section 5).
 | Process | Logs |
 |---|---|
 | **API** (`apps/api`) | One line per request and response (method, path, status, timing, request id), and `unhandled error` with the stack for any failure nothing caught. |
-| **Gateway** (`apps/gateway`) | `message sent`; why a send is held (`send paced: …`, `sender not connected — leaving message queued`, `sender in recovery pause`, `sender quarantined`); link and unlink results and classified link failures; connection state changes; health and restriction transitions (`restriction state changed`); key rotation batches (`key rotation: re-encrypted a batch onto the current key`); `gateway ready` at boot. |
+| **Gateway** (`apps/gateway`) | `message sent`; why a send is held (`sender not connected — leaving messages queued`; `anti-ban decision` at `info` with the reason, the inputs and the gap, once when a hold starts and for each send; `many messages are not reaching people`, `contacts probably blocked this number`, `opt-out handled`); link and unlink results and classified link failures; connection state changes; key rotation batches (`key rotation: re-encrypted a batch onto the current key`); `gateway ready` at boot. |
 | **Web** (`apps/web`) | Next.js's own request log (route, status, time). Errors from the API are shown to the person and are in the API log. |
 
 Levels in practice: `info` is normal events, `warn` is "something is being held back or refused but
@@ -165,8 +165,10 @@ queryable, permanent and visible in the app.
 | Question | Where the answer lives |
 |---|---|
 | **Who did what, and when?** | `audit_log`: sign-ins, assignments, overrides, exports, key rotation pause/verify. Append-only; the application role cannot edit or delete rows. |
-| **Why is this message not sent yet?** | `message.hold_reason` (shown in the thread as "waiting: …"): `paced:per_minute`, `paced:warmup`, `sender_not_connected`, `recovery_pause:…`, `quarantined`, and so on. |
-| **What has happened to this number's health?** | `sender_health_event` (also `GET /api/v1/senders/:id/health-events`): restriction suspected or cleared, possible bans, recoveries. The number's current score and evidence are on `sender_identity` (`risk_score`, `health`, `restriction_state`). |
+| **Why is this message not sent yet?** | `message.hold_reason` and `hold_until` (shown in the thread as "waiting: …"): `sender_not_connected`, or the reason the anti-ban policy gave (`timelock`, `new_chat_cap`, `quiet_hours`, `refused_463`, `decrypt_retry`, `decrypt_wave`, `likely_blocked`, `many_undelivered`). `hold_until` is null when it waits for something. |
+| **What did WhatsApp say about this number's limits?** | `channel_session` (`timelock_*`, `capping_*`, `linked_since`) for the latest; `whatsapp_notice` for every warning as it arrived. |
+| **Why did a message fail?** | `message.error_code` (`send_error`, `whatsapp_refused_463`, `not_on_whatsapp`, `do_not_contact`, …) and `error_detail`. |
+| **What has happened to this number?** | `sender_health_event` (also `GET /api/v1/senders/:id/health-events`): a refused connection (403), a logout nobody asked for, a device removed on the phone. |
 | **How is a campaign doing?** | `campaign` and `campaign_recipient`: per-recipient status, and the reason a person was skipped (`skip_reason`). |
 | **Where does a key rotation stand?** | The **Security** page, `npm run keys -- status`, and the `key_rotation_state` table. See [22 · Encryption](22-encryption.md). |
 | **What tables exist, and what is each for?** | `npm run db:docs` writes a browsable map to `docs/generated/schema.html`. |
@@ -177,52 +179,13 @@ queryable, permanent and visible in the app.
 
 **"A message is stuck on waiting."**
 1. Read its `hold_reason` (or the "waiting: …" under it in the thread).
-2. `paced:*` means the anti-ban pacing is spacing it out, which is normal and clears by itself.
-3. `sender_not_connected`: check the Numbers page. `quarantined` or `recovery_pause`: read the
-   number's health events.
+2. `sender_not_connected`: check the Numbers page. Any other reason is the anti-ban engine holding it; see RB-14 for which ones clear on their own.
+3. A message that is only waiting its turn has no reason: the lane spaces sends from one number by 1 to 50 seconds, and a reply goes first.
 4. Confirm in the gateway log: `grep 'THE-MESSAGE-ID' .dev-logs/gateway.log`.
 
 **"Someone got an error."**
 Ask for the id in the error (`request_id`), then `grep` it in the API log. The stack for anything
 unexpected is on the `unhandled error` line.
 
-**"This number looks restricted."**
-Open the Numbers page, then the health events for that number. Detail and runbook:
-[27 · Silent-restriction tracking](27-restriction-tracking.md).
-
-**"The app will not start."**
-The API and the gateway print why and exit: database not migrated, schema ahead of the code, or
-data encrypted with a key version that is not in the key ring. The message names the fix.
-
-**"Tests or `verify` failed."**
-Open the log folder named in the failure. The stage's own log has the detail, and `stack.log` is the
-API, gateway and web together.
-
----
-
-## 7 · What does not exist, and the plan
-
-| Missing | Notes |
-|---|---|
-| **Metrics** (queue depth, sends and holds per minute, per-number risk) | Would be a `/metrics` endpoint. The setting `TELEMETRY_DRIVER=none\|prometheus\|otlp` reserves the names; nothing reads it yet. |
-| **Traces** | Not needed at this size. The request id is the poor man's trace. |
-| **Error tracking** (Sentry-style) | Waiting on a vendor choice. |
-| **Alerting** | Tracked separately as [D-43](21-deferred.md). In-app restriction banners exist. |
-| **Log rotation and shipping** | A deployment concern ([13 · Deployment](13-deployment.md)). |
-
-All of this is pinned as **D-56** in [21 · Deferred decisions](21-deferred.md), to be picked up when
-the real-number pilot starts (it is a week-long watch, and metrics are how you would see it), when a
-hosted deployment exists, or after the first incident that logs alone cannot explain.
-
----
-
-## 8 · Gotchas
-
-- **Do not put a secret or a message body in a log**, even at `debug`. Redaction is a net, not a plan.
-- **Times are UTC.** The Z at the end means UTC; the UI converts for display.
-- **Dev logs are pretty, not JSON.** A script that expects JSON will not work on `NODE_ENV=development`
-  output; use `NODE_ENV=production` or read the files by eye.
-- **The `.dev-logs` files only exist when you used `dev:all`.** Running the processes separately
-  prints to each terminal only.
-- **`LOG_LEVEL` has no `silent`.** Tests build their logger directly to silence it; the config accepts
-  `trace` through `fatal`.
+**"This number was refused or logged out."**
+Open the Numbers page, then the timeline for that number. Runbook: RB-01 in [14 · Runbooks](14-runbooks.md).

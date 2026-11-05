@@ -24,8 +24,7 @@ const kms = new LocalKms({
 });
 const config = {
   PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test',
-  API_KEY: randomBytes(32).toString('hex'), DEFAULT_COUNTRY: 'IN',
-  SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+  API_KEY: randomBytes(32).toString('hex'), DEFAULT_COUNTRY: 'IN'
 } as unknown as Config;
 const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 const hasher = new BuiltinPasswordHasher();
@@ -63,8 +62,8 @@ beforeEach(async () => {
   agentToken = (await createSession(db, { userId: agent.userId, orgId })).token;
 
   senderId = (await rows<{ id: string }>(sql`
-    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-    VALUES (${orgId}, 'fake', 'main', '+919000000001', 'active', now() - interval '30 days')
+    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+    VALUES (${orgId}, 'fake', 'main', '+919000000001', 'active')
     RETURNING id`))[0]!.id;
   contactId = (await rows<{ id: string }>(sql`
     INSERT INTO contact (org_id, display_name, source) VALUES (${orgId}, 'Asha', 'test') RETURNING id`))[0]!.id;
@@ -78,8 +77,7 @@ beforeEach(async () => {
 function ctx(): WorkContext {
   return {
     db, provider: new FakeChannelProvider(), logger, kms,
-    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
-    limits: { perMinute: 8, perDay: 1500 }, sweepBatchSize: 50
+    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)), sweepBatchSize: 50
   };
 }
 
@@ -95,8 +93,6 @@ describe('the number status line', () => {
       VALUES (${senderId}, 'open')`);
     expect((await status()).body.data).toMatchObject({ canSend: true, reason: null });
 
-    await db.execute(sql`UPDATE sender_identity SET status = 'quarantined' WHERE id = ${senderId}`);
-    expect((await status()).body.data).toMatchObject({ canSend: false, reason: 'quarantined' });
   });
 
   it('404s for a thread that is not in this org', async () => {

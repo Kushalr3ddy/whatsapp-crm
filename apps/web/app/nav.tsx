@@ -2,7 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Bot, CreditCard, Download, LayoutDashboard, Lock, Megaphone, Menu, MessageSquare, Smartphone, UserPlus, Users, X,
+  type LucideIcon
+} from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 import { signOut } from './login/actions';
 import { SubmitButton } from './contacts/submit-button';
@@ -12,76 +16,52 @@ import { ReportProblem } from './report-problem';
 interface Tab {
   href: string;
   label: string;
-  icon: ReactNode;
+  icon: LucideIcon;
   soon?: boolean;
   /** Shown only to admins. */
   adminOnly?: boolean;
 }
 
-/** A 20px stroke icon. Decorative, so hidden from assistive tech — the label carries the meaning. */
-function Icon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      aria-hidden viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-      strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"
-    >
-      {children}
-    </svg>
-  );
-}
-
 const TABS: Tab[] = [
-  {
-    href: '/', label: 'Overview',
-    icon: <Icon><rect x="3" y="3" width="7.5" height="9" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="5.5" rx="1.5" /><rect x="13.5" y="11.5" width="7.5" height="9.5" rx="1.5" /><rect x="3" y="15" width="7.5" height="6" rx="1.5" /></Icon>
-  },
-  {
-    href: '/inbox', label: 'Inbox',
-    icon: <Icon><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></Icon>
-  },
-  {
-    href: '/contacts', label: 'Contacts',
-    icon: <Icon><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M16.5 5.3a3 3 0 0 1 0 5.4M18 14.8c1.8.7 3 2.3 3 5.2" /></Icon>
-  },
-  {
-    href: '/link', label: 'Linked numbers',
-    icon: <Icon><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" /></Icon>
-  },
-  {
-    href: '/import', label: 'Import',
-    icon: <Icon><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></Icon>
-  },
-  {
-    href: '/broadcast', label: 'Campaigns',
-    icon: <Icon><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" /></Icon>
-  },
-  {
-    href: '/team', label: 'Team', adminOnly: true,
-    icon: <Icon><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M17 8v6M14 11h6" /></Icon>
-  },
-  {
-    href: '/ai', label: 'AI assistant', adminOnly: true,
-    icon: <Icon><rect x="4" y="8" width="16" height="11" rx="3" /><path d="M12 8V4.5M9 13.5h.01M15 13.5h.01M9.5 16.5h5" /></Icon>
-  },
-  {
-    href: '/security', label: 'Security',
-    icon: <Icon><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Icon>
-  },
-  {
-    href: '/billing', label: 'Billing', soon: true,
-    icon: <Icon><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /></Icon>
-  }
+  { href: '/', label: 'Overview', icon: LayoutDashboard },
+  { href: '/inbox', label: 'Inbox', icon: MessageSquare },
+  { href: '/contacts', label: 'Contacts', icon: Users },
+  { href: '/link', label: 'Linked numbers', icon: Smartphone },
+  { href: '/import', label: 'Import', icon: Download },
+  { href: '/broadcast', label: 'Campaigns', icon: Megaphone },
+  { href: '/team', label: 'Team', icon: UserPlus, adminOnly: true },
+  { href: '/ai', label: 'AI assistant', icon: Bot, adminOnly: true },
+  { href: '/security', label: 'Security', icon: Lock },
+  { href: '/billing', label: 'Billing', icon: CreditCard, soon: true }
 ];
 
 /**
- * The app shell's navigation: a left sidebar on wide screens, a compact top bar on narrow ones.
+ * The app shell's navigation: a left sidebar on wide screens, a top bar with one menu button on narrow ones.
  *
+ * The menu button opens the same list of destinations in a panel under the bar; Escape or choosing a page closes it.
  * Sections are shown before they are built, marked "soon", rather than appearing later out of
  * nowhere — it makes the shape of the product legible, and makes it obvious that broadcasting
  * is a separate place rather than something that will appear inside the inbox.
  */
-export function Nav({ alerts = 0, isAdmin = false }: { alerts?: number; isAdmin?: boolean }) {
+export function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+
+  // Choosing a page closes the phone menu.
+  useEffect(() => { setOpen(false); }, [pathname]);
+
+  // Escape closes it at once and puts focus back on the button.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      menuButton.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); };
+  }, [open]);
 
   // Nothing to navigate to, and no one to sign out, before signing in.
   if (pathname === '/login' || pathname === '/signup') return null;
@@ -89,58 +69,66 @@ export function Nav({ alerts = 0, isAdmin = false }: { alerts?: number; isAdmin?
   return (
     <nav
       aria-label="Main"
-      className="sidebar flex shrink-0 items-center gap-2 border-b px-3 py-2 md:w-60 md:flex-col md:items-stretch md:gap-1 md:border-b-0 md:border-r md:px-3 md:py-5"
+      className="sidebar relative flex shrink-0 flex-col border-b md:w-60 md:border-b-0 md:border-r md:px-3 md:py-5"
     >
-      <Link href="/" className="mr-2 flex items-center gap-2 px-2 md:mb-4 md:mr-0">
-        <span className="avatar size-8 text-sm" aria-hidden>W</span>
-        <span className="font-heading hidden text-[19px] font-semibold tracking-tight md:inline">WhatsApp CRM</span>
-      </Link>
-
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto md:flex-none md:flex-col md:items-stretch md:overflow-visible">
-        {TABS.filter((tab) => tab.adminOnly !== true || isAdmin).map((tab) => {
-          const active = tab.href === '/' ? pathname === '/' : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              aria-current={active ? 'page' : undefined}
-              aria-label={tab.label}
-              title={tab.label}
-              className="nav-link flex shrink-0 items-center gap-2.5 rounded-md px-2.5 py-2 text-sm"
-            >
-              {tab.icon}
-              <span className="hidden md:inline">{tab.label}</span>
-              {tab.href === '/link' && alerts > 0 && (
-                <span
-                  className="ml-auto rounded-full bg-danger px-1.5 text-[11px] font-semibold text-white md:ml-auto"
-                  title={`${String(alerts)} number${alerts === 1 ? '' : 's'} may be restricted`}
-                >
-                  {alerts}
-                </span>
-              )}
-              {tab.soon === true && (
-                <span className="hidden rounded-full bg-canvas px-1.5 text-[10px] text-muted md:inline">soon</span>
-              )}
-            </Link>
-          );
-        })}
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 md:mb-4 md:block md:px-0 md:py-0">
+        <Link href="/" className="flex items-center gap-2.5 px-2">
+          <span className="avatar size-8 rounded-lg" aria-hidden><MessageSquare size={16} strokeWidth={2} /></span>
+          <span className="font-heading text-lg font-semibold tracking-tight">WhatsApp CRM</span>
+        </Link>
+        <button
+          ref={menuButton}
+          type="button"
+          className="btn btn-ghost w-11 px-0 md:hidden"
+          aria-label={open ? 'Close menu' : 'Open menu'}
+          aria-expanded={open}
+          aria-controls="main-menu"
+          onClick={() => { setOpen((o) => !o); }}
+        >
+          {open ? <X size={22} strokeWidth={1.75} aria-hidden /> : <Menu size={22} strokeWidth={1.75} aria-hidden />}
+        </button>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 md:mt-auto md:flex-col md:items-stretch md:border-t md:border-border md:pt-3">
-        <div className="hidden items-center gap-2.5 px-1.5 pb-1 md:flex" aria-label={isAdmin ? 'Signed in as admin' : 'Signed in as user'}>
-          <span className="avatar size-8 text-xs" aria-hidden>{isAdmin ? 'A' : 'U'}</span>
-          <span className="min-w-0 text-sm leading-tight">
-            <span className="block font-medium">{isAdmin ? 'Admin' : 'User'}</span>
-            <span className="block text-xs text-muted">Signed in</span>
-          </span>
+      <div id="main-menu" className="menu-panel" data-open={open}>
+        <div className="flex flex-col gap-1">
+          {TABS.filter((tab) => tab.adminOnly !== true || isAdmin).map((tab) => {
+            const active = tab.href === '/' ? pathname === '/' : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+            const Icon = tab.icon;
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                aria-current={active ? 'page' : undefined}
+                aria-label={tab.label}
+                title={tab.label}
+                className="nav-link flex min-h-11 shrink-0 items-center gap-3 rounded-lg px-3 text-sm"
+              >
+                <Icon size={18} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                <span>{tab.label}</span>
+                {tab.soon === true && (
+                  <span className="rounded-full bg-sidebar-hover px-1.5 text-xs text-sidebar-muted">soon</span>
+                )}
+              </Link>
+            );
+          })}
         </div>
-        <ThemeToggle />
-        <ReportProblem />
-        <form action={signOut} className="md:contents">
-          <SubmitButton className="btn btn-ghost btn-sm w-full whitespace-nowrap" pendingLabel="Signing out…">
-            Sign out
-          </SubmitButton>
-        </form>
+
+        <div className="mt-3 flex flex-col gap-1.5 border-t border-sidebar-line pt-3 md:mt-auto">
+          <div className="flex items-center gap-2.5 px-1.5 pb-1" aria-label={isAdmin ? 'Signed in as admin' : 'Signed in as user'}>
+            <span className="avatar size-9 text-xs" aria-hidden>{isAdmin ? 'A' : 'U'}</span>
+            <span className="min-w-0 text-sm leading-tight">
+              <span className="block font-medium">{isAdmin ? 'Admin' : 'User'}</span>
+              <span className="block text-xs text-sidebar-muted">Signed in</span>
+            </span>
+          </div>
+          <ThemeToggle />
+          <ReportProblem />
+          <form action={signOut}>
+            <SubmitButton className="btn btn-ghost btn-sm w-full justify-start whitespace-nowrap" pendingLabel="Signing out…">
+              Sign out
+            </SubmitButton>
+          </form>
+        </div>
       </div>
     </nav>
   );

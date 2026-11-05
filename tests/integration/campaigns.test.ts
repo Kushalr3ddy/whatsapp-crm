@@ -9,7 +9,7 @@ import {
 import { LocalKms } from '@crm/kms-local';
 import { FakeChannelProvider } from '@crm/channel-fake';
 import { BuiltinPasswordHasher } from '@crm/auth-builtin';
-import { issueApiKey } from '@crm/core';
+import { issueApiKey, type AntiBanPolicy } from '@crm/core';
 import { createLogger, type Config } from '@crm/shared';
 import { buildApp } from '../../apps/api/src/app.js';
 import { dispatchCampaigns, handleSend, type WorkContext } from '../../apps/gateway/src/work.js';
@@ -19,9 +19,8 @@ import { tempStorage, type TempStorage } from '../fixtures/storage.js';
  * Campaigns (P7, first slice).
  *
  * The thing under test is not "can it send to a list" — that part is easy. It is that a
- * campaign **cannot outrun the anti-ban ceiling**, cannot bury an agent's reply, and can be
- * stopped instantly. A bulk sender that ignores the ceiling is how the number is lost, and the
- * number has no recovery path.
+ * campaign **cannot outrun the anti-ban policy's batch**, cannot bury an agent's reply, and can be
+ * stopped instantly.
  */
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const API_KEY = randomBytes(32).toString('hex');
@@ -30,7 +29,7 @@ const kms = new LocalKms({
 });
 const config = {
   PRESET: 'lean', PROCESS_ROLE: 'all', LOG_LEVEL: 'silent', NODE_ENV: 'test',
-  API_KEY, DEFAULT_COUNTRY: 'IN', SEND_RATE_PER_MINUTE: 8, SEND_RATE_PER_DAY: 1500
+  API_KEY, DEFAULT_COUNTRY: 'IN'
 } as unknown as Config;
 const logger = createLogger({ LOG_LEVEL: 'error', NODE_ENV: 'test' });
 
@@ -57,9 +56,11 @@ beforeEach(async () => {
   await db.execute(sql`DELETE FROM org`);
   orgId = (await db.execute(sql`
     INSERT INTO org(name,slug) VALUES ('c','campaigns') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+  // Quiet hours depend on the time of day the suite runs at; they have their own tests (antiban-v2-protection).
+  await db.execute(sql`INSERT INTO antiban_setting (org_id, quiet_hours_enabled) VALUES (${orgId}, false)`);
   senderId = (await db.execute(sql`
-    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-    VALUES (${orgId}, 'fake', 'blaster', '+919000000001', 'active', now() - interval '30 days')
+    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+    VALUES (${orgId}, 'fake', 'blaster', '+919000000001', 'active')
     RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
 
   // Ten reachable people, plus one with no phone number at all.
@@ -90,12 +91,17 @@ const create = (ids: string[] = contactIds, body = 'hello there') =>
   request(app).post('/api/v1/campaigns').set(...auth())
     .send({ name: 'outreach', body, senderIdentityId: senderId, explicitContactIds: ids });
 
-/** A gateway context whose sends are fake and whose jitter costs nothing. */
+/** An anti-ban policy that lets `n` campaign messages wait per number and never delays a send. */
+const batchOf = (n: number): AntiBanPolicy => ({
+  beforeSend: () => Promise.resolve({ action: 'send' as const }),
+  campaignBatch: ({ waiting }) => Math.max(0, n - waiting)
+});
+
+/** A gateway context whose sends are fake and whose gaps between sends cost nothing. */
 function gatewayCtx(): WorkContext {
   return {
     db, provider: new FakeChannelProvider(), logger, kms,
-    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
-    limits: { perMinute: 8, perDay: 1500 }
+    decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c))
   };
 }
 
@@ -240,29 +246,13 @@ describe('starting one', () => {
     expect((skipped as unknown as Array<{ skipReason: string }>)[0]!.skipReason).toBe('no_phone');
   });
 
-  it('tells you how long it will take, before it starts', async () => {
+  it('answers a start with the progress, and no forecast: nothing is promised about how long it takes', async () => {
     const created = await create();
     const r = await request(app)
       .post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
 
-    // The number an operator needs at the moment of starting, not afterwards.
-    expect(r.body.data.outlook).toMatchObject({ remaining: 10, daysToFinish: 0 });
-    expect(r.body.data.outlook.allowanceToday).toBeGreaterThan(0);
-  });
-
-  it('warns when the sender is still warming up', async () => {
-    // A 5,000-person campaign on a four-day-old number is a months-long proposition, and that
-    // must never be a surprise discovered after starting.
-    await db.execute(sql`
-      UPDATE sender_identity SET warmup_started_at = now() - interval '1 day'
-      WHERE id = ${senderId}`);
-
-    const created = await create();
-    const r = await request(app)
-      .post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
-
-    expect(r.body.data.outlook.inWarmup).toBe(true);
-    expect(r.body.data.outlook.allowanceToday).toBeLessThanOrEqual(36);
+    expect(r.body.data.progress).toMatchObject({ total: 11, pending: 10 });
+    expect(r.body.data.outlook).toBeUndefined();
   });
 
   it('does not re-snapshot when a paused campaign resumes', async () => {
@@ -285,15 +275,13 @@ describe('starting one', () => {
   });
 });
 
-describe('the ceiling holds', () => {
-  it('queues only what the sender may still send today', async () => {
-    // The whole point. Ten recipients, a ceiling of four — four messages, not ten.
-    await db.execute(sql`
-      UPDATE sender_identity SET daily_cap_override = 4 WHERE id = ${senderId}`);
+describe('the batch holds', () => {
+  it('queues only what the policy lets wait for the sender', async () => {
+    // The whole point. Ten recipients, a batch of four — four messages, not ten.
     const created = await create();
     await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
 
-    const queued = await dispatchCampaigns(gatewayCtx());
+    const queued = await dispatchCampaigns({ ...gatewayCtx(), antiBan: batchOf(4) });
     expect(queued).toBe(4);
 
     const messages = await db.execute(sql`
@@ -301,29 +289,25 @@ describe('the ceiling holds', () => {
     expect((messages as unknown as Array<{ n: number }>)[0]!.n).toBe(4);
   });
 
-  it('counts messages already waiting against the allowance', async () => {
+  it('counts messages already waiting against the batch', async () => {
     // Without this a sweep every few seconds would queue the whole audience before the first
-    // message had gone out — the ceiling would be enforced on sends but not on the queue.
-    await db.execute(sql`
-      UPDATE sender_identity SET daily_cap_override = 4 WHERE id = ${senderId}`);
+    // message had gone out.
     const created = await create();
     await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
 
-    await dispatchCampaigns(gatewayCtx());
-    const second = await dispatchCampaigns(gatewayCtx());
+    await dispatchCampaigns({ ...gatewayCtx(), antiBan: batchOf(4) });
+    const second = await dispatchCampaigns({ ...gatewayCtx(), antiBan: batchOf(4) });
     expect(second).toBe(0);
   });
 
   it('leaves the rest pending rather than failing them', async () => {
-    await db.execute(sql`
-      UPDATE sender_identity SET daily_cap_override = 4 WHERE id = ${senderId}`);
     const created = await create();
     await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
-    await dispatchCampaigns(gatewayCtx());
+    await dispatchCampaigns({ ...gatewayCtx(), antiBan: batchOf(4) });
 
     const r = await request(app).get(`/api/v1/campaigns/${created.body.data.id}`).set(...auth());
     expect(r.body.data.progress).toMatchObject({ queued: 4, pending: 6 });
-    // Still running: there is more to do tomorrow.
+    // Still running: there is more to do once the batch has gone out.
     expect(r.body.data.status).toBe('running');
   });
 
@@ -428,7 +412,7 @@ describe('dry-run preview (before start)', () => {
     return tagId;
   };
 
-  it('counts the would-be audience without freezing it, and forecasts the reachable ones', async () => {
+  it('counts the would-be audience without freezing it', async () => {
     // Two reachable people plus the one with no number, all tagged.
     const tagId = await tagContacts('preview', [contactIds[0]!, contactIds[1]!, contactIds[10]!]);
     const created = await request(app).post('/api/v1/campaigns').set(...auth())
@@ -438,7 +422,7 @@ describe('dry-run preview (before start)', () => {
     const r = await request(app).get(`/api/v1/campaigns/${id}/preview`).set(...auth());
     expect(r.status).toBe(200);
     expect(r.body.data.audience).toMatchObject({ total: 3, reachable: 2, unreachable: 1 });
-    expect(typeof r.body.data.forecast.daysToFinish).toBe('number');
+    expect(r.body.data.forecast).toBeUndefined();
 
     // A preview writes nothing — the campaign is still a draft with no recipients frozen.
     const rows = await db.execute(sql`
@@ -572,14 +556,14 @@ describe('body variation on dispatch (D-26)', () => {
   });
 });
 
-describe('the outbound-only clamp in campaign dispatch (Layer 1)', () => {
-  it('holds a never-replied sender to 20/day, then lifts once it has received an inbound', async () => {
-    // 25 reachable contacts; the sender (from beforeEach) has never received an inbound.
+describe('the default batch in campaign dispatch', () => {
+  it('queues twenty at a time, and the rest once those have gone out', async () => {
+    // 25 reachable contacts and the default policy: a batch of twenty per number.
     const ids: string[] = [];
     for (let i = 0; i < 25; i++) {
       const c = (await db.execute(sql`
         INSERT INTO contact (org_id, display_name, source)
-        VALUES (${orgId}, ${`Clamp ${String(i)}`}, 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+        VALUES (${orgId}, ${`Batch ${String(i)}`}, 'test') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
       await db.execute(sql`
         INSERT INTO contact_identity (org_id, contact_id, kind, value_normalized, is_primary)
         VALUES (${orgId}, ${c}, 'phone', ${`+91990000${String(i).padStart(4, '0')}`}, true)`);
@@ -588,39 +572,14 @@ describe('the outbound-only clamp in campaign dispatch (Layer 1)', () => {
     const created = await create(ids);
     await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
 
-    // Clamped to 20, not 25, because the number has never been replied to.
     expect(await dispatchCampaigns(gatewayCtx())).toBe(20);
+    // Twenty are still waiting, so a second sweep adds nothing.
+    expect(await dispatchCampaigns(gatewayCtx())).toBe(0);
 
-    // Give it an inbound: the clamp lifts and the remaining recipients can queue.
-    await db.execute(sql`UPDATE sender_identity SET last_inbound_at = now() WHERE id = ${senderId}`);
-    expect(await dispatchCampaigns(gatewayCtx())).toBe(5);
-  });
-});
-
-describe('the identical-body guard (D-26 backstop)', () => {
-  it('caps identical bodies per window, but a varied body is never capped', async () => {
-    // Give the sender an inbound so the outbound-only clamp does not also bite.
-    await db.execute(sql`UPDATE sender_identity SET last_inbound_at = now() WHERE id = ${senderId}`);
-    const capped: WorkContext = {
-      ...gatewayCtx(), limits: { perMinute: 8, perDay: 1500, identicalBodyCap: 3 }
-    };
-
-    // A no-variation body: all eight recipients share one body, so only three go out this window.
-    const flat = await create(contactIds.slice(0, 8), 'exactly the same every time');
-    await request(app).post(`/api/v1/campaigns/${flat.body.data.id}/start`).set(...auth());
-    expect(await dispatchCampaigns(capped)).toBe(3);
-    const flatProg = await request(app).get(`/api/v1/campaigns/${flat.body.data.id}`).set(...auth());
-    expect(flatProg.body.data.progress).toMatchObject({ queued: 3, pending: 5 });
-
-    // A varied body ({{name}} renders eight distinct messages) is never capped — all eight queue.
-    const varied = await create(contactIds.slice(0, 8), 'Hi {{name}}, a word.');
-    // Same people as the campaign above, on purpose — so lift the two recipient-experience gates
-    // (cooldown, duplicate-campaign) that would otherwise skip them; this test is about the cap.
+    // Once they have gone out the remaining five can queue.
     await db.execute(sql`
-      UPDATE campaign SET gate_overrides = ARRAY['cooldown', 'duplicate_campaign']
-      WHERE id = ${varied.body.data.id}`);
-    await request(app).post(`/api/v1/campaigns/${varied.body.data.id}/start`).set(...auth());
-    expect(await dispatchCampaigns(capped)).toBe(8);
+      UPDATE message SET status = 'sent', sent_at = now() WHERE org_id = ${orgId} AND status = 'queued'`);
+    expect(await dispatchCampaigns(gatewayCtx())).toBe(5);
   });
 });
 
@@ -655,7 +614,7 @@ describe('a campaign with a picture', () => {
   it('sends the picture to everyone with the message as the caption', async () => {
     const stored = (await upload(await pic('jpeg'), 'diwali.jpg')).body.data;
     const created = await request(app).post('/api/v1/campaigns').set(...auth())
-      .send({ name: 'with picture', body: 'Hi {{name}}, offer!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 3), mediaAssetId: stored.id });
+      .send({ name: 'with picture', body: 'Hi {{name}}, offer!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 3), mediaAssetId: stored.id, mediaAfterReply: false });
     expect(created.status).toBe(201);
     const detail = await request(app).get(`/api/v1/campaigns/${created.body.data.id}`).set(...auth());
     expect(detail.body.data).toMatchObject({ mediaAssetId: stored.id, mediaFilename: 'diwali.jpg', mediaContentType: 'image/jpeg' });
@@ -693,7 +652,7 @@ describe('a campaign with a picture', () => {
     const stored = (await upload(await pic('gif'), 'welcome.gif')).body.data;
     expect(stored).toMatchObject({ contentType: 'image/gif', gif: true });
     const created = await request(app).post('/api/v1/campaigns').set(...auth())
-      .send({ name: 'gif', body: 'Welcome!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 1), mediaAssetId: stored.id });
+      .send({ name: 'gif', body: 'Welcome!', senderIdentityId: senderId, explicitContactIds: contactIds.slice(0, 1), mediaAssetId: stored.id, mediaAfterReply: false });
     await request(app).post(`/api/v1/campaigns/${created.body.data.id}/start`).set(...auth());
     await dispatchCampaigns(gatewayCtx());
     const row = (await db.execute(sql`

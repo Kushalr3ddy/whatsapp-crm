@@ -33,8 +33,10 @@ jobs:
           python-version: '3.12'
       # semgrep 1.100.0 imports pkg_resources, which Python 3.12 no longer ships; setuptools provides it (and 81+ removed it)
       - run: pip install "setuptools<81" semgrep==1.100.0
+      # packages/baileys is the vendored upstream Baileys source, kept byte-identical to its release tag: its findings (e.g. GCM decrypt
+      # without authTagLength in Utils/crypto.ts, where the tag is always the last 16 bytes) belong upstream, not in this scan.
       - name: scan (community rules, no account needed)
         run: |
           semgrep scan --config p/typescript --config p/nodejs --config p/owasp-top-ten --config p/secrets \
-            --exclude node_modules --exclude '*.test.ts' --exclude tests --exclude docs \
+            --exclude node_modules --exclude '*.test.ts' --exclude tests --exclude docs --exclude packages/baileys \
             --metrics off --severity ERROR --error

@@ -22,7 +22,7 @@ tutorial `../CRM-user-tutorial.pdf` (chapter 10); for the pin that tracks what i
 | **One-contact message** | `send_message` | An existing contact by name or phone; into the chat already there; takes that chat; refuses do-not-contact, a chat owned by a person, no chat yet, an ambiguous name, the daily limit. |
 | **Campaign code** | `packages/core/src/campaign-actions.ts` | Create, start/resume, pause, cancel and edit moved out of the HTTP routes so a person and the assistant share one path. New `PATCH /campaigns/:id` (draft or paused only). |
 | **Queue** | `ai_job` (migration 0033), `apps/api/src/ai-runner.ts`, `/ai/jobs` | One request at a time per org, oldest first; `queued` can be cancelled, `running` cannot; max 20 waiting; finished ones kept 24 h; a sweep fails a job whose worker vanished. Also carries "Write with AI". |
-| **Warnings** | thread banner, `GET /ai/conversations/:id/notice` | Anti-ban holds (pacing, quarantine, cooling-off, night hours), "number not connected", the daily limit, a model failure, do-not-contact. Only the do-not-contact block can be lifted, by a signed-in admin, one reply, with a reason (`POST /ai/conversations/:id/allow-reply`, audited). |
+| **Warnings** | thread banner, `GET /ai/conversations/:id/notice` | A hold on the number (the anti-ban engine: timelock, new-chat cap, quiet hours, "number not connected"), the daily limit, a model failure, do-not-contact. Only the do-not-contact block can be lifted, by a signed-in admin, one reply, with a reason (`POST /ai/conversations/:id/allow-reply`, audited). |
 | **Run log** | `ai_run` | One row per attempt: kind, outcome, reason, model, tokens. |
 | **Compare models** | `npm run llm:check` | Speed, steadiness and tool-calling for the model in `.env` and Groq. |
 
@@ -88,7 +88,7 @@ which is a soft control. Doing this properly is real work, and it should be done
 
 - **`LlmDriver` port** with a `none` driver as default (`../18-providers.md`).
 - **The agent is just another producer** writing into the same outbox — it passes
-  `OutboundDispatcher` like every other sender, so every anti-ban and policy gate applies to
+  `OutboundDispatcher` like every other sender, so the anti-ban policy and every gate apply to
   it automatically with no special-casing.
 - **`message.sent_by = 'agent'`** already exists in the schema, so agent messages are
   distinguishable in every report from day one.

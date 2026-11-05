@@ -11,15 +11,13 @@ import { PageHeader, Stat, Section, EmptyState, Checklist, GlyphIcon, initialsOf
 /** Rendered per request — an overview of live state is never a build-time fact. */
 export const dynamic = 'force-dynamic';
 
-/** How a number is doing, in one badge. The socket decides "can it send"; status decides "is it healthy". */
+/** How a number is doing, in one badge: the socket decides "can it send". */
 function numberBadge(s: Sender): { label: string; cls: string } {
-  if (s.status === 'quarantined') return { label: 'Quarantined', cls: 'badge-danger' };
   if (s.connectionState !== 'open') return { label: 'Not linked', cls: 'badge-warning' };
-  if (s.status === 'degraded') return { label: 'Degraded', cls: 'badge-warning' };
   return { label: 'Linked', cls: 'badge-success' };
 }
 
-/** "Good morning/afternoon/evening" for the install's time zone (the one sending hours use), or a plain "Welcome" if it is not valid. */
+/** "Good morning/afternoon/evening" for the install's time zone (SEND_TIMEZONE), or a plain "Welcome" if it is not valid. */
 function greeting(): string {
   try {
     const zone = process.env.SEND_TIMEZONE ?? 'Asia/Kolkata';
@@ -62,8 +60,7 @@ export default async function Home() {
   }
   if (expired) redirect('/login');
 
-  const connected = senders.filter((s) => s.connectionState === 'open' && s.status !== 'quarantined');
-  const needsAttention = senders.filter((s) => s.status === 'quarantined' || s.status === 'degraded');
+  const connected = senders.filter((s) => s.connectionState === 'open');
   const open = conversations.filter((c) => c.status === 'open');
   const unread = open.reduce((n, c) => n + c.unreadCount, 0);
   const waiting = conversations.reduce((n, c) => n + c.queuedCount, 0);
@@ -84,14 +81,6 @@ export default async function Home() {
       />
 
       {failure !== null && <p className="notice notice-danger mb-6">{failure}</p>}
-
-      {failure === null && needsAttention.length > 0 && (
-        <p role="alert" className="notice notice-warning mb-6">
-          {needsAttention.length === 1 ? 'One number needs' : `${String(needsAttention.length)} numbers need`}{' '}
-          attention: {needsAttention.map((s) => s.label ?? s.phoneE164 ?? 'number').join(', ')}.{' '}
-          <Link href="/link" className="font-medium underline">Open Numbers</Link>
-        </p>
-      )}
 
       {failure === null && (
         <GettingStarted
@@ -125,7 +114,7 @@ export default async function Home() {
       {waiting > 0 && (
         <p className="notice notice-warning mb-6">
           {waiting} message{waiting === 1 ? ' is' : 's are'} queued and not sent yet — usually a number that
-          is not connected or pacing itself.
+          is not connected.
         </p>
       )}
 
@@ -186,7 +175,7 @@ export default async function Home() {
             {campaigns.length === 0 ? (
               <EmptyState
                 title="No campaigns yet"
-                body="Send one message to many people, paced so a burst never goes out at once."
+                body="Send one message to many people, a few at a time rather than all at once."
                 action={<Link href="/broadcast/new" className="btn btn-primary btn-sm">Create a campaign</Link>}
               />
             ) : (

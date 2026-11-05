@@ -104,7 +104,7 @@ Sources: [CRM pricing benchmarks 2026](https://costbench.com/stats/crm-pricing-2
 
 **Where this product sits.** It talks to WhatsApp through Baileys, an unofficial client, so there is **no per-message fee and no markup**
 (the official API's fees are charged per message by Meta, and resellers add 12% to 25%). That is the pricing story. The matching honesty is
-the ban risk: an unofficial number can be banned, which the product's pacing reduces and cannot remove, and customers must be told.
+the ban risk: an unofficial number can be banned, which the product's anti-ban policy reduces and cannot remove, and customers must be told.
 
 **A starting price list to react to** (placeholders in rupees, per organisation, not per message; Kushal sets the real numbers):
 

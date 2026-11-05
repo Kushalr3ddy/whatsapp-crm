@@ -23,9 +23,8 @@ hardcoded "Hiring Studios" into every page title and the AI prompt, which is exa
 of thing that makes software un-reusable.
 
 ### Messaging policy
-Quiet hours, timezone, daily caps, cooldown windows, warmup profile, opt-out keywords, locale
-packs, routing rules. Note the split: some of these are *policy* an admin may tune; the hard
-safety limits in `../08-antiban.md` are **not** editable to an unsafe value.
+Quiet hours, timezone, cooldown windows, opt-out keywords, locale packs, routing rules. What decides
+how fast a number sends is the anti-ban policy (`../08-antiban.md`), not an admin setting.
 
 ### Data & retention
 Retention windows per data class, hard-delete job schedule, per-contact data export and delete

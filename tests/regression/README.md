@@ -22,7 +22,7 @@ The API (and gateway) must already be running (`npm run dev:all -- --no-web`); t
 3. **Fix the code** until the test passes (green).
 4. **Mark the row `guarded`** and put the PR number in the Fix column. `npm run regress:check` (and CI) fails if you forget: a `guarded` row needs a test with its tag, a tag in a test needs a row, and a row left `fixed` with no test is refused.
 
-Which layer? Pick the cheapest that would really have caught it: **integration** (`tests/integration`, vitest, real database, no browser) for rules and data; **e2e** (`tests/e2e`, Playwright) for something a person sees or clicks; **simulation** (`tests/simulation`) for anti-ban behaviour over time.
+Which layer? Pick the cheapest that would really have caught it: **integration** (`tests/integration`, vitest, real database, no browser) for rules and data; **e2e** (`tests/e2e`, Playwright) for something a person sees or clicks.
 
 ## What CI checks on a pull request that fixes a bug
 - **`bug-gate`** (`tests/regression/bug-gate.mjs`): a branch named `fix/…` (or a PR labelled `bug`) must add or change a test with a `[R-nnn]` tag in its title, and that bug's registry row must be `guarded`. Escape hatch for a fix that truly cannot have a test: label the PR `no-regression-test` and say why in the description.
@@ -42,4 +42,4 @@ All test people use fiction numbers `+1 202 555 0xxx`. The seeded demo people (`
 - `check-registry.mjs`, `report.mjs` — the checker and the report builder.
 - `tests/e2e/regression-prod.spec.ts` — the production-build smoke tests · `regression-budgets.spec.ts` — the speed probe.
 - `scripts/regress.sh`, `scripts/bug.mjs` — the runner and the bug intake.
-- The older layers stay as they are: `tests/integration`, `tests/contract`, `tests/simulation`, `tests/live` (the timed audit, `npm run test:session`). See also `docs/12-testing.md` and `docs/24-local-testing.md`.
+- The older layers stay as they are: `tests/integration`, `tests/contract`, `tests/live` (the timed audit, `npm run test:session`). See also `docs/12-testing.md` and `docs/24-local-testing.md`.

@@ -88,8 +88,7 @@ export function AiPanel({ settings, rules }: { settings: AiSettings; rules: stri
           <span>
             The assistant may start and resume campaigns by itself
             <span className="block text-xs text-muted">
-              Off (recommended): it prepares a campaign and an admin presses Start. Either way every anti-ban limit still applies,
-              and it can never lift a do-not-contact or other gate.
+              Off (recommended): it prepares a campaign and an admin presses Start. Either way it can never lift a do-not-contact or other gate.
             </span>
           </span>
         </label>

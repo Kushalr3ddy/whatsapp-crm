@@ -24,6 +24,8 @@
     "web": "NEXT_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env node_modules/next/dist/bin/next dev apps/web --port 3001",
     "web:prod": "NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env node_modules/next/dist/bin/next build apps/web && NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env node_modules/next/dist/bin/next start apps/web --port 3001",
     "web:build": "NEXT_TELEMETRY_DISABLED=1 npm --workspace @crm/web run build",
+    "baileys:build": "npm --workspace baileys run build",
+    "postinstall": "npm run baileys:build",
     "start": "node apps/api/dist/server.js",
     "docs:pdf": "node scripts/docs-pdf.mjs",
     "llm:check": "tsx --env-file-if-exists=.env scripts/llm-check.ts",
@@ -39,7 +41,6 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:sim": "vitest run --config vitest.sim.config.ts",
     "test:e2e": "playwright test",
     "verify": "bash scripts/verify.sh",
     "test:live": "playwright test --config playwright.live.config.ts",
@@ -123,5 +124,10 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.17.0",
     "vitest": "^2.1.8"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.28"
+    }
   }
 }

@@ -80,7 +80,7 @@ Ranked by (gap in the market) × (cheap for us, because of decisions we've alrea
 | 1 | **Cost-aware routing** — "this campaign costs ₹8,600 on Meta, ₹0 on Baileys, here's the risk delta" | **Nobody** | We are the only design running both transports as peers behind one port. Falls straight out of `ChannelProvider.capabilities.costPerMessage`. |
 | 2 | **A real ingestion framework** — mapping UI, dry run, scheduled syncs, per-row error ledger | Nobody; everyone has "import CSV" | The old system's single worst pain point (M3–M9). Already a first-class port. |
 | 3 | **Self-hostable, single product, no vendor in the path** | Only Chatwoot+Evolution, and that is two products | Our entire premise |
-| 4 | **Anti-ban engineering as a product feature**, with a visible sender-health dashboard | Unofficial tools mostly hide this | `08-antiban.md` is the deepest part of the design |
+| 4 | **Anti-ban engineering as a product feature** | Unofficial tools mostly hide this | `08-antiban.md` says what is in place and what is pending |
 | 5 | **Genuine multi-number management** | Periskope, TimelinesAI | Most tools are one-WABA-shaped; ours is sender-identity-shaped from the schema up |
 | 6 | **Collision detection & typing indicators between agents** | Respond.io; rare in the India segment | Cheap once realtime exists |
 | 7 | **WhatsApp groups as a first-class object** | Periskope (its moat) | Baileys can do groups; the Meta API cannot. V2. |
@@ -189,8 +189,7 @@ Ordered by how often it appeared and how much it matters to the people this prod
 ### What we have that most of them do not
 
 - **Self-hostable and API-first**, with no per-message markup on the unofficial path.
-- **An anti-ban engine with a visible sender-health panel, silent-restriction detection and a
-  simulation harness.** The WhatsApp-first SaaS tools sit on the official API and do not need one; the
+- **An anti-ban policy** (the first engine was removed on 2026-10-30; the new one is pending).** The WhatsApp-first SaaS tools sit on the official API and do not need one; the
   unofficial tools rarely show theirs.
 - **Do-not-contact enforced on every send path with an audited admin override**, and an append-only
   audit log written in the same transaction as the change.

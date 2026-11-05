@@ -49,7 +49,7 @@ npm run regress:check            # instant: every guarded bug has a test, every 
 
 # 5. open the PR; write "Fixes #42" in the description (the template has the checklist)
 ```
-Which kind of test? Pick the **cheapest** one that would really have caught it: **integration** (rules and data, no browser), **e2e** (something a person sees or clicks), **simulation** (anti-ban behaviour over time). Add `@smoke` to a browser test's title only if it must also run on a production build on every PR (keep that set small).
+Which kind of test? Pick the **cheapest** one that would really have caught it: **integration** (rules and data, no browser), **e2e** (something a person sees or clicks). Add `@smoke` to a browser test's title only if it must also run on a production build on every PR (keep that set small).
 
 A fix that truly cannot have a test (a wording change, say): put the label `no-regression-test` on the PR and say why in the description.
 
@@ -112,7 +112,7 @@ Severity: **S1** a wrong message was sent, data was lost or a number could be ba
 |---|---|
 | the bug list | `tests/regression/REGISTRY.md` |
 | browser tests | `tests/e2e/` (`regression-*.spec.ts` = production-build smoke + speed probe) |
-| database/API tests | `tests/integration/` · contract: `tests/contract/` · anti-ban simulation: `tests/simulation/` |
+| database/API tests | `tests/integration/` · contract: `tests/contract/` |
 | the timed full walk of the app (recorded) | `tests/live/` · `npm run test:session` (safe) / `test:session:real` (sends real messages) |
 | the commands | `scripts/regress.sh`, `scripts/bug.mjs`, `scripts/feedback-import.mjs`, `scripts/feedback-report.mjs`, `scripts/changelog.mjs`, `scripts/protect-main.sh`, `scripts/setup-labels.sh` |
 | the robots | `.github/workflows/` (`ci.yml`, `regression-nightly.yml`, `after-merge.yml`, `automerge.yml`) |

@@ -88,11 +88,12 @@ test.describe('seeded pages', () => {
     await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
   });
 
-  test('numbers: the seeded number shows with its health panel', async ({ page }) => {
+  test('numbers: the seeded number is listed, with no risk panel', async ({ page }) => {
     await signIn(page);
     await nav(page).getByRole('link', { name: 'Linked numbers', exact: true }).click();
     await expect(page.getByText('Seed number').first()).toBeVisible();
-    await expect(page.getByRole('progressbar', { name: 'Risk score' }).first()).toBeVisible();
+    await expect(page.getByText(/^(Linked|Linking…|Not linked)$/).first()).toBeVisible();
+    await expect(page.getByRole('progressbar', { name: 'Risk score' })).toHaveCount(0);
   });
 
   test('saved audiences: the seeded audience is listed', async ({ page }) => {

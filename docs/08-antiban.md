@@ -1,342 +1,121 @@
-# 08 · Anti-ban engine
+# 08 · Anti-ban
 
-The most important document in this repository. The entire free transport depends on it, and
-a failure is unrecoverable — a hard-banned WhatsApp number has no appeal process.
+> **v2, parts 1 and 2 (2026-10-31).** The send lane, WhatsApp's warnings, the exact schedule and the extra protection (part 1), and
+> the delivery checks, decrypt retries and opt-out handling (S4 to S6, part 2) are in. The screens (S10) come after. The spec, with
+> every acceptance case, is `06-features/F6-antiban.md`; this page says where the code is.
 
-> **Read this first.** Running Baileys against a normal WhatsApp number **violates WhatsApp's
-> Terms of Service**. The number can be banned at any time, for reasons outside this system's
-> control, with no recourse. Everything below substantially *reduces* that risk. Nothing below
-> *eliminates* it. Reported industry analysis puts roughly **68% of Indian SMBs using
-> unofficial automation hitting at least one ban within 12 months**. Never point this at a
-> number you cannot afford to lose, and route anything your business depends on through the
-> official Cloud API.
+Running Baileys against a normal WhatsApp number **violates WhatsApp's Terms of Service**. The number can be banned at any
+time, for reasons outside this system's control, with no appeal. Nothing here removes that risk. This feature acts on every signal
+WhatsApp gives us, never sends in a way that breaks a chat, and says what it is doing and why. Never point this at a number you
+cannot afford to lose.
 
-Every default here is a config value in `org_setting`. The hard safety limits are **not**
-editable to an unsafe value by anyone, including an admin — see "Two classes of gate".
+**There are no daily caps**, by design (a user decision). The only limits are WhatsApp's own signals (timelock, new-chat quota) and
+the state of one contact. Every threshold with no data behind it is a named constant marked *guess* in
+`packages/core/src/antiban/constants.ts`, and every decision that uses one is logged at `info` with its inputs.
 
-## What actually gets numbers banned
+## How a message goes out
 
-From 2025–26 signal research and community post-mortems. WhatsApp's detection is a multi-layer
-system: device fingerprinting at registration, behavioural analysis during messaging, recipient
-report/block signals, and content pattern matching.
+One **lane** per number (`apps/gateway/src/lane.ts`). Every outbound message of that number, from any source, waits in it, and the
+only thing that reaches the provider is the lane.
 
-| Signal | Weight | What it means |
-|---|---|---|
-| **Reply ratio below ~10%** | Very high | Spray-and-pray. The single strongest behavioural signal. |
-| **Contact-graph distance** | Very high | Messaging strangers who have never interacted with you |
-| **Block / report rate above ~2%** | Very high | Triggers a quality downgrade and a self-reinforcing spiral |
-| **Robotic timing** | High | Fixed intervals, instant reads at 4 a.m., "too perfect" behaviour |
-| **Identical message bodies** | High | The same text to many recipients |
-| **Burst floods after reconnect** | High | Draining a backlog the moment the socket returns |
-| **Unanswered-message accumulation** | Medium–high | Messages with no reply within 48 h |
-| **Device fingerprint anomalies** | Medium | The same account appearing from inconsistent clients |
+1. **Order:** a reply (answers an inbound from the last 24 h), then what an agent typed, then the AI, then campaign messages; oldest first within each. The priority is read from the chat, not from who wrote the message: an AI or campaign message to a chat whose contact wrote in the last 24 h goes as a reply (and skips quiet hours). The opt-out closing message is always a reply.
+2. **Gates outside the policy** (they cannot be relaxed by it): do-not-contact (the message is **failed** with `do_not_contact`, not held), an empty body, the number itself, a number that is not connected (the message stays queued with `sender_not_connected`).
+3. **The policy** (`AntiBanPolicy`, `packages/core/src/antiban.ts`; the v2 driver is `antiban/policy.ts`) answers `send`, `wait ms` or `hold {reason, until}`. It is pure: everything it reads is in the `SendContext`.
+4. **Gap:** uniform 1 to 50 s after the previous send; the first message of a run (a silence of 90 s or more) has none. The gap is drawn once and stored (`campaign_recipient.planned_gap_ms`, copied to `message.planned_gap_ms`), so the schedule is known in advance.
+5. **Typing sits inside the wait:** `composing` for `clamp(chars x 60 ms, 2 s, 25 s)`, refreshed every 5 s, then `paused`, then the send. The wait is the longer of gap and typing.
+6. **Presence:** `available` before the first send of a run, `unavailable` after 90 s of nothing sent. A message is never marked read on arrival: only when an agent opens the chat, or 3 to 20 s before the reply to it starts typing.
+7. **Waiting is scheduling.** A wait longer than the typing is not slept: the lane returns the moment to come back (`WorkContext.schedule`), so a sweep never sits open on a gap, a timelock or a held message. Only the typing and the read delay are slept (25 s at most).
+8. **A send that fails is `failed` with a reason code** (`send_error`, `whatsapp_refused_463`, `not_on_whatsapp`, ...) and is never retried.
 
-The feedback loop is what makes this dangerous: a block rate above 2% downgrades quality,
-which throttles volume, which reduces replies, which lowers the reply ratio, which degrades
-quality further. **Once started it is very hard to reverse** — so the engine is designed to
-brake early rather than recover late.
+A hold keeps the message queued with `hold_reason` and `hold_until` (null when it waits for something). It never drops a message,
+survives a restart, and when it lifts the message goes in its original place in the lane. Hold reasons are a typed list
+(`HOLD_REASONS`). A hold on one contact or on the whole number is looked up in one place,
+`antiban/holds.ts` (`contactHoldOf`, `numberHoldOf`). Which priorities a hold stops is the policy's rule: most stop everything, but
+`likely_blocked` stops only campaign and AI messages and `many_undelivered` only campaigns.
 
-## What is built, and what is not
+## What the policy acts on
 
-✅ **Layer 1 (warmup) and Layer 2 (rate limiting) are enforced** in
-`packages/core/src/pacing.ts`, called from `handleSend` in the gateway — the single point every
-outbound message passes through. A paced message is **left queued**, never failed: a message
-that is merely early has not gone wrong, and failing it would lose it.
-
-Counts come from the `message` table rather than an in-memory bucket. A bucket resets on
-restart and counts separately per replica, and `tsx watch` restarts the gateway on every file
-save — which would silently hand a developer an unlimited sender. The database already records
-what was sent and when, so it is the only source that cannot lie. The cache-driver buckets
-below (M13) are an optimisation for later, not a prerequisite.
-
-✅ **Circadian pacing is built** (also in `packages/core/src/pacing.ts`, same gate). Once a send
-is within every layer 1–2 ceiling, the time of day gets a say: overnight it is deferred to the
-morning (reason `circadian`, left queued like any paced message), and through the day the
-jittered pause is stretched so the shoulders of the day send more slowly than midday. The curve
-is a smooth cosine — full speed 09:00–22:00, tapering to dead 02:00–06:00, ramping back by 09:00
-— read against the number's timezone (`SEND_TIMEZONE`, default IST; `SEND_CIRCADIAN=false` turns
-it off). It is opt-in per sender, so it never changes what layers 1–2 do on their own.
-
-✅ **Contact-graph gates are built** (`packages/core/src/contact-graph.ts`, called from
-`handleSend` alongside the pacing gate). Every send is classified by relationship from real
-message history — **known** (they have replied), **contacted** (we have messaged, no reply yet),
-**stranger** (no contact either way) — which stretches the pause by 1.0× / 1.8× / 2.5×. On top of
-that, a **new-contact throttle** caps how many brand-new strangers a number may *start* messaging
-(`NEW_CONTACTS_PER_HOUR` / `_PER_DAY`, default 5 / 20); a stranger over the cap is left queued
-(reason `new_contact_throttle`), while known and already-contacted recipients are never throttled.
-Opt-in like circadian (`CONTACT_GRAPH_GATES=false` disables it), and campaigns are gated for free
-since their sends pass through the same point.
-
-✅ **Health scoring is built** (`packages/core/src/health.ts`, run in the gateway sweep). It is
-the closed loop: it watches send outcomes (delivery ratio, failure rate, typed disconnect codes,
-reconnect churn), rolls them into a 0–100 `risk_score` with the evidence stored in
-`sender_identity.health`, and **acts** — a `high` band degrades the number (sends at half speed), a
-`critical` band quarantines it (sends are held, its campaigns skipped), and — the property this
-project has botched three times — it **recovers in both directions**, climbing back to `active`
-through the bands once the signals clear, with hysteresis so a score near a threshold does not
-flap. A quarantined number stays *connected* (it can still receive, which is what lets it recover);
-it just does not send.
-
-✅ **Per-incident recovery orchestration is now built** (Layer 6 below). Beyond the scorer's
-both-ways *status* recovery, a typed incident now starts a **timed** response: a **463** timelock →
-24 h pause then resume at 10 % of cap, +15 %/week; a **429** rate overlimit → 4 h then 25 %,
-+25 %/week; a **delivery-collapse soft ban** → 48 h then 5 %, +10 %/week. State lives in three
-`sender_identity` columns (`recovery_incident`, `recovery_started_at`, `recovery_until`, migration
-0016); everything else is computed by `recoveryState` in `@crm/core`. The pause is a full hold at
-the send chokepoint (message left queued, never failed), the ramp is a fraction that only *lowers*
-the daily ceiling, and the Numbers page shows an at-risk / cooling-off banner per number. A 401 hard
-ban stays on the existing unlink→re-link path rather than auto-retiring, because a genuine ban and a
-user unlink are indistinguishable at the socket. The anti-ban completion pass is now finished: every refinement in this section is built.
-
-✅ **Typing simulation is now built** (D-24). Before each send the gateway emits a `composing`
-presence, pauses a beat proportional to the message length (Gaussian on the rate, clamped
-0.7–8 s), then clears it — so a send looks human rather than instant. Opt-in via
-`SEND_TYPING_SIMULATION` (default on), cosmetic and best-effort: a failed presence never fails the
-send. The beat is a *compressed* pause, not literal 45-WPM typing time (a 30-second bubble before
-every send would stall a paced queue for no gain).
-
-✅ **The "never received an inbound message is capped harder" rule is now built.** A sender whose
-`last_inbound_at` is null is clamped to **20 sends/day regardless of warmup day** in `dailyCeiling`
-(`OUTBOUND_ONLY_DAILY_CAP`), lifting automatically the moment its first inbound arrives. Enforced at
-the send chokepoint and in campaign dispatch, and reflected in the campaign forecast. It only ever
-*lowers* the ceiling, and a caller that does not evaluate inbound (`lastInboundAt` absent) skips it,
-so the rest of the pacing path is unchanged. Outbound-only is exactly the pattern the graph
-heuristics punish — a real account gets replies — and now the ceiling says so.
-
-✅ **Proven by simulation, and two defects fixed because of it.** `tests/simulation` runs days of
-traffic through this engine against a virtual WhatsApp that bans on the heuristics above
-(`docs/12-testing.md`). Its first run found (1) that the delivery ratio counted sends too young to have
-a receipt as *undelivered*, so a healthy number's first burst opened a 48 h soft-ban pause — a send now
-has `RECEIPT_GRACE_MS` (15 min) before it is judged; and (2) that a backlog queued while the socket was
-down drained at the full 8/min the moment it returned — for 10 minutes after a (re)connect
-(`RECONNECT_RAMP_MS`) the per-minute ceiling is now held at `RECONNECT_PER_MINUTE` (3). Both only ever
-lower what a number may do.
-
-## Layer 1 — Warmup
-
-Per sender identity, from `warmup_started_at`. Exponential ramp, factor **1.8×/day**:
-
-| Day | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8+ |
-|---|---|---|---|---|---|---|---|---|
-| Max sends | 20 | 36 | 65 | 117 | 210 | 378 | 680 | steady-state cap |
-
-- Re-enters warmup after **72 hours of inactivity**.
-- A number that has never received an inbound message is capped harder regardless of day —
-  outbound-only is exactly the pattern the graph heuristics punish.
-- The ceiling cannot be raised by an admin, an override, or an API call.
-
-## Layer 2 — Rate limiting
-
-Defaults per sender identity: **8/minute · 200/hour · 1,500/day**.
-Inter-send delay **1.5–4 s** with **Gaussian jitter** — clustered around the midpoint, because
-uniform random is itself a detectable signature (and a fixed 1,000 ms interval, as in M10, is
-a perfect 1 Hz fingerprint).
-
-Token buckets live in the cache driver so the limit holds **across worker replicas** (M13).
-A shared org-wide bucket prevents the "5 senders × 8/min = 40/min from one IP" pattern.
-
-## Layer 3 — Human-behaviour simulation
-
-- **Typing** ✅ **built** (D-24): `composing` → beat proportional to the message length (Gaussian
-  on the per-char rate, clamped 0.7–8 s) → `paused` → send, at the one send chokepoint in the
-  gateway. Opt-in via `SEND_TYPING_SIMULATION` (default on). The beat is a compressed, practical
-  pause rather than literal 45-WPM typing time — a half-minute "typing…" bubble before every send
-  would stall the paced queue for no anti-ban gain, since the tell being removed is the *instant*
-  send, not a fast one. Best-effort: a failed presence update never fails the send.
-- **Circadian pacing** ✅ **built** (see "What is built" above): fast 09:00–22:00, slow
-  22:00–02:00, near-dead 02:00–06:00, with a smooth cosine transition rather than steps. Uses the
-  configured send timezone (`SEND_TIMEZONE`), and **the recipient's day is respected too** ✅: their
-  zone is inferred from their phone number's country (`timezoneForPhone`, a ~60-country table; multi-
-  zone countries use their most populous zone; an unknown country means no adjustment). A send that
-  would land in the recipient's small hours is left queued, one in their shoulders is slowed; it only
-  ever adds caution, only for `phone` recipients (a privacy id carries no country), and only when their
-  zone differs from the sender's. It never consults where the server is hosted — the sender's day
-  comes from the explicit `SEND_TIMEZONE`, so a US-region deployment with +91 numbers behaves exactly
-  like an Indian one. `SEND_RECIPIENT_TIMEZONE=false` turns it off. Caveat: a deferred message stays
-  in the 200-oldest queue window, so a large overnight batch to a far zone can briefly crowd it.
-- **Read behaviour** ✅ **built**: an inbound message is blue-ticked only after its own 10–60 minute
-  delay (`readDelayMs`, derived from the message id so a restart cannot reshuffle it), only in the
-  number's active hours (circadian level ≥ 0.5, so never at 4 a.m.), never for a message older than
-  24 h, and at most 3 per sender per 60-second sweep — a backlog is a trickle, never a burst.
-  `message.read_at` on an inbound message records "we sent the receipt", set only after the provider
-  confirms, so a closed socket just retries. `ChannelProvider.markRead` is optional like `typing`.
-  `SEND_READ_RECEIPTS=false` stops the gateway sending any.
-- **Background entropy** ✅ **built**: every 2–6 hours per connected number, in active hours only, the
-  gateway emits one noise event — a "typing…" for 3–8 s that is then abandoned (`paused`, no message),
-  and an available→unavailable presence blip held 30–120 s. The typing goes only to a contact who has
-  replied, never a stranger; with nobody suitable it does just the blip. `EntropyScheduler` (core)
-  schedules per number, in memory — the first sighting schedules 2–6 h out, so a restart never fires
-  every number at once. Best-effort and detached from the send sweep. Optional `ChannelProvider.presence`.
-  `SEND_BACKGROUND_ENTROPY=false` turns it off.
-- **Body variation** ✅ **built** (D-26): spintax (`{Hi|Hey}`) plus per-recipient variables
-  (`{{name}}`) render each recipient's copy in `dispatchCampaign` (`renderBody`, `@crm/core`), so
-  sends are no longer byte-identical. **And the dispatcher now refuses more than N identical bodies
-  in a window**: a sender holds at most `IDENTICAL_BODY_DAILY_CAP` messages with the same
-  `body_hmac` per rolling 24h (default 50), the excess left pending (never failed) until the window
-  frees or the operator adds variation. Spintax/`{{name}}` make bodies differ, so it only bites a
-  no-variation blast — exactly the shape it exists to slow.
-
-## Layer 4 — Contact-graph gates ✅ built (see "What is built" above)
-
-Delay multiplier by relationship:
-
-| Relationship | Multiplier | Built as |
-|---|---|---|
-| Known contact (has replied before) | 1.0× | `known` |
-| Handshake complete | 1.3× | folded into `known` (a reply is a reply) |
-| Handshake sent | 1.8× | `contacted` |
-| **Stranger** | **2.5×** | `stranger` |
-
-New-contact throttle: **5/hour, 20/day** ✅ enforced.
-
-✅ **Reply-ratio floor built.** The 20/day cap is *earned*, not given: it applies only once at least
-**10** new contacts from the last **7 days** (each given a **48 h** grace to answer) exist and **≥30 %**
-of them replied. Until then the daily allowance is **5/day** (`DEFAULT_REPLY_FLOOR`,
-`newContactDailyAllowance` in `contact-graph.ts`). It only ever lowers the cap, is computed from the
-`message` table like every other layer, and a held send names the evidence in its reason (e.g. "2 of
-10 recent new contacts replied"). It is deliberately a *floor on the allowance*, not a hard stop — a
-hard stop would starve the number of the very replies that raise the ratio. `NEW_CONTACT_REPLY_FLOOR=false`
-restores the flat cap.
-
-Group operations (V2, but the limits belong here): ~3 adds and ~2 creates per 10 minutes;
-a **12-hour lurk period** after joining a group before posting.
-
-## Layer 5 — Health monitoring & adaptive throttle ✅ built (see "What is built" above)
-
-*First slice built from the `message` and `channel_session` rows already recorded; the normalised
-`send_risk_event` table below is a later refinement, and its evidence currently lives in the
-`sender_identity.health` jsonb. The delivery-ratio → speed curve below is now **built as the
-continuous scaling** (`deliveryDelayMultiplier` in `@crm/core`, applied in `handleSend`): ×1 at
-≥85 %, up to ×4 below 55 %, linear between — plus a degraded sender is held to at least half speed
-whatever its delivery, since it may be degraded for failures or disconnects rather than delivery.*
-
-**Delivery tracking.** Sustained delivery below **60%** is a soft-ban signal. Adaptive speed:
-
-| Delivery ratio | Speed |
+| Signal | Effect |
 |---|---|
-| ≥ 85% | 100% |
-| 55–85% | scaled linearly |
-| < 55% | 25% |
+| Timelock active (`reachoutTimeLock`) | New chats held (`timelock`) until it ends; known contacts still go |
+| Cap `FIRST_WARNING` / `SECOND_WARNING` | Gaps before new chats x2 / x3 (*guess*) |
+| Cap `CAPPED`, or quota used up | New chats held (`new_chat_cap`) until the cycle ends |
+| A 463 refusal | That message `failed`; new sends to that contact held (`refused_463`). Nothing clears it yet (the Retry action is S10): today it is cleared by hand (`conversation.refused_463_at`). A containment: the cause of 463 is not known yet |
+| Reaction brake: of the last 50 new-chat sends, 30+ with under 5% replies (or 10%+ marked `likely_blocked`) | New-chat gaps x2 (*guess*); lifts by itself |
+| Quiet hours (default 22:00 to 08:00 in Asia/Kolkata until the org sets its own, `antiban_setting`) | Campaign and AI first messages held (`quiet_hours`); replies and manual sends still go |
+| `device_removed` | As before (R-017): everything held, campaigns paused `unlinked` |
 
-**Decrypt failures** ✅ built. 3 "Bad MAC" events within 60 seconds mark the session as diverged
-(D-14) and degrade the number. Baileys drops undecryptable frames before the app sees them, so the
-adapter taps its logger (`tapDecryptFailures`); the gateway's `DecryptFailureTracker` detects the
-burst and writes `channel_session.decrypt_burst_at`; the scorer adds +60 (high band) while the burst
-is under 15 minutes old. It lapses by time, so the number recovers without anyone clearing it — the
-both-directions rule. A slow drip (under 3 a minute) never trips it.
+Setting `SEND_TYPING_SIMULATION=false` turns the typing off (CI and the fake channel do); it is the only anti-ban setting in the environment, everything else is a constant or an org setting.
 
-**Risk score, 0–100**, from typed events, each written to `send_risk_event` so the dashboard
-shows evidence rather than a bare number:
+WhatsApp's raw warnings are kept in `whatsapp_notice`; the latest of each, the quota, `linked_since` and the timelock type are on
+`channel_session`. The port carries them as `ChannelProvider.notices()`; `presence()` and `markRead()` are optional port methods.
 
-| Event | Weight |
-|---|---|
-| 401 logged out | +60 |
-| 403 forbidden | +40 |
-| 463 reachout timelock | +25 |
-| Frequent disconnects | +15 … +30 |
-| Failed sends | +20 |
+## After the send: ticks, retries and opt-outs (S4 to S6)
 
-| Band | Range | Action |
-|---|---|---|
-| Low | 0–29 | Normal |
-| Medium | 30–59 | Warn; reduce new-contact allowance |
-| **High** | **60–84** | **Auto-throttle; pause campaigns on this sender; alert** |
-| **Critical** | **85–100** | **Quarantine the sender; Critical alert** |
+**One tick for 30 minutes (S4, `antiban/ticks.ts`, `antiban/delivery-check.ts`).** The gateway sweep (`sweepDeliveries`, run with every
+sweep) looks at each outbound message still at one tick 30 minutes after it went. A message the contact asked for again belongs to S5
+and is only marked. For the rest it probes the contact's profile photo and about (`ChannelProvider.profileSnapshot`, at most once per
+contact per 24 h, a few lookups per pass) and compares with the snapshot taken when a message to them was last delivered. Both visible
+then and both gone now: the contact is marked `likely_blocked` (campaigns and the AI stop messaging them; an agent can still send by
+hand; a message from them clears the mark). Anything else, or no snapshot: `likely_offline`. **Nothing is ever resent.**
 
-## Layer 6 — Recovery orchestration
+Many stuck: of the number's last 20 sends to distinct contacts who "deliver fast" (one of their last 3 messages delivered within 5 min),
+excluding messages sent from the phone, 8 or more still at one tick after 30 min hold the number's campaigns (`many_undelivered`) and add
+a health event. It lifts when the count falls below 4, or when an agent resumes (`POST /senders/:id/resume`, the number card); after a
+resume only newer sends count, so the old stuck ones do not bring the hold straight back.
 
-| Incident | Pause | Resume at | Weekly ramp |
-|---|---|---|---|
-| 463 reachout timelock | 24 h | 10% of cap | +15% |
-| 429 rate overlimit | 4 h | 25% | +25% |
-| Suspected soft ban (delivery collapse) | 48 h | 5% | +10% |
-| **Hard ban (401)** | — | **no recovery** — the number is flagged `hard_ban_suspected` on its timeline and shown as logged out; it is not auto-retired, because a ban and an unlink on the phone look identical at the socket | — |
+**Decrypt retries (S5, `antiban/retry-state.ts`).** A contact's phone asking for a message again ("Waiting for this message") arrives as a
+port event (`ChannelProvider.retries()`; the Baileys adapter reads it from its log line). Baileys resends the message itself; we never
+queue a copy. Every new send to that contact is held (`decrypt_retry`) until a delivered or read receipt that comes after the retry, or a
+message from them that decrypts. A second request for the same message recreates the session with that contact
+(`ChannelProvider.resetSession`; in Baileys this removes the contact's `session-<user>.<device>` keys, and those under their privacy
+address, from the credential store) and raises the composer's existing encryption-session warning (`decrypt_burst_at`). Retries from 3 or
+more different contacts within 10 minutes hold the whole number (`decrypt_wave`) with a critical health event; that hold ends when the
+number is linked again, not on a reconnect.
 
-## Layer 6b — Silent restriction
+**Opt-outs (S6, `antiban/optout.ts`, `antiban/opt-out.ts`).** When a stored inbound message is a STOP word (`stop`, `unsubscribe`,
+`opt out`, and the org's own: the whole message, not a word inside a sentence), or the AI classifier reads it as negative (who is
+this, do not message me, abuse; keywords only when no AI is configured; a slow or failing model counts as no), one closing message is
+queued at reply priority and the contact goes on do-not-contact with the reason `opt_out`. The closing message says why they were
+messaged (the campaign's `purpose`, else the org's default), a one-line summary of what was last sent, that they will not be messaged
+again, and the org's contact number and email; plain text with every link removed, and a line is left out when what it needs is not set.
+Exactly one per opt-out: a second STOP sends nothing. Campaigns and the AI stay blocked by the existing do-not-contact gates; a
+do-not-contact contact who writes again can be answered by an agent by hand (a signed-in person, not a key or the AI). The flag lifts
+when an agent lifts it (`PUT /contacts/:id/do-not-contact`), or the contact sends a restart word (`start`, and the org's own), but only
+a flag that came from an opt-out. An agent can mark a reply as an opt-out by hand (`POST /conversations/:id/opt-out`), with the same
+effect. The closing message is on by default and switchable per org (`antiban_setting.closing_message_enabled`; the opt-out itself
+happens either way).
 
-A restricted number is the worst case for an operator: nothing errors and nothing disconnects —
-messages just stay at one tick, arrive hours late, or never leave. The health score above cannot see
-it quickly (it averages a day and needs ten sends), so a dedicated detector reads **delivery
-evidence** — stuck-at-one-tick ratio against the number's own baseline, delivery latency, whether
-people who normally reply are affected, whether only new contacts are. It keeps a state
-(`ok` → `suspected` → `likely`) that moves both ways, writes every change to a per-number timeline,
-slows sending on `suspected`, and on `likely` opens a soft-ban recovery and pauses that number's
-running campaigns. Full design, thresholds and the operator runbook:
-[`27-restriction-tracking.md`](27-restriction-tracking.md).
+Settings: `GET/PUT /antiban/settings` (admin). `missing` lists the contact details the closing message is still without.
 
-## Two classes of gate
+## Extra protection
 
-This distinction is enforced in code, not convention, and is one of the load-bearing ideas in
-the whole design.
+- **Is this number on WhatsApp:** `isRegistered`, for one number, just before the first message to a new chat, cached 30 days. "Not on WhatsApp" fails the message; "could not tell" sends. Never a batch.
+- **Variants:** `{Hi|Hello|Hey}` and `{{first_name}}`, one pick per recipient from a draw seeded by campaign and contact. A campaign with no variation and no AI writing it gets a `no_variation` warning and can still launch.
+- **Media after reply:** on by default, a new chat gets the text alone and the picture or link follows when they reply; known contacts get it all at once. `campaign.media_after_reply`.
+- **Hints (advice only):** a number linked under 7 days ago; a `WEB_COMPANION_ONLY` timelock. Shown by `GET /senders` (`hints`).
 
-**Overridable by an admin, with a logged reason and an audit row:**
-- Engagement lock — another agent owns an active conversation with this contact
-- Cooldown — contacted too recently
-- Duplicate-campaign guard — already in a live campaign
-- **Do-not-contact** — the person asked not to be messaged. Enforced on every send path (a single message, each
-  campaign recipient, and the gateway's last-line check); an admin can lift it only per message or per campaign,
-  signed in, with a reason, and each override is audited. Agents and API keys can never lift it, and advisory mode
-  does not bypass it. (Changed 2026-10-09: it was documented as overridable by nobody, but was not actually
-  enforced on the send path; both are fixed.)
+## The ETA
 
-*These protect the recipient's experience. A human with context may legitimately override them.*
+`GET /campaigns/:id/eta` (`antiban/eta.ts`) plays the stored gaps forward: with no holds, the sum of the gaps plus typing where it is longer.
+New chats beyond the quota WhatsApp reported go after the cycle end (`goNow`, `afterReset`, `resetAt`, `basis`), and what moved the
+finish is named (`delayedBy`).
 
-**Overridable by nobody, including an admin, with no code path to do so:**
-- Per-sender daily cap
-- Rate and burst limits
-- Warmup ceiling
-- Missing consent for a marketing intent
+## What stays, because it protects people and not the number
 
-*These protect a phone number that gets banned, and a legal obligation. They are not policy.*
+- **Do-not-contact**, checked when a message is created and again as the last line before it is sent. An admin can override it per message or per campaign, with a reason, audited; an agent can answer by hand a contact who wrote after being flagged; an agent or the contact (a restart word) can lift an opt-out.
+- **The recipient policy gates** (`packages/core/src/policy-gates.ts`): an agent mid-conversation, the 14-day cooldown after another campaign, a duplicate in a live campaign.
+- **Not sending to the sending number itself, an empty body, a contact whose numbers have no WhatsApp account** (the number fallback, D-60).
+- **Connection handling**: a 403 raises a ban warning and pauses the number's running campaigns; an unrequested logout (401) does the same; a device removed under Linked devices is an unlink, not a ban (R-017). Written to `sender_health_event`.
 
-**Blocked recipients are always reported, never silently dropped.** Every blocked send writes
-a `campaign_recipient.skip_reason` and appears in results. Silent dropping is how an operator
-loses trust in the whole system.
+## Plugging a different driver in
 
-## Meta-side safety (the other transport)
+Write an `AntiBanPolicy` and pass it as `antiBan` in the gateway's `WorkContext` (`apps/gateway/src/main.ts`); tests pass a fixed one.
+`basicPolicy`, the placeholder, is deleted. The old engine's names fail `tests/integration/antiban-purged.test.ts` on purpose.
 
-Different risks, same discipline. Track per sender identity:
+## What was removed on 2026-10-30
 
-- **Messaging tier**: 250/day unverified → 1K → 10K → 100K → unlimited. Meta re-evaluates
-  roughly every 6 hours. Advancement requires unique-customer volume over a rolling 7 days:
-  500 (→10K), 5,000 (→100K), 50,000 (→unlimited).
-- **Quality rating**: High / Medium / Low. Must be Medium or above to be upgraded.
-- **Phone number status**: must be `Connected`.
-
-Dispatcher behaviour:
-- Never exceed the known tier limit — refuse and queue instead.
-- Alert when quality drops to Medium.
-- **Hard-stop marketing sends at quality Low**, because continuing to send at Low is exactly
-  the feedback loop described at the top of this document. Utility and authentication continue.
-
-## Configuration
-
-Every value above is an `org_setting` with the default shown. Admin-editable within a safe
-range; the hard limits above have a ceiling that cannot be raised. Full table in
-[`13-deployment.md`](13-deployment.md).
-
-## How this is proven
-
-Not by messaging real people. The **simulation harness** ([`12-testing.md`](12-testing.md)) is
-a virtual WhatsApp that implements the ban heuristics at the top of this document and bans you
-if you trip them. Campaign scenarios run against it in CI:
-
-- cold number, day-1 blast
-- 10k campaign over a warmed number
-- reconnect-then-burst
-- low-reply-ratio spiral
-- multi-worker shared-budget contention
-
-**This is the single highest-value test in the project.** After the simulation passes, a
-controlled real-number pilot: one number, 7-day warmup, ≤50 messages/day, watched daily.
-
-## Sources
-
-- [baileys-antiban](https://github.com/kobie3717/baileys-antiban) — rate/warmup/jitter/risk
-  parameters and recovery schedules; the most concrete public implementation of these ideas
-- [Meta · Messaging limits](https://developers.facebook.com/docs/whatsapp/messaging-limits/)
-- [Kraya AI · WhatsApp automation ban risk, India 2026](https://blog.kraya-ai.com/whatsapp-automation-ban-risk) — the 68% figure, from an analysis of 600+ Indian SMB accounts
-- [Whatsable · WhatsApp spam policy for businesses 2026](https://whatsable.app/blog/whatsapp-spam-policy-explained-for-businesses-in-2026)
-- [Achiya · WhatsApp spam detection 2026](https://achiya-automation.com/en/blog/whatsapp-spam-detection-2026/) — detection layers
-- [Uptail · Message limits, tier progression 2026](https://www.uptail.ai/blog/whatsapp-business-message-limits-2026-broadcast-caps-tier-progression-what-happens-when-you-hit-the-ceiling)
-- [Wapisimo · Unofficial API ban risk](https://wapisimo.dev/blog/en/whatsapp-unofficial-api-ban-risk)
+The old engine (warmup ramp, per-minute/hour/day caps, circadian pacing, contact-graph gates, risk score and health bands, timed
+recovery, silent-restriction detection, advisory mode, fake background activity, delayed read receipts, recipient time zones). Its
+numbers were copied from one public library with no data behind them; the only primary source is WhatsApp's own 2019 white paper on
+abuse and unwanted messages. The history stays in `CHANGELOG.md`, `HANDOFF.md` and `21-deferred.md`.

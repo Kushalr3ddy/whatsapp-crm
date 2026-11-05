@@ -14,6 +14,7 @@ import { corsAllowlist } from './cors.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
+import { antibanRouter } from './routes/antiban.js';
 import { messagesRouter } from './routes/messages.js';
 import { mediaRouter } from './routes/media.js';
 import { importsRouter } from './routes/imports.js';
@@ -25,14 +26,17 @@ import { segmentsRouter } from './routes/segments.js';
 import { campaignsRouter } from './routes/campaigns.js';
 import { aiRouter } from './routes/ai.js';
 import { AiJobRunner } from './ai-runner.js';
+import { IMPORT_PARSE_DEFAULTS, type ImportParseOptions } from './import-parse.js';
 import { LiveLlm, type LlmDriver } from '@crm/llm';
 
 /**
  * How large a file may be uploaded to `/imports`.
  *
- * 20 MB is a very large CSV — roughly 200,000 contact rows — and small enough that holding one
- * in memory while it is parsed is unremarkable. It becomes a streaming read, and a larger
- * number, when the `SourceConnector` port lands (docs/07-ingestion.md).
+ * 20 MB is a very large CSV — roughly 200,000 contact rows. It bounds the bytes received, not what
+ * they become (an .xlsx is a zip, and one cell in column XFD made an 18 KB file crash the API), so
+ * the parsed shape has its own limits and is read in a capped child process (R-016,
+ * `import-parse.ts`). It becomes a streaming read, and a larger number, when the `SourceConnector`
+ * port lands (docs/07-ingestion.md).
  */
 const IMPORT_LIMIT = '20mb';
 const IMPORT_LIMIT_BYTES = 20 * 1024 * 1024;
@@ -61,6 +65,8 @@ export interface AppDependencies {
    * built from `LLM_*` config on first use, so a server with no model configured still boots.
    */
   readonly llm?: LlmDriver;
+  /** How uploaded contact files are read (limits, the reader's memory and time budget). Defaults to `IMPORT_PARSE_DEFAULTS`; tests narrow it. */
+  readonly importParse?: Partial<ImportParseOptions>;
 }
 
 /**
@@ -176,29 +182,28 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
   api.use(requireAuthenticated);
   api.use('/admin', adminRouter(deps.db, deps.hasher));
   api.use(requireTenant);
-  const aiLimits = { perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY };
   // The model follows the AI settings tab: one wrapper for the whole process, re-reading the settings file when it changes.
   const liveLlm = new LiveLlm({ envFile: deps.config.LLM_ENV_FILE, base: deps.config, onError: (m) => { deps.logger.warn(m); } });
   const getLlm = (): LlmDriver => deps.llm ?? liveLlm;
   // Works through the AI queue. Started by the server (`start()`), not here, so tests make no background timers.
   const aiRunner = new AiJobRunner({
-    db: deps.db, tenantRole: deps.tenantRole, kms: deps.kms, getLlm, limits: aiLimits, logger: deps.logger
+    db: deps.db, tenantRole: deps.tenantRole, kms: deps.kms, getLlm, logger: deps.logger
   });
-  api.use('/ai', aiRouter(deps.db, deps.kms, getLlm, deps.tenantRole, aiLimits, aiRunner, {
+  api.use('/ai', aiRouter(deps.db, deps.kms, getLlm, deps.tenantRole, aiRunner, {
     live: liveLlm, envFile: deps.config.LLM_ENV_FILE, allowPrivate: deps.config.LLM_ALLOW_PRIVATE_BASE_URL, injected: deps.llm !== undefined
   }));
   api.use(withTenant(deps.db, deps.tenantRole));
   api.use('/senders', sendersRouter());
+  api.use('/antiban', antibanRouter());
   api.use('/media', mediaRouter(deps.storage));
-  api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES, deps.config.DEFAULT_COUNTRY));
+  api.use('/imports', importsRouter(deps.storage, IMPORT_LIMIT_BYTES, deps.config.DEFAULT_COUNTRY,
+    { ...IMPORT_PARSE_DEFAULTS, ...deps.importParse }));
   api.use('/contacts', contactsRouter(deps.config.DEFAULT_COUNTRY));
   api.use('/tags', tagsRouter());
   api.use('/custom-fields', customFieldsRouter());
   api.use('/encryption', encryptionRouter({ kms: deps.kms }));
   api.use('/segments', segmentsRouter());
-  api.use('/campaigns', campaignsRouter({
-    perMinute: deps.config.SEND_RATE_PER_MINUTE, perDay: deps.config.SEND_RATE_PER_DAY
-  }, deps.storage));
+  api.use('/campaigns', campaignsRouter(deps.storage));
   api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY, deps.storage, ATTACHMENT_LIMIT_BYTES));
   app.use('/api/v1', api);
 

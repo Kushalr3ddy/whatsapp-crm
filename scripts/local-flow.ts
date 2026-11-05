@@ -6,7 +6,7 @@
  *   npm run local:flow -- --reset  just delete the demo org and stop
  *
  * **Nothing real is ever sent.** The "WhatsApp number" is the in-memory fake channel, driven by
- * the real gateway code (`sweepPendingWork`), so the pacing and anti-ban gates all run — only the
+ * the real gateway code (`sweepPendingWork`), so the anti-ban policy and the gates all run — only the
  * final hand-off to WhatsApp is pretend. It talks to the real API over real HTTP (started in this
  * process), signing in with the real login route, so a break anywhere on the path shows up here.
  *
@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     orgName: 'Local flow demo', slug: SLUG, email: EMAIL, password, displayName: 'Local Admin'
   });
   const sender = (await db.execute(sql`
-    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status, warmup_started_at)
-    VALUES (${org.orgId}, 'fake', 'Demo number', '+12025550198', 'active', now() - interval '30 days')
+    INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+    VALUES (${org.orgId}, 'fake', 'Demo number', '+12025550198', 'active')
     RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
   await db.execute(sql`INSERT INTO channel_session (sender_identity_id, connection_state)
     VALUES (${sender}, 'open')`);
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
   const ctx: WorkContext = {
     db, provider, logger, kms,
     decrypt: (c: Uint8Array) => new TextDecoder().decode(kms.decrypt(c)),
-    limits: { perMinute: 8, perDay: 1500 }, sweepBatchSize: 50
+    sweepBatchSize: 50
   };
   let status = 'running';
   for (let round = 0; round < 40 && status !== 'completed'; round++) {

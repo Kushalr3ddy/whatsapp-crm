@@ -9,9 +9,13 @@
  *
  * Deliberately **not** a streaming parser yet. A streaming reader is what the `SourceConnector`
  * port calls for so a 2 GB file is never buffered (docs/07-ingestion.md), and this will move
- * behind that port when the file sizes justify it. For now the upload limit is what bounds it,
- * and a wrong answer on a quoted newline would be worse than a large allocation.
+ * behind that port when the file sizes justify it. Until then the upload limit bounds the bytes and
+ * `ImportLimits` bounds the shape (R-016): a 20 MB line of commas is two million columns, so columns,
+ * rows, cell length and total cells are counted during the one scan, which stops at the first one over.
  */
+import {
+  IMPORT_LIMITS, cellTooLong, tooManyCells, tooManyColumns, tooManyRows, type ImportLimits
+} from './import-limits.js';
 
 /** One parsed file: the header row, and every data row aligned to it. */
 export interface CsvTable {
@@ -35,7 +39,7 @@ export class CsvError extends Error {
  * Handles the three things naive splitting gets wrong: a comma inside quotes, a newline inside
  * quotes, and a literal quote written as two quotes. Everything else is a plain character.
  */
-export function parseCsvRows(text: string): string[][] {
+export function parseCsvRows(text: string, limits: ImportLimits = IMPORT_LIMITS): string[][] {
   // A byte-order mark on the first field turns "Name" into "<BOM>Name", and the mapping then
   // silently matches nothing. Excel writes one by default, so this is the common case.
   const input = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -46,6 +50,23 @@ export function parseCsvRows(text: string): string[][] {
   let quoted = false;
   let line = 1;
   let sawAny = false;
+  let cells = 0;
+
+  /** Ends the current field, refusing it (or the row it widens) when it crosses a limit. */
+  const endField = (): void => {
+    if (field.length > limits.maxCellChars) throw cellTooLong(limits);
+    row.push(field);
+    if (row.length > limits.maxColumns) throw tooManyColumns(limits);
+    field = '';
+  };
+  /** Ends the current row; the header row is not counted against the row limit. */
+  const endRow = (): void => {
+    rows.push(row);
+    if (rows.length > limits.maxRows + 1) throw tooManyRows(limits);
+    cells += row.length;
+    if (cells > limits.maxCells) throw tooManyCells(limits);
+    row = [];
+  };
 
   for (let i = 0; i < input.length; i++) {
     const c = input[i]!;
@@ -71,12 +92,12 @@ export function parseCsvRows(text: string): string[][] {
       sawAny = true;
       continue;
     }
-    if (c === ',') { row.push(field); field = ''; sawAny = true; continue; }
+    if (c === ',') { endField(); sawAny = true; continue; }
     if (c === '\r') continue;                                // CRLF, handled on the \n
     if (c === '\n') {
-      row.push(field);
-      rows.push(row);
-      row = []; field = ''; line++; sawAny = false;
+      endField();
+      endRow();
+      line++; sawAny = false;
       continue;
     }
     field += c;
@@ -85,7 +106,7 @@ export function parseCsvRows(text: string): string[][] {
 
   if (quoted) throw new CsvError('file ends inside a quoted field', line);
   // A trailing newline leaves nothing pending; anything else is a final row without one.
-  if (field !== '' || row.length > 0 || sawAny) { row.push(field); rows.push(row); }
+  if (field !== '' || row.length > 0 || sawAny) { endField(); endRow(); }
 
   return rows;
 }
@@ -98,8 +119,8 @@ export function parseCsvRows(text: string): string[][] {
  * fields become empty strings, and extra fields beyond the header are kept under a positional
  * name so `unmapped: keep` can preserve them for inspection.
  */
-export function parseCsv(text: string): CsvTable {
-  const raw = parseCsvRows(text);
+export function parseCsv(text: string, limits: ImportLimits = IMPORT_LIMITS): CsvTable {
+  const raw = parseCsvRows(text, limits);
   if (raw.length === 0) return { headers: [], rows: [] };
 
   const headers = raw[0]!.map((h) => h.trim());

@@ -38,8 +38,8 @@ interface PhoneRow {
  * - **Nothing for a contact with one number.** There is nothing to fall back to, so no lookup is made.
  * - **Never acts on "could not tell".** If the transport cannot answer (socket closed, query failed),
  *   the primary number is used as before; a failed lookup must not switch anyone's number.
- * - **No bulk lookups.** It runs inside the send path, after the pacing gates and the pre-send pause,
- *   so lookups are as paced as sends are.
+ * - **No bulk lookups.** It runs inside the send path, after the anti-ban policy and its pause,
+ *   so lookups are as spaced out as sends are.
  */
 export async function chooseRecipientNumber(
   ctx: { readonly db: Database; readonly provider: ChannelProvider; readonly logger: Logger },

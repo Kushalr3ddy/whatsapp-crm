@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
 import { AUDIT, writeAudit, type AuditActor } from './audit.js';
-import { campaignProgress, forecast, snapshotAudience, type CampaignForecast, type CampaignProgress } from './campaigns.js';
+import { campaignProgress, snapshotAudience, type CampaignProgress } from './campaigns.js';
 import type { PolicyGate } from './policy-gates.js';
+import { GAP_MAX_MS, GAP_MIN_MS } from './antiban/constants.js';
 
 /**
  * The operations on a campaign: create a draft, start or resume it, pause it, cancel it, edit its wording.
@@ -36,10 +37,11 @@ export interface NewCampaign extends CampaignAudience {
   readonly aiTemplateId?: string | undefined;
   /** A stored campaign picture or GIF sent with every message; must be one of the org's campaign pictures. */
   readonly mediaAssetId?: string | undefined;
+  /** Send the picture or link to new chats only after they reply (F6 AC-7.3). On unless said otherwise. */
+  readonly mediaAfterReply?: boolean | undefined;
+  /** Why these people are being messaged, in a sentence; said in the closing message if one of them opts out (F6 AC-6.2). */
+  readonly purpose?: string | null | undefined;
 }
-
-/** The sender's ceilings, for the forecast shown when a campaign starts. */
-export interface CampaignLimits { readonly perMinute: number; readonly perDay: number }
 
 /** Creates a draft. Nothing is sent and no audience is frozen until it is started. */
 export async function createCampaignDraft(
@@ -80,10 +82,10 @@ export async function createCampaignDraft(
 
   const rows = await tx.execute(sql`
     INSERT INTO campaign (org_id, name, body, sender_identity_id, from_import_run_id,
-                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, status)
+                          explicit_contact_ids, from_tag_id, from_segment_id, ai_template_id, media_asset_id, media_after_reply, purpose, status)
     VALUES (${orgId}, ${input.name}, ${input.body}, ${input.senderIdentityId}, ${input.fromImportRunId ?? null},
             ${input.explicitContactIds === undefined ? null : JSON.stringify(input.explicitContactIds)}::jsonb,
-            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, 'draft')
+            ${input.fromTagId ?? null}, ${input.fromSegmentId ?? null}, ${input.aiTemplateId ?? null}, ${input.mediaAssetId ?? null}, ${input.mediaAfterReply ?? true}, ${input.purpose ?? null}, 'draft')
     RETURNING id`);
   const id = (rows as unknown as Array<{ id: string }>)[0]!.id;
   await writeAudit(tx, {
@@ -93,24 +95,23 @@ export async function createCampaignDraft(
   return { id };
 }
 
-/** The outcome of starting: how far along it is, and how long the rest will take. */
-export interface StartedCampaign { readonly progress: CampaignProgress; readonly outlook: CampaignForecast }
+/** The outcome of starting: how far along it is. */
+export interface StartedCampaign { readonly progress: CampaignProgress }
 
 /**
  * Starts a draft, or resumes a paused campaign: freezes the audience (first start only) and lets the gateway begin.
  *
- * The forecast comes back with it, because how long this will take is a fact the operator needs at the moment of
- * starting. Lifting policy gates is an admin's decision made by the caller: pass `override` only for a signed-in admin
+ * Lifting policy gates is an admin's decision made by the caller: pass `override` only for a signed-in admin
  * (the assistant never does).
  */
 export async function startCampaign(
-  tx: Transaction, orgId: string, ctx: ActionContext, id: string, limits: CampaignLimits,
+  tx: Transaction, orgId: string, ctx: ActionContext, id: string,
   override?: { gates: readonly PolicyGate[]; reason: string }
 ): Promise<StartedCampaign | { error: 'not_found' | 'already_running' | 'finished' }> {
   const rows = await tx.execute(sql`
-    SELECT status, sender_identity_id AS "senderIdentityId" FROM campaign
+    SELECT status FROM campaign
     WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`);
-  const campaign = (rows as unknown as Array<{ status: string; senderIdentityId: string }>)[0];
+  const campaign = (rows as unknown as Array<{ status: string }>)[0];
   if (!campaign) return { error: 'not_found' };
   if (campaign.status === 'running') return { error: 'already_running' };
   if (campaign.status === 'completed' || campaign.status === 'cancelled') return { error: 'finished' };
@@ -118,6 +119,13 @@ export async function startCampaign(
   // Only on the first start. Resuming a paused campaign must not re-snapshot, or contacts added since would silently
   // join an audience somebody already approved.
   if (campaign.status === 'draft') await snapshotAudience(tx, orgId, id);
+
+  // Draw every recipient's gap once, now, and keep it: the lane waits exactly this long before each message, so the schedule
+  // and the ETA are known before anything is sent (F6 AC-3.1). A resume only fills the recipients that have none.
+  await tx.execute(sql`
+    UPDATE campaign_recipient
+    SET planned_gap_ms = ${GAP_MIN_MS} + floor(random() * ${GAP_MAX_MS - GAP_MIN_MS + 1})::int
+    WHERE campaign_id = ${id} AND org_id = ${orgId} AND planned_gap_ms IS NULL AND status = 'pending'`);
 
   await tx.execute(sql`
     UPDATE campaign SET status = 'running', started_at = coalesce(started_at, now()), pause_reason = NULL, updated_at = now()
@@ -136,23 +144,12 @@ export async function startCampaign(
   }
 
   const progress = await campaignProgress(tx, orgId, id);
-  const senderLimits = await tx.execute(sql`
-    SELECT warmup_started_at AS "warmupStartedAt", daily_cap_override AS "dailyCapOverride", last_inbound_at AS "lastInboundAt"
-    FROM sender_identity WHERE id = ${campaign.senderIdentityId} AND org_id = ${orgId}`);
-  const s = (senderLimits as unknown as Array<{
-    warmupStartedAt: string | null; dailyCapOverride: number | null; lastInboundAt: string | null;
-  }>)[0]!;
-  const outlook = await forecast(tx, campaign.senderIdentityId, progress.pending, {
-    perMinute: limits.perMinute, perDay: limits.perDay, dailyCapOverride: s.dailyCapOverride,
-    warmupStartedAt: s.warmupStartedAt === null ? null : new Date(s.warmupStartedAt),
-    lastInboundAt: s.lastInboundAt === null ? null : new Date(s.lastInboundAt)
-  });
 
   await writeAudit(tx, {
     orgId, actor: ctx.actor, action: AUDIT.campaignStarted, targetType: 'campaign', targetId: id,
-    after: { ...progress, ...outlook }, ip: ctx.ip ?? null, requestId: ctx.requestId ?? null
+    after: { ...progress }, ip: ctx.ip ?? null, requestId: ctx.requestId ?? null
   });
-  return { progress, outlook };
+  return { progress };
 }
 
 /**
@@ -185,7 +182,7 @@ export async function setCampaignStatus(
  * rewording it under the gateway would make one audience see two different messages, so pause it first.
  */
 export async function editCampaign(
-  tx: Transaction, orgId: string, ctx: ActionContext, id: string, change: { name?: string | undefined; body?: string | undefined }
+  tx: Transaction, orgId: string, ctx: ActionContext, id: string, change: { name?: string | undefined; body?: string | undefined; mediaAfterReply?: boolean | undefined }
 ): Promise<'ok' | 'not_found' | 'not_editable'> {
   const found = (await tx.execute(sql`
     SELECT status, name, body FROM campaign WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`) as unknown as Array<{
@@ -195,7 +192,10 @@ export async function editCampaign(
   if (found.status !== 'draft' && found.status !== 'paused') return 'not_editable';
   const name = change.name ?? found.name;
   const body = change.body ?? found.body;
-  await tx.execute(sql`UPDATE campaign SET name = ${name}, body = ${body}, updated_at = now() WHERE id = ${id} AND org_id = ${orgId}`);
+  await tx.execute(sql`
+    UPDATE campaign SET name = ${name}, body = ${body}, media_after_reply = coalesce(${change.mediaAfterReply ?? null}::boolean, media_after_reply),
+                        updated_at = now()
+    WHERE id = ${id} AND org_id = ${orgId}`);
   await writeAudit(tx, {
     orgId, actor: ctx.actor, action: AUDIT.campaignEdited, targetType: 'campaign', targetId: id,
     // The wording itself is not logged, only that it changed and how long it is now.
