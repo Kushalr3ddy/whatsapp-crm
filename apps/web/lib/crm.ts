@@ -1018,6 +1018,10 @@ export interface ImportUpload {
   columns?: Array<{ header: string; sampled: number; phoneShare: number; emailShare: number }>;
   /** The run this deliberately re-imported (via ?force), or null. */
   reimportOf: string | null;
+  /** Three people drawn from anywhere in the file, in full, with the sheet row each was on. */
+  peek?: Array<{ row: number; values: Record<string, string> }>;
+  /** How many people leave each column empty (a blank cell, or one that only says NA or -). */
+  columnFill?: Array<{ header: string; blank: number }>;
 }
 
 /** The outcome of a dry run or a commit. */
@@ -1029,6 +1033,8 @@ export interface ImportSummary {
   errors: number;
   /** Rows that imported but left something out, e.g. a second phone number that was not valid. */
   warnings?: number;
+  /** People with no mobile number (an email only): they come in, but cannot be messaged. */
+  withoutNumber?: number;
   dryRun: boolean;
   /** People tagged by this run, when a tag was asked for on a commit. */
   tagged?: number;
@@ -1053,14 +1059,31 @@ export async function uploadImport(
   if (response.status === 401) throw new NotAuthenticatedError();
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const problem = payload as Partial<ApiProblem> | null;
-    throw new CrmApiError({
+    const problem = payload as (Partial<ApiProblem> & { previousRunId?: string }) | null;
+    const refusal = {
       code: problem?.code ?? 'UNKNOWN',
       detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
       status: response.status
-    });
+    };
+    // The same file again: the earlier run is named, so the screen can link to its people.
+    if (refusal.code === 'ALREADY_IMPORTED' && typeof problem?.previousRunId === 'string') {
+      throw new AlreadyImportedError(refusal, problem.previousRunId);
+    }
+    throw new CrmApiError(refusal);
   }
   return (payload as { data: ImportUpload }).data;
+}
+
+/** The API refused a file it has already imported; `previousRunId` is the earlier import. */
+export class AlreadyImportedError extends CrmApiError {
+  readonly previousRunId: string;
+
+  /** Keeps the earlier import's id alongside the usual code and status. */
+  constructor(problem: ApiProblem, previousRunId: string) {
+    super(problem);
+    this.name = 'AlreadyImportedError';
+    this.previousRunId = previousRunId;
+  }
 }
 
 /** Runs a mapping over an uploaded file — a dry run to preview, or a commit to write contacts. */
@@ -1071,6 +1094,46 @@ export async function runImportMapping(
     method: 'POST',
     body: JSON.stringify({ mapping, dryRun, ...(tagName ? { tag: { name: tagName } } : {}) })
   });
+}
+
+/** Which people of an uploaded sheet to look at: who lacks some details (any or all of them), and a search. */
+export interface SheetFilter { missing: string[]; mode: 'any' | 'all'; q: string }
+
+/** One page of the sheet: the people with the sheet row each was on. */
+export interface SheetPage {
+  headers: string[];
+  total: number;
+  rows: Array<{ row: number; values: Record<string, string> }>;
+}
+
+/** The query string for a sheet filter; each missing column is its own `column=`. */
+function sheetQuery(f: SheetFilter, extra: Record<string, string>): string {
+  const p = new URLSearchParams();
+  for (const c of f.missing) p.append('column', c);
+  if (f.missing.length > 1) p.set('mode', f.mode);
+  if (f.q.trim() !== '') p.set('q', f.q.trim());
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  return p.toString();
+}
+
+/** One page of an uploaded sheet, before anything is imported. Read-only. */
+export async function getSheetPage(id: string, f: SheetFilter, offset: number, limit: number): Promise<SheetPage> {
+  return request<SheetPage>(
+    `/imports/${encodeURIComponent(id)}/rows?${sheetQuery(f, { offset: String(offset), limit: String(limit) })}`);
+}
+
+/** Every person the filter keeps, as a CSV of the sheet's own columns. */
+export async function getSheetCsv(id: string, f: SheetFilter): Promise<{ count: number; csv: string }> {
+  return request<{ count: number; csv: string }>(`/imports/${encodeURIComponent(id)}/rows?${sheetQuery(f, { csv: '1' })}`);
+}
+
+/** The first people's phone cells in the given columns, read the way the import will read them. */
+export async function getNumberExamples(
+  id: string, columns: string[], country: string
+): Promise<{ columns: Array<{ column: string; examples: Array<{ raw: string; numbers: string[]; dropped: string[]; problem: string | null }> }> }> {
+  const p = new URLSearchParams({ country });
+  for (const c of columns) p.append('column', c);
+  return request(`/imports/${encodeURIComponent(id)}/numbers?${p.toString()}`);
 }
 
 /** What a bulk tag action would do or did. Mirrors `POST /tags/:id/bulk`. */

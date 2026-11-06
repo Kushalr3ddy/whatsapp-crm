@@ -44,14 +44,11 @@ test.describe('import, mass tag, individual tag, broadcast', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: `contacts-${stamp}.csv`, mimeType: 'text/csv', buffer: Buffer.from(unique)
     });
-    await expect(page.getByText(/rows ·/)).toBeVisible();
-    await page.getByLabel('Tag everyone in this file').fill(importTag);
-    await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
-    await page.getByRole('button', { name: 'Import', exact: true }).click();
-    await expect(page.getByText(/✓ Imported/)).toBeVisible();
-    const summary = (await page.getByText(/tagged “/).textContent()) ?? '';
-    const imported = Number(/(\d+) tagged/.exec(summary)?.[1] ?? '0');
+    await expect(page.getByText(/people ready to import/)).toBeVisible();
+    await page.getByLabel('Tag', { exact: true }).fill(importTag);
+    await page.getByRole('button', { name: /^Import \d+ people$/ }).click();
+    const summary = (await page.getByText(/people are in your contacts/).textContent()) ?? '';
+    const imported = Number(/(\d+) people are in your contacts/.exec(summary)?.[1] ?? '0');
     expect(imported).toBeGreaterThan(20);
 
     // 2. Everyone from the file is on the Contacts screen, picked as a source on the left.

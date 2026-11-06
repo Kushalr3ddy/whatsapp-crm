@@ -14,7 +14,7 @@ export {
   detectMediaType, safeFilename, UNKNOWN_MEDIA_TYPE, type MediaType
 } from './media-type.js';
 export {
-  profileColumns, suggestColumns, type ColumnProfile, type ColumnSuggestions
+  profileColumns, suggestColumns, blankCounts, matchRows, rowsCsv, pickRows, type ColumnProfile, type ColumnSuggestions, type ColumnBlanks, type RowFilter
 } from './column-guess.js';
 export { parseCsv, parseCsvRows, CsvError, type CsvTable } from './csv.js';
 export { parseXlsxRows, rowsToCsv, looksLikeXlsx, readImportFile } from './xlsx.js';

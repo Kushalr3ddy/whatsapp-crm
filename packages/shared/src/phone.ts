@@ -42,6 +42,15 @@ export function normalisePhone(
   const cleaned = trimmed.replace(/[^\d+]/g, '');
   const digitCount = cleaned.replace(/\D/g, '').length;
   if (digitCount === 0) return err('no_digits', `"${trimmed}" contains no digits.`);
+  // A label around the number ("Mob: 98765 43210", "98765 43210 (home)") is noise, but a letter *between* the digits
+  // ("98765x43210", "98765 43210 ext 12", "9.87655E+09") means the cell is not one plain number. Dropping it would
+  // quietly turn it into a different number, so it is refused and shown.
+  const firstDigit = trimmed.search(/\d/);
+  let lastDigit = trimmed.length - 1;
+  while (lastDigit > firstDigit && !/\d/.test(trimmed.charAt(lastDigit))) lastDigit -= 1;
+  if (/\p{L}/u.test(trimmed.slice(firstDigit, lastDigit + 1))) {
+    return err('unparseable', `"${trimmed}" has letters inside the number.`);
+  }
   if (digitCount < 6) return err('too_short', `"${trimmed}" has too few digits to be a phone number.`);
 
   try {
@@ -121,6 +130,35 @@ export function splitPhoneCell(raw: string): string[] {
   return raw.split(/[,;/|\n\r]+/).map((p) => p.trim()).filter((p) => p !== '');
 }
 
+/** The most space-separated pieces a part may have before it is no longer worth trying to read as several numbers. */
+const MAX_PIECES = 8;
+
+/**
+ * Reads a part that is not one valid number as several numbers written with only spaces between them
+ * (`98765 43210 98765 43211`, `+91 9876543210 +91 9876543211`). Every piece must end up in a valid number, using as
+ * few numbers as possible, or nothing is returned: a guess that keeps half of a broken number would save a wrong person.
+ */
+function numbersSeparatedBySpaces(part: string, defaultCountry: string): NormalisedPhone[] | null {
+  const pieces = part.split(/[\s\u00b7\u2022]+/).filter((p) => p !== '');
+  if (pieces.length < 2 || pieces.length > MAX_PIECES) return null;
+  // best[i]: the fewest valid numbers that use up the first i pieces, or null when they cannot be.
+  const best: Array<NormalisedPhone[] | null> = Array.from({ length: pieces.length + 1 }, () => null);
+  best[0] = [];
+  for (let i = 1; i <= pieces.length; i++) {
+    for (let j = 0; j < i; j++) {
+      const before = best[j];
+      if (before === null || before === undefined) continue;
+      const run = normalisePhone(pieces.slice(j, i).join(' '), defaultCountry);
+      if (!run.ok) continue;
+      const candidate = [...before, run.value];
+      const current = best[i];
+      if (current === null || current === undefined || candidate.length < current.length) best[i] = candidate;
+    }
+  }
+  const all = best[pieces.length];
+  return all !== null && all !== undefined && all.length >= 2 ? all : null;
+}
+
 /** What `normalisePhoneCell` found in one cell. */
 export interface PhoneCellResult {
   /** Distinct valid numbers in the order they were written; the first is the primary one. */
@@ -141,6 +179,10 @@ export interface PhoneCellResult {
  *   good number is never lost to a bad neighbour. The original cell stays on the row ledger.
  * - If nothing is valid, the first real failure is reported, so the row fails visibly (M8).
  * - The same number written twice (`98…` and `+9198…`) is kept once.
+ * - A part with several numbers separated only by spaces is read as those numbers, but only when every piece is part of a
+ *   valid one; otherwise it fails as one invalid number does.
+ * - A letter between the digits (`98765x43210`, `… ext 12`) makes a part invalid. A label before or after the number is
+ *   ignored (`Mob: 98765 43210`).
  */
 export function normalisePhoneCell(raw: string, defaultCountry: string): PhoneCellResult {
   const numbers: NormalisedPhone[] = [];
@@ -151,14 +193,18 @@ export function normalisePhoneCell(raw: string, defaultCountry: string): PhoneCe
   for (const part of splitPhoneCell(raw)) {
     if (/^\+?\s*\d{1,4}$/.test(part)) continue;
     const parsed = normalisePhone(part, defaultCountry);
-    if (!parsed.ok) {
+    // Not one valid number: it may be several written with only spaces between them.
+    const several = parsed.ok ? null : numbersSeparatedBySpaces(part, defaultCountry);
+    if (!parsed.ok && several === null) {
       firstFailure ??= { reason: parsed.reason, message: parsed.message };
       dropped.push(part);
       continue;
     }
-    if (seen.has(parsed.value.e164)) continue;
-    seen.add(parsed.value.e164);
-    numbers.push(parsed.value);
+    for (const value of parsed.ok ? [parsed.value] : several ?? []) {
+      if (seen.has(value.e164)) continue;
+      seen.add(value.e164);
+      numbers.push(value);
+    }
   }
   return {
     numbers, firstFailure: numbers.length > 0 ? null : firstFailure,

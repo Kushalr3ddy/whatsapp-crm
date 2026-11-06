@@ -64,7 +64,7 @@ test.describe('seeded pages', () => {
     await expect(page.getByText('Gita Iyer')).toHaveCount(0);
   });
 
-  test('import: a file uploads, maps itself, and previews without writing', async ({ page }) => {
+  test('import: a file is read, checked on its own, and nothing is written', async ({ page }) => {
     await signIn(page);
     await page.goto('/import');
     // The server refuses the same bytes twice (content-hash dedup), so each run adds one unique row.
@@ -74,11 +74,10 @@ test.describe('seeded pages', () => {
       name: 'import-contacts.csv', mimeType: 'text/csv', buffer: Buffer.from(csv + unique)
     });
 
-    // The phone column is guessed from "Mobile"; the preview reports without committing.
-    await expect(page.getByText(/columns/)).toBeVisible();
-    await page.getByRole('button', { name: 'Preview', exact: true }).click();
-    await expect(page.getByText('Preview (nothing written yet)')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
+    // The phone column is guessed from "Mobile"; the check runs by itself and reports without committing.
+    await expect(page.getByText(/people ready to import/)).toBeVisible();
+    await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Import \d+ people?$/ })).toBeEnabled();
   });
 
   test('numbers: the seeded number is listed, with no risk panel', async ({ page }) => {

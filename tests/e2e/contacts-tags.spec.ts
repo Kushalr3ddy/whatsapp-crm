@@ -21,14 +21,12 @@ Chip One,+1202555${String(290 - n).padStart(4, '0')},${stamp}
     await signIn(page);
     await page.goto('/import');
     await page.locator('input[type="file"]').setInputFiles({ name: `${file}.csv`, mimeType: 'text/csv', buffer: Buffer.from(csv) });
-    await expect(page.getByText(/rows ·/)).toBeVisible();
-    await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
-    await page.getByRole('button', { name: 'Import', exact: true }).click();
-    await expect(page.getByText(/✓ Imported/)).toBeVisible();
+    await expect(page.getByText('1 person ready to import')).toBeVisible();
+    await page.getByRole('button', { name: 'Import 1 person' }).click();
+    await expect(page.getByText('1 person is in your contacts')).toBeVisible();
 
-    // The Import page's own link opens the file's people.
-    await page.getByRole('link', { name: /View the \d+ imported contacts/ }).click();
+    // The Import screen's own link opens the file's people.
+    await page.getByRole('link', { name: /View them in Contacts/ }).click();
     await expect(page.getByText('Showing 1–1 of 1 person')).toBeVisible();
 
     // 1. Tick the person, make a tag on the way, and see it on the left with one person.

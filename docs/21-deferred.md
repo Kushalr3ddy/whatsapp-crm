@@ -1006,6 +1006,12 @@ on the same contact, the first as primary. Rules that are easy to get wrong:
 - a cell with nothing usable still fails the row, with the reason (text such as `not-a-phone` and too-short
   numbers are mistakes, not blanks);
 - the same number written twice (`98…` and `+9198…`) is stored once;
+- **(2026-11-06)** a part with several numbers separated **only by spaces** (`9876543210 9876543211`) is read as
+  those numbers, but only when every piece ends up in a valid number (fewest numbers possible); otherwise it fails
+  as one invalid number, because keeping half of a broken number would save a wrong person;
+- **(2026-11-06)** a letter *between* the digits (`98765x43210`, `98765 43210 ext 12`, `9.87655E+09`) makes the
+  part invalid ("has letters inside the number") instead of being stripped into a different number. A label
+  before or after the number (`Mob: 98765 43210`, `98765 43210 (home)`) is still ignored;
 - `NA`, `N/A`, `N.A.`, `nil`, `null`, `none`, `-`, `--` and `—`, as a **whole cell**, count as blank in phone,
   email, external-id and name columns. The one cost is a person whose entire name is "NA".
 

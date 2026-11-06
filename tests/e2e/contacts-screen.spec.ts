@@ -20,11 +20,11 @@ test.describe('contacts screen', () => {
     await page.locator('input[type="file"]').setInputFiles({
       name: `${tag}.csv`, mimeType: 'text/csv', buffer: Buffer.from(`Name,Mob,Email,City\n${rows.join('\n')}\n`)
     });
-    await expect(page.getByText(/rows ·/)).toBeVisible();
-    await page.getByRole('button', { name: 'Preview' }).click();
-    await expect(page.getByText(/Preview \(nothing written yet\)/)).toBeVisible();
-    await page.getByRole('button', { name: 'Import', exact: true }).click();
-    await expect(page.getByText(/✓ Imported/)).toBeVisible();
+    // The check starts by itself; the tag is already named after the file, and the import needs it.
+    await expect(page.getByText(`${String(n)} people ready to import`)).toBeVisible();
+    await expect(page.getByLabel('Tag', { exact: true })).toHaveValue(tag);
+    await page.getByRole('button', { name: `Import ${String(n)} people` }).click();
+    await expect(page.getByText(`${String(n)} people are in your contacts`)).toBeVisible();
   }
 
   test('a file is a source: pick it, search, filter with a live count, and tag everyone with Select all', async ({ page }) => {

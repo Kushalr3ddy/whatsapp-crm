@@ -17,7 +17,9 @@ export function recipientVars(r: RecipientText): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const [k, v] of Object.entries(r.customFields ?? {})) if (v !== null && v !== undefined) vars[k.toLowerCase()] = String(v);
   // A person with no name saved reads "there" ("Hi there"): never blank, never skipped, nothing for anyone to decide.
-  const name = (r.displayName ?? '').trim();
+  const saved = (r.displayName ?? '').trim();
+  // A name that is only a phone number (how a person saved without a name used to be named) is no name: nobody greets "Hi +91…".
+  const name = /^\+?[\d\s().-]{6,}$/.test(saved) ? '' : saved;
   return { ...vars, name: name === '' ? 'there' : name, first_name: name === '' ? 'there' : name.split(/\s+/)[0] ?? 'there' };
 }
 

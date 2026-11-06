@@ -4,9 +4,10 @@ import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 import {
   queueReply, startLink, getLinkState, unlinkSender, updateConversation, addParticipant, removeParticipant, addNote,
-  uploadImport, runImportMapping, queueAttachment, getSenderStatus, getImportProblems, CrmApiError
+  uploadImport, runImportMapping, getSheetPage, getSheetCsv, getNumberExamples, queueAttachment, getSenderStatus, getImportProblems, CrmApiError, AlreadyImportedError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { SenderStatus, LinkMode, ImportUpload, ImportSummary, ImportProblems } from '@/lib/crm';
+import { tagProblem } from '@/lib/import';
+import type { SenderStatus, LinkMode, ImportUpload, ImportSummary, ImportProblems, SheetFilter, SheetPage } from '@/lib/crm';
 
 /** What the composer gets back: either accepted, or a reason to show the person. */
 export interface SendResult {
@@ -147,6 +148,9 @@ export interface LinkStatus {
   detail: string | null;
 }
 
+/** Said when the session ended while the person was importing. */
+const SIGNED_OUT = 'You were signed out. Sign in again, then upload the file once more.';
+
 /** What the import panel gets back from an upload: the parsed file, or a reason it was refused. */
 export interface UploadResult {
   ok: boolean;
@@ -154,6 +158,10 @@ export interface UploadResult {
   upload?: ImportUpload;
   /** True when the refusal was "these exact bytes were uploaded before", so the screen can offer to upload anyway. */
   duplicate?: boolean;
+  /** For a refusal of the same file: the earlier import, so the screen can link to its people. */
+  previousRunId?: string;
+  /** True when the session has ended, so the screen can send the person to sign in instead of saying the API is down. */
+  signedOut?: boolean;
 }
 
 /**
@@ -174,8 +182,13 @@ export async function uploadSheet(formData: FormData): Promise<UploadResult> {
     return { ok: true, upload };
   } catch (error) {
     if (error instanceof CrmApiError) {
-      return { ok: false, error: error.message, ...(error.code === 'ALREADY_IMPORTED' ? { duplicate: true } : {}) };
+      return {
+        ok: false, error: error.message,
+        ...(error.code === 'ALREADY_IMPORTED' ? { duplicate: true } : {}),
+        ...(error instanceof AlreadyImportedError ? { previousRunId: error.previousRunId } : {})
+      };
     }
+    if (error instanceof NotAuthenticatedError) return { ok: false, error: SIGNED_OUT, signedOut: true };
     return { ok: false, error: 'Could not reach the API.' };
   }
 }
@@ -184,13 +197,15 @@ export async function uploadSheet(formData: FormData): Promise<UploadResult> {
 export interface RunResult {
   ok: boolean;
   error?: string;
+  /** True when the session has ended. */
+  signedOut?: boolean;
   summary?: ImportSummary;
 }
 
 /**
- * Builds the mapping from the columns the person picked and runs it — a dry run to preview, or a
- * commit to write the contacts. The mapping is assembled here rather than trusted from the
- * client: the phone column is required, the name and email are optional.
+ * Builds the mapping from the columns the file was read with and runs it: a dry run for the check, or a commit to write
+ * the contacts. The mapping is assembled here rather than trusted from the client. Every column that is not the name, a
+ * number or the email is kept on each person as it is (at most 200).
  */
 export async function runSheet(
   id: string,
@@ -200,12 +215,20 @@ export async function runSheet(
     name: string | null;
     /** A first-name and a last-name column to join into the name, instead of one name column. */
     nameParts: { first: string; last: string } | null;
+    /** Used to match people who are already in your contacts. */
     email: string | null;
+    /** The country for numbers without a country code, as a two-letter code. */
+    country: string;
+    /** Every other column of the file. */
+    keep: string[];
   },
   dryRun: boolean,
-  tagName?: string,
-  keep: string[] = []
+  tagName?: string
 ): Promise<RunResult> {
+  if (cols.phones.length === 0) return { ok: false, error: 'This file has no column with mobile numbers.' };
+  // The tag is how these people are found later, so the real import is refused without one, whatever called it.
+  const missingTag = dryRun ? null : tagProblem(tagName ?? '');
+  if (missingTag !== null) return { ok: false, error: missingTag };
   const identities: unknown[] = cols.phones.map((from) => ({ kind: 'phone', from, transform: ['trim'] }));
   if (cols.email !== null) identities.push({ kind: 'email', from: cols.email, transform: ['trim', 'lower'] });
   const mapping = {
@@ -213,11 +236,9 @@ export async function runSheet(
     displayName: cols.nameParts === null && cols.name !== null ? { from: cols.name, transform: ['trim'] } : undefined,
     nameParts: cols.nameParts ?? undefined,
     identities,
-    defaultCountry: 'IN',
+    defaultCountry: /^[A-Za-z]{2}$/.test(cols.country) ? cols.country.toUpperCase() : 'IN',
     unmapped: 'keep',
-    // Columns the person ticked to keep on each contact. Never the three already used above.
-    fields: keep.filter((h) => !cols.phones.includes(h) && h !== cols.name && h !== cols.nameParts?.first && h !== cols.nameParts?.last && h !== cols.email)
-      .slice(0, 200).map((from) => ({ from }))
+    fields: cols.keep.slice(0, 200).map((from) => ({ from }))
   };
   try {
     const summary = await runImportMapping(id, mapping, dryRun, tagName?.trim() || undefined);
@@ -225,8 +246,38 @@ export async function runSheet(
     return { ok: true, summary };
   } catch (error) {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    if (error instanceof NotAuthenticatedError) return { ok: false, error: SIGNED_OUT, signedOut: true };
     return { ok: false, error: 'Could not reach the API.' };
   }
+}
+
+/** What looking through the sheet answers: the data, or a plain reason it could not. */
+export type SheetReply<T> = { ok: true; data: T } | { ok: false; error: string; signedOut?: boolean };
+
+/** Runs a sheet read and turns a failure into a sentence. */
+async function sheetRead<T>(read: () => Promise<T>): Promise<SheetReply<T>> {
+  try {
+    return { ok: true, data: await read() };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { ok: false, error: SIGNED_OUT, signedOut: true };
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    return { ok: false, error: 'Could not reach the API.' };
+  }
+}
+
+/** The first people's numbers as they will be saved, for the "how the file was read" card. */
+export async function numberExamples(id: string, columns: string[], country: string): Promise<SheetReply<Awaited<ReturnType<typeof getNumberExamples>>>> {
+  return sheetRead(() => getNumberExamples(id, columns, country));
+}
+
+/** One page of the sheet that was uploaded, for the table on the check screen. */
+export async function sheetRows(id: string, filter: SheetFilter, offset: number, limit: number): Promise<SheetReply<SheetPage>> {
+  return sheetRead(() => getSheetPage(id, filter, offset, limit));
+}
+
+/** Everyone the filter keeps, as a CSV to download. */
+export async function sheetCsv(id: string, filter: SheetFilter): Promise<SheetReply<{ count: number; csv: string }>> {
+  return sheetRead(() => getSheetCsv(id, filter));
 }
 
 /** The rows of an import that failed or lost something, for the problem box on the import screen. */

@@ -159,6 +159,24 @@ First rule to match wins. **Empty values never match anything** — enforced by 
 `libphonenumber-js` to E.164, with a per-source `default_country`. Unparseable values become
 a row error with the original preserved in `import_row.raw`, never a silently stored string.
 
+### Rules for rows and for importing a file again (decided 2026-11-06)
+- **The newest file wins.** A value in a kept column replaces the one on the person; a name is replaced by a different name (the old one
+  is audited). A **blank, or an `NA`, never erases anything**, so a sparse file cannot destroy richer data (M9). Identities (a second number,
+  an email) are only ever added.
+- **A person with a number and no name** is saved with **no name** (`display_name` NULL), not with their number as the name, so a
+  campaign greets them "Hi there" (`recipientVars`). A saved name that is only a phone number reads "there" too (older people).
+- **Names are saved exactly as typed**: capitals, apostrophes and initials are never reformatted.
+- **The same number twice in a file** is one person. The check counts the second row as already there (it remembers who it has counted as
+  new, since a check writes nobody), so its numbers match the import's.
+- **A person with an email and no number** is imported; the summary counts them in `withoutNumber` and the screen says they cannot be
+  messaged.
+- **A bad email never fails a row that has a good number**: the person comes in without the email and the row carries a warning. A row
+  whose only identity is a bad email still fails.
+- **A phone cell** may hold several numbers separated by a comma, semicolon, slash, pipe or line break, or only by spaces (when every
+  piece belongs to a valid number). A letter between the digits makes a part invalid; a label before or after the number is ignored.
+- **The tag is required on the Import screen**: the real import is refused without a tag name (the screen blocks the button and the
+  server action refuses), because the tag is how the people are found later. The API itself still treats `tag` as optional.
+
 ### Per-row error ledger (M4)
 Every row writes an `import_row`. A run **always completes**. Failed rows are downloadable as
 a spreadsheet with an appended `_error` column — fix and re-upload just those.
