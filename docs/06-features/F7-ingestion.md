@@ -15,10 +15,11 @@ clearest gaps in the market (`../03-competitive-analysis.md`).
 
 ## User stories
 
-- As a user I upload a spreadsheet, map its columns visually, preview exactly what will happen,
-  and then commit.
-- As a user I get a file of just the rows that failed, with a reason column, so I can fix and
-  re-upload only those.
+- As a user I drop a spreadsheet, see what will happen before anything is saved (the name and number columns found for me, real
+  numbers as examples, who lacks which detail), give the file a tag, and then import.
+- As a user I look through my sheet on the check screen, list the people who lack a detail, download them as the sheet's own columns,
+  fill the gaps and import the file again; a blank or NA never erases anything.
+- As a user I get a file of just the rows that were skipped, so I can fix and re-upload only those.
 - As a user I connect a Google Sheet once and have it sync on a schedule.
 - As a user I re-import an older, sparser file and it does not destroy the richer data I have.
 - As a developer I add a new source type by writing one class.

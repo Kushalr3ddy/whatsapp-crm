@@ -6,7 +6,7 @@ description: 'Answer customers, assign chats, add notes, and read the warnings a
 ## The list
 
 -   **Search** looks in the person’s name, number and the last message, and shows the matching words highlighted.
--   **Five quick views**, each with a count: **All**, **Needs you**, **Unread**, **AI answering** and **You answering**.
+-   **Five quick views**, each with a count: **All**, **Needs you** (an open chat where the customer spoke last and a person is meant to answer, or where the AI is stuck), **Unread**, **AI answering** and **You answering**.
 -   **Filters** (one button): campaign, imported file, owner and status. What you pick appears as chips you can remove.
 
 ## Inside a chat

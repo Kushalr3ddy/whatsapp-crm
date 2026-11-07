@@ -789,7 +789,7 @@ The full, always-current list of tables, columns, keys, indexes, policies and tr
 |---|---|---|
 | `contact_identity.wa_registered`, `wa_checked_at` | 0029 | Whether WhatsApp has an account on this number and when it was checked (number fallback, D-60) |
 | `message.media_error`, `media_failed_at` | 0030 | Why an attachment could not be stored, so the thread can say so (D-30) |
-| `app_user.is_bot` | 0031 | The AI assistant's own user. A chat assigned to it is "handled by the AI" (D-91, Hand to AI) |
+| `app_user.is_bot` | 0031 | The AI assistant's own user. A chat assigned to it is "handled by the AI" (D-91; in the Inbox this is **Take over** and **Hand back**) |
 | `ai_setting` | 0031, 0032 | One row per org: `enabled`, `instructions`, `daily_message_cap` (default 200), `may_start_campaigns` (default off), the consent record (`consent_accepted_at/by`) and `bot_user_id`. Off until an admin accepts |
 | `ai_run` | 0031 | One row each time the assistant sends, tries or is held back: `kind` (`reply`, `campaign_action`), `outcome` (`sent`, `blocked`, `failed`, `skipped`), `reason` (a gate name, `daily_cap`, `model_error`, `empty_answer`), `model` and token counts. Cost and behaviour can be checked from it |
 | `ai_job` | 0033 | The assistant's waiting list, one running per org at a time: `kind` (`command`, `draft`), `input`, `status` (`queued`, `running`, `done`, `failed`, `cancelled`), `result` (JSON), `error` |

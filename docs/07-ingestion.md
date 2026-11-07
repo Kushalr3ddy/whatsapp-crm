@@ -194,6 +194,28 @@ Repeatable jobs with cursor-based incremental reads, per-source concurrency limi
 overlap protection (a run still in flight defers the next rather than running concurrently —
 which is what the old system's advisory lock was really trying to say, M28).
 
+## The Import screen
+
+`/import` is one screen (code: `apps/web/app/import/`, logic in `apps/web/lib/import.ts`).
+
+1. **Drop a file.** `POST /imports` stores and reads it and the screen runs the check straight away; nothing is saved. The screen shows
+   the real stages (sending and reading the sheet, finding the name and number, checking each person against Contacts) with a clock;
+   the server reports once per stage, so there is no percentage.
+2. **The check.** A country for numbers with no country code (every country, India first); the name and mobile columns found for the
+   person (`GET /imports/:id/numbers` shows real numbers as they will be saved); if two columns look like numbers the person picks one;
+   one name column, or first and last name joined; other columns come in as they are, shown as a count with a few names; the details
+   some people leave empty, with how many; three people drawn at random with everything the file says about them (`peek`,
+   `columnFill` in the upload response); and **People in your sheet**, a read-only table of the sheet (`GET /imports/:id/rows`: 25
+   people a page, every column, the sheet's own row numbers, filter chips for a missing detail with any / all, search, one Download of
+   everyone shown).
+3. **The tag.** Required. It starts as the file's name (long date-times removed) and Import stays blocked until it has a name.
+4. **Import.** `POST /imports/:id/run` with the tag. The screen lists what it does in order.
+5. **Done.** Added to your contacts, Already in your contacts and Skipped (downloadable), with links to Contacts and a new campaign
+   (or Link a number first when none is linked), and Import another file.
+
+The same bytes again answer "You uploaded this exact file before" with **Import it again** (`?force=true`) or **Choose another file**.
+The place is kept across a reload and leaving mid-import asks first.
+
 ## Mapping format
 
 ```yaml

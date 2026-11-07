@@ -13,8 +13,9 @@ the batch with no record of intent.
 
 ## User stories
 
-- As a marketer I target a segment, pick a template, schedule it, and see what it will cost
-  and how long it will take *before* committing.
+- As a marketer I write the message (or use an AI template), pick one or more files and tags (a person in more than one counts once),
+  and see on the review panel who it reaches, who is left out and why, how long it takes and when it ends *before* committing.
+- As a marketer I choose what happens to people with a blank fill-in and to people messaged recently, and I can edit a draft.
 - As a marketer I pause a running campaign, and resume it, without duplicate sends.
 - As a marketer I see exactly why each recipient was skipped.
 - As an operator I am confident a campaign will never exceed a number's safe send rate.
@@ -54,7 +55,11 @@ and the UI must make it feel like one rather than a bug.
 
 ```
 GET    /api/v1/campaigns
-POST   /api/v1/campaigns                  create draft
+POST   /api/v1/campaigns                  create draft (`targets`, `recentDays`, `leaveOutRecent`)
+PATCH  /api/v1/campaigns/{id}             edit a draft
+POST   /api/v1/campaigns/review           the New campaign review panel
+POST   /api/v1/campaigns/review/blanks    the people left out for a blank fill-in (CSV)
+GET    /api/v1/campaigns/audience-history last campaign for each file, tag and saved list
 POST   /api/v1/campaigns/{id}/dry-run     counts, cost, duration, risk
 POST   /api/v1/campaigns/{id}/launch
 POST   /api/v1/campaigns/{id}/pause

@@ -111,31 +111,33 @@ flowchart TD
 
 ## 5 · Importing contacts
 
-(Code: `apps/web/app/import/`, `packages/core/src/ingestion.ts`.) The extra columns are stored as one JSON object on the contact (`contact.custom_fields`, a `jsonb` column with a search index, docs/35), not as a database column each, so any number of sheet columns fit.
+(Code: `apps/web/app/import/`, `apps/web/lib/import.ts`, `packages/core/src/ingestion.ts`. The rules for rows and for importing a file again are in [`07-ingestion.md`](07-ingestion.md).) The extra columns are stored as one JSON object on the contact (`contact.custom_fields`, a `jsonb` column with a search index, docs/35), not as a database column each, so any number of sheet columns fit.
 
 ```mermaid
 flowchart TD
-  A([Choose a CSV or Excel file]) --> B[Upload at once; same bytes seen before is refused, with Upload anyway]
-  B --> C[Profile each column by its values, suggest the phone column]
-  C --> D[Match columns: tick every phone column, name or first plus last joined, email, columns to keep]
-  D --> E{Columns to store}
-  E -- All columns, the default --> F[Every other column is stored on each person, personal ones too, up to 200]
-  E -- Choose columns --> F2[Tick the ones to keep; personal ones carry a label]
-  F --> G[Preview: nothing written yet]
-  F2 --> G
-  G --> H[Import]
-  H --> I[Row by row into the ledger: find the person by phone or email, else create]
-  I --> J[Existing person: name only if empty, new numbers added, field values never overwritten]
-  J --> K[Everyone tagged with the file name, or the tag you typed]
-  K --> L[Next steps: view the people, message them]
+  A([Drop a CSV or Excel file]) --> B[Upload and check at once: real stages shown, nothing saved]
+  B --> B2{Same bytes seen before?}
+  B2 -- yes --> B3[You uploaded this exact file before: Import it again, or Choose another file]
+  B2 -- no --> C
+  B3 --> C[Profile each column by its values, find the name and mobile number columns]
+  C --> D{Two columns look like numbers?}
+  D -- yes --> D2[Which one should we message? Pick one]
+  D -- no --> E
+  D2 --> E[Check card: real numbers as examples for the chosen country, other columns as a count, details people lack, three random people, People in your sheet]
+  E --> F[Tag named after the file; the tag is required]
+  F --> G[Import: blocked until the tag has a name]
+  G --> H[Row by row into the ledger: find the person by phone or email, else create]
+  H --> I[Existing person: newest file wins for kept columns, a blank or NA never erases, new numbers and emails only added]
+  I --> J[Everyone tagged, atomically with the commit]
+  J --> K[Done: Added, Already in your contacts, Skipped; view them, start a campaign, import another]
 ```
 
 ## 6 · One search rule for the list, the count and bulk tagging
 
 ```mermaid
 flowchart LR
-  A[Words + tag + date range + order] --> B[searchPredicate]
-  B --> C[Contact list, 50 rows, keyset cursor for newest-first]
+  A[Words + tag or file + filters + order] --> B[searchPredicate]
+  B --> C[Contact list: pages of up to 250 by offset, with a total]
   B --> D[Count]
   B --> E[Bulk tag or untag in one statement, refused if the count changed]
   B --> F[Group message audience, workflow 3]

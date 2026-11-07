@@ -214,7 +214,7 @@ These are **not** implemented; each is cheap to add when the data gets big.
 | Contact list paging by cursor only for "newest first" | Other orders show the first 50. | Keyset on the chosen order, or offset for small books |
 | No index on `message (campaign_id)` | Campaign-level message queries scan by conversation. | Add if campaign pages get slow |
 | Generation rate limit is in memory, per API process | Resets on restart; not shared across two API processes. | Move the counter into Postgres or Redis when there are two API hosts |
-| `ai_template` is not yet linked to chats | Only campaigns carry `ai_template_id` so far; a single chat is handed to the AI with Hand to AI (assignee = the bot user) but without its own template (D-85). | Add `conversation.ai_template_id` |
+| `ai_template` is not yet linked to chats | Only campaigns carry `ai_template_id` so far; a single chat is handed to the AI with **Hand back** in the Inbox (assignee = the bot user) but without its own template (D-85). | Add `conversation.ai_template_id` |
 
 ## 6 · How to refresh this
 

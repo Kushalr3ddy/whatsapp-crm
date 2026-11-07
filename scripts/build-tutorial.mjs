@@ -184,7 +184,7 @@ chapter('Inbox: answering customers', `
 <h3>The list</h3>
 <ul>
 <li><b>Search</b> looks in the person’s name, number and the last message, and shows the matching words highlighted.</li>
-<li><b>Five quick views</b>, each with a count: <b>All</b>, <b>Needs you</b>, <b>Unread</b>, <b>AI answering</b> and <b>You answering</b>.</li>
+<li><b>Five quick views</b>, each with a count: <b>All</b>, <b>Needs you</b> (an open chat where the customer spoke last and a person is meant to answer, or where the AI is stuck), <b>Unread</b>, <b>AI answering</b> and <b>You answering</b>.</li>
 <li><b>Filters</b> (one button): campaign, imported file, owner and status. What you pick appears as chips you can remove.</li>
 </ul>
 <h3>Inside a chat</h3>
