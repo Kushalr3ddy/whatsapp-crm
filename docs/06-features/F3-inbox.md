@@ -12,41 +12,47 @@ the product matters. Competitive bar is Respond.io.
 The parts of the inbox and what they are for. Status as of this writing in brackets.
 
 - **Assignment** *(built)* — giving a conversation an owner, so a team knows who is handling whom
-  instead of everyone facing one undifferentiated pile. Set from a dropdown in the thread header;
+  instead of everyone facing one undifferentiated pile. Set in **Details** (the AI assistant, a person or nobody);
   `conversation.assignee_user_id` holds it.
 - **Status** *(built)* — a conversation is **open** (live, needs attention) or **closed** (dealt
   with, archived). "Resolve" closes it, "Reopen" brings it back. Keeps the working list to what is
   actually live.
-- **Filters** *(built)* — narrow the list instead of scrolling everything: by owner
-  (**Mine / Unassigned / All**) and by status (**Open / Closed / Any**). "My open threads" is the
-  everyday view. Server-side on `GET /conversations`, mirrored by the tabs in the UI.
+- **Search and views** *(built)* — search looks in the person's name, number and the last message and highlights the match.
+  Five quick views, each with a count: **All**, **Needs you** (an open chat where the customer spoke last and a person is meant to
+  answer, or where the AI is stuck), **Unread**, **AI answering** and **You answering**. One **Filters** button narrows by campaign,
+  imported file, owner and status (**Open / Closed / Any**), shown as removable chips. Server-side on `GET /inbox` and
+  `GET /inbox/filters`.
 - **Attachments** *(built)* — files sent or received in a thread (a PDF, an image). Shown as a
   download link with filename, type and size. Always served as a download, never rendered inline,
   so a booby-trapped file cannot execute from our origin (see `09-security.md` and the media notes
   in `24-local-testing.md`).
-- **Sending files** *(built, D-25)* — the 📎 button in the composer sends an image, video, audio file, PDF or
-  Office document into the thread, with the typed text as its caption. The file's type is decided from its
+- **Sending files** *(built, D-25)* — the composer sends an image, video, audio file, PDF or
+  Office document into the thread, with the typed text as its caption; up to five pictures can be pasted into it. The file's type is decided from its
   bytes (HTML and unknown types are refused) and it goes through the same anti-ban policy as any message.
 - **Internal notes** *(built)* — team-only comments inside a thread that the contact never sees —
   "spoke on call, sending CV tomorrow". How two agents hand a thread off. They live in
   `internal_note`, a table the send path never reads, so a note can never be transmitted (AC-4).
 - **Canned replies** *(built)* — saved message templates with a `shortcut`. Insert one and its
   `{{name}}` placeholder is filled from the contact, so an agent does not retype the same opener.
-- **Thread lock** *(built)* — once a thread is assigned, only that owner may reply until they
-  resolve or reassign it; replying otherwise is `409`. An admin overrides, and an API key (an
-  integration, not a person) is exempt. A deliberately simple stand-in for collision detection.
+- **Who can reply** *(built)* — only a chat's owner or an admin can send; anyone else on the chat reads it and adds notes, and
+  sending is `409 THREAD_ASSIGNED`. The first person to send in a chat nobody owns becomes its owner (audited). An API key never
+  claims a chat, and an admin replying to someone else's chat does not take it.
+- **Take over and Hand back** *(built)* — while the AI owns a chat the reply box is blurred with **Take over**, which stops the AI at
+  once (it checks the owner before it writes and again before it sends); **Hand back** gives the chat to the AI again. When the AI
+  skips a chat a card offers **Reply myself** and **Let the AI try again**.
+- **Details** *(built)* — a slide-over, closed by default: who has the chat, Resolve and Reopen (with Undo), the number and whether
+  it is linked, the campaigns that messaged the person, **Open in Contacts**, and the other people on the chat (admins add and remove).
+- **One message box** *(built)* — Reply or Note, bold / italic / strike / mono, **Fill-in** from the person, Saved replies, a
+  **Preview** line; Send waits while the preview shows a blank or unknown fill-in. It is the same box as New campaign.
 - **Read state** *(built)* — opening a thread clears its unread badge (and `POST
   /conversations/:id/read` does it explicitly). The count rises on inbound and resets on read;
   it is per-conversation today, not yet per-agent.
 - **Opening any thread** *(built)* — `GET /conversations/:id` fetches one conversation by id, so a
   thread further down than the recent-100 list can still be opened.
-- **Presence, typing, collision detection** *(deferred, D-17)* — showing that a colleague is
-  viewing or typing in a thread. Needs a realtime channel; the thread lock covers the "don't both
-  reply" case simply for now.
+- **Presence and typing** *(built)* — who is viewing and who is typing show under the chat's name.
 - **Live inbound** *(deferred, blocked by D-14)* — a new incoming message appearing in under a
   second without a refresh. The inbox polls every 5 s today.
-- **Search, snooze, priority, Meta 24-hour window UI, ~~keyboard shortcuts~~** *(deferred — search is
-  open; snooze / Meta-window are pinned as D-18; keyboard shortcuts struck out 2026-10-10)*.
+- **Snooze, priority, Meta 24-hour window UI** *(deferred, D-18)*.
 
 ## User stories
 
@@ -72,7 +78,7 @@ needs to know that before typing.
 
 ## Acceptance criteria
 
-- **AC-1** Threads list with filters (mine / unassigned / all / status / channel / tag) and
+- **AC-1** Threads list with search, the five views and filters (campaign / file / owner / status) and
   loads the first screen in under 500 ms at the Small-team tier.
 - **AC-2** A new inbound message appears in a connected agent's inbox in under 1 second.
 - **AC-3** Two agents opening the same thread each see the other's presence; typing is shown live.

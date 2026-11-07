@@ -14,6 +14,7 @@ load automatically): plain language, define jargon, never talk down; ask before 
 one question at a time with options and a recommendation; keep a task list (`update_plan`) and close each turn with
 `wrap_up`; never offer to merge (he merges and says "merged"); never start or stop his dev stack without asking.
 
+0. **Code questions: use CodeGraph first.** A local index (`.codegraph/`, git-ignored) answers "where is X / how does X work / who calls X" in one call: `codegraph_explore` (or `codegraph explore "<names or question>"` in a shell). It indexes code only, so read the docs and pins normally. A new git worktree or clone has no index until `codegraph init` is run there. The rule is also in the repo `CLAUDE.md`.
 1. **Read, in order:** this file (especially *Latest session (2026-10-23, day into night)*, then *2026-10-22 night*, then *2026-10-22*), `CHANGELOG.md` (top "Latest" and
    "To do"), `docs/21-deferred.md` (start at **"Status at a glance"**, then the pins marked WORK ON NOW / PRIORITY), then
    `docs/README.md` for the index. Docs written this stretch: **32** (setup, signup, teams, billing plan),
@@ -394,19 +395,8 @@ re-create the logging (it logged message kinds, `senderPn`/`participantPn`/`push
 | #81 | **Newsletters, any `@broadcast` list and groups are ignored on the way in** (`isNotAPerson` in `packages/channels/baileys/src/index.ts`) |
 | #82 | Docs: **"Status at a glance" table** at the top of `docs/21-deferred.md`; D-63 pinned; the CI note in `CONTRIBUTING.md` |
 
-### Open: PR #83 (`feat/import-wizard-more`): D-21, built as Kushal previewed and approved
-The Match columns step is divided into sections (file / phone columns / name and email / columns to store / preview / tag and import):
-- **Several phone columns**: tick every column with numbers; numbered and tried in order; a person with two numbers keeps both
-  (`mapping.identities` already allowed several phone rules). Component `PhoneColumns` in `apps/web/app/import/import-panel.tsx`.
-- **Joined names** (`mapping.nameParts`, `joinName` exported from `packages/core/src/ingestion.ts`, mirrored for the preview in
-  `apps/web/lib/join-name.ts`): never shortened; `Anita` + `Sharma` is `Anita Sharma`; only a first name that is already one
-  letter is joined with a dot and no space (`a` + `sharma` is `a.sharma`); a blank part leaves the other as the name; the sheet's case is kept.
-- **Personal columns** (`apps/web/lib/personal-columns.ts`: date of birth, pay/CTC, address, government ids, marital status, gender...)
-  are marked "personal" and cannot be ticked while "Never store columns marked personal" is on.
-- **Layout:** fixed-height scrolling columns box with "N of M ticked", bigger text, preview shows chosen columns and "showing N of M rows".
-- **Verified locally:** typecheck (server and web), lint, `ingestion.test.ts`, `import-columns.test.ts`, `imports.test.ts` (32 tests incl. a new
-  two-phone plus joined-name test). **NOT run:** the browser suite and a look at **phone width** (he asked that the layout not break the
-  mobile layout later, D-72). Both need his go-ahead and the stack; the e2e specs `import-problems` and `import-flow` were rewritten and have not run.
+### Import
+The Import screen is one screen with a check before anything is saved, a required tag and the rules for importing a file again: see `docs/07-ingestion.md` ("The Import screen").
 
 ### Decisions he made (so you do not re-ask)
 - **Invite-only beta first; teammates are created by an admin** (who can reset a password and revoke access, **never delete** an account). Billing:

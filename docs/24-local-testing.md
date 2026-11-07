@@ -455,14 +455,22 @@ clean day. CI does all of this in the `e2e` job.
 Sign in at `localhost:3001/login` as the test admin, with the seed in place.
 
 - **Overview** — counts match the seed; no console errors.
-- **Inbox** — Open shows Asha Rao and Bilal Khan, Closed shows Chitra Nair; *Mine* shows only Bilal; opening
-  Asha clears her unread badge; add a note (it appears, nothing is "sent"); Resolve then Reopen.
+- **Inbox** — the five views (All, Needs you, Unread, AI answering, You answering) each show a count; *Filters* → status
+  *Closed* shows Chitra Nair and *Open* shows Asha Rao and Bilal Khan; search a word from a message and the row shows it
+  highlighted; opening Asha clears her unread badge; choose *Note*, add a note (it appears in the chat, nothing is "sent"); in
+  *Details*, Resolve then Reopen (each has Undo). *Needs you* is an open chat where the customer spoke last and a person is meant
+  to answer, or where the AI is stuck.
 - **Composer** — with the fake gateway up, reply to a thread and watch it go queued → sent; with it down the
   composer locks to notes and says why.
-- **Contacts** — search "Farhan" narrows the list; tag chip filters; the do-not-contact toggle blocks a reply;
-  *Tag many at once* previews a count before it applies; export (admin) downloads CSV and vCard.
-- **Import** — upload `tests/fixtures/import-contacts.csv` (add a unique row, same bytes are refused), columns
-  map themselves, *Preview* writes nothing, *Import* creates people and tags them.
+- **Contacts** — a file or tag on the left narrows the table and shows the total; search "Farhan" narrows it further
+  (name, phone and email only); *Filters* shows a live count and a removable chip, and *Save as a list* keeps it; ticking
+  people (or "Select all N") and *Add tag* tags them, with Undo; a row opens the person at the side; export (admin) downloads
+  a CSV. The do-not-contact switch lives on `/contacts/classic`; it blocks a reply.
+- **Import** — drop `tests/fixtures/import-contacts.csv`: the screen shows its stages, then the check (real numbers as examples,
+  the name and number columns found, three random people, the *People in your sheet* table). Nothing is saved at this point.
+  The tag starts as the file's name and **Import stays blocked until it has a name**. Dropping the same bytes again says "You
+  uploaded this exact file before" (*Import it again* or *Choose another file*). *Import* creates people and tags them; the Done
+  screen shows Added, Already in your contacts and Skipped, with links to Contacts and a new campaign.
 - **Broadcast** — new campaign from one or several files or tags, or everyone (the review counts each person once), preview, start,
   pause, resume, cancel; per-recipient results filter by status.
 - **Numbers** — the seeded card shows its name, number and whether it is linked.
