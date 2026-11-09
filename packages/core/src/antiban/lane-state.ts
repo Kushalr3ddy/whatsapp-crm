@@ -43,6 +43,8 @@ export async function laneCandidates(
              coalesce(m.dnc_override_reason = ${CLOSING_MESSAGE_MARK}, false) AS "closing"
       FROM message m JOIN conversation v ON v.id = m.conversation_id
       WHERE v.sender_identity_id = ${senderIdentityId} AND m.direction = 'outbound' AND m.status = 'queued'
+        -- In flight: already handed to WhatsApp by a run that has not recorded it yet. Never a candidate again (no second send).
+        AND m.send_started_at IS NULL
     )
     SELECT "messageId", "conversationId", "contactId", "plannedGapMs", "holdReason", "holdUntil", "campaignId",
            NOT "known" AS "newChat",

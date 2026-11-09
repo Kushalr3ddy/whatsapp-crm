@@ -44,6 +44,8 @@
     "test:e2e": "playwright test",
     "verify": "bash scripts/verify.sh",
     "test:live": "playwright test --config playwright.live.config.ts",
+    "live:canary": "tsx --env-file-if-exists=.env scripts/live-canary.ts",
+    "live:suite": "tsx --env-file-if-exists=.env tests/live/live-suite.ts",
     "test:session": "bash scripts/run-session.sh dry",
     "test:session:real": "SESSION_I_KNOW_THIS_SENDS=1 bash scripts/run-session.sh real",
     "regress": "bash scripts/regress.sh local",

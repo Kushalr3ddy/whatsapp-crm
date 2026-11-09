@@ -154,7 +154,7 @@ export {
   POLICY_GATES, POLICY_SKIP_REASON, ENGAGEMENT_WINDOW_HOURS, COOLDOWN_DAYS, isPolicyGate,
   blockingPolicyGate, type PolicyGate
 } from './policy-gates.js';
-export { markMessageFailedByProviderId } from './messages.js';
+export { markMessageFailedByProviderId, markUnconfirmedSends, UNCONFIRMED_AFTER_MS } from './messages.js';
 export {
   classifyLinkFailure, linkErrorFor, encodeLinkError, decodeLinkError,
   type LinkErrorInfo, type LinkErrorCode

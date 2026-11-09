@@ -344,6 +344,13 @@
       "when": 1794205689031,
       "tag": "0048_ai_contact_status",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794220468256,
+      "tag": "0049_message_send_started",
+      "breakpoints": true
     }
   ]
 }

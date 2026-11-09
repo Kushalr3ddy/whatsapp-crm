@@ -474,6 +474,7 @@ worked for two campaigns at once (M31).
 | `planned_gap_ms` | int NULL | The gap drawn for this message once, so the schedule is known in advance (0040). Copied from the campaign recipient. |
 | `read_requested_at`, `read_marked_at` | timestamptz NULL | On an inbound message: when a reply asked for it to be marked read, and when WhatsApp was told it was read (0040). |
 | `tick_checked_at`, `tick_verdict` | timestamptz / text NULL | When the sweep looked at an outbound message still at one tick after 30 minutes, and what it found: `likely_blocked`, `likely_offline` or `decrypt_retry` (0041). Nothing is resent. |
+| `send_started_at` | timestamptz NULL | Set just before the gateway hands a queued message to WhatsApp. A queued message that has it is in flight and is never sent again; after 10 minutes unrecorded the sweep marks it failed `send_unconfirmed` (0049). |
 
 ## `media_asset` ✅
 
@@ -771,6 +772,7 @@ original shape; these are the deltas.
 | `antiban_setting.closing_message_enabled`, `contact_phone`, `contact_email`, `default_purpose`, `stop_words`, `restart_words`; `campaign.purpose` | 0041 | The opt-out closing message and the words that start and end an opt-out |
 | `channel_session.many_undelivered_at`, `many_undelivered_resumed_at`, `decrypt_wave_at` | 0041 | Number-wide holds |
 | `conversation.likely_blocked_at`, `decrypt_retry_at`, `profile_snapshot`, `profile_probe_at`; `message.tick_checked_at`, `tick_verdict` | 0041 | Per-contact delivery state (ticks, retries, probable block) |
+| `message.send_started_at` | 0049 | A send in flight, so a crash or a database blip never sends a message twice |
 | `campaign.blank_fill_in_choice`, `fill_in_fallback` | 0042 | What to do for a person with no value for a fill-in the message uses: skip them, or fill the gap with a word. Null = send anyway. |
 | `campaign.audience_targets` | 0044 | The picks a draft was made with, so Edit can open it with them back. |
 | `campaign.recent_days`, `campaign.leave_out_recent`, `antiban_setting.recent_days` | 0043 | "Messaged recently" as a choice with its own number of days, and the org's default for it. |

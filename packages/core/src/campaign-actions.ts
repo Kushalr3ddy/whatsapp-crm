@@ -191,6 +191,19 @@ export async function setCampaignStatus(
     RETURNING id`);
   if ((rows as unknown as unknown[]).length === 0) return false;
   if (to === 'cancelled') {
+    // Cancel means nothing more goes out. Messages already queued for the campaign are taken back too; only one already handed to
+    // WhatsApp (in flight) is past recalling.
+    const withdrawn = await tx.execute(sql`
+      UPDATE message SET status = 'failed', error_code = 'campaign_cancelled',
+          error_detail = 'Not sent: the campaign was cancelled before this message went out.', hold_reason = NULL, hold_until = NULL
+      WHERE campaign_id = ${id} AND org_id = ${orgId} AND direction = 'outbound' AND status = 'queued' AND send_started_at IS NULL
+      RETURNING id`) as unknown as Array<{ id: string }>;
+    if (withdrawn.length > 0) {
+      await tx.execute(sql`
+        UPDATE campaign_recipient SET status = 'skipped', skip_reason = 'cancelled'
+        WHERE campaign_id = ${id} AND org_id = ${orgId} AND status = 'queued'
+          AND message_id IN (${sql.join(withdrawn.map((w) => sql`${w.id}`), sql`, `)})`);
+    }
     await tx.execute(sql`
       UPDATE campaign_recipient SET status = 'skipped', skip_reason = 'cancelled'
       WHERE campaign_id = ${id} AND org_id = ${orgId} AND status = 'pending'`);

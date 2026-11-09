@@ -8,7 +8,7 @@ import {
   dispatchCampaign, reconcileCampaign, writeOpenings, makeAntiBanPolicy,
   applyWhatsAppNotice, type AntiBanPolicy, recordHealthEvent, reencryptBatch,
   applyDeliveryStatus, markMessageFailedByProviderId, markDecryptBurst, liftRetryOnReceipt, conversationOfSent, snapshotDue, saveSnapshot,
-  registerRetryRequest, checkUnreached, reviewManyUndelivered, contactWroteAgain, handleInboundSafety,
+  registerRetryRequest, checkUnreached, markUnconfirmedSends, reviewManyUndelivered, contactWroteAgain, handleInboundSafety,
   type ProbeFn, type InboundSafetyResult
 } from '@crm/core';
 import { runLane, markInboundRead, type LaneResult } from './lane.js';
@@ -485,6 +485,10 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
     WHERE direction = 'inbound' AND read_requested_at IS NOT NULL AND read_marked_at IS NULL AND provider_message_id IS NOT NULL
     LIMIT 50`);
   for (const r of readRows as unknown as Array<{ id: string }>) await handleReadRequest(ctx, r.id);
+
+  // Sends a process lost track of (it died, or the database went, after WhatsApp took them): reported, never sent twice.
+  const unconfirmed = await markUnconfirmedSends(ctx.db, clockOf(ctx));
+  if (unconfirmed > 0) ctx.logger.error({ unconfirmed }, 'messages handed to WhatsApp were never confirmed: marked send_unconfirmed, not sent again');
 
   // One lane per number that has something queued. Each lane runs on its own, so a number waiting out a gap never holds up another.
   const laneRows = await ctx.db.execute(sql`

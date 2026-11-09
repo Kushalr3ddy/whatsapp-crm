@@ -35,7 +35,7 @@ const blanksBody = z.object({ targets: targetsField, key: z.string().min(1).max(
 /** Body for creating a campaign. The audience is always stated — there is no "everyone". */
 const createCampaign = z.object({
   name: z.string().min(1).max(200),
-  body: z.string().min(1).max(4096),
+  body: z.string().max(4096).refine((v) => v.trim() !== '', 'The message is empty.'),
   senderIdentityId: z.string().uuid(),
   fromImportRunId: z.string().uuid().optional(),
   explicitContactIds: z.array(z.string().uuid()).min(1).max(50_000).optional(),
@@ -79,7 +79,7 @@ const startCampaign = z.object({
 /** Body for editing a draft or paused campaign: a new name, new wording, or both. */
 const editBody = z.object({
   name: z.string().trim().min(1).max(200).optional(),
-  body: z.string().min(1).max(4096).optional(),
+  body: z.string().max(4096).refine((v) => v.trim() !== '', 'The message is empty.').optional(),
   mediaAfterReply: z.boolean().optional(),
   blankFillInChoice: z.enum(['skip', 'fallback']).nullable().optional(),
   fillInFallback: z.string().trim().min(1).max(200).nullable().optional(),

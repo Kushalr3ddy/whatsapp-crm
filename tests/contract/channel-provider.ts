@@ -18,6 +18,11 @@ export interface ChannelProviderHarness {
   ): void;
   /** Produces a provider whose sends fail only for `phoneE164`. */
   createWithFailingRecipient?(phoneE164: string): Promise<{ provider: ChannelProvider; sender: SenderRef }>;
+  /**
+   * Registered bugs (R-nnn) this implementation still has. The test for each is expected to fail until the bug is fixed; when it
+   * starts passing, the run fails, so the entry has to be removed and the registry row marked guarded.
+   */
+  knownBugs?: readonly string[];
 }
 
 /**
@@ -94,7 +99,7 @@ export function runChannelProviderContract(name: string, harness: ChannelProvide
         await provider.shutdown();
       });
 
-      it('reports logged_out after logout, distinctly from closed', async () => {
+      (harness.knownBugs?.includes('R-031') === true ? it.fails : it)('[R-031] reports logged_out after logout, distinctly from closed', async () => {
         // These must differ: closed is recoverable by reconnecting, logged_out is terminal
         // and means the number has to be linked again from the phone.
         const { provider, sender } = await harness.create();

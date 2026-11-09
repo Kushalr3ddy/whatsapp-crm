@@ -35,6 +35,21 @@ cleared, and it is why the ports exist at all.
 | **Chaos** | Scripted | Quarterly | Kill Postgres / queue / gateway mid-campaign |
 | **Manual** | Runbook | Pre-release | One real number, small scale, against a checklist |
 
+## WhatsApp, failures and mistakes
+
+The parts that break in real use (linking, the connection, sending) are tested at three levels.
+
+| Level | Where | What it proves | Needs a person |
+|---|---|---|---|
+| **Replay** | `tests/contract/baileys-replay.test.ts` | The real WhatsApp adapter, fed the event sequences WhatsApp produces through a scripted socket (`tests/fixtures/baileys-socket.ts`): QR, QR timeout, scan and the 515 restart, pairing code, 401 device removed, 403 ban, 408, 428, 440 taken elsewhere, giving up after five reconnects, a restart restoring the number, sending, refusals, inbound, ticks. Runs in CI. | No |
+| **Contract** | `tests/contract/baileys-channel.test.ts` | The same conformance suite the fake passes, run on the real adapter, so the fake cannot drift from it. | No |
+| **Failure modes** | `tests/integration/failure-modes.test.ts` | The gateway and API with a real database: the connection dropping before and during a send, the gateway killed mid-campaign, the database going away after WhatsApp accepted a message, two Starts at once, unlink and relink, ban, and what a person gets wrong (Cancel, Pause on a draft, blank messages, removed numbers, Link pressed three times). The rule they hold the code to: nobody is messaged twice, nobody in a campaign is lost without a reason shown, and work carries on when the number is back. | No |
+| **Live canary** | `npm run live:canary` (`scripts/live-canary.ts`) | Two spare numbers in one install: A sends to B, B sees it, B replies, A sees it, with the delivered tick both ways. `--check` only lists what a person still has to do. Run from cron every few hours; `CANARY_ALERT_URL` posts a failure to Slack or Discord. Exit 0 healthy, 1 failed, 2 not ready. | Once: two spare numbers, each linked with a QR scan |
+
+A known bug that is not fixed yet is a test marked `it.fails` with its `[R-nnn]` tag: it passes while the bug is there and fails the run the day it is fixed, so the marker and the registry row get updated together. In the shared contract suite, an adapter lists its open bugs in `knownBugs`.
+
+What only a person can check: the message on phone B's screen (the canary sees the tick, not the screen), and removing the device under Linked devices on the phone to see the Numbers page say so and the campaigns pause.
+
 ## Regression tests for prior defects
 
 **Bugs found after launch** (reported by a tester, found by the audit, caught in CI) have their own system: the **regression registry** `tests/regression/REGISTRY.md`, where every bug gets an R-number and a test with `[R-nnn]` in its title, a bug-fix gate in CI, a production-build smoke run on every PR and a nightly full run. The whole flow, from report to merge, is in [`39-bug-workflow.md`](39-bug-workflow.md) and the mechanics are in [`tests/regression/README.md`](../tests/regression/README.md). The table below is the older list of defects from the previous system (`M*` in `00-prior-art.md`).

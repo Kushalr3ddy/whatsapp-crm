@@ -202,6 +202,25 @@ export async function markMessageSent(
     WHERE id = (SELECT conversation_id FROM message WHERE id = ${messageId})`);
 }
 
+/** How long a send may stay in flight before it is treated as lost track of. Long enough for a slow media upload. */
+export const UNCONFIRMED_AFTER_MS = 10 * 60_000;
+
+/**
+ * Messages handed to WhatsApp whose send was never recorded: the process died, or the database went, in between. WhatsApp may well
+ * have delivered them, so they are not sent again; they are marked failed as `send_unconfirmed`, which tells a person to look at the
+ * chat on the phone before sending anything more. Returns how many were marked.
+ */
+export async function markUnconfirmedSends(db: Database, now: Date = new Date(), afterMs = UNCONFIRMED_AFTER_MS): Promise<number> {
+  const rows = await db.execute(sql`
+    UPDATE message SET status = 'failed', error_code = 'send_unconfirmed',
+        error_detail = 'Handed to WhatsApp, but the send was never confirmed. It may have arrived: check the chat on the phone before sending it again.',
+        hold_reason = NULL, hold_until = NULL
+    WHERE direction = 'outbound' AND status = 'queued' AND send_started_at IS NOT NULL
+      AND send_started_at < ${new Date(now.getTime() - afterMs).toISOString()}
+    RETURNING id`);
+  return (rows as unknown as unknown[]).length;
+}
+
 /**
  * Marks a queued outbound message as failed, recording why (F6 AC-1.9). `detail` is the provider's own words, kept apart from the
  * code so the code stays a short fixed list a screen can match on. A failed message is never retried automatically.

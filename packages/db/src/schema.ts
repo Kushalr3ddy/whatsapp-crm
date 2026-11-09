@@ -478,6 +478,12 @@ export const message = pgTable('message', {
   /** What the sweep decided: `likely_blocked`, `likely_offline`, or `decrypt_retry` when S5 owns it (F6 AC-4.1 to 4.4). Nothing is ever resent. */
   tickVerdict: text('tick_verdict'),
   /**
+   * When the gateway handed this message to WhatsApp, written just before the send. A queued message that has it is in flight: no lane
+   * sends it again. If the process dies before the send is recorded, it stays set, and the sweep marks the message `send_unconfirmed`
+   * instead of sending it a second time, because WhatsApp may already have it.
+   */
+  sendStartedAt: timestamp('send_started_at', { withTimezone: true }),
+  /**
    * An admin knowingly sent this to someone flagged do-not-contact (the override is a per-message,
    * audited decision with a reason). The gateway's last-line check refuses to send to a
    * do-not-contact contact unless this is set, so a flag raised after queueing still stops a message.
@@ -505,7 +511,9 @@ export const message = pgTable('message', {
   readAt: timestamp('read_at', { withTimezone: true })
 }, (t) => [
   uniqueIndex('message_provider_id_uidx').on(t.orgId, t.providerMessageId),
-  index('message_conversation_idx').on(t.conversationId, t.createdAt)
+  index('message_conversation_idx').on(t.conversationId, t.createdAt),
+  // Sends in flight, for the sweep that reports the ones never confirmed. Tiny: only a message being handed to WhatsApp is in it.
+  index('message_in_flight_idx').on(t.sendStartedAt).where(sql`status = 'queued' AND send_started_at IS NOT NULL`)
 ]);
 
 /**

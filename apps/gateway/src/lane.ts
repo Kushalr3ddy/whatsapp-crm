@@ -387,18 +387,38 @@ export async function runLane(ctx: WorkContext, orgId: string, senderId: string)
       continue;
     }
 
-    // Send.
+    // Send. The message is marked in flight first, so that if this process dies, or the database goes, between WhatsApp taking the
+    // message and the send being recorded, nothing sends it a second time (the sweep marks it `send_unconfirmed` instead).
     await goOnline(ctx, senderRef);
+    if (!(await claimSend(ctx, c.messageId))) {
+      jobs.delete(c.messageId);
+      continue;                                        // sent or claimed by someone else meanwhile
+    }
     log({ decision: 'send' });
+    let result: { providerMessageId: string } | null = null;
     try {
-      const result = await ctx.provider.send(senderRef, recipient, { kind: 'freeform', body, ...(media ? { media } : {}) });
-      await markMessageSent(ctx.db, c.messageId, result.providerMessageId, clock(ctx));
-      ctx.logger.info({ messageId: c.messageId, providerMessageId: result.providerMessageId }, 'message sent');
-      sent += 1;
+      result = await ctx.provider.send(senderRef, recipient, { kind: 'freeform', body, ...(media ? { media } : {}) });
     } catch (error) {
+      typedAt.delete(c.messageId);
+      waited.delete(c.messageId);
+      jobs.delete(c.messageId);
+      // The connection went between the check at the top and this send: the message is not wrong, the number is down. It waits for
+      // the number to come back, like everything else queued on it, and this run stops (every send after it would fail the same way).
+      if ((await ctx.provider.health(senderId)).state !== 'open') {
+        await releaseSend(ctx, c.messageId);
+        await recordHold(ctx.db, c.messageId, { reason: 'sender_not_connected', until: null });
+        ctx.logger.warn({ messageId: c.messageId, senderId, err: error instanceof Error ? error.message : String(error) },
+          'the number disconnected during a send: the message stays queued');
+        break;
+      }
       await failSend(ctx, c.messageId, error, c.conversationId);
       failed += 1;
+      continue;
     }
+    // WhatsApp has it. Recording that is retried, because a send that is not written down would be sent again.
+    await recordSent(ctx, c.messageId, result.providerMessageId);
+    ctx.logger.info({ messageId: c.messageId, providerMessageId: result.providerMessageId }, 'message sent');
+    sent += 1;
     typedAt.delete(c.messageId);
     waited.delete(c.messageId);
     jobs.delete(c.messageId);
@@ -445,6 +465,45 @@ function gateFailure(job: QueuedSend): string | null {
   // being flagged (F6 AC-6.5). Campaigns and the AI never get past it.
   if (job.doNotContact && !job.dncOverride && !(job.byAgent && job.dncReopened)) return 'do_not_contact';
   return null;
+}
+
+/** Marks a queued message as being handed to WhatsApp now. False when it is no longer queued, or another run already has it. */
+async function claimSend(ctx: WorkContext, messageId: string): Promise<boolean> {
+  const rows = await ctx.db.execute(sql`
+    UPDATE message SET send_started_at = ${clock(ctx).toISOString()}
+    WHERE id = ${messageId} AND status = 'queued' AND send_started_at IS NULL
+    RETURNING id`);
+  return (rows as unknown as unknown[]).length > 0;
+}
+
+/** Puts a message back in the queue after a send that certainly did not leave (the number was not connected). */
+async function releaseSend(ctx: WorkContext, messageId: string): Promise<void> {
+  await ctx.db.execute(sql`UPDATE message SET send_started_at = NULL WHERE id = ${messageId} AND status = 'queued'`);
+}
+
+/** How long to wait between tries at recording a send, when the database is briefly away. */
+const RECORD_SENT_RETRY_MS = [250, 1_000, 3_000] as const;
+
+/**
+ * Records a send WhatsApp accepted. Tried again a few times, because the alternative to a missing record is a message sent twice. If
+ * the database stays away, the message keeps its in-flight mark and the sweep reports it as `send_unconfirmed` later.
+ */
+async function recordSent(ctx: WorkContext, messageId: string, providerMessageId: string): Promise<void> {
+  const at = clock(ctx);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await markMessageSent(ctx.db, messageId, providerMessageId, at);
+      return;
+    } catch (error) {
+      const wait = RECORD_SENT_RETRY_MS[attempt];
+      if (wait === undefined) {
+        ctx.logger.error({ messageId, providerMessageId, err: error instanceof Error ? error.message : String(error) },
+          'WhatsApp accepted a message but it could not be recorded as sent: it will be reported as unconfirmed, not sent again');
+        throw error;
+      }
+      await new Promise((r) => { setTimeout(r, wait); });
+    }
+  }
 }
 
 /**
