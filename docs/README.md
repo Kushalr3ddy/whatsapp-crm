@@ -5,6 +5,10 @@ fresh clone to a working, signed-in instance.
 
 **Want a guided tour of the code? Follow [46 · Learning path](46-learning-path.md), stage by stage.**
 
+**Picking up the work? Read [50 · Knowledge base](50-knowledge-base.md)** (how the owner works, this machine, stacks, test
+numbers, design decisions, state), then [49 · Bug list](49-bug-list.md) (what is open), [47 · Live test log](47-live-test-log.md)
+(every finding with its evidence) and [48 · Live test playbook](48-live-test-playbook.md) (how to run the live tests).
+
 **New here? Start with [20 · Orientation](20-orientation.md).** It explains the project, the
 technology and every piece of jargon from zero — no knowledge of TypeScript, Node, Postgres or
 WhatsApp's API assumed. It also decodes the `M`, `P`, `F` and `FR` codes used throughout.

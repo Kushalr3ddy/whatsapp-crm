@@ -564,7 +564,11 @@ function actionContext(req: Request): ActionContext {
 async function transition(req: Request, res: Response, to: 'paused' | 'cancelled'): Promise<void> {
   const id = String(req.params.id);
   const changed = await req.tenant!((tx) => setCampaignStatus(tx, req.crm!.orgId, actionContext(req), id, to));
-  if (!changed) {
+  if (changed === 'not_started') {
+    res.status(409).json(problem(req, 409, 'NOT_RUNNING', 'This campaign has not started, so there is nothing to pause.'));
+    return;
+  }
+  if (changed === 'not_found') {
     res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such campaign, or it has already finished.'));
     return;
   }

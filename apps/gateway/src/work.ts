@@ -512,7 +512,49 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   // once this sweep's sends have gone.
   await dispatchCampaigns(ctx);
 
+  try {
+    await retryDownNumbers(ctx);
+  } catch (error) {
+    ctx.logger.error({ err: error instanceof Error ? error.message : String(error) }, 'could not retry numbers that are down');
+  }
+
   return { links: links.length, sends };
+}
+
+/** How long a linked number may stay down before the gateway tries it again itself, and how often it tries after that. */
+const DOWN_RETRY_MS = 10 * 60_000;
+/** When the gateway last tried each number, so a sweep every few seconds tries a down number at most once per `DOWN_RETRY_MS`. */
+const downRetriedAt = new Map<string, number>();
+
+/**
+ * A safety net under the adapter's own reconnects (R-026): a linked number that has been down for 10 minutes, and that nothing else is
+ * bringing back, is tried once, then again every 10 minutes. Never a number that was logged out, refused (403) or opened somewhere
+ * else (440): retrying those cannot help and looks like abuse. Before this only a gateway restart brought such a number back.
+ */
+export async function retryDownNumbers(ctx: WorkContext): Promise<number> {
+  const perOrg = await inEachOrg(ctx, async (c) => (await c.db.execute(sql`
+    SELECT si.id, si.phone_e164 AS phone
+    FROM channel_session cs JOIN sender_identity si ON si.id = cs.sender_identity_id
+    WHERE si.status = 'active' AND cs.connection_state = 'closed'
+      AND coalesce(cs.disconnect_reason, '') NOT IN ('logged_out', 'forbidden', 'connection_replaced')
+      AND cs.link_requested_at IS NULL AND cs.unlink_requested_at IS NULL
+      AND cs.updated_at < now() - make_interval(secs => ${DOWN_RETRY_MS / 1000})`)) as unknown as Array<{ id: string; phone: string | null }>);
+  let tried = 0;
+  const now = Date.now();
+  for (const s of perOrg.flat()) {
+    if (now - (downRetriedAt.get(s.id) ?? 0) < DOWN_RETRY_MS) continue;
+    const health = await ctx.provider.health(s.id);
+    if (health.state === 'open' || health.state === 'connecting') continue;
+    downRetriedAt.set(s.id, now);
+    tried += 1;
+    ctx.logger.info({ senderId: s.id }, 'number down for 10 minutes; trying it again');
+    try {
+      await ctx.provider.connect({ id: s.id, phoneE164: s.phone ?? '' });
+    } catch (error) {
+      ctx.logger.warn({ senderId: s.id, err: error instanceof Error ? error.message : String(error) }, 'could not bring the number back');
+    }
+  }
+  return tried;
 }
 
 /**

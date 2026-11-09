@@ -134,16 +134,17 @@ export async function startCampaign(
   override?: { gates: readonly PolicyGate[]; reason: string }
 ): Promise<StartedCampaign | { error: 'not_found' | 'already_running' | 'finished' }> {
   const rows = await tx.execute(sql`
-    SELECT status FROM campaign
+    SELECT status, started_at AS "startedAt" FROM campaign
     WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`);
-  const campaign = (rows as unknown as Array<{ status: string }>)[0];
+  const campaign = (rows as unknown as Array<{ status: string; startedAt: Date | string | null }>)[0];
   if (!campaign) return { error: 'not_found' };
   if (campaign.status === 'running') return { error: 'already_running' };
   if (campaign.status === 'completed' || campaign.status === 'cancelled') return { error: 'finished' };
 
-  // Only on the first start. Resuming a paused campaign must not re-snapshot, or contacts added since would silently
-  // join an audience somebody already approved.
-  if (campaign.status === 'draft') await snapshotAudience(tx, orgId, id);
+  // Only on the first start, which is "never started", not "is a draft": a campaign paused before it ever started (older data, R-022)
+  // has no audience yet either. Resuming one that did start must not re-snapshot, or contacts added since would silently join an
+  // audience somebody already approved.
+  if (campaign.startedAt === null) await snapshotAudience(tx, orgId, id);
 
   // Draw every recipient's gap once, now, and keep it: the lane waits exactly this long before each message, so the schedule
   // and the ETA are known before anything is sent (F6 AC-3.1). A resume only fills the recipients that have none.
@@ -178,18 +179,31 @@ export async function startCampaign(
 }
 
 /**
+ * What may become what. Cancel ends a campaign at any point before it finishes, a draft included. Pause only stops one that has started:
+ * a paused draft would have no frozen audience, and Resume would then "finish" it having messaged nobody (R-022).
+ */
+const PAUSABLE = ['running', 'paused'] as const;
+const CANCELLABLE = ['running', 'paused', 'draft'] as const;
+
+/**
  * Pauses or cancels a campaign that has not finished. Cancelling is permanent and turns everything still pending into
  * `skipped` with a reason, so the totals keep adding up; messages already queued are left alone.
+ * `not_started` is a draft asked to pause; `not_found` is a campaign that does not exist or has already finished.
  */
 export async function setCampaignStatus(
   tx: Transaction, orgId: string, ctx: ActionContext, id: string, to: 'paused' | 'cancelled'
-): Promise<boolean> {
+): Promise<'ok' | 'not_found' | 'not_started'> {
+  const from = to === 'paused' ? PAUSABLE : CANCELLABLE;
   const rows = await tx.execute(sql`
     UPDATE campaign SET status = ${to}, updated_at = now(),
                         completed_at = CASE WHEN ${to} = 'cancelled' THEN now() ELSE completed_at END
-    WHERE id = ${id} AND org_id = ${orgId} AND status IN ('running', 'paused', 'draft')
+    WHERE id = ${id} AND org_id = ${orgId} AND status IN (${sql.join(from.map((s) => sql`${s}`), sql`, `)})
     RETURNING id`);
-  if ((rows as unknown as unknown[]).length === 0) return false;
+  if ((rows as unknown as unknown[]).length === 0) {
+    const found = (await tx.execute(sql`
+      SELECT status FROM campaign WHERE id = ${id} AND org_id = ${orgId}`) as unknown as Array<{ status: string }>)[0];
+    return found?.status === 'draft' ? 'not_started' : 'not_found';
+  }
   if (to === 'cancelled') {
     // Cancel means nothing more goes out. Messages already queued for the campaign are taken back too; only one already handed to
     // WhatsApp (in flight) is past recalling.
@@ -212,7 +226,7 @@ export async function setCampaignStatus(
     orgId, actor: ctx.actor, action: to === 'paused' ? AUDIT.campaignPaused : AUDIT.campaignCancelled,
     targetType: 'campaign', targetId: id, after: { status: to }, ip: ctx.ip ?? null, requestId: ctx.requestId ?? null
   });
-  return true;
+  return 'ok';
 }
 
 /** What `editCampaign` can change. Name and wording work on a draft or a paused campaign; the rest only on a draft. */

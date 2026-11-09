@@ -507,7 +507,7 @@ describe('more failures around the number and the gateway', () => {
     expect(events.length, 'no health event: the Numbers page only shows "not connected"').toBeGreaterThan(0);
   });
 
-  it.fails('[R-026] FM-16 a linked number that is down and not coming back by itself is tried again by the gateway', async () => {
+  it('[R-026] FM-16 a linked number that is down and not coming back by itself is tried again by the gateway', async () => {
     // The WhatsApp adapter gives up after five failed reconnects (about 30 s without internet). After that only a gateway restart
     // brought the number back. The sweep must notice a linked number that has been down a while and try again, slowly.
     const provider = new FakeChannelProvider();
@@ -566,14 +566,24 @@ describe('more things a person does', () => {
     expect(provider.sent.length).toBe(0);
   });
 
-  it.fails('[R-022] UM-13 presses Pause on a draft: a clear answer, not a crash', async () => {
+  it('[R-022] UM-13 presses Pause on a draft: a clear answer, not a crash', async () => {
     const id = await newCampaign();
     const r = await request(app).post(`/api/v1/campaigns/${id}/pause`).set(...auth()).send({});
-    expect(r.status).toBeLessThan(500);
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe('NOT_RUNNING');
     expect((await campaignStatus(id)).status).toBe('draft');
   });
 
-  it.fails('[R-022] UM-23 pauses a draft by mistake, then presses Resume: the audience still gets the message', async () => {
+  it('[R-022] UM-24 a campaign left paused before it ever started (older data) still reaches its audience on Resume', async () => {
+    const provider = await connected();
+    const id = await newCampaign();
+    await db.execute(sql`UPDATE campaign SET status = 'paused' WHERE id = ${id}`);
+    expect((await start(id)).status).toBe(200);
+    await drain(gateway(provider));
+    expectEveryoneOnce(provider);
+  });
+
+  it('[R-022] UM-23 pauses a draft by mistake, then presses Resume: the audience still gets the message', async () => {
     const provider = await connected();
     const id = await newCampaign();
     await request(app).post(`/api/v1/campaigns/${id}/pause`).set(...auth()).send({});

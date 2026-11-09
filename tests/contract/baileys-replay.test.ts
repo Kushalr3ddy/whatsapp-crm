@@ -177,6 +177,27 @@ describe('a linked number losing its connection', () => {
     expect(w.sockets.length).toBe(count);
   });
 
+  it('[R-026] WA-C9 no internet for 20 minutes: it keeps trying about once a minute, never gives up, and is back when the internet is', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { logger, lines } = recordingLogger();
+    const w = wa({ logger });
+    const id = randomUUID();
+    await storeCredentials(w.store, id);
+    await w.provider.connect({ id, phoneE164: '+919000000001' });
+    w.latest().open();
+    w.latest().close(408);                       // the drop itself: WhatsApp's keep-alive times out
+    await vi.advanceTimersByTimeAsync(61_000);
+    for (let i = 0; i < 20; i++) {               // every try after it fails without reaching WhatsApp
+      const before = w.sockets.length;
+      w.latest().offline();
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(w.sockets.length, `no new try after offline failure ${String(i + 1)}`).toBe(before + 1);
+    }
+    expect(lines.some((l) => /giving up/.test(l.msg))).toBe(false);
+    w.latest().open();
+    expect((await w.provider.health(id)).state).toBe('open');
+  });
+
   it('[R-026] WA-C7 a number given up on comes back when it is connected again (a restart or the Numbers page)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const w = wa();

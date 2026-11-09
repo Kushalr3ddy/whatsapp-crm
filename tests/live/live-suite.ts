@@ -2,7 +2,7 @@
  * Live suite: the repeatable part of docs/47-live-test-playbook.md, run against a running install with two real WhatsApp numbers.
  *
  *   npm run live:suite                 # every check below, then a report; exit 0 = all passed, 1 = a check failed, 2 = not ready
- *   npm run live:suite -- --only ai    # one group: inbox | campaign | ai | optout
+ *   npm run live:suite -- --only ai    # one group: inbox | campaign | ai | interest | optout
  *
  * Number A is linked in the install (the CRM's number). Number B is linked to the standalone tester ($TESTER_HOME or the
  * runner's copy), which the install only knows as a contact. B plays the person: it writes, replies, says STOP, tries to get the salary.
@@ -141,7 +141,7 @@ async function resetB(): Promise<void> {
 async function campaign(name: string, body: string, extra: Record<string, unknown> = {}, start = true): Promise<string> {
   const made = await api('/campaigns', 'POST', { name, body, senderIdentityId: senderId, explicitContactIds: [contactId], ...extra });
   const id = (made.data as { id: string }).id;
-  if (start) await api(`/campaigns/${id}/start`, 'POST', { overrideGates: ['cooldown', 'duplicate_campaign'], reason: 'live suite on our own test numbers' });
+  if (start) await api(`/campaigns/${id}/start`, 'POST', { overrideGates: ['cooldown', 'duplicate_campaign', 'engagement'], reason: 'live suite on our own test numbers' });
   return id;
 }
 
@@ -191,7 +191,7 @@ async function campaigns(): Promise<void> {
   tag = `C3-${String(since).slice(-6)}`;
   const d = await campaign(tag, `${tag} after pause and resume`, {}, false);
   await api(`/campaigns/${d}/pause`, 'POST', {});
-  await api(`/campaigns/${d}/start`, 'POST', { overrideGates: ['cooldown', 'duplicate_campaign'], reason: 'live suite on our own test numbers' });
+  await api(`/campaigns/${d}/start`, 'POST', { overrideGates: ['cooldown', 'duplicate_campaign', 'engagement'], reason: 'live suite on our own test numbers' });
   const n = await bGot(tag, since, 150_000);
   check('campaign', 'C-3', 'Pause on a draft, then Resume, still reaches B', n === 1, `received ${String(n)} time(s)`, 'R-022');
   const blank = await api('/campaigns', 'POST', { name: 'blank', body: '   ', senderIdentityId: senderId, explicitContactIds: [contactId] });
@@ -212,7 +212,7 @@ async function ai(): Promise<void> {
     senderIdentityId: senderId, fromTagId: tagId, aiTemplateId: template
   });
   const id = (made.data as { id: string }).id;
-  await api(`/campaigns/${id}/start`, 'POST', { overrideGates: ['cooldown', 'duplicate_campaign'], reason: 'live suite on our own test numbers' });
+  await api(`/campaigns/${id}/start`, 'POST', { overrideGates: ['cooldown', 'duplicate_campaign', 'engagement'], reason: 'live suite on our own test numbers' });
   const opening = await bReplies(since, 180_000);
   check('ai', 'AI-1', 'the AI opening arrives with fill-ins resolved (no {{…}} left)', opening !== '' && !opening.includes('{{'), opening.slice(0, 120));
   /** One turn: B writes, the AI answers. */
@@ -230,6 +230,48 @@ async function ai(): Promise<void> {
   check('ai', 'AI-9', 'it does not make up what to bring', !/resume|résumé|\bID\b|aadhaar|pan card/i.test(bring), bring.slice(0, 120), 'LF-14');
   const isBot = await turn('are you a bot or a real person?');
   check('ai', 'AI-10', 'it does not call itself a bot or automated', !/\bbot\b|automated|\bAI\b|assistant/i.test(isBot), isBot.slice(0, 120), 'LF-16');
+}
+
+/**
+ * The interest group: does the real AI sort replies the way a person would? Two AI campaigns to B; in one B says yes, in the other
+ * a polite no. The campaign's counts (what the campaign page shows) must move to `interested` and `not_interested`, and a polite no
+ * must not be taken as an opt-out.
+ */
+async function interest(): Promise<void> {
+  say('\ninterest');
+  const template = env('LIVE_AI_TEMPLATE_ID');
+  const tagId = env('LIVE_TAG_ID');
+  if (template === '' || tagId === '') { say('  SKIP  set LIVE_AI_TEMPLATE_ID and LIVE_TAG_ID'); return; }
+  type Counts = { interested: number; not_interested: number; needs_person: number; talking: number; noAnswer: number };
+  /** One AI campaign: wait for the opening, B answers, then the counts once the AI has had time to decide. */
+  const run = async (label: string, answer: string): Promise<{ counts: Counts | null; reply: string; optedOut: boolean | undefined }> => {
+    await resetB();
+    let since = Date.now();
+    const made = await api('/campaigns', 'POST', {
+      name: `${label}-${String(since).slice(-6)}`, body: 'Hi {{name}}, reminder about your interview on {{interview_date}}. Can you make it?',
+      senderIdentityId: senderId, fromTagId: tagId, aiTemplateId: template
+    });
+    const id = (made.data as { id: string }).id;
+    await api(`/campaigns/${id}/start`, 'POST', { overrideGates: ['cooldown', 'duplicate_campaign', 'engagement'], reason: 'live suite on our own test numbers' });
+    await bReplies(since, 180_000);
+    since = Date.now();
+    await bSays(answer);
+    const reply = await bReplies(since);
+    let counts: Counts | null = null;
+    for (let i = 0; i < 12; i++) {
+      counts = ((await api(`/campaigns/${id}`)).data as { aiStatus?: Counts | null }).aiStatus ?? null;
+      if (counts !== null && (counts.interested + counts.not_interested + counts.needs_person) > 0) break;
+      await sleep(5_000);
+    }
+    return { counts, reply, optedOut: await bOptedOut() };
+  };
+  const yes = await run('INT-Y', 'Yes I will be there on the 14th at 11, thank you');
+  check('interest', 'INT-1', 'a clear yes is counted as interested', yes.counts?.interested === 1,
+    `counts ${JSON.stringify(yes.counts)}; reply: ${yes.reply.slice(0, 80)}`);
+  const no = await run('INT-N', 'No thanks, I already joined another company last week');
+  check('interest', 'INT-2', 'a polite no is counted as not interested', no.counts?.not_interested === 1,
+    `counts ${JSON.stringify(no.counts)}; reply: ${no.reply.slice(0, 80)}`);
+  check('interest', 'INT-3', 'a polite no is not taken as an opt-out', no.optedOut !== true, `doNotContact=${String(no.optedOut)}`);
 }
 
 /** The opt-out group: STOP, a second STOP, START. */
@@ -262,7 +304,7 @@ async function main(): Promise<number> {
     missing.forEach((m, i) => { say(`  ${String(i + 1)}. ${m}`); });
     return 2;
   }
-  const groups: Record<string, () => Promise<void>> = { inbox, campaign: campaigns, ai, optout };
+  const groups: Record<string, () => Promise<void>> = { inbox, campaign: campaigns, ai, interest, optout };
   for (const [name, run] of Object.entries(groups)) {
     if (only !== null && only !== name) continue;
     try { await run(); } catch (error) { check(name, `${name}-crash`, 'the group ran to the end', false, error instanceof Error ? error.message : String(error)); }

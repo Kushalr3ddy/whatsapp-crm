@@ -184,10 +184,13 @@ export async function runAiCommand(
       } else if (call.name === 'send_message') {
         action = await sendOne(deps, settings.cap, orgId, bot, str(a.to), str(a.text));
       } else if (call.name === 'pause_campaign') {
-        action = !known(campaigns, id) ? { tool: call.name, ok: false, detail: 'No such campaign.' }
-          : await db.transaction((tx) => setCampaignStatus(tx, orgId, { actor: bot }, id, 'paused'))
-            ? { tool: call.name, ok: true, detail: 'Paused. Nothing more is sent until it is resumed.', campaignId: id }
-            : { tool: call.name, ok: false, detail: 'It has already finished, so it cannot be paused.', campaignId: id };
+        if (!known(campaigns, id)) action = { tool: call.name, ok: false, detail: 'No such campaign.' };
+        else {
+          const paused = await db.transaction((tx) => setCampaignStatus(tx, orgId, { actor: bot }, id, 'paused'));
+          action = paused === 'ok' ? { tool: call.name, ok: true, detail: 'Paused. Nothing more is sent until it is resumed.', campaignId: id }
+            : paused === 'not_started' ? { tool: call.name, ok: false, detail: 'It has not started yet, so there is nothing to pause.', campaignId: id }
+              : { tool: call.name, ok: false, detail: 'It has already finished, so it cannot be paused.', campaignId: id };
+        }
       } else if (call.name === 'resume_campaign') {
         if (!known(campaigns, id)) action = { tool: call.name, ok: false, detail: 'No such campaign.' };
         else if (!settings.mayStart) action = { tool: call.name, ok: false, campaignId: id, detail: 'Not done: the organisation has not allowed the assistant to start campaigns. An admin must press Start.' };

@@ -74,6 +74,15 @@ export class ScriptedSocket {
     });
     this.ev.emit('connection.update', { connection: 'close', lastDisconnect: { error, date: new Date() } });
   }
+  /**
+   * This machine has no internet: the socket never reaches WhatsApp. Baileys reports it the way `mapWebSocketError` does, a 408 whose
+   * `data` is the network error itself (`getaddrinfo ENOTFOUND web.whatsapp.com`, logged live on 2026-11-09).
+   */
+  offline(code = 'ENOTFOUND'): void {
+    const cause = Object.assign(new Error(`getaddrinfo ${code} web.whatsapp.com`), { code });
+    const error = Object.assign(new Error(`WebSocket Error (${cause.message})`), { output: { statusCode: 408 }, data: cause });
+    this.ev.emit('connection.update', { connection: 'close', lastDisconnect: { error, date: new Date() } });
+  }
   /** A message from a contact. */
   inbound(fromDigits: string, body: string, id = `IN${String(++this.seq)}`, type: 'notify' | 'append' = 'notify'): string {
     this.ev.emit('messages.upsert', {

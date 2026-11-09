@@ -143,8 +143,10 @@
 .ct-ph .ct-av { width: 48px; height: 48px; font-size: 17px; }
 .ct-ph .ct-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ct-ph .ct-t b { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
-.ct-dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; margin: 0; }
-.ct-dl dt { color: var(--mu); } .ct-dl dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+/* The value keeps at least 45% of the width: a file's column names can be long questions (Naukri), and an `auto` label column took the
+   whole panel and left the value one letter wide (R-032). A long label wraps instead. */
+.ct-dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(45%, 1fr); gap: 6px 14px; font-size: 14px; margin: 0; }
+.ct-dl dt { color: var(--mu); overflow-wrap: anywhere; } .ct-dl dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .ct-camp { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-top: 1px solid var(--ln); font-size: 14px; }
 .ct-camp:first-of-type { border-top: 0; padding-top: 0; }
 .ct-camp .ct-l1 { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }

@@ -7,6 +7,13 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 
 ---
 
+## ▶ Fork, 2026-11-09: read this first
+
+This snapshot below is upstream's (2026-10-23). For the fork (`Mikhil31/whatsapp-crm-anti-ban`), start with
+[`docs/50-knowledge-base.md`](docs/50-knowledge-base.md): the owner's rules, this machine's checkouts, databases, ports and test
+numbers, the design decisions per screen, the anti-ban research, and where things stand. Open bugs:
+[`docs/49-bug-list.md`](docs/49-bug-list.md); evidence: [`docs/47-live-test-log.md`](docs/47-live-test-log.md).
+
 ## ▶ If you are a new session, do this first
 
 **Be the same collaborator as the last session** (the rules are in *Standing rules* just below and in the memory index you

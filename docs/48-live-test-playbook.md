@@ -54,7 +54,8 @@ Never pick "Send to everyone" in a test campaign: any real person who wrote to A
 | L3b | Message of only spaces on the screen | "Write the message" stays red | Manual (screen) |
 | C-1 | Campaign to B | Once | Auto |
 | C-2 | Cancel the moment the message is queued | Never arrives | Auto |
-| C-3 | Pause on a draft, then Resume | Arrives once | Auto, open bug R-022 |
+| C-3 | Pause on a draft, then Resume | Pause is refused (409 "has not started"); Start then reaches B once | Auto (R-022 fixed) |
+| L3d | Draft campaign page on the screen | No Pause button on a draft; Pause while running, then Resume, reaches B once | Manual (screen) |
 | C-4 | Campaign message of only spaces (API) | 422 | Auto |
 | L3c | B is mid-conversation with an agent (the agent owns the chat) | The review says before Start that B will be left out | Manual, open finding LF-1 |
 
@@ -66,6 +67,7 @@ Never pick "Send to everyone" in a test campaign: any real person who wrote to A
 | F2 | Refuse connections to the install's database for 20 s while a campaign is queued | Gateway stays up; the campaign finishes; once |
 | F3 **(person)** | Remove the install's device under Linked devices on phone A while a campaign runs | Numbers page says it was removed on the phone (not "ban"); running campaigns pause as `unlinked`; relink (QR); the old chats are still there; Resume sends to whoever was not sent, once |
 | F4 | Unlink from the Numbers page, link again | Same as F3, from the app's side |
+| F8 **(person)** | Turn off the internet of the machine running the gateway for 2 minutes, then on again | The gateway log shows a try about once a minute and no "giving up"; within about a minute of the internet coming back, number A is connected again with no restart and no QR (R-026) |
 
 ### AI (B plays the person; fill-ins and sensitive details included)
 
@@ -95,6 +97,7 @@ Never pick "Send to everyone" in a test campaign: any real person who wrote to A
 ## Running it
 
 - By hand, on your machine: start the stack from the checkout under test (API 3120, gateway, web 3121 as a production build), start the tester, then `npm run live:suite` (or `-- --only inbox|campaign|ai|optout`). Settings: `CRM_API_URL`, `LIVE_EMAIL`, `LIVE_PASSWORD`, `LIVE_FROM`, `LIVE_TO`, `LIVE_TESTER_URL`, `LIVE_AI_TEMPLATE_ID`, `LIVE_TAG_ID`, `LIVE_SALARY`. It writes `live-suite-report.md` and exits 0 (all passed), 1 (a check failed) or 2 (a person has to do something first, listed).
+- Run the groups **one after another, never at the same time**. They share number B: an inbox reply makes the admin the owner of B's chat, and a campaign started in the same minute then skips B as `engaged`. Campaigns in the suite lift the `cooldown`, `duplicate_campaign` and `engagement` gates (our own test numbers, with a reason), so a check still means what it says after an inbox run.
 - On every pull request: `.github/workflows/live-whatsapp.yml` runs the same suite on a self-hosted runner labelled `whatsapp-live`, and comments the report on the PR. Only branches of this repository run there (never a fork). One run at a time.
 
 ### Setting up the runner (once)

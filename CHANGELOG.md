@@ -13,6 +13,13 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-11-09 — go-live testing: three fixes, a full test round, and the knowledge base, on `claude/whatsapp-crm-live-testing-ae21f6`
+- **Pause on a draft** no longer ends a campaign having messaged nobody: Pause only stops a started campaign (a draft gets "has not started", the AI assistant's pause tool too), and Start freezes the audience whenever the campaign has never started (R-022).
+- **A number that loses internet comes back by itself:** tries that never reach WhatsApp no longer use the 5-try limit and repeat about once a minute; the gateway also tries a linked number that has been down 10 minutes again, every 10 minutes, never after a logout, a 403 or a 440 (R-026).
+- **Contacts side panel:** a person from a Naukri file (long question columns) no longer shows every value one letter per line (R-032).
+- **Testing:** the live suite gained an `interest` group (does the AI file a yes as interested and a no as not interested); the suite lifts the engagement gate on our own test numbers. Results of the whole round (live suite, browser suite, code security review, attack checks, bad-input sweep of every write route, every page at 375 and 1280, load run) are in `docs/47`; everything still open is in `docs/49`.
+- **Docs:** `docs/50-knowledge-base.md` (how the owner works, this machine, stacks, numbers, designs, anti-ban research, state), runbook for disconnects, testing, security (log redaction as it is).
+
 ### 2026-11-09 — redesign: the AI assistant's templates (step 9), on `claude/step-9-ai-templates-ab393d`
 The AI page as Templates and AI provider, from the approved design (AI assistant v26), plus how the AI talks. **Four migrations (0045 to 0048).**
 - **Templates home and editor:** cards with Duplicate and Delete (refused while an unfinished campaign uses it; otherwise 30 days in Deleted, Restore, Remove now); a first-run checklist; the editor with one text of what the AI knows, the AI's questions, a required hand-over person and number, the file or tag, AI-suggested columns (column names only), sensitive details (Show or Keep general, "Rewrite with my choices"), "See exactly what the AI gets", and an example conversation with a real person that sends nothing.

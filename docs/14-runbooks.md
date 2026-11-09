@@ -33,14 +33,17 @@ logout nobody asked for, `unlinked_on_phone` when the device was removed under L
 | Code | Meaning | Action |
 |---|---|---|
 | 401 | Logged out — unlinked on the phone | Re-link required; see RB-01 first |
-| 408 | Timeout | Should self-heal; check network/DNS |
+| 408 | Timeout, or this machine has no internet (Baileys reports `ENOTFOUND` and the like as 408) | Self-heals. With no internet the adapter keeps trying, backing off to once a minute, until the internet is back; those tries never reach WhatsApp, so they do not count toward the 5-try limit |
 | 428 | Connection closed | Self-heals via backoff |
 | 429 | Rate limited | Back off; check what was sending |
 | 440 | Replaced — linked elsewhere | Someone linked the number on another device |
 | 515 | Restart required | Normal; the supervisor handles it |
 
 **Fix** Most codes self-heal through backoff — **wait first**. A reconnect storm is worse than
-a slow recovery. If down > 30 min with repeated 515s, restart the gateway. If 401, re-link.
+a slow recovery. Closes that come from WhatsApp back off 1, 2, 4, 8, 16 s and stop after 5 tries ("giving up reconnecting"
+in the gateway log); after that the gateway's sweep tries a linked number that has been down 10 minutes again, every 10 minutes,
+except after 401 (logged out), 403 (refused) and 440 (taken elsewhere). A gateway restart also brings every linked number back
+with no QR. If down > 30 min with repeated 515s, restart the gateway. If 401, re-link.
 
 **Prevent** Do not link the same number in another tool. Keep the gateway's Postgres reachable —
 auth state lives there.

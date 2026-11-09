@@ -213,8 +213,10 @@ Configurable per data class: raw inbound events 30 d, audit log 1 y, media 1 y, 
 indefinite by default. A nightly hard-delete job enforces it and writes a summary audit row.
 
 ### Logs
-PII redacted by **field allowlist** — an allowlist, not a denylist, so a new field is redacted
-by default rather than leaked by default.
+Redacted by a list of field paths (`packages/shared/src/logger.ts`): `req.headers.authorization`, `req.headers.cookie`,
+`*.password`, `*.token` and the like. It is a denylist: a field not on it is logged. Response headers are not on it, so the
+`Set-Cookie` of a sign-in (the raw session cookie) and the `x-csrf-token` request header reach the API log (SEC-1 in
+[`49`](49-bug-list.md)).
 
 ## Application security
 

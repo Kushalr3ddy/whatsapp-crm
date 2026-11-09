@@ -123,6 +123,8 @@ export class BaileysChannelProvider implements ChannelProvider {
   readonly #retries = new EventStream<NormalisedRetryEvent>();
   /** Consecutive failed reconnects per sender, so backoff grows and eventually gives up. */
   readonly #reconnectAttempts = new Map<string, number>();
+  /** Tries in a row that never reached WhatsApp (no internet). They only set the wait; they never give up. */
+  readonly #offlineAttempts = new Map<string, number>();
   /** Scheduled reconnects, kept so shutdown can cancel them instead of firing into a closed pool. */
   readonly #reconnectTimers = new Map<string, NodeJS.Timeout>();
   readonly #options: BaileysProviderOptions;
@@ -552,6 +554,7 @@ export class BaileysChannelProvider implements ChannelProvider {
       conn.disconnectReason = null;
       // A successful open clears the budget: the next failure starts backing off from scratch.
       this.#reconnectAttempts.delete(senderId);
+      this.#offlineAttempts.delete(senderId);
       this.#options.logger.info({ senderId }, 'whatsapp connection open');
       this.#connectionEvents.push({
         senderId, state: 'open', reason: null, at: new Date(), phoneE164: phoneFromJid(conn.socket.user?.id)
@@ -588,7 +591,7 @@ export class BaileysChannelProvider implements ChannelProvider {
       });
       // A link attempt that failed is reported to the operator, who decides whether to try again;
       // reconnecting on our own would just re-register in the background.
-      if (!failedLink) this.#scheduleReconnect(senderId, reason);
+      if (!failedLink) this.#scheduleReconnect(senderId, reason, isLocalNetworkFailure(update.lastDisconnect));
     }
   }
 
@@ -638,15 +641,20 @@ export class BaileysChannelProvider implements ChannelProvider {
    * it is a handshake step, not a failure. Everything else backs off exponentially, and
    * `logged_out` never retries at all because the number is gone from the phone's side.
    */
-  #scheduleReconnect(senderId: string, reason: DisconnectReason): void {
+  #scheduleReconnect(senderId: string, reason: DisconnectReason, offline = false): void {
     if (this.#shuttingDown) return;
     if (reason === 'logged_out') return;
 
+    // A try that never reached WhatsApp (this machine has no internet) is not a reconnect WhatsApp sees, so it carries no ban risk and
+    // does not spend the budget: keep trying, backing off to once a minute, until the internet is back (R-026). Before this, five such
+    // tries (about 30 s offline) used the budget up and the number stayed offline until a restart.
     const handshake = reason === 'restart_required';
-    const attempts = handshake ? 0 : (this.#reconnectAttempts.get(senderId) ?? 0) + 1;
-    if (!handshake) this.#reconnectAttempts.set(senderId, attempts);
+    const offlineTries = offline ? (this.#offlineAttempts.get(senderId) ?? 0) + 1 : 0;
+    if (offline) this.#offlineAttempts.set(senderId, offlineTries);
+    const attempts = handshake || offline ? (this.#reconnectAttempts.get(senderId) ?? 0) : (this.#reconnectAttempts.get(senderId) ?? 0) + 1;
+    if (!handshake && !offline) this.#reconnectAttempts.set(senderId, attempts);
 
-    if (attempts > RECONNECT_MAX_ATTEMPTS) {
+    if (!offline && attempts > RECONNECT_MAX_ATTEMPTS) {
       this.#options.logger.error(
         { senderId, reason, attempts },
         'giving up reconnecting — the number needs attention'
@@ -656,9 +664,11 @@ export class BaileysChannelProvider implements ChannelProvider {
 
     const delay = handshake
       ? 0
-      : reason === 'rate_limited'
-        ? RECONNECT_RATE_LIMITED_MS
-        : Math.min(RECONNECT_BASE_MS * 2 ** (attempts - 1), RECONNECT_CAP_MS);
+      : offline
+        ? Math.min(RECONNECT_BASE_MS * 2 ** (offlineTries - 1), RECONNECT_CAP_MS)
+        : reason === 'rate_limited'
+          ? RECONNECT_RATE_LIMITED_MS
+          : Math.min(RECONNECT_BASE_MS * 2 ** (attempts - 1), RECONNECT_CAP_MS);
 
     const existing = this.#reconnectTimers.get(senderId);
     if (existing) clearTimeout(existing);
@@ -790,6 +800,17 @@ export function toDate(ts: number | Long | undefined): Date {
 export function extractStatusCode(lastDisconnect: unknown): number | null {
   const d = lastDisconnect as { error?: { output?: { statusCode?: number } } } | undefined;
   return d?.error?.output?.statusCode ?? null;
+}
+
+/**
+ * Whether a close happened because this machine could not reach WhatsApp at all. Baileys turns every socket error into a 408, the same
+ * code as WhatsApp's own timeout (`getCodeFromWSError`), and keeps the original error on `data`. A Node network code there (ENOTFOUND,
+ * ECONNREFUSED, ENETUNREACH…) means the socket never reached WhatsApp.
+ */
+export function isLocalNetworkFailure(lastDisconnect: unknown): boolean {
+  const d = lastDisconnect as { error?: { data?: { code?: unknown } } } | undefined;
+  const code = d?.error?.data?.code;
+  return typeof code === 'string' && /^E[A-Z]+$/.test(code);
 }
 
 /**
