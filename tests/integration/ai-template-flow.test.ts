@@ -41,7 +41,13 @@ let templateId: string;
 let campaignId: string;
 
 beforeAll(() => { db = createDatabase(url, { max: 4 }); });
-afterAll(async () => { await db.$client.end(); });
+// What this file made must not stay behind: other files (the gateway's dispatch, for one) read every org in the shared database, and a
+// pending recipient here carries an opening encrypted with this file's own key.
+afterAll(async () => {
+  await db.execute(sql`DELETE FROM org`);
+  await db.execute(sql`DELETE FROM app_user`);
+  await db.$client.end();
+});
 
 type Row = Record<string, unknown>;
 const rows = async (q: ReturnType<typeof sql>): Promise<Row[]> => (await db.execute(q)) as unknown as Row[];

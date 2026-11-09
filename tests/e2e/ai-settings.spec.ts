@@ -13,10 +13,10 @@ test.describe('ai settings tab', () => {
     await page.goto('/ai');
     // Two tabs inside the AI tab.
     const tabs = page.getByRole('navigation', { name: 'AI sections' });
-    await expect(tabs.getByRole('link', { name: 'Assistant' })).toHaveAttribute('aria-current', 'page');
-    await tabs.getByRole('link', { name: 'AI settings' }).click();
+    await expect(tabs.getByRole('link', { name: 'Templates' })).toHaveAttribute('aria-current', 'page');
+    await tabs.getByRole('link', { name: 'AI provider' }).click();
     await expect(page).toHaveURL(/\/ai\/settings/);
-    await expect(tabs.getByRole('link', { name: 'AI settings' })).toHaveAttribute('aria-current', 'page');
+    await expect(tabs.getByRole('link', { name: 'AI provider' })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('region', { name: 'In use now' })).toBeVisible();
 
     // The seven providers are offered.
@@ -48,14 +48,15 @@ test.describe('ai settings tab', () => {
     await expect(page.getByLabel('2. API key')).toHaveAttribute('type', 'password');
   });
 
-  test('the Assistant tab says so when no model is set up', async ({ page }) => {
+  test('the Templates tab says so when no model is set up', async ({ page }) => {
     await signIn(page);
     await page.goto('/ai/settings');
     const inUse = page.getByRole('region', { name: 'In use now' });
     const notSet = await inUse.getByText(/No AI model is set up yet/).isVisible();
     await page.goto('/ai');
-    const banner = page.getByText(/No AI model is set up, so nothing here can write yet/);
-    if (notSet) { await expect(banner).toBeVisible(); await expect(page.getByRole('link', { name: 'Open AI settings' })).toBeVisible(); }
-    else await expect(banner).toHaveCount(0);
+    // With no working model the first-run checklist sends the person to the provider tab; with one, the status line is there.
+    const step = page.getByRole('link', { name: 'Choose the AI model' });
+    if (notSet) await expect(step).toBeVisible();
+    else await expect(step).toHaveCount(0);
   });
 });
