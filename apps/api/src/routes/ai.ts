@@ -10,7 +10,7 @@ import {
 import {
   enqueueAiJob, listAiJobs, cancelAiJob, AiJobError, type QueueViewer,
   getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, AiCommandError,
-  auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError
+  auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, listDeletedTemplates, restoreTemplate, removeTemplateNow, duplicateTemplate, AiTemplateError, writeExample, suggestFillIns, detectSensitive, rewriteKnowledge, listAiUsage
 } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
@@ -337,7 +337,7 @@ export function aiRouter(
 
   /** At most this many generations per organisation per minute, so one org cannot run up the bill or the provider's rate limit. */
   const generations = new Map<string, number[]>();
-  const GENERATIONS_PER_MINUTE = 5;
+  const GENERATIONS_PER_MINUTE = 12;
   const underRateLimit = (orgId: string): boolean => {
     const now = Date.now();
     const recent = (generations.get(orgId) ?? []).filter((t) => now - t < 60_000);
@@ -349,8 +349,8 @@ export function aiRouter(
 
   /** Turns a template error into a response. */
   const templateProblem = (req: Request, res: Response, error: AiTemplateError): void => {
-    const status = { too_long: 422, invalid: 422, ai_off: 409, not_found: 404, no_model: 502 }[error.code];
-    const code = { too_long: 'TOO_LONG', invalid: 'VALIDATION_FAILED', ai_off: 'AI_OFF', not_found: 'NOT_FOUND', no_model: 'AI_UNAVAILABLE' }[error.code];
+    const status = { too_long: 422, invalid: 422, ai_off: 409, not_found: 404, no_model: 502, in_use: 409 }[error.code];
+    const code = { too_long: 'TOO_LONG', invalid: 'VALIDATION_FAILED', ai_off: 'AI_OFF', not_found: 'NOT_FOUND', no_model: 'AI_UNAVAILABLE', in_use: 'IN_USE' }[error.code];
     res.status(status).json(problem(req, status, code, error.message));
   };
 
@@ -367,11 +367,84 @@ export function aiRouter(
       return;
     }
     try {
-      res.json({ data: await generateTemplate({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.description, parsed.data.answers ?? []) });
+      res.json({ data: await generateTemplate({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.description, parsed.data.answers ?? [], req.crm!.userId) });
     } catch (error) {
       if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
       throw error;
     }
+  });
+
+  /**
+   * Writes one example conversation from the template as the editor holds it (saved or not) and one person of the list. One AI call,
+   * nothing sent, nothing stored but the credit it used. Admin, and limited to a few a minute like writing a template.
+   */
+  router.post('/templates/example', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({
+      templateId: z.string().uuid().optional(), personId: z.string().uuid(), knowledge: z.string().max(30000),
+      sensitive: z.array(z.object({ detail: z.string().max(300), mode: z.enum(['show', 'general']) })).max(30).default([]),
+      fallbackUserId: z.string().uuid().nullable().default(null), fallbackPhone: z.string().max(30).default(''),
+      visibleColumns: z.array(z.string().max(100)).max(40).default([])
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the template and a person.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    const { personId, ...draft } = parsed.data;
+    try {
+      res.json({ data: await writeExample({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, draft, personId, req.crm!.userId) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** Suggests which columns of a file would help the AI, from the column names only. Never a person's data. */
+  router.post('/templates/suggest-fillins', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({ knowledge: z.string().max(30000), columns: z.array(z.string().max(120)).max(400) }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the text and the column names.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    try {
+      res.json({ data: await suggestFillIns({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, { ...parsed.data, userId: req.crm!.userId }) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** Lists the details in the text that could be sensitive (names, money, dates, numbers). The owner decides each one. */
+  router.post('/templates/detect-sensitive', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({ knowledge: z.string().max(30000) }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the text.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    try {
+      res.json({ data: await detectSensitive({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.knowledge, req.crm!.userId) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** Rewrites the text of what the AI knows to match the owner's sensitive choices. Nothing is saved. */
+  router.post('/templates/rewrite', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({
+      knowledge: z.string().max(30000), sensitive: z.array(z.object({ detail: z.string().max(300), mode: z.enum(['show', 'general']) })).max(60).default([])
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the text and the choices.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    try {
+      res.json({ data: { knowledge: await rewriteKnowledge({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, { ...parsed.data, userId: req.crm!.userId }) } });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** The credit log: what the AI did, with which model and when. Admin only. */
+  router.get('/usage', requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    res.json({ data: await listAiUsage(tenantDatabase(db, orgId, tenantRole), orgId, 100) });
   });
 
   /** The fixed always-on rules, so the page can show exactly what is added in front of every set of instructions. */
@@ -384,6 +457,11 @@ export function aiRouter(
     res.json({ data: await listTemplates(tenantDatabase(db, orgId, tenantRole), orgId) });
   });
 
+  router.get('/templates/deleted', requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    res.json({ data: await listDeletedTemplates(tenantDatabase(db, orgId, tenantRole), orgId) });
+  });
+
   router.get('/templates/:id', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
     const found = await getTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id));
@@ -394,7 +472,12 @@ export function aiRouter(
   router.post('/templates', requireRole('admin'), async (req: Request, res: Response) => {
     const parsed = z.object({
       id: z.string().uuid().optional(), name: z.string().max(200), description: z.string().max(20000),
-      instructions: z.string().max(60000), audience: z.string().max(1000).default(''), firstMessage: z.string().max(4000).default('')
+      instructions: z.string().max(60000).default(''), audience: z.string().max(1000).default(''), firstMessage: z.string().max(4000).default(''),
+      knowledge: z.string().max(30000).optional(),
+      questions: z.array(z.object({ question: z.string().max(300), answer: z.string().max(2000).default(''), skipped: z.boolean().default(false) })).max(20).optional(),
+      sensitive: z.array(z.object({ detail: z.string().max(300), mode: z.enum(['show', 'general']) })).max(30).optional(),
+      fallbackUserId: z.string().uuid().nullable().optional(), fallbackPhone: z.string().max(30).optional(),
+      visibleColumns: z.array(z.string().max(100)).max(40).optional(), audienceTargets: z.unknown().optional()
     }).safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
@@ -424,8 +507,34 @@ export function aiRouter(
 
   router.delete('/templates/:id', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
-    const gone = await deleteTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
-    if (!gone) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+    try {
+      const gone = await deleteTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+      if (!gone) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+      res.status(204).end();
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  router.post('/templates/:id/duplicate', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const copy = await duplicateTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+    if (copy === null) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+    res.status(201).json({ data: copy });
+  });
+
+  router.post('/templates/:id/restore', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const back = await restoreTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+    if (back === null) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'That template is not in Deleted.')); return; }
+    res.json({ data: back });
+  });
+
+  router.delete('/templates/:id/permanent', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const gone = await removeTemplateNow(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+    if (!gone) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'That template is not in Deleted.')); return; }
     res.status(204).end();
   });
 

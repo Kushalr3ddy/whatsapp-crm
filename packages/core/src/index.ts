@@ -36,9 +36,9 @@ export {
 export { gifToMp4, GifConversionError } from './media-convert.js';
 
 export {
-  generateTemplate, parseGenerated, listTemplates, getTemplate, saveTemplate, useTemplate, deleteTemplate,
+  generateTemplate, parseGenerated, listTemplates, getTemplate, saveTemplate, useTemplate, deleteTemplate, listDeletedTemplates, restoreTemplate, removeTemplateNow, duplicateTemplate, TEMPLATE_KEEP_DAYS,
   AiTemplateError, AI_ALWAYS_ON_RULES, AI_TEMPLATE_MAX_DESCRIPTION,
-  type AiTemplate, type AiTemplateInput, type GeneratedTemplate
+  type AiTemplate, type AiTemplateInput, type TemplateQuestion, type SensitiveDetail, buildInstructions, type GeneratedTemplate
 } from './ai-templates.js';
 
 export {
@@ -55,7 +55,8 @@ export {
   runAiCommand, AiCommandError, type CommandAction, type CommandResult
 } from './ai-commands.js';
 
-export { autoReply, getAiNotice, type AutoReplyResult, type AiNotice } from './ai-reply.js';
+export { autoReply, getAiNotice, systemText, type AutoReplyResult, type AiNotice } from './ai-reply.js';
+export { parseAiTurn, recordTurn, listCampaignAiStatus, AI_STATUSES, type AiTurn, type AiStatus, type CampaignAiStatus } from './ai-turn.js';
 
 export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
@@ -165,3 +166,6 @@ export {
 } from './key-rotation.js';
 export { claimCampaignReply, campaignTemplateFor } from './campaign-reply.js';
 export { writeOpenings, campaignWritesOpenings } from './ai-opening.js';
+
+export { writeExample, suggestFillIns, detectSensitive, rewriteKnowledge, parseExample, type ExampleDraft, type ExampleLine, type FillInSuggestion, type SensitiveCandidate } from './ai-example.js';
+export { recordAiRun, estimateAiCredits, campaignAiUsage, stopCampaignAi, listAiUsage, AI_ASSUMED_REPLIES, type CampaignAiUsage, type AiRunInput, type AiUsageLog, type AiActivity, type AiUsagePart } from './ai-usage.js';

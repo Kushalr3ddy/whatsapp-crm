@@ -286,6 +286,8 @@
   .page-wide { max-width: 49rem; }
   /* Lists and live pages use the room: the campaign page is read beside its message, not in a narrow column. */
   .page-full { max-width: 82rem; }
+  /* The AI studio: templates and the editor use the width of a big screen. */
+  .page-studio { max-width: 100rem; }
   .page-title { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
   .page-desc { margin-top: 0.35rem; font-size: 1rem; color: var(--color-muted); }
   .section-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; color: var(--color-muted); text-transform: uppercase; }

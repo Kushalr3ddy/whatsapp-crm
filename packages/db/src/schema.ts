@@ -800,6 +800,8 @@ export const campaign = pgTable('campaign', {
 
   /** The AI template replies to this campaign follow (D-85), or none. Set when the campaign is made from a template. */
   aiTemplateId: uuid('ai_template_id').references((): AnyPgColumn => aiTemplate.id, { onDelete: 'set null' }),
+  /** The owner stopped the AI on this campaign: it writes no more openings and answers no replies; chats go to the template's person. */
+  aiStopped: boolean('ai_stopped').notNull().default(false),
 
   /** One picture or GIF sent with every message of this campaign, the message text being its caption; or none (text only). */
   mediaAssetId: uuid('media_asset_id').references((): AnyPgColumn => mediaAsset.id, { onDelete: 'set null' }),
@@ -900,7 +902,12 @@ export const campaignRecipient = pgTable('campaign_recipient', {
   /** The gap this recipient's message waits after the previous send, in ms. Drawn once at launch (F6 AC-3.1). */
   plannedGapMs: integer('planned_gap_ms'),
   /** The first message went as text alone to a new chat; the picture or link is still to be sent when they reply (F6 AC-7.3). */
-  followupPending: boolean('followup_pending').notNull().default(false)
+  followupPending: boolean('followup_pending').notNull().default(false),
+  /** Where the AI's conversation with this person stands: `talking`, `interested`, `not_interested` or `needs_person`. Null until they have answered. */
+  aiStatus: text('ai_status'),
+  /** One to three lines for the colleague: what the person told the AI and what it could not answer. Facts, never a grade. */
+  aiSummary: text('ai_summary'),
+  aiStatusAt: timestamp('ai_status_at', { withTimezone: true })
 }, (t) => [
   // One row per person per campaign. Also what makes a re-run idempotent.
   uniqueIndex('campaign_recipient_uidx').on(t.campaignId, t.contactId),
@@ -949,7 +956,23 @@ export const aiTemplate = pgTable('ai_template', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
-  useCount: integer('use_count').notNull().default(0)
+  useCount: integer('use_count').notNull().default(0),
+  /** The one text of what the AI knows. `instructions` is rebuilt from it on every save. Empty on older templates. */
+  knowledge: text('knowledge').notNull().default(''),
+  /** The AI's questions and the owner's answers: [{ question, answer, skipped }]. */
+  questions: jsonb('questions').notNull().default([]),
+  /** Details the AI must not state exactly: [{ detail, mode: 'show' | 'general' }]. */
+  sensitive: jsonb('sensitive').notNull().default([]),
+  /** The team member a chat goes to when the AI is not sure; the AI never guesses. Cleared if that person is removed. */
+  fallbackUserId: uuid('fallback_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  /** The number the AI tells customers that person will call from. */
+  fallbackPhone: text('fallback_phone').notNull().default(''),
+  /** Which columns of a person's row the AI may see in a reply. */
+  visibleColumns: jsonb('visible_columns').notNull().default([]),
+  /** Who the template is for: the files or tags chosen (same shape as `campaign.audience_targets`). */
+  audienceTargets: jsonb('audience_targets'),
+  /** Set when the template is moved to Deleted; the row is removed for good after the grace period. */
+  deletedAt: timestamp('deleted_at', { withTimezone: true })
 }, (t) => [
   index('ai_template_org_used_idx').on(t.orgId, t.lastUsedAt)
 ]);
@@ -963,6 +986,10 @@ export const aiRun = pgTable('ai_run', {
   orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
   conversationId: uuid('conversation_id').references(() => conversation.id, { onDelete: 'set null' }),
   campaignId: uuid('campaign_id').references(() => campaign.id, { onDelete: 'set null' }),
+  /** The AI template this call worked from, when there was one (kept when the template is later removed: set null). */
+  templateId: uuid('template_id').references((): AnyPgColumn => aiTemplate.id, { onDelete: 'set null' }),
+  /** The person who asked for it (writing a template, an example, a rewrite); null when the assistant acted by itself (openings, replies). */
+  userId: uuid('user_id').references(() => appUser.id, { onDelete: 'set null' }),
   /** `reply`, `campaign_action`, ... */
   kind: text('kind').notNull(),
   /** `sent`, `blocked`, `failed`, `skipped`. */

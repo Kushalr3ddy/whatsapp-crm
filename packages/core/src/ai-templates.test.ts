@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AI_ALWAYS_ON_RULES, AiTemplateError, parseGenerated } from './ai-templates.js';
+import { AI_ALWAYS_ON_RULES, AiTemplateError, buildInstructions, parseGenerated } from './ai-templates.js';
 import { systemText } from './ai-reply.js';
 
 describe('reading the model\'s answer', () => {
@@ -40,5 +40,20 @@ describe('the always-on rules', () => {
   it('come before the organisation\'s own instructions', () => {
     const text = systemText('Acme', 'Sell cars');
     expect(text.indexOf(AI_ALWAYS_ON_RULES[0]!)).toBeLessThan(text.indexOf('Sell cars'));
+  });
+});
+
+describe('building the instructions from the one text', () => {
+  it('is the text alone when nothing is sensitive', () => {
+    expect(buildInstructions('  We sell shoes.  ', [])).toBe('We sell shoes.');
+  });
+
+  it('adds one line per sensitive detail, exact only where the owner chose to show it', () => {
+    const text = buildInstructions('We sell shoes.', [
+      { detail: 'The wholesale price', mode: 'general' }, { detail: 'The shop address', mode: 'show' }
+    ]);
+    expect(text).toContain('Sensitive details:');
+    expect(text).toMatch(/The wholesale price: keep it general.*never the exact figure/);
+    expect(text).toContain('The shop address: you may state this when asked.');
   });
 });

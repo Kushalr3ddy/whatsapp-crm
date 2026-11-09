@@ -13,6 +13,17 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-11-09 — redesign: the AI assistant's templates (step 9), on `claude/step-9-ai-templates-ab393d`
+The AI page as Templates and AI provider, from the approved design (AI assistant v26), plus how the AI talks. **Four migrations (0045 to 0048).**
+- **Templates home and editor:** cards with Duplicate and Delete (refused while an unfinished campaign uses it; otherwise 30 days in Deleted, Restore, Remove now); a first-run checklist; the editor with one text of what the AI knows, the AI's questions, a required hand-over person and number, the file or tag, AI-suggested columns (column names only), sensitive details (Show or Keep general, "Rewrite with my choices"), "See exactly what the AI gets", and an example conversation with a real person that sends nothing.
+- **Credits:** one credit is one call to the model, recorded per campaign, template and person. The estimate shows in the editor and in New campaign's review, "Used so far" on the campaign page, and the credit log on the AI provider tab lists each activity with what it took, who and the model. Rows are only added, so simultaneous users cannot overwrite each other.
+- **Stop the AI on one campaign** from its page.
+- **How the AI talks:** a member of the organisation's team, never "an assistant"; one short message and one question per turn (the opening is under 220 characters); it carries on until a recap is confirmed, a clear no, or a request for a person, and no longer hands over because it has the person's details or could not answer one question. The template writer makes a playbook, and places, dates and company names of an offer are no longer made "general" by default.
+- **What people said:** after each turn the AI records a status (talking, interested, not interested, needs a person) and a short note on the person's row of the campaign; the campaign page shows the counts as filters and the note under each person.
+- **Fixed on the way:** a photo, voice note or file gets a fixed line with no model call; the AI's closing message is sent with the hand-over.
+- **Docs:** the AI feature doc (F12), the workflows (1, 3 and 4), the data model, the database queries, the deferred list (new D-118) and the API list (128 endpoints).
+- **Tests:** 1365 pass. Two file-permission tests in `packages/providers/llm/src/settings.test.ts` fail on Windows only (they fail the same way without this work).
+
 ### 2026-11-07 — merged Kushal's main (18 commits) into the fork, on `sync/upstream-main-2026-11-07`
 Merge of `upstream/main` (f03625d) after redesign steps 1 to 6. **No app code came from his side**: it is the docs site (`site/`, Astro Starlight, 23 pages), `CLAUDE.md`, `docs/46-learning-path.md`, `scripts/api-docs.mjs` and `scripts/dlist-stats.mjs` (`npm run api:docs`, `npm run dlist:stats`), the refreshed data and API docs, the user tutorial, a lint ignore for `site/`, and one test fix (`ai-settings.test.ts`, identical to our #17).
 - **One real conflict** (`scripts/build-tutorial.mjs`, the "Creating a campaign" steps): kept his picture/GIF step and our audience step; his template step now says **Use a template**, the label on the new screen.

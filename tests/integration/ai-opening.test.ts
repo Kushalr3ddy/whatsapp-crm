@@ -70,7 +70,7 @@ describe('the AI writes the first message of an AI-template campaign', () => {
     const llm = new OpeningLlm();
     expect(await writeOpenings({ db, kms, llm }, { orgId, campaignId })).toBe(2);
     expect(llm.calls[0]!.system).toContain('Ask which city they are in.');
-    expect(llm.calls[0]!.system).toContain('FIRST message');
+    expect(llm.calls[0]!.system).toContain('FIRST MESSAGE');
     expect(await dispatch()).toBe(2);
     const texts = await sentTexts();
     expect(texts.sort()).toEqual(['Hello Asha, which city are you in?', 'Hello Ravi, which city are you in?']);

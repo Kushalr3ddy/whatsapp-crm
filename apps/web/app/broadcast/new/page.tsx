@@ -26,9 +26,9 @@ function errorMessage(code: string): string {
  * makes a draft; nothing sends until it is started on the next page.
  */
 export default async function NewCampaignPage(
-  { searchParams }: { searchParams: Promise<{ error?: string; tag?: string; import?: string; edit?: string }> }
+  { searchParams }: { searchParams: Promise<{ error?: string; tag?: string; import?: string; edit?: string; template?: string }> }
 ) {
-  const { error, tag, import: importId, edit } = await searchParams;
+  const { error, tag, import: importId, edit, template: templateParam } = await searchParams;
 
   let senders: Sender[] = [];
   let tags: Tag[] = [];
@@ -82,7 +82,7 @@ export default async function NewCampaignPage(
       {canSend && (
         <NewCampaign
           senders={senders} imports={imports} tags={tags} templates={templates} history={history} everyoneCount={everyoneCount}
-          defaultImportId={importId} defaultTagId={tag} segments={segments} editing={editing}
+          defaultImportId={importId} defaultTagId={tag} segments={segments} editing={editing} defaultTemplateId={templateParam}
         />
       )}
     </main>

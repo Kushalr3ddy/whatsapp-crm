@@ -5,7 +5,7 @@ import {
   campaignProgress, previewAudience, POLICY_GATES, campaignEta, hasVariation, fillInReport, fillInKeys, unknownFillIns, loadCustomFields,
   createCampaignDraft, startCampaign as startCampaignRun, setCampaignStatus, editCampaign, type ActionContext,
   reviewCampaign, audienceColumnsFromTargets, blankFillInPeople, audienceHistory,
-  storeCampaignPicture, listCampaignPictures, CampaignPictureError, GifConversionError
+  storeCampaignPicture, listCampaignPictures, CampaignPictureError, GifConversionError, campaignAiUsage, stopCampaignAi, listCampaignAiStatus
 } from '@crm/core';
 import type { StorageDriver } from '@crm/storage';
 import { auditActor, requireScope } from '../auth.js';
@@ -124,6 +124,8 @@ function campaignWarnings(body: string, aiTemplateId: string | null): Array<{ co
 const listRecipientsQuery = z.object({
   status: z.enum(['pending', 'queued', 'sent', 'failed', 'skipped']).optional(),
   q: z.string().trim().min(1).max(100).optional(),
+  /** Where the AI's conversation with the person stands; `none` = messaged and nothing back yet. */
+  ai: z.enum(['interested', 'not_interested', 'needs_person', 'talking', 'none']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().uuid().optional()
 });
@@ -318,6 +320,14 @@ export function campaignsRouter(storage: StorageDriver): Router {
       res.json({ data: { status: 'running', ...result } });
     });
 
+  /** Stops the AI on this campaign: no more AI openings or replies; its chats go to the person the template names. */
+  router.post('/:id/stop-ai', requireUuidParam('id'), requireScope('messages:send'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const done = await req.tenant!((tx) => stopCampaignAi(tx, orgId, String(req.params.id), auditActor(req)));
+    if (!done) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such campaign, or it does not use an AI template.')); return; }
+    res.status(204).end();
+  });
+
   /** Pauses a running campaign. Instant, because pending recipients are simply not dispatched. */
   router.post('/:id/pause', requireUuidParam('id'), requireScope('messages:send'),
     (req: Request, res: Response) => { void transition(req, res, 'paused'); });
@@ -377,7 +387,7 @@ export function campaignsRouter(storage: StorageDriver): Router {
                  c.created_at AS "createdAt", c.gate_overrides AS "gateOverrides",
                  c.gate_override_reason AS "gateOverrideReason", c.pause_reason AS "pauseReason",
                  c.media_asset_id AS "mediaAssetId", c.media_after_reply AS "mediaAfterReply", c.purpose,
-                 c.ai_template_id AS "aiTemplateId", c.audience_targets AS "audienceTargets",
+                 c.ai_template_id AS "aiTemplateId", c.ai_stopped AS "aiStopped", c.audience_targets AS "audienceTargets",
                  c.from_import_run_id AS "fromImportRunId", c.from_tag_id AS "fromTagId", c.from_segment_id AS "fromSegmentId",
                  c.explicit_contact_ids AS "explicitContactIds", c.recent_days AS "recentDays", c.leave_out_recent AS "leaveOutRecent",
                  c.blank_fill_in_choice AS "blankFillInChoice", c.fill_in_fallback AS "fillInFallback", ma.filename AS "mediaFilename",
@@ -390,7 +400,9 @@ export function campaignsRouter(storage: StorageDriver): Router {
 
         const progress = await campaignProgress(tx, orgId, id);
         const warnings = campaignWarnings(String(campaign.body), (campaign.aiTemplateId as string | null) ?? null);
-        return { ...campaign, progress, warnings };
+        const aiUsage = campaign.aiTemplateId === null ? null : await campaignAiUsage(tx, orgId, id);
+        const aiStatus = campaign.aiTemplateId === null ? null : await listCampaignAiStatus(tx, orgId, id);
+        return { ...campaign, progress, warnings, aiUsage, aiStatus };
       });
 
       if (data === null) {
@@ -471,9 +483,10 @@ export function campaignsRouter(storage: StorageDriver): Router {
       }
       const orgId = req.crm!.orgId;
       const id = String(req.params.id);
-      const { status, q, limit, cursor } = parsed.data;
+      const { status, q, ai, limit, cursor } = parsed.data;
       const like = q === undefined ? null : `%${q}%`;
       const statusFilter = status ?? null;
+      const aiFilter = ai ?? null;
       const after = cursor ?? null;
 
       const result = await req.tenant!(async (tx) => {
@@ -484,7 +497,7 @@ export function campaignsRouter(storage: StorageDriver): Router {
 
         return tx.execute(sql`
           SELECT cr.id, cr.status, cr.skip_reason AS "skipReason",
-                 cr.attempted_at AS "attemptedAt",
+                 cr.attempted_at AS "attemptedAt", cr.ai_status AS "aiStatus", cr.ai_summary AS "aiSummary",
                  c.display_name AS "displayName",
                  m.status AS "messageStatus", m.hold_reason AS "holdReason",
                  (SELECT ci.value_normalized FROM contact_identity ci
@@ -495,6 +508,7 @@ export function campaignsRouter(storage: StorageDriver): Router {
           LEFT JOIN message m ON m.id = cr.message_id
           WHERE cr.campaign_id = ${id} AND cr.org_id = ${orgId}
             AND (${statusFilter}::text IS NULL OR cr.status = ${statusFilter})
+            AND (${aiFilter}::text IS NULL OR cr.ai_status = ${aiFilter}::text OR (${aiFilter}::text = 'none' AND cr.ai_status IS NULL AND cr.status = 'sent'))
             AND (${like}::text IS NULL
                  OR c.display_name ILIKE ${like}
                  OR EXISTS (SELECT 1 FROM contact_identity ci2

@@ -569,6 +569,7 @@ mid-run cannot change who is being messaged.
 | `planned_gap_ms` | int NULL | The gap drawn for this person at launch (0040). |
 | `followup_pending` | bool | The picture or link is waiting for this person's reply (0040). |
 | `attempted_at` | timestamptz NULL | When it was tried. |
+| `ai_status`, `ai_summary`, `ai_status_at` | text, text, timestamptz NULL | For a campaign with an AI template: where the AI's chat with this person stands (`talking`, `interested`, `not_interested`, `needs_person`) and a 1 to 3 line note for a colleague, kept up to date after every turn (0048). |
 
 ## `campaign_metric` ⬜
 
@@ -783,7 +784,7 @@ soft-deleted).
 
 The full, always-current list of tables, columns, keys, indexes, policies and triggers is generated from the live database:
 [`generated/database-reference.md`](generated/database-reference.md) (and the diagram page `generated/schema.html`). Regenerate with
-`npm run db:docs`. This section only says what changed in meaning for migrations 0024 to 0038; migrations 0039 to 0044 (the anti-ban purge, the anti-ban v2 engine, "messaged recently" and the campaign audience) are described in their own sections above. 34 tables now (checked on a database with all 45 migrations applied, 2026-11-07).
+`npm run db:docs`. This section only says what changed in meaning for migrations 0024 to 0038; migrations 0039 to 0044 (the anti-ban purge, the anti-ban v2 engine, "messaged recently" and the campaign audience) are described in their own sections above. 34 tables now (checked on a database with all 49 migrations applied, 2026-11-09).
 
 | What | Migration | Meaning |
 |---|---|---|
@@ -800,6 +801,17 @@ The full, always-current list of tables, columns, keys, indexes, policies and tr
 | `channel_session.own_decrypt_burst_at` | 0038 | A burst of undecryptable messages from the account's own other devices (the owner's phone or WhatsApp Web). Kept apart from `decrypt_burst_at` and never scored for ban health (D-102) |
 | `message.retry_requests`, `last_retry_at` | 0038 | How many times the recipient's phone asked for this message again because it could not decrypt it ("Waiting for this message"); the thread shows it until the message is read (D-101, `45-rca-waiting-for-this-message-2026-10-23.md`) |
 | indexes `message_body_keyver_idx`, `channel_auth_state_keyver_idx` | 0028 | Find rows still under an old encryption key version during key rotation (`envelope_key_version()`) |
+
+## Added by the AI templates screens: migrations 0045 to 0048 (2026-11-09)
+
+| What | Migration | Meaning |
+|---|---|---|
+| `ai_template.knowledge`, `questions`, `sensitive`, `fallback_user_id`, `fallback_phone`, `visible_columns`, `audience_targets`, `deleted_at` | 0045 | The one text of what the AI knows (the instructions are rebuilt from it, and from the sensitive choices, on every save), the questions the AI asked the owner with their answers, each sensitive detail marked `show` or `general`, the person who gets a chat the AI hands over (set null if they leave the team) and their number, the columns of a person's row the AI may see, the file or tag the template was made for, and when it was moved to Deleted (kept 30 days, then removed) |
+| `campaign.ai_stopped`; `ai_run.template_id` | 0046 | The owner stopped the AI on this campaign; every AI call is recorded against its campaign and template. One credit is one call that reached the model |
+| `ai_run.user_id` | 0047 | The person who asked for the call (writing a template, an example, a rewrite); null when the AI acted by itself |
+| `campaign_recipient.ai_status`, `ai_summary`, `ai_status_at` | 0048 | Where the AI's chat with the person stands and a short note for a colleague |
+
+`ai_run.kind` now takes `reply`, `opening`, `handover`, `fixed_reply` (the fixed line for a photo, voice note or file; no model, no credit), `draft`, `example`, `fillins`, `sensitive`, `rewrite` and `campaign_action`.
 
 Rules that still hold: every table that belongs to an org has `org_id` and a forced row-level-security policy; the app runs each request
 as the restricted `crm_app` role with `app.org_id` set (the gateway runs outside it, D-41); message bodies, campaign openings and

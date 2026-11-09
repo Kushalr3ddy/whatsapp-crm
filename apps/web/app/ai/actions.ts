@@ -3,10 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  saveAiSettings, allowAiReply, updateConversation, aiAnswerNow, listAiJobs, enqueueAiJob, cancelAiJob, generateAiTemplate, saveAiTemplate, useAiTemplate, deleteAiTemplate,
+  saveAiSettings, allowAiReply, updateConversation, aiAnswerNow, listAiJobs, enqueueAiJob, cancelAiJob, generateAiTemplate, saveAiTemplate, writeAiExample, suggestAiFillIns, detectAiSensitive, rewriteAiKnowledge, listContacts, useAiTemplate, deleteAiTemplate, duplicateAiTemplate, restoreAiTemplate, removeAiTemplateNow,
   createTag, bulkTagContacts, createCampaign, countContacts, listLlmModels, testLlm, saveLlm, removeLlm, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { AiJob, AiTemplate, GeneratedAiTemplate, LlmChoice, LlmModel, LlmProbe, LlmSettings } from '@/lib/crm';
+import type { AiJob, AiTemplate, AiTemplateInput, Contact, ExampleDraft, ExampleLine, FillInSuggestion, GeneratedAiTemplate, SensitiveCandidate, LlmChoice, LlmModel, LlmProbe, LlmSettings } from '@/lib/crm';
 
 /** What an AI settings action gives back: done, or a plain reason it was not. */
 export interface AiResult { ok: boolean; error?: string }
@@ -119,9 +119,7 @@ export async function generateTemplateAction(description: string, answers: strin
 }
 
 /** Saves a template (new, or replacing the one with `id`). */
-export async function saveTemplateAction(
-  input: { id?: string; name: string; description: string; instructions: string; audience: string; firstMessage: string }
-): Promise<{ ok: boolean; error?: string; template?: AiTemplate }> {
+export async function saveTemplateAction(input: AiTemplateInput): Promise<{ ok: boolean; error?: string; template?: AiTemplate }> {
   try {
     const template = await saveAiTemplate(input);
     revalidatePath('/ai');
@@ -157,6 +155,96 @@ export async function deleteTemplateAction(id: string): Promise<AiResult> {
     if (error instanceof CrmApiError) return { ok: false, error: error.message };
     throw error;
   }
+}
+
+/** Writes an example conversation from the template as it stands now and one person of the list. */
+export async function exampleAction(draft: ExampleDraft, personId: string): Promise<{ ok: boolean; error?: string; lines?: ExampleLine[] }> {
+  try {
+    return { ok: true, lines: await writeAiExample(draft, personId) };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Which columns of the file would help the AI; only the column names are sent. */
+export async function suggestFillInsAction(knowledge: string, columns: string[]): Promise<{ ok: boolean; error?: string; suggestion?: FillInSuggestion }> {
+  try {
+    return { ok: true, suggestion: await suggestAiFillIns(knowledge, columns) };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Lists the details in the text that could be sensitive, for the owner to decide on. */
+export async function detectSensitiveAction(knowledge: string): Promise<{ ok: boolean; error?: string; items?: SensitiveCandidate[] }> {
+  try {
+    return { ok: true, items: await detectAiSensitive(knowledge) };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Rewrites the text of what the AI knows to match the sensitive choices. */
+export async function rewriteKnowledgeAction(knowledge: string, sensitive: AiTemplate['sensitive']): Promise<{ ok: boolean; error?: string; knowledge?: string }> {
+  try {
+    return { ok: true, knowledge: await rewriteAiKnowledge(knowledge, sensitive) };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** A few people of a tag or file, for the example and for the columns a tag carries. */
+export async function peopleOfAction(tagId: string | null): Promise<{ ok: boolean; people: Array<{ id: string; name: string; columns: Record<string, string> }> }> {
+  try {
+    const rows: Contact[] = await listContacts(tagId === null ? {} : { tag: tagId });
+    return {
+      ok: true,
+      people: rows.slice(0, 8).map((c) => ({
+        id: c.id, name: c.displayName ?? 'No name',
+        columns: Object.fromEntries(Object.entries(c.customFields).map(([k, v]) => [k, String(v)]))
+      }))
+    };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, people: [] };
+    throw error;
+  }
+}
+
+/** Runs one template action and turns the API's refusal into words for the card. */
+async function templateStep(run: () => Promise<unknown>): Promise<AiResult> {
+  try {
+    await run();
+    revalidatePath('/ai');
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/ai');
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Copies a template as "… (copy)". */
+export async function duplicateTemplateAction(id: string): Promise<AiResult> {
+  return templateStep(() => duplicateAiTemplate(id));
+}
+
+/** Brings a template back from Deleted. */
+export async function restoreTemplateAction(id: string): Promise<AiResult> {
+  return templateStep(() => restoreAiTemplate(id));
+}
+
+/** Removes a template in Deleted for good. */
+export async function removeTemplateNowAction(id: string): Promise<AiResult> {
+  return templateStep(() => removeAiTemplateNow(id));
 }
 
 /** How the people for a group message are found: a search over the contact book, the same rule the Contacts page uses. */

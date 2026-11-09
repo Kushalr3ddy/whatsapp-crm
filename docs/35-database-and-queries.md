@@ -175,6 +175,23 @@ FROM media_asset ma WHERE ma.id = $1 AND ma.org_id = $2;
 SELECT id, name, description, instructions, audience, first_message, use_count, last_used_at, updated_at
 FROM ai_template WHERE org_id = $1 ORDER BY last_used_at DESC NULLS LAST, updated_at DESC LIMIT 200;   -- ai_template_org_used_idx
 UPDATE ai_template SET use_count = use_count + 1, last_used_at = now() WHERE id = $1 AND org_id = $2;
+-- Deleted templates (deleted_at set) are listed apart and purged after 30 days; Restore clears deleted_at.
+```
+
+**AI credits (one credit = one `ai_run` row whose `model` is not null).** `packages/core/src/ai-usage.ts`. Rows are only added, never counted up in place, so simultaneous callers cannot overwrite each other. The credit log's totals and rows come from ONE statement, so they always agree.
+```sql
+WITH base AS (SELECT * FROM ai_run WHERE org_id = $1 AND model IS NOT NULL)
+SELECT count(*) FILTER (WHERE created_at >= date_trunc('day', now())) AS today,
+       count(*) FILTER (WHERE created_at >= date_trunc('month', now())) AS month, count(*) AS total
+FROM base;
+-- the rows: the same CTE grouped by day, campaign_id, template_id, user_id, chat or not, and kind (last 90 days), joined to campaign, ai_template and app_user for names
+```
+
+**What people said (campaign page).** `packages/core/src/ai-turn.ts`. After each AI turn the status and note are written on the person's row of the campaign; the counts read them.
+```sql
+UPDATE campaign_recipient cr SET ai_status = COALESCE($status, cr.ai_status), ai_summary = COALESCE($summary, cr.ai_summary), ai_status_at = now()
+FROM conversation v WHERE v.id = $1 AND cr.campaign_id = $2 AND cr.contact_id = v.contact_id AND cr.org_id = $3;
+SELECT count(*) FILTER (WHERE ai_status = 'interested'), ... FROM campaign_recipient WHERE campaign_id = $1 AND org_id = $2;
 ```
 
 **Who still needs an AI-written opening (campaigns with an AI template).** `packages/core/src/ai-opening.ts`. Runs before the campaign's recipients are released; one model call per person, oldest first. An empty answer counts a try; after `MAX_TRIES` the person is skipped with `ai_opening_failed` instead of waiting forever (see D-115).
