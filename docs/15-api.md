@@ -75,7 +75,7 @@ replicas the effective ceiling is the limit times the replica count (the shared 
 Branch on `code`, never on `detail`.
 
 > **The complete, always-current list of endpoints is generated from the code:** [`generated/api-reference.md`](generated/api-reference.md)
-> (118 endpoints in 16 groups on 2026-11-07, with who may call each one). Regenerate with `npm run api:docs`. This file explains how the API behaves
+> (128 endpoints in 16 groups on 2026-11-09, with who may call each one). Regenerate with `npm run api:docs`. This file explains how the API behaves
 > (sign-in, errors, limits, examples); the generated one says what exists. A machine-readable OpenAPI file and a Swagger page are pinned as D-88.
 >
 > **Added since the sections below were written (2026-10-25):** the AI assistant (`/api/v1/ai/*`: status, settings, model test, queue of

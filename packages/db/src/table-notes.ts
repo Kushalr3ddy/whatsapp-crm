@@ -99,7 +99,7 @@ export const TABLE_NOTES: Record<string, TableNote> = {
   },
   ai_template: {
     group: 'Campaigns',
-    purpose: 'A saved AI template: what an owner described in plain words and the instructions the AI wrote from it, kept together to pick again. The locked always-on rules are not stored here; they are added on every reply.'
+    purpose: 'A saved AI template: what an owner described in plain words and the instructions the AI wrote from it, kept together to pick again, plus the one text of what the AI knows, its questions and sensitive details, who to hand over to, which columns it may see, and when it was moved to Deleted. The locked always-on rules are not stored here; they are added on every reply.'
   },
   ai_run: {
     group: 'Audit and health',

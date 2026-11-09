@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   createCampaign, editCampaignDraft, startCampaign, pauseCampaign, cancelCampaign, uploadCampaignPicture,
-  previewCampaign, getFillIns, reviewCampaign, listBlankFillIns, CrmApiError, NotAuthenticatedError
+  previewCampaign, getFillIns, reviewCampaign, listBlankFillIns, stopCampaignAi, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
 import type { CampaignPicture, CampaignPreview, CampaignReview, FillInReport, ReviewTarget } from '@/lib/crm';
 
@@ -204,4 +204,17 @@ export async function cancelCampaignAction(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '');
   if (id === '') return;
   await control(id, () => cancelCampaign(id));
+}
+
+/** Stops the AI on one campaign: no more AI openings or replies; its chats go to the person the template names. */
+export async function stopAiAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await stopCampaignAi(id);
+    revalidatePath(`/broadcast/${id}`);
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect(`/login?next=/broadcast/${id}`);
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
 }

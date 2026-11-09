@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signIn, CREDS_MISSING } from './helpers';
 
 /**
- * The AI assistant's settings page: it cannot be switched on until the data-sharing note is accepted, and once
+ * The AI assistant's switch (on the AI provider tab): it cannot be switched on until the data-sharing note is accepted, and once
  * on, the assistant appears on the Team page (so a conversation can be assigned to it) without edit controls.
  */
 test.describe('ai assistant settings', () => {
@@ -10,7 +10,7 @@ test.describe('ai assistant settings', () => {
 
   test('needs the consent, then shows up in the team as the AI', async ({ page }) => {
     await signIn(page);
-    await page.goto('/ai');
+    await page.goto('/ai/settings');
     await expect(page.getByRole('heading', { name: 'AI assistant' })).toBeVisible();
 
     const consent = page.getByLabel(/contact messages are shared with the AI provider/);
@@ -26,19 +26,8 @@ test.describe('ai assistant settings', () => {
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Saved.')).toBeVisible();
 
-    // Once on: the campaign command box and the start-permission switch (off by default) are there, and the
-    // new-campaign form offers "Write with AI".
-    await expect(page.getByRole('heading', { name: 'Tell the assistant what to do' })).toBeVisible();
+    // Once on, the start-permission switch (off by default) is there, and the new-campaign form does not offer "Write with AI".
     await expect(page.getByLabel(/may start and resume campaigns by itself/)).toBeVisible();
-    // An instruction goes into the queue at once and shows up in the list, with its place or a spinner, and can be
-    // watched from there. It asks for nothing to be done, so the model has nothing to change in the test org.
-    const note = `Just say hello, do nothing else ${String(Date.now())}`;
-    await page.getByLabel('Instruction for the assistant').fill(note);
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
-    const queue = page.getByLabel('AI queue');
-    await expect(queue.getByText(note)).toBeVisible();
-    await expect(queue.getByText(/Instruction · (waiting|working|done|failed)/).first()).toBeVisible();
-
     await page.goto('/broadcast/new');
     await expect(page.getByLabel('Write with AI', { exact: true })).toHaveCount(0);
 

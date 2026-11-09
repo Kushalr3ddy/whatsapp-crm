@@ -224,12 +224,12 @@ The `e2e-test` org (`e2e@test.local`, password in `.env` as `TEST_PASSWORD`) exi
 himself (not our concern); the container image `whatsapp-crm:alpha-p1` built cleanly, and a rebuild with ffmpeg was in progress.
 
 ### What was built (all PRs titled `ai-speedrun:`)
-- **AI templates, part 1 (D-85, PR #99):** `/ai` page 1 = describe in plain words (8,000 characters), the model writes bullet instructions **without summarising**,
-  review (instructions locked until "Edit by hand", AI warning, regenerate-over-edits confirmation, Save off while the description changed), save as a template
-  (`ai_template`, migration 0034), saved list (Open, Next steps, Use for all chats, Delete), limits and the one-off orders box at the bottom. **Page 2 `/ai/t/<id>`**:
-  What next? with **Let it answer all chats** and **Message a group with this** (audience = an existing tag, or a search whose people get a new **editable** tag named
-  `<template>-N (date, time)`, counted first; the draft campaign keeps `ai_template_id`, migration 0035). **Always-on rules** (`AI_ALWAYS_ON_RULES`) are added to every reply
-  in `systemText`, shown locked on the page, and cannot be edited. Admin-only API `/ai/templates*`, `/ai/always-on-rules`; 5 generations per org per minute.
+- **AI templates (D-85, redesigned 2026-11-09, migrations 0045 to 0048):** `/ai` is the Templates home (cards, status line, first-run checklist, Deleted for 30 days) and the AI provider tab
+  (`/ai/settings`, with the credit log). `/ai/new` and `/ai/t/<id>` are the editor: the AI writes a playbook from a sentence, the owner answers its questions, picks the file or tag, the AI suggests
+  which columns it may see (column names only), sensitive details are marked Show or Keep general, "Rewrite with my choices", an example conversation, and a required hand-over person and number.
+  The AI runs a chat to its end (recap confirmed, a clear no, or a request for a person), answers as JSON (`reply`, `status`, `summary`, `handover`), writes as the organisation and never as "an assistant", and its status and
+  note per person show on the campaign page ("What people said"). One credit is one call to the model, recorded per campaign, template and person (`ai_run`). **Always-on rules** (`AI_ALWAYS_ON_RULES`) are added to every reply
+  in `systemText` and cannot be edited. Admin-only API `/ai/templates*`, `/ai/usage`, `/ai/always-on-rules`; 12 template writes per org per minute. The Tasks and Other chats tabs are parked (D-118).
 - **Campaign pictures and GIFs (D-59 first slice, #100/#101, migration 0036):** one picture or GIF per campaign, 5 MB, JPG/PNG/WebP/GIF, **MP4 refused for now**; upload and
   "use one I uploaded before" on the new-campaign form; the campaign page shows it; the dispatcher sends it with the message as caption; a **GIF is converted at upload with ffmpeg**
   to a looping clip and sent as a video with GIF playback; the AI's `create_campaign` takes `pictureName`. ffmpeg is in the Dockerfile.

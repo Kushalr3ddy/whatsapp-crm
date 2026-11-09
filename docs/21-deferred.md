@@ -146,6 +146,7 @@ Overlapping flags (a pin can be in a row above and one of these): 🔺 **priorit
 | [D-115](#d-115) | Campaigns: a timeout for AI-sent messages (how long the AI may wait or keep trying before giving up or handing the chat back) | 📌 pinned (Kushal, 2026-10-23): so the AI never waits forever on a message it sent |
 | [D-116](#d-116) | Chats: a "go to the latest message" button that scrolls a long chat to the bottom | 📌 pinned (Kushal, 2026-10-23) |
 | [D-117](#d-117--a-warning-before-adding-a-number-when-this-machines-ram-is-too-small-for-it-with-a-resource-monitor-and-a-calculator---pinned-kushal-2026-10-25) | A warning before adding a number when this machine's RAM is too small for it (resource monitor + a calculator, built from docs/19 and D-46/D-61) | 📌 pinned (Kushal, 2026-10-25) |
+| [D-118](#d-118--ai-assistant-the-tasks-and-other-chats-tabs-are-parked-with-what-would-bring-them-back---pinned-mikhil-2026-11-09) | AI assistant: the Tasks and Other chats tabs are parked, with what would bring them back | 📌 pinned (Mikhil, 2026-11-09) |
 | [D-95](#d-95) | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
 | [D-88](#d-88) | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | [D-87](#d-87) | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
@@ -3352,6 +3353,14 @@ Inbound messages keep their current look.
 **Ties to:** D-46 (lag), D-61 (lighter web tier: the fixed part of the formula shrinks when Next goes), D-77 (limits on numbers per org), D-113 (anti-ban switch, same Linked numbers page), `docs/19-capacity.md` and the capacity calculator (the formula to reuse). Container memory limits and heap caps (`--max-old-space-size`) are a separate, cheaper step that makes the numbers more predictable.
 
 **Tests:** unit tests of the calculator on known inputs (1, 2, 4 GB, 0 to 5 numbers; a container limit lower than host RAM); an integration test that the endpoint is admin-only; a browser test of the warning state with a faked low-memory reading.
+
+## D-118 · AI assistant: the Tasks and Other chats tabs are parked, with what would bring them back — 📌 pinned (Mikhil, 2026-11-09)
+
+**What:** the redesigned `/ai` page is Templates and AI provider. The old **Tasks** tab (typing a request the AI carries out: prepare, pause, resume or edit a campaign, message one person; `apps/web/app/ai/ai-queue.tsx`, `POST /ai/commands`, `/ai/jobs`) and the **Other chats** tab (chats handed to the AI that did not come from a campaign, using the organisation-wide instructions and the daily limit; `apps/web/app/ai/ai-panel.tsx`, which now only holds the "Switch the AI on" box on the provider tab) are not on the new page. Their code, routes and tests stay in the app.
+
+**What brings them back:** a person who wants to run the AI from a chat box (Tasks), or hand an ordinary chat to the AI with its own template (`conversation.ai_template_id`, see `docs/35`), would need these as screens again. A task would reuse the shared text box, and the credit log already counts its calls (`campaign_action`).
+
+**Also left for later:** per-template results (replies, hand-overs, interested), automatic follow-up when someone goes quiet (it affects ban risk, so it needs its own decision), the AI choosing between several files, and the AI reading pictures (the model connection takes text only). An opening for a template with no chosen columns still sends all of a person's columns to the model (`ai-opening.ts`); replies send only the chosen ones. The shared file and tag picker is used by the template editor only; Contacts and New campaign keep their own.
 
 ## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (Kushal, 2026-10-23)
 

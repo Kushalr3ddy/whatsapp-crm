@@ -34,6 +34,8 @@ export interface NewCampaignProps {
   segments?: Segment[] | undefined;
   /** Set when a draft is being edited: the form opens with its values and saves back onto it. */
   editing?: EditingDraft | undefined;
+  /** A template picked on the AI assistant page ("Start a campaign"): the form opens with it chosen and its opening in the message box. */
+  defaultTemplateId?: string | undefined;
 }
 
 /** One thing picked as the audience, with what the chip and the "Sending to" line say about it. */
@@ -68,10 +70,11 @@ export function NewCampaign(props: NewCampaignProps) {
 
   const startPicture: Picture | null = editing?.mediaAssetId ? { id: editing.mediaAssetId, filename: editing.mediaFilename, sizeBytes: editing.mediaSizeBytes ?? 0 } : null;
   const firstLinked = senders.find((s) => s.linked) ?? senders[0];
-  const [mode, setMode] = useState<'own' | 'tpl'>((editing?.aiTemplateId ?? null) !== null ? 'tpl' : 'own');
-  const [templateId, setTemplateId] = useState<string | null>(editing?.aiTemplateId ?? null);
+  const startTemplate = editing === undefined ? (templates.find((t) => t.id === props.defaultTemplateId) ?? null) : null;
+  const [mode, setMode] = useState<'own' | 'tpl'>((editing?.aiTemplateId ?? null) !== null || startTemplate !== null ? 'tpl' : 'own');
+  const [templateId, setTemplateId] = useState<string | null>(editing?.aiTemplateId ?? startTemplate?.id ?? null);
   const [name, setName] = useState(editing?.name ?? '');
-  const [body, setBody] = useState(editing?.body ?? '');
+  const [body, setBody] = useState(editing?.body ?? startTemplate?.firstMessage ?? '');
   const [varsOpen, setVarsOpen] = useState(false);
   const [varsText, setVarsText] = useState('Hi, Hey, Hello');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -486,6 +489,13 @@ export function NewCampaign(props: NewCampaignProps) {
               <div className="nc-fact"><b>{skipped.toLocaleString('en-US')}</b><span>skipped</span></div>
               <div className="nc-fact nc-wide"><span>Why they are skipped</span><span style={{ fontSize: 14, color: 'var(--ink)' }}>{review === null ? 'Choose who it goes to' : whyParts.length > 0 ? whyParts.join(', ') : 'Nobody is left out'}</span></div>
               <div className="nc-fact nc-wide"><span>How long</span><b>{finish === null ? 'Nothing to send' : finish.duration}</b><span>{finish === null ? 'Choose who it goes to' : finish.finish}</span></div>
+              {mode === 'tpl' && templateId !== null && (
+                <div className="nc-fact nc-wide" role="status">
+                  <span>AI credits</span>
+                  <b>{review === null ? 'Choose who it goes to' : `About ${(reach * 4).toLocaleString('en-US')} credits`}</b>
+                  <span>{review === null ? '1 credit = 1 AI message the AI writes.' : `for ${reach.toLocaleString('en-US')} people. ${reach.toLocaleString('en-US')} openings plus about 3 replies each. 1 credit = 1 AI message the AI writes. Replies are not known in advance, so it is an estimate.`}</span>
+                </div>
+              )}
             </div>
             {recent > 0 && (
               <div className={`nc-hint${leaveOut ? ' nc-ok' : ''}`}>

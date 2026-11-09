@@ -113,7 +113,7 @@ describe('writing a template from a description', () => {
   it('allows a few a minute and then asks to wait', async () => {
     await switchOn();
     let last = 200;
-    for (let i = 0; i < 6; i++) last = (await generate(admin, 'a showroom')).status;
+    for (let i = 0; i < 13; i++) last = (await generate(admin, 'a showroom')).status;
     expect(last).toBe(429);
   });
 });
@@ -157,11 +157,86 @@ describe('saving and picking a template again', () => {
     expect((await request(app).delete(`/api/v1/ai/templates/${id}`).set(admin)).status).toBe(404);
   });
 
+  it('moves a deleted template to Deleted, restores it, and removes it for good only from there', async () => {
+    const id = (await request(app).post('/api/v1/ai/templates').set(admin).send(body)).body.data.id;
+    expect((await request(app).delete(`/api/v1/ai/templates/${id}/permanent`).set(admin)).status).toBe(404);
+    await request(app).delete(`/api/v1/ai/templates/${id}`).set(admin);
+    expect((await request(app).get('/api/v1/ai/templates').set(admin)).body.data).toEqual([]);
+    const gone = (await request(app).get('/api/v1/ai/templates/deleted').set(admin)).body.data;
+    expect(gone).toHaveLength(1);
+    expect(gone[0].deletedAt).not.toBeNull();
+    expect((await request(app).post(`/api/v1/ai/templates/${id}/restore`).set(admin)).status).toBe(200);
+    expect((await request(app).get('/api/v1/ai/templates').set(admin)).body.data).toHaveLength(1);
+    await request(app).delete(`/api/v1/ai/templates/${id}`).set(admin);
+    expect((await request(app).delete(`/api/v1/ai/templates/${id}/permanent`).set(admin)).status).toBe(204);
+    expect((await request(app).get('/api/v1/ai/templates/deleted').set(admin)).body.data).toEqual([]);
+  });
+
+  it('removes a template from Deleted by itself after 30 days', async () => {
+    const id = (await request(app).post('/api/v1/ai/templates').set(admin).send(body)).body.data.id;
+    await request(app).delete(`/api/v1/ai/templates/${id}`).set(admin);
+    await db.execute(sql`UPDATE ai_template SET deleted_at = now() - interval '31 days' WHERE id = ${id}`);
+    expect((await request(app).get('/api/v1/ai/templates/deleted').set(admin)).body.data).toEqual([]);
+  });
+
+  it('copies a template as "(copy)", used in no campaign', async () => {
+    const saved = (await request(app).post('/api/v1/ai/templates').set(admin).send({ ...body, knowledge: 'We sell shoes.' })).body.data;
+    const copy = await request(app).post(`/api/v1/ai/templates/${saved.id}/duplicate`).set(admin);
+    expect(copy.status).toBe(201);
+    expect(copy.body.data).toMatchObject({ name: 'Zephyr X launch (copy)', knowledge: 'We sell shoes.', campaignCount: 0, deletedAt: null });
+    expect(copy.body.data.id).not.toBe(saved.id);
+    expect((await request(app).get('/api/v1/ai/templates').set(admin)).body.data).toHaveLength(2);
+  });
+
+  it('refuses to delete a template while a campaign that has not finished uses it', async () => {
+    const senderId = (await db.execute(sql`
+      INSERT INTO sender_identity (org_id, provider, label, phone_e164, status)
+      VALUES (${orgId}, 'fake', 'tpl', '+919000000888', 'active') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    const tagId = (await db.execute(sql`INSERT INTO tag (org_id, name) VALUES (${orgId}, 'in-use-tag') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    const templateId = (await request(app).post('/api/v1/ai/templates').set(admin).send(body)).body.data.id;
+    await request(app).post('/api/v1/campaigns').set(admin).send({ name: 'Open one', body: 'Hi', senderIdentityId: senderId, fromTagId: tagId, aiTemplateId: templateId });
+    const listed = (await request(app).get('/api/v1/ai/templates').set(admin)).body.data[0];
+    expect(listed).toMatchObject({ campaignCount: 1, unfinishedCount: 1 });
+    const refused = await request(app).delete(`/api/v1/ai/templates/${templateId}`).set(admin);
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toContain('not finished');
+    expect((await request(app).get('/api/v1/ai/templates').set(admin)).body.data).toHaveLength(1);
+  });
+
   it('keeps one organisation\'s templates from another', async () => {
     await request(app).post('/api/v1/ai/templates').set(admin).send(body);
     const other = await createOrgWithAdmin(db, hasher, { orgName: 'other', slug: `o-${randomBytes(3).toString('hex')}`, email: 'o@tpl.test', password: 'x', displayName: 'O' });
     const otherAdmin = asSession((await createSession(db, { userId: other.userId, orgId: other.orgId })).token);
     expect((await request(app).get('/api/v1/ai/templates').set(otherAdmin)).body.data).toEqual([]);
+  });
+
+  it('rebuilds the instructions from the one text and the sensitive details on every save, and keeps the rest', async () => {
+    const post = (extra: object) => request(app).post('/api/v1/ai/templates').set(admin).send({ ...body, ...extra });
+    const made = await post({
+      knowledge: 'We sell shoes.', sensitive: [{ detail: 'The wholesale price', mode: 'general' }],
+      questions: [{ question: 'What sizes?', answer: '', skipped: true }], visibleColumns: ['city', 'city', ' '], fallbackPhone: '+91 90000 00001'
+    });
+    expect(made.status).toBe(200);
+    expect(made.body.data.instructions).toContain('We sell shoes.');
+    expect(made.body.data.instructions).toMatch(/The wholesale price: keep it general/);
+    expect(made.body.data.instructions).not.toContain('showroom assistant');
+    expect(made.body.data).toMatchObject({ visibleColumns: ['city'], fallbackPhone: '+91 90000 00001', deletedAt: null });
+    expect(made.body.data.questions).toEqual([{ question: 'What sizes?', answer: '', skipped: true }]);
+
+    // Saved again with only a new name: the stored text, details and phone stay.
+    const again = await post({ id: made.body.data.id, name: 'Shoes' });
+    expect(again.body.data).toMatchObject({ name: 'Shoes', knowledge: 'We sell shoes.', fallbackPhone: '+91 90000 00001' });
+    expect(again.body.data.instructions).toContain('We sell shoes.');
+  });
+
+  it('accepts a fallback person from the team and refuses one from another organisation', async () => {
+    const mine = (await db.execute(sql`SELECT id FROM app_user WHERE email = 'agent@tpl.test'`) as unknown as Array<{ id: string }>)[0]!.id;
+    const ok = await request(app).post('/api/v1/ai/templates').set(admin).send({ ...body, knowledge: 'x', fallbackUserId: mine });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data.fallbackUserId).toBe(mine);
+    const other = await createOrgWithAdmin(db, hasher, { orgName: 'o2', slug: `o2-${randomBytes(3).toString('hex')}`, email: 'o2@tpl.test', password: 'x', displayName: 'O2' });
+    const bad = await request(app).post('/api/v1/ai/templates').set(admin).send({ ...body, knowledge: 'x', fallbackUserId: other.userId });
+    expect(bad.status).toBe(422);
   });
 
   it('shows the fixed always-on rules to an admin', async () => {
@@ -193,7 +268,10 @@ describe('a campaign made from a template', () => {
     expect(made.status).toBe(201);
     const linked = (await db.execute(sql`SELECT ai_template_id AS id FROM campaign WHERE id = ${made.body.data.id}`) as unknown as Array<{ id: string | null }>)[0]!.id;
     expect(linked).toBe(templateId);
-    await request(app).delete(`/api/v1/ai/templates/${templateId}`).set(admin);
+    // Finish the campaign so the template may be deleted, then remove it for good: the link is cleared.
+    await db.execute(sql`UPDATE campaign SET status = 'completed' WHERE id = ${made.body.data.id}`);
+    expect((await request(app).delete(`/api/v1/ai/templates/${templateId}`).set(admin)).status).toBe(204);
+    expect((await request(app).delete(`/api/v1/ai/templates/${templateId}/permanent`).set(admin)).status).toBe(204);
     const after = (await db.execute(sql`SELECT ai_template_id AS id FROM campaign WHERE id = ${made.body.data.id}`) as unknown as Array<{ id: string | null }>)[0]!.id;
     expect(after).toBeNull();
   });

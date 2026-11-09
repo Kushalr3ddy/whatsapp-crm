@@ -267,6 +267,12 @@ export interface CampaignDetail {
   leaveOutRecent: boolean;
   blankFillInChoice: BlankFillInChoice | null;
   fillInFallback: string | null;
+  /** The owner stopped the AI on this campaign. */
+  aiStopped: boolean;
+  /** What the AI has used so far, in credits; null when the campaign has no template. */
+  aiUsage: { credits: number; openings: number; replies: number } | null;
+  /** The people by where the AI's conversation stands; null when the campaign has no template. */
+  aiStatus: CampaignAiStatus | null;
 }
 
 /** The prospective audience of a draft — a dry run's counts. Mirrors the `preview` route. */
@@ -319,7 +325,14 @@ export interface CampaignRecipient {
   holdReason?: string | null;
   /** The contact's primary phone or email, for identifying them in the list. */
   identity: string | null;
+  /** Where the AI's chat with them stands (`talking`, `interested`, `not_interested`, `needs_person`), or null before they answered. */
+  aiStatus?: string | null;
+  /** The AI's note for a colleague: what they said and what it could not answer. */
+  aiSummary?: string | null;
 }
+
+/** How many people of a campaign are in each state of the AI's conversation. */
+export interface CampaignAiStatus { interested: number; not_interested: number; needs_person: number; talking: number; noAnswer: number }
 
 /** What the API returns when a request fails: RFC 7807, plus our stable `code`. */
 export interface ApiProblem {
@@ -762,8 +775,12 @@ export interface GeneratedAiTemplate {
   instructions: string;
   audience: string;
   firstMessage: string;
-  /** Short questions for facts the description did not give. */
+  /** Short questions for facts the description did not give (at most 5). */
   missing: string[];
+  /** The one text of what the AI knows. */
+  knowledge: string;
+  /** Kept for older answers; the sensitive details now come from `detectAiSensitive`. */
+  sensitive: Array<{ detail: string; value: string }>;
 }
 
 /** A saved template. Mirrors a row of `GET /api/v1/ai/templates`. */
@@ -777,6 +794,24 @@ export interface AiTemplate {
   useCount: number;
   lastUsedAt: string | null;
   updatedAt: string;
+  /** The one text of what the AI knows; empty on a template whose instructions were written by hand. */
+  knowledge: string;
+  /** The AI's questions and what happened to each. */
+  questions: Array<{ question: string; answer: string; skipped: boolean }>;
+  /** Details the AI shows exactly (`show`) or only roughly (`general`). */
+  sensitive: Array<{ detail: string; mode: 'show' | 'general' }>;
+  /** The team member a chat goes to when the AI is not sure, and their number. */
+  fallbackUserId: string | null;
+  fallbackPhone: string;
+  /** The columns of a person's row the AI may see. */
+  visibleColumns: string[];
+  /** The file or tag the template is for (same shape as a campaign's picks). */
+  audienceTargets: ReviewTarget[] | null;
+  /** When it was moved to Deleted; null while live. */
+  deletedAt: string | null;
+  /** How many campaigns use it, and how many of those have not finished. */
+  campaignCount: number;
+  unfinishedCount: number;
 }
 
 /** A provider the AI settings tab offers. */
@@ -847,9 +882,14 @@ export async function getAiTemplate(id: string): Promise<AiTemplate> {
 }
 
 /** Saves a template: replaces the one with `id`, or creates a new one. */
-export async function saveAiTemplate(
-  input: { id?: string; name: string; description: string; instructions: string; audience: string; firstMessage: string }
-): Promise<AiTemplate> {
+export interface AiTemplateInput {
+  id?: string; name: string; description: string; instructions: string; audience: string; firstMessage: string;
+  knowledge?: string; questions?: AiTemplate['questions']; sensitive?: AiTemplate['sensitive'];
+  fallbackUserId?: string | null; fallbackPhone?: string; visibleColumns?: string[]; audienceTargets?: ReviewTarget[] | null;
+}
+
+/** Saves a template with everything the editor holds. */
+export async function saveAiTemplate(input: AiTemplateInput): Promise<AiTemplate> {
   return request<AiTemplate>('/ai/templates', { method: 'POST', body: JSON.stringify(input) });
 }
 
@@ -858,9 +898,82 @@ export async function useAiTemplate(id: string, setAsDefault: boolean): Promise<
   return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}/use`, { method: 'POST', body: JSON.stringify({ setAsDefault }) });
 }
 
-/** Removes a saved template. */
+/** One line of the example conversation. `event` is the note the hand-over leaves. */
+export interface ExampleLine { from: 'ai' | 'customer' | 'event'; text: string }
+
+/** The template as the editor holds it, for an example or a fill-in suggestion. */
+export interface ExampleDraft {
+  templateId?: string; knowledge: string; sensitive: AiTemplate['sensitive']; fallbackUserId: string | null; fallbackPhone: string; visibleColumns: string[];
+}
+
+/** Asks the AI to write an example conversation from the template and one person of the list. Sends nothing; costs 1 credit. */
+export async function writeAiExample(draft: ExampleDraft, personId: string): Promise<ExampleLine[]> {
+  return request<ExampleLine[]>('/ai/templates/example', { method: 'POST', body: JSON.stringify({ ...draft, personId }) });
+}
+
+/** The columns the AI suggests it may see, and why. */
+export interface FillInSuggestion { columns: string[]; reason: string }
+
+/** Which columns would help the AI, from the column names only. */
+export async function suggestAiFillIns(knowledge: string, columns: string[]): Promise<FillInSuggestion> {
+  return request<FillInSuggestion>('/ai/templates/suggest-fillins', { method: 'POST', body: JSON.stringify({ knowledge, columns }) });
+}
+
+/** One detail the AI found in the text that may be sensitive; `suggested` is only the starting choice. */
+export interface SensitiveCandidate { detail: string; value: string; suggested: 'show' | 'general' }
+
+/** One activity in the credit log: a campaign's AI messages for a day, a person's work on a template for a day, or chats without a campaign. */
+export interface AiActivity {
+  at: string; scope: 'campaign' | 'chat' | 'template'; name: string | null; who: string | null;
+  parts: Array<{ kind: string; count: number }>; models: string[]; tokens: number; credits: number;
+}
+
+/** The credit log. */
+export interface AiUsageLog { today: number; month: number; total: number; activities: AiActivity[] }
+
+/** What the AI has used: totals, and the latest calls with model and time. */
+export async function getAiUsage(): Promise<AiUsageLog> {
+  return request<AiUsageLog>('/ai/usage');
+}
+
+/** Rewrites the text of what the AI knows to match the owner's choices. Nothing is saved. */
+export async function rewriteAiKnowledge(knowledge: string, sensitive: AiTemplate['sensitive']): Promise<string> {
+  return (await request<{ knowledge: string }>('/ai/templates/rewrite', { method: 'POST', body: JSON.stringify({ knowledge, sensitive }) })).knowledge;
+}
+
+/** Lists the details in the text that could be sensitive. The owner decides each one. */
+export async function detectAiSensitive(knowledge: string): Promise<SensitiveCandidate[]> {
+  return request<SensitiveCandidate[]>('/ai/templates/detect-sensitive', { method: 'POST', body: JSON.stringify({ knowledge }) });
+}
+
+/** Stops the AI on one campaign. */
+export async function stopCampaignAi(id: string): Promise<void> {
+  await requestVoid(`/campaigns/${encodeURIComponent(id)}/stop-ai`, { method: 'POST', body: '{}' });
+}
+
+/** Moves a saved template to Deleted. Refused (with the reason) while a campaign that has not finished uses it. */
 export async function deleteAiTemplate(id: string): Promise<void> {
   await requestVoid(`/ai/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** The templates in Deleted, which can be restored for 30 days. */
+export async function listDeletedAiTemplates(): Promise<AiTemplate[]> {
+  return request<AiTemplate[]>('/ai/templates/deleted');
+}
+
+/** Brings a template back from Deleted. */
+export async function restoreAiTemplate(id: string): Promise<AiTemplate> {
+  return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}/restore`, { method: 'POST', body: '{}' });
+}
+
+/** Removes a template that is in Deleted for good. */
+export async function removeAiTemplateNow(id: string): Promise<void> {
+  await requestVoid(`/ai/templates/${encodeURIComponent(id)}/permanent`, { method: 'DELETE' });
+}
+
+/** Copies a template as "… (copy)". */
+export async function duplicateAiTemplate(id: string): Promise<AiTemplate> {
+  return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}/duplicate`, { method: 'POST', body: '{}' });
 }
 
 /** What the assistant did about an instruction. Mirrors `POST /api/v1/ai/commands`. */
@@ -1375,10 +1488,11 @@ export async function getCampaignEta(id: string): Promise<CampaignEta> {
  * `q` searches the contact's name or number. Returns the first page; keyset paging is a follow-up.
  */
 export async function listCampaignRecipients(
-  id: string, opts: { status?: string; q?: string } = {}
+  id: string, opts: { status?: string; q?: string; ai?: string } = {}
 ): Promise<CampaignRecipient[]> {
   const params = new URLSearchParams();
   if (opts.status !== undefined && opts.status !== '') params.set('status', opts.status);
+  if (opts.ai !== undefined && opts.ai !== '') params.set('ai', opts.ai);
   if (opts.q !== undefined && opts.q.trim() !== '') params.set('q', opts.q.trim());
   const qs = params.toString();
   return request<CampaignRecipient[]>(

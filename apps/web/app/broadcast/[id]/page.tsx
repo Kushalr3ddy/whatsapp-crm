@@ -4,10 +4,11 @@ import type { CSSProperties } from 'react';
 import {
   getCampaign, listCampaignRecipients, previewCampaign, getMe, listConversations, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { Me, CampaignDetail, CampaignRecipient, CampaignPreview, Conversation } from '@/lib/crm';
+import type { Me, CampaignDetail, CampaignRecipient, CampaignPreview, Conversation, CampaignAiStatus } from '@/lib/crm';
 import { campaignStatusBadge } from '../campaign-status';
 import { initialsOf } from '../../ui';
 import { CampaignControls, SendAnywayButton } from '../campaign-controls';
+import { AiCampaignCard } from '../ai-campaign-card';
 import { AutoRefresh } from '../auto-refresh';
 import { ChatRow } from './chat-row';
 import { GATE_LABEL } from '../gates';
@@ -25,11 +26,12 @@ export const dynamic = 'force-dynamic';
 export default async function CampaignPage(
   { params, searchParams }: {
     params: Promise<{ id: string }>;
-    searchParams: Promise<{ status?: string; q?: string; created?: string; saved?: string }>;
+    searchParams: Promise<{ status?: string; q?: string; ai?: string; created?: string; saved?: string }>;
   }
 ) {
   const { id } = await params;
-  const { status, q, created, saved } = await searchParams;
+  const { status, q, ai, created, saved } = await searchParams;
+  const activeAi = typeof ai === 'string' && AI_STATES.some((s) => s.key === ai) ? ai : '';
   const activeStatus = typeof status === 'string' ? status : '';
   const query = typeof q === 'string' ? q : '';
 
@@ -44,7 +46,7 @@ export default async function CampaignPage(
   try {
     [campaign, recipients, me, conversations] = await Promise.all([
       getCampaign(id),
-      listCampaignRecipients(id, { status: activeStatus, q: query }),
+      listCampaignRecipients(id, { status: activeStatus, q: query, ai: activeAi }),
       getMe(),
       // Only used to make a row open its chat; a failure here just leaves the rows unlinked.
       listConversations().catch((): Conversation[] => [])
@@ -90,6 +92,15 @@ export default async function CampaignPage(
             </div>
             <CampaignControls id={id} status={campaign.status} isAdmin={me?.role === 'admin'} />
           </header>
+
+          {campaign.aiTemplateId !== null && campaign.aiUsage !== null && (
+            <AiCampaignCard
+              id={id} stopped={campaign.aiStopped} credits={campaign.aiUsage.credits} openings={campaign.aiUsage.openings} replies={campaign.aiUsage.replies}
+              finished={campaign.status === 'completed' || campaign.status === 'cancelled'}
+            />
+          )}
+
+          {campaign.aiStatus !== null && campaign.status !== 'draft' && <AiStates id={id} counts={campaign.aiStatus} activeAi={activeAi} />}
 
           {saved === '1' && campaign.status === 'draft' && (
             <p role="status" className="mb-4 notice notice-success">Changes saved. Nothing has been sent yet.</p>
@@ -148,7 +159,7 @@ export default async function CampaignPage(
                   <span className="text-sm text-muted">{recipients.length} shown</span>
                 </div>
 
-                <SearchBox id={id} activeStatus={activeStatus} query={query} />
+                <SearchBox id={id} activeStatus={activeStatus} activeAi={activeAi} query={query} />
 
                 {recipients.length === 0 && (
                   <p className="text-sm text-muted">
@@ -330,10 +341,11 @@ function MessageBody({ body }: { body: string }) {
 }
 
 /** Search by contact name or number, keeping the active status filter. */
-function SearchBox({ id, activeStatus, query }: { id: string; activeStatus: string; query: string }) {
+function SearchBox({ id, activeStatus, activeAi, query }: { id: string; activeStatus: string; activeAi: string; query: string }) {
   return (
     <form className="mb-4 mt-3 flex gap-2" action={`/broadcast/${id}`}>
       {activeStatus !== '' && <input type="hidden" name="status" value={activeStatus} />}
+      {activeAi !== '' && <input type="hidden" name="ai" value={activeAi} />}
       <input
         name="q"
         defaultValue={query}
@@ -371,9 +383,13 @@ function RecipientRow({ recipient, index, chatId }: { recipient: CampaignRecipie
             {recipient.displayName === null && recipient.identity === null ? 'no contact details' : null}
             {recipient.attemptedAt !== null && <>{new Date(recipient.attemptedAt).toLocaleString()}</>}
           </p>
+          {(recipient.aiSummary ?? null) !== null && <p className="mt-1 text-sm [overflow-wrap:anywhere]">{recipient.aiSummary}</p>}
         </div>
       </div>
-      <RecipientStatus recipient={recipient} />
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <RecipientStatus recipient={recipient} />
+        <AiBadge status={recipient.aiStatus ?? null} />
+      </div>
     </>
   );
   return (
@@ -410,6 +426,48 @@ function RecipientStatus({ recipient }: { recipient: CampaignRecipient }) {
       </span>
     </div>
   );
+}
+
+/** The states of the AI's conversation with a person, in the order a person acts on them. */
+const AI_STATES: ReadonlyArray<{ key: 'interested' | 'needs_person' | 'talking' | 'not_interested' | 'none'; label: string; cls: string }> = [
+  { key: 'interested', label: 'Interested', cls: 'badge-success' },
+  { key: 'needs_person', label: 'Needs a person', cls: 'badge-warning' },
+  { key: 'talking', label: 'Talking', cls: 'badge-info' },
+  { key: 'not_interested', label: 'Not interested', cls: 'badge-danger' },
+  { key: 'none', label: 'No reply yet', cls: 'bg-surface-2 text-muted border-transparent' }
+];
+
+/** What people said: how many are interested, need a person, are still talking, said no, or have not written back. Each count narrows the list below. */
+function AiStates({ id, counts, activeAi }: { id: string; counts: CampaignAiStatus; activeAi: string }) {
+  const value = (k: string): number => (k === 'none' ? counts.noAnswer : counts[k as keyof CampaignAiStatus]);
+  return (
+    <section className="card mb-4 p-4" aria-label="What people said">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">What people said</h2>
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Show people by what they said">
+        {AI_STATES.map((s) => {
+          const active = activeAi === s.key;
+          return (
+            <Link
+              key={s.key} href={`/broadcast/${id}${active ? '' : `?ai=${s.key}`}`} aria-current={active ? 'true' : undefined}
+              className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors ${
+                active ? 'border-transparent bg-accent-soft text-accent' : 'border-border bg-surface text-muted hover:text-ink'
+              }`}
+            >
+              {s.label}
+              <b className={`font-mono font-medium tabular-nums ${active ? 'text-accent' : 'text-ink'}`}>{value(s.key)}</b>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** Where the AI's chat with this person stands, as a badge; nothing before they have answered. */
+function AiBadge({ status }: { status: string | null }) {
+  const s = AI_STATES.find((x) => x.key === status);
+  if (s === undefined) return null;
+  return <span className={`badge ${s.cls}`}><span aria-hidden className="size-1.5 rounded-full bg-current" />{s.label}</span>;
 }
 
 /** Builds a link to this campaign filtered by status and search term. */

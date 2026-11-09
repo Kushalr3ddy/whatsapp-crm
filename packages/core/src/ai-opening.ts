@@ -3,6 +3,7 @@ import type { Database } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
 import type { LlmDriver } from '@crm/llm';
 import { systemText } from './ai-reply.js';
+import { recordAiRun } from './ai-usage.js';
 
 /**
  * The AI writes the first message of a campaign that has an AI template, one per person, instead of the CRM sending a fixed body.
@@ -15,8 +16,8 @@ import { systemText } from './ai-reply.js';
  * with the reason `ai_opening_failed` so it is reported, never silently dropped.
  */
 
-/** Longest opening kept, in characters; the same ceiling as a reply. */
-const MAX_OPENING_CHARS = 1500;
+/** Longest opening kept, in characters. The rules ask for far less; this only stops a runaway answer. */
+const MAX_OPENING_CHARS = 600;
 /** Output budget for one opening, thinking included (a reasoning model needs room, see R-012). */
 const MAX_OPENING_TOKENS = 3000;
 /** How many times writing one person's opening may fail before they are skipped. */
@@ -24,17 +25,20 @@ const MAX_TRIES = 3;
 /** The most openings written in one call, so one sweep does not hold the gateway for minutes. */
 const DEFAULT_BATCH = 5;
 
-/** The fixed rules for an opening, added to the same safety text a reply gets. */
+/** The fixed rules for an opening, added to the same text a reply gets. */
 const OPENING_RULES = [
-  'This is the FIRST message you send this person: you are starting the conversation, not answering anything.',
-  'Greet them by name if a name is given, say in one or two sentences who you are and why you are writing, and end with ONE short question that fits the goal in the instructions.',
-  'Write only the message itself: no quotes, no labels, no explanation. Do not invent facts about the person.'
+  'THIS IS THE FIRST MESSAGE you send this person: you are starting the chat, they have not written yet.',
+  '- Start with "Hi <name>," when a name is given. In the same message say you are from the organisation (never "assistant", "AI" or "bot") and why you are writing.',
+  '- At most 2 short sentences and under 220 characters in all: one plain WhatsApp message, no list, no heading. Give only the single most important fact (for example the day and the place); the rest comes later in the chat.',
+  '- End with ONE short, easy question that moves toward the goal in the instructions.',
+  '- Use only facts from the instructions and the campaign\'s outline. Do not invent anything about the person or the offer.',
+  '- Write only the message itself: no quotes, no labels, no explanation.'
 ].join('\n');
 
 /** True for a campaign that has an AI template: its first messages are written by the AI. */
 export async function campaignWritesOpenings(db: Database, orgId: string, campaignId: string): Promise<boolean> {
   const rows = await db.execute(sql`
-    SELECT 1 FROM campaign WHERE id = ${campaignId} AND org_id = ${orgId} AND ai_template_id IS NOT NULL`);
+    SELECT 1 FROM campaign WHERE id = ${campaignId} AND org_id = ${orgId} AND ai_template_id IS NOT NULL AND NOT ai_stopped`);
   return (rows as unknown as unknown[]).length > 0;
 }
 
@@ -51,15 +55,15 @@ export async function writeOpenings(
   const limit = input.limit ?? DEFAULT_BATCH;
 
   const setup = (await db.execute(sql`
-    SELECT c.body AS "brief", t.instructions AS "instructions", o.name AS "orgName", s.enabled AS "aiOn"
+    SELECT c.body AS "brief", t.instructions AS "instructions", t.id AS "templateId", t.visible_columns AS "visible", o.name AS "orgName", s.enabled AS "aiOn", c.ai_stopped AS "stopped"
     FROM campaign c
     JOIN ai_template t ON t.id = c.ai_template_id AND t.org_id = c.org_id
     JOIN org o ON o.id = c.org_id
     LEFT JOIN ai_setting s ON s.org_id = c.org_id
     WHERE c.id = ${campaignId} AND c.org_id = ${orgId}`) as unknown as Array<{
-    brief: string; instructions: string; orgName: string; aiOn: boolean | null;
+    brief: string; instructions: string; templateId: string; visible: string[]; orgName: string; aiOn: boolean | null; stopped: boolean;
   }>)[0];
-  if (setup === undefined || setup.aiOn !== true) return 0;
+  if (setup === undefined || setup.aiOn !== true || setup.stopped) return 0;
 
   const people = await db.execute(sql`
     SELECT cr.id, c.display_name AS "name", c.custom_fields AS "fields"
@@ -71,7 +75,8 @@ export async function writeOpenings(
   let written = 0;
   for (const person of people) {
     // What the model may know about this person: their name and the columns stored on them. Never anything about other people.
-    const known = Object.entries(person.fields ?? {}).slice(0, 40).map(([k, v]) => `${k}: ${String(v).slice(0, 200)}`);
+    const known = Object.entries(person.fields ?? {}).filter(([k, v]) => String(v).trim() !== '' && (setup.visible.length === 0 || setup.visible.includes(k)))
+      .slice(0, 40).map(([k, v]) => `${k}: ${String(v).slice(0, 200)}`);
     const brief = [
       `Person's name: ${person.name ?? '(not known)'}`,
       known.length > 0 ? `What is known about them:\n${known.join('\n')}` : 'Nothing else is known about them.',
@@ -81,10 +86,11 @@ export async function writeOpenings(
     let text = '';
     try {
       const answer = await llm.complete({
-        system: `${systemText(setup.orgName, setup.instructions)}\n\n${OPENING_RULES}`,
+        system: `${systemText(setup.orgName, setup.instructions, { output: 'plain' })}\n\n${OPENING_RULES}`,
         messages: [{ role: 'user', content: brief }], maxTokens: MAX_OPENING_TOKENS
       });
       text = answer.text.trim().slice(0, MAX_OPENING_CHARS);
+      await recordAiRun(db, { orgId, kind: 'opening', outcome: text === '' ? 'failed' : 'written', model: answer.model, usage: answer.usage, campaignId, templateId: setup.templateId });
     } catch { text = ''; }
 
     if (text === '') {
