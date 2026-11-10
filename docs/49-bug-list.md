@@ -39,6 +39,19 @@ All four are reproduced. The first three have a test written as `it.fails`: it s
 
 Checked and fine (guarded by the same file): two requests to start one campaign (FM-5), two STOPs (AC-6.3), one number never sends two messages at once (AC-1.1), thirty replies at once by the owner (all kept), a second agent in an owned chat (409), a chat or person of another organisation (404), wrong types, unknown field names, `__proto__` and `constructor` field names, oversized text, no sign-in, a read-only key and a cookie without the CSRF token.
 
+### Several organisations and roles (2026-11-10; found by `tests/integration/orgs-*.test.ts` and `shared-template-campaign.test.ts`; repro steps only, not analysed yet)
+
+Each has a test written as `it.fails` that goes green-for-the-right-reason when fixed: change it to `it`.
+
+| Id | Sev | Repro steps |
+|---|---|---|
+| X-001 | S1 | 1. Two organisations, A and B. A has an agent with email `p@a.test` and their own password. 2. Sign in as B's admin. `POST /api/v1/admin/users` with `{ "email": "p@a.test", "password": "any-12-chars+", "displayName": "x", "role": "agent" }`: answers 201. 3. `POST /api/v1/admin/users/<p's id>/password` with a new password: answers 200 (`sessionsRevoked` is 2: p's sessions in A are ended). 4. `POST /api/v1/auth/login` with `p@a.test` and that new password: 200, and `GET /auth/me` says `orgId` is **A** and `GET /contacts` lists A's contacts. 5. Variation: `PATCH /admin/users/<p's id>` `{ "status": "disabled" }` from B's admin: p is locked out of A at once. 6. Same with an admin of A as the target. Test: `orgs-isolation.test.ts` "X-001" |
+| X-002 | S3 | 1. As an admin, save an AI template. 2. Create a campaign using it (`aiTemplateId`). 3. Delete the template (it moves to Deleted). 4. `POST /campaigns` again with the same `aiTemplateId`: answers 201 (expected 404). Also `GET /ai/templates/<id>` of a deleted template answers 200. Test: `shared-template-campaign.test.ts` "X-002" |
+| X-003 | S3 | 1. Two people, one tag. 2. At the same moment: one `DELETE /tags/<id>`, the other `POST /contacts/<contact>/tags` `{ "tagId": "<id>" }`. 3. About one run in several: the second answers 500 (log: `contact_tag_tag_id_tag_id_fk` foreign key violation) instead of 404. Test: "X-003" |
+| X-004 | S3 | 1. Two people, same moment, `POST /contacts` with the same new phone (`{ "displayName": "x", "phone": "+9199xxxxxxxx" }`). 2. One answers 201; the other answers 500 (log: `contact_identity_lookup_uidx` unique violation) instead of 409 or the existing contact. One contact is created, never two. Test: "X-004" |
+
+Decisions for the owner (current behaviour pinned by tests, not bugs yet): any agent can edit, start, pause or cancel any campaign of the organisation; two admins saving the same template at once is last write wins with no warning; `api_key` has no row-level policy (every route filters it by organisation); a campaign created with only another organisation's contact ids is accepted but empty and starts as `running` with nobody in it.
+
 ### Fixed on 2026-11-10 (go-live fixes; each has a regression test named by its R-number, see tests/regression/REGISTRY.md)
 
 | Fixed | R | Issue | What changed |
