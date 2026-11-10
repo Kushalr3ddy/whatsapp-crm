@@ -13,6 +13,14 @@ gotchas, how to run it); this is the *ledger of work* — a checklist you can tr
 
 ## Latest
 
+### 2026-11-10 — go-live blockers: security and opt-out fixes (R-033 to R-040)
+- **Log:** the sign-in answer's cookie and CSRF token (and API-key and CSRF request headers) are no longer written to the API log (R-033). Sessions already written to old logs stay valid until they expire: sign everyone out (revoke sessions) when this is deployed.
+- **Agents:** only an admin can clear do-not-contact and add, link or unlink numbers or read the link code; an agent can still flag a person (R-034). The Numbers page and the classic Contacts page show those controls to admins only.
+- **Login:** the lock is per address and email, plus a limit of 30 failed sign-ins per address per 15 minutes, so nobody can lock the real admin out from elsewhere (R-035). The address follows `X-Forwarded-For`: also limit at the proxy.
+- **AI model settings:** only the admin of the organisation the install was set up for (the oldest) can change, test or switch off the model, and only that admin sees the end of the key (R-036).
+- **Opt-out:** a second STOP no longer lets an agent message the person (R-037); the closing message quotes the campaign's message and purpose (R-038).
+- **Hardening:** a NUL character in text is a 422, not a 500 (R-039); the API sends nosniff, no-framing, no-referrer, no-store and a locked-down content policy (R-040).
+
 ### 2026-11-09 — go-live testing: three fixes, a full test round, and the knowledge base, on `claude/whatsapp-crm-live-testing-ae21f6`
 - **Pause on a draft** no longer ends a campaign having messaged nobody: Pause only stops a started campaign (a draft gets "has not started", the AI assistant's pause tool too), and Start freezes the audience whenever the campaign has never started (R-022).
 - **A number that loses internet comes back by itself:** tries that never reach WhatsApp no longer use the 5-try limit and repeat about once a minute; the gateway also tries a linked number that has been down 10 minutes again, every 10 minutes, never after a logout, a 403 or a 440 (R-026).

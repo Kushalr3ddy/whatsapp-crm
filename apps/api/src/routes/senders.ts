@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { writeAudit, AUDIT, decodeLinkError, numberHints, resumeNumber } from '@crm/core';
-import { auditActor, requireRole, requireScope } from '../auth.js';
+import { auditActor, requireAdminOrScope, requireRole, requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
 
@@ -105,7 +105,7 @@ export function sendersRouter(): Router {
     });
 
   /** Creates a sender. It exists but is not connected until it has been linked. */
-  router.post('/', requireScope('senders:write'), async (req: Request, res: Response) => {
+  router.post('/', requireAdminOrScope('senders:write'), async (req: Request, res: Response) => {
     const parsed = createSender.safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
@@ -124,7 +124,7 @@ export function sendersRouter(): Router {
    * Starts linking. Returns 202 rather than the challenge itself, because the gateway has to
    * reach WhatsApp first — poll `GET /senders/:id/link` for the QR or code.
    */
-  router.post('/:id/link', requireUuidParam('id'), requireScope('senders:write'), async (req: Request, res: Response) => {
+  router.post('/:id/link', requireUuidParam('id'), requireAdminOrScope('senders:write'), async (req: Request, res: Response) => {
     const parsed = startLink.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map(
@@ -175,7 +175,7 @@ export function sendersRouter(): Router {
    * clearing is the point — a corrupt or logged-out session stays "linked" (it can still send)
    * and a re-link cannot issue a fresh QR while the old credentials remain.
    */
-  router.post('/:id/unlink', requireUuidParam('id'), requireScope('senders:write'), async (req: Request, res: Response) => {
+  router.post('/:id/unlink', requireUuidParam('id'), requireAdminOrScope('senders:write'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
     const senderId = String(req.params.id);
     const updated = await req.tenant!((tx) => tx.execute(sql`
@@ -236,7 +236,7 @@ export function sendersRouter(): Router {
     });
 
   /** Returns the challenge once the gateway has it, or reports that it is still pending. */
-  router.get('/:id/link', requireUuidParam('id'), requireScope('senders:read'), async (req: Request, res: Response) => {
+  router.get('/:id/link', requireUuidParam('id'), requireAdminOrScope('senders:read'), async (req: Request, res: Response) => {
     const rows = await req.tenant!((tx) => tx.execute(sql`
       SELECT cs.link_challenge AS challenge, cs.link_error AS error,
              cs.qr_expires_at AS "expiresAt", cs.connection_state AS "connectionState",

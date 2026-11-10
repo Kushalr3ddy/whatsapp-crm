@@ -11,6 +11,7 @@ import { attachPrincipal, requireAuthenticated, requireTenant, requireCsrf } fro
 import { withTenant } from './tenant.js';
 import { rateLimitApiKey } from './rate-limit.js';
 import { corsAllowlist } from './cors.js';
+import { rejectNulText, securityHeaders } from './hardening.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
@@ -100,6 +101,9 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
     })
   );
 
+  // Headers every answer carries, including refusals and errors raised further down (R-040).
+  app.use(securityHeaders(deps.config.NODE_ENV === 'production'));
+
   // Allowlisted browser origins (and their preflights) before anything that needs credentials.
   app.use(corsAllowlist(deps.config.CORS_ALLOWED_ORIGINS ?? []));
 
@@ -125,6 +129,8 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
     ],
     limit: IMPORT_LIMIT
   }));
+  // After every body is read: text with a NUL character is refused with 422 instead of failing in the database with a 500 (R-039).
+  app.use(rejectNulText);
 
   /**
    * Liveness. Answers "is this process running?" and nothing more — it must not touch the

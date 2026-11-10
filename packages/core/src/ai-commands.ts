@@ -197,7 +197,7 @@ export async function runAiCommand(
         else {
           const started = await db.transaction((tx) => startCampaign(tx, orgId, { actor: bot }, id));
           action = 'error' in started
-            ? { tool: call.name, ok: false, campaignId: id, detail: started.error === 'already_running' ? 'It is already running.' : started.error === 'finished' ? 'It has finished and cannot restart.' : 'No such campaign.' }
+            ? { tool: call.name, ok: false, campaignId: id, detail: started.error === 'already_running' ? 'It is already running.' : started.error === 'finished' ? 'It has finished and cannot restart.' : started.error === 'number_removed' ? 'The number it sends from was removed.' : 'No such campaign.' }
             : { tool: call.name, ok: true, campaignId: id, detail: `Running: ${String(started.progress.pending)} people waiting to be sent at the safe rate.` };
         }
       } else if (call.name === 'edit_campaign') {

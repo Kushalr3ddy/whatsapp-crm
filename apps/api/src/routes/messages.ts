@@ -21,7 +21,8 @@ import { normalisePhone, detectMediaType } from '@crm/shared';
 const sendMessage = z.object({
   to: z.string().min(4).optional(),
   conversationId: z.string().uuid().optional(),
-  body: z.string().min(1).max(4096),
+  // A message of only spaces or blank lines is an empty bubble on the other phone (R-023).
+  body: z.string().max(4096).refine((b) => b.trim() !== '', { message: 'Write a message.' }),
   senderId: z.string().uuid().optional(),
   /** An admin knowingly messaging a do-not-contact person: explicit, with a reason, audited. */
   overrideDnc: z.boolean().optional(),

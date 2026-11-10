@@ -170,11 +170,12 @@ describe('AC-6.5 and AC-6.6 a do-not-contact contact', () => {
     expect(viaKey.status).toBe(422);
   });
 
-  it('AC-6.6 an agent lifts it, and then messages go as for anyone', async () => {
+  it('AC-6.6 an admin lifts it (an agent cannot: R-034), and then messages go as for anyone', async () => {
     await flag('opt_out');
     await db.execute(sql`UPDATE message SET created_at = now() - interval '2 hours' WHERE conversation_id = ${conversationId}`);
     expect((await send(agentToken)).status).toBe(422);
-    expect((await request(app).put(`/api/v1/contacts/${contactId}/do-not-contact`).set(as(agentToken)).send({ value: false })).status).toBe(204);
+    expect((await request(app).put(`/api/v1/contacts/${contactId}/do-not-contact`).set(as(agentToken)).send({ value: false })).status).toBe(403);
+    expect((await request(app).put(`/api/v1/contacts/${contactId}/do-not-contact`).set(as(adminToken)).send({ value: false })).status).toBe(204);
     expect((await send(agentToken)).status).toBe(202);
   });
 });

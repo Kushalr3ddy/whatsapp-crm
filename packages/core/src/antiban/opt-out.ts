@@ -56,7 +56,18 @@ export async function handleInboundSafety(deps: OptOutDeps, input: InboundSafety
   const optedOut = contact.dnc && contact.reason === OPT_OUT_REASON;
 
   if (optedOut) {
-    if (!matchesRestartWord(body, settings.restartWords)) return none;
+    if (!matchesRestartWord(body, settings.restartWords)) {
+      // A second STOP is not "they wrote to us again": an agent may answer an opted-out person by hand only once they have written
+      // something else (AC-6.5), so the opt-out is stamped again, now, and the STOP just stored falls before it (R-037). GREATEST with
+      // the database's own clock, because the message was stamped by the database and the gateway's clock can run behind it.
+      if (matchesStopWord(body, settings.stopWords)) {
+        const now = (deps.now ?? (() => new Date()))();
+        await deps.db.execute(sql`
+          UPDATE contact SET dnc_at = GREATEST(${now.toISOString()}::timestamptz, clock_timestamp()), updated_at = now()
+          WHERE id = ${contact.id} AND do_not_contact AND dnc_reason = ${OPT_OUT_REASON}`);
+      }
+      return none;
+    }
     const now = (deps.now ?? (() => new Date()))();
     const lifted = await deps.db.execute(sql`
       UPDATE contact SET do_not_contact = false, dnc_reason = NULL, dnc_at = NULL, updated_at = ${now.toISOString()}
@@ -148,7 +159,11 @@ async function optOut(
   return { closingMessageId: inserted.id, alreadyOptedOut: false };
 }
 
-/** What was last sent to this contact from this number, and the purpose of the campaign it belonged to. */
+/**
+ * What this contact is told they were messaged about: the latest campaign message in the chat, with its campaign's purpose, because that
+ * is why they were written to. Only a chat with no campaign message falls back to the last thing a person or the AI sent. Campaign messages
+ * are stored as sent by `system`, as are closing messages, so the campaign id is what tells them apart (R-038).
+ */
 async function lastSentTo(
   deps: Omit<OptOutDeps, 'llm'>, conversationId: string
 ): Promise<{ body: string | null; campaignPurpose: string | null } | null> {
@@ -156,8 +171,9 @@ async function lastSentTo(
     SELECT m.body_enc AS "bodyEnc", c.purpose AS "purpose"
     FROM message m LEFT JOIN campaign c ON c.id = m.campaign_id
     WHERE m.conversation_id = ${conversationId} AND m.direction = 'outbound' AND m.status IN ('sent', 'delivered', 'read')
-      AND m.sent_by NOT IN ('phone', 'system') AND m.body_enc IS NOT NULL
-    ORDER BY m.sent_at DESC NULLS LAST, m.created_at DESC LIMIT 1`) as unknown as Array<{ bodyEnc: Uint8Array; purpose: string | null }>)[0];
+      AND m.body_enc IS NOT NULL
+      AND (m.campaign_id IS NOT NULL OR m.sent_by NOT IN ('phone', 'system'))
+    ORDER BY (m.campaign_id IS NOT NULL) DESC, m.sent_at DESC NULLS LAST, m.created_at DESC LIMIT 1`) as unknown as Array<{ bodyEnc: Uint8Array; purpose: string | null }>)[0];
   if (row === undefined) return null;
   let body: string | null = null;
   try { body = new TextDecoder().decode(deps.kms.decrypt(row.bodyEnc)); } catch { body = null; }

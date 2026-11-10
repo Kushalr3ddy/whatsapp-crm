@@ -227,6 +227,21 @@ export function requireScope(scope: string) {
 }
 
 /**
+ * For an action that changes what the org can do, or whom it may contact: a signed-in person must be an admin, and a key must hold
+ * the scope. `requireScope` alone lets every signed-in person through, which put an agent past checks meant for admins (R-034).
+ */
+export function requireAdminOrScope(scope: string) {
+  const needScope = requireScope(scope);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (req.crm?.kind === 'session' && req.crm.role !== 'admin') {
+      res.status(403).json(problem(req, 403, 'FORBIDDEN', 'Requires role: admin.'));
+      return;
+    }
+    needScope(req, res, next);
+  };
+}
+
+/**
  * Double-submit CSRF protection for cookie-authenticated writes.
  *
  * Only cookies are vulnerable: a browser attaches them to cross-site requests automatically,

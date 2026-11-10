@@ -97,14 +97,16 @@ const sendReply = (token: string, extra: object = {}) => request(app).post('/api
 const REASON = 'they asked us to call them back';
 
 describe('flagging a contact', () => {
-  it('lets an agent flag and clear it, and audits it', async () => {
+  it('lets an agent flag it, an admin clear it, and audits both (an agent cannot clear it: R-034)', async () => {
     const r = await request(app).put(`/api/v1/contacts/${normal}/do-not-contact`)
       .set(asSession(agentToken)).send({ value: true, reason: 'asked to stop' });
     expect(r.status).toBe(204);
     const row = (await rows<{ f: boolean; why: string | null }>(sql`
       SELECT do_not_contact AS f, dnc_reason AS why FROM contact WHERE id = ${normal}`))[0]!;
     expect(row).toEqual({ f: true, why: 'asked to stop' });
-    await request(app).put(`/api/v1/contacts/${normal}/do-not-contact`).set(asSession(agentToken)).send({ value: false });
+    expect((await request(app).put(`/api/v1/contacts/${normal}/do-not-contact`).set(asSession(agentToken)).send({ value: false })).status).toBe(403);
+    expect((await rows<{ f: boolean }>(sql`SELECT do_not_contact AS f FROM contact WHERE id = ${normal}`))[0]!.f).toBe(true);
+    await request(app).put(`/api/v1/contacts/${normal}/do-not-contact`).set(asSession(adminToken)).send({ value: false });
     expect((await rows<{ f: boolean }>(sql`SELECT do_not_contact AS f FROM contact WHERE id = ${normal}`))[0]!.f).toBe(false);
     const audit = await rows<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM audit_log WHERE org_id = ${orgId} AND action = 'contact.dnc_changed'`);

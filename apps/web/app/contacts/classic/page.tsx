@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { listContacts, listTags, listSenders, listCustomFields, listCampaigns, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import { listContacts, listTags, listSenders, listCustomFields, listCampaigns, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
 import type { Contact, Tag, Sender, CustomField, Campaign } from '@/lib/crm';
 import {
   saveContactFieldsAction, setDncAction,
@@ -87,14 +87,16 @@ export default async function ContactsPage(
   let tags: Tag[] = [];
   let senders: Sender[] = [];
   let fields: CustomField[] = [];
+  let isAdmin = false;
   let failure: string | null = null;
   let expired = false;
   try {
-    [contacts, tags, senders, fields] = await Promise.all([
+    [contacts, tags, senders, fields, isAdmin] = await Promise.all([
       listContacts({ ...view }),
       listTags(),
       listSenders(),
-      listCustomFields()
+      listCustomFields(),
+      getMe().then((m) => m.role === 'admin')
     ]);
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
@@ -238,7 +240,7 @@ export default async function ContactsPage(
           <li className="hidden gap-x-4 px-4 py-2 text-xs font-medium text-muted md:grid md:grid-cols-[1.25rem_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_6.5rem_1rem]" aria-hidden>
             <span /><span>Name</span><span>Phone / email</span><span>Tags</span><span>Added</span><span />
           </li>
-          {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} fields={fields} />)}
+          {contacts.map((c) => <ContactRow key={c.id} contact={c} allTags={tags} fields={fields} isAdmin={isAdmin} />)}
         </ul>
       )}
 
@@ -504,7 +506,7 @@ function CampaignFromSelection(
  * reach them, their tags (small rounded labels, each removable) and when they were added. Opening it shows the
  * less-used controls: adding a tag, do-not-contact, when they were last imported and the custom fields.
  */
-function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: Tag[]; fields: CustomField[] }) {
+function ContactRow({ contact, allTags, fields, isAdmin }: { contact: Contact; allTags: Tag[]; fields: CustomField[]; isAdmin: boolean }) {
   const phone = contact.identities.find((i) => i.kind === 'phone')?.value;
   const email = contact.identities.find((i) => i.kind === 'email')?.value;
   const name = contact.displayName ?? phone ?? email ?? 'Unnamed contact';
@@ -576,7 +578,8 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
                 <SubmitButton className="btn btn-sm" pendingLabel="Adding…">Add</SubmitButton>
               </form>
             )}
-            <form action={setDncAction}>
+            {/* Anyone may mark someone do not contact; allowing messages again is an admin's decision. */}
+            {(!contact.doNotContact || isAdmin) && <form action={setDncAction}>
               <input type="hidden" name="contactId" value={contact.id} />
               <input type="hidden" name="value" value={contact.doNotContact ? 'false' : 'true'} />
               <SubmitButton
@@ -587,7 +590,7 @@ function ContactRow({ contact, allTags, fields }: { contact: Contact; allTags: T
               >
                 {contact.doNotContact ? 'Allow contact' : 'Do not contact'}
               </SubmitButton>
-            </form>
+            </form>}
           </div>
 
           {fields.length > 0 && <ContactFields contact={contact} fields={fields} />}

@@ -598,7 +598,7 @@ describe('more things a person does', () => {
     expect(Object.keys(await messages())).toEqual([]);
   });
 
-  it.fails('[R-023] UM-15 sends a message that is only spaces from the inbox: refused', async () => {
+  it('[R-023] UM-15 sends a message that is only spaces from the inbox: refused', async () => {
     const r = await request(app).post('/api/v1/messages').set(...auth()).send({ to: people[0]!.phone, body: '   ', senderId });
     expect(r.status).toBe(422);
   });
@@ -631,7 +631,7 @@ describe('more things a person does', () => {
     expect(n).toBe(1);
   });
 
-  it.fails('[R-024] UM-21 starts a campaign on a number that was removed: refused, not queued into nowhere', async () => {
+  it('[R-024] UM-21 starts a campaign on a number that was removed: refused, not queued into nowhere', async () => {
     const id = await newCampaign();
     await db.execute(sql`UPDATE sender_identity SET status = 'removed' WHERE id = ${senderId}`);
     const r = await start(id);

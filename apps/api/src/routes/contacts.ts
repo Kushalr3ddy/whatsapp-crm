@@ -538,6 +538,12 @@ export function contactsRouter(defaultCountry: string): Router {
       }
       const orgId = req.crm!.orgId;
       const { value, reason } = body.data;
+      // Anyone may flag someone; lifting the flag is the admin's decision. An agent who could lift it could then message the person,
+      // which the admin-only, audited override exists to stop (R-034). An API key an admin made keeps its scope.
+      if (!value && req.crm!.kind === 'session' && req.crm!.role !== 'admin') {
+        res.status(403).json(problem(req, 403, 'FORBIDDEN', 'Only an admin can allow messages to someone who was marked do not contact.'));
+        return;
+      }
       const found = await req.tenant!(async (tx) => {
         const rows = await tx.execute(sql`
           UPDATE contact SET

@@ -132,14 +132,18 @@ export interface StartedCampaign { readonly progress: CampaignProgress }
 export async function startCampaign(
   tx: Transaction, orgId: string, ctx: ActionContext, id: string,
   override?: { gates: readonly PolicyGate[]; reason: string }
-): Promise<StartedCampaign | { error: 'not_found' | 'already_running' | 'finished' }> {
+): Promise<StartedCampaign | { error: 'not_found' | 'already_running' | 'finished' | 'number_removed' }> {
   const rows = await tx.execute(sql`
-    SELECT status, started_at AS "startedAt" FROM campaign
-    WHERE id = ${id} AND org_id = ${orgId} FOR UPDATE`);
-  const campaign = (rows as unknown as Array<{ status: string; startedAt: Date | string | null }>)[0];
+    SELECT c.status, c.started_at AS "startedAt",
+           (SELECT si.status FROM sender_identity si WHERE si.id = c.sender_identity_id) AS "senderStatus"
+    FROM campaign c
+    WHERE c.id = ${id} AND c.org_id = ${orgId} FOR UPDATE OF c`);
+  const campaign = (rows as unknown as Array<{ status: string; startedAt: Date | string | null; senderStatus: string | null }>)[0];
   if (!campaign) return { error: 'not_found' };
   if (campaign.status === 'running') return { error: 'already_running' };
   if (campaign.status === 'completed' || campaign.status === 'cancelled') return { error: 'finished' };
+  // A number taken off the Numbers page never connects again: its messages would wait for ever (R-024).
+  if (campaign.senderStatus === 'removed') return { error: 'number_removed' };
 
   // Only on the first start, which is "never started", not "is a draft": a campaign paused before it ever started (older data, R-022)
   // has no audience yet either. Resuming one that did start must not re-snapshot, or contacts added since would silently join an

@@ -58,14 +58,14 @@ export default async function LinkPage(
             <strong>Settings → Linked Devices → Link a device</strong>.
           </>
         }
-        actions={failure === null && senders.length > 0 ? <AddNumber first={false} /> : undefined}
+        actions={failure === null && senders.length > 0 && isAdmin ? <AddNumber first={false} /> : undefined}
       />
 
       {failure !== null && <p className="notice notice-danger">{failure}</p>}
 
-      {failure === null && senders.length === 0 && (
-        <AddNumber first />
-      )}
+      {failure === null && senders.length === 0 && (isAdmin ? <AddNumber first /> : (
+        <p className="notice">No number is linked yet. An admin has to add one.</p>
+      ))}
 
       <ul className="grid items-start gap-4 lg:grid-cols-2">
         {active.map((s) => <SenderCard key={s.id} sender={s} isAdmin={isAdmin} events={events.get(s.id) ?? []} autoStart={s.id === start} />)}
@@ -116,6 +116,8 @@ function SenderCard({ sender, isAdmin, events, autoStart = false }: { sender: Se
         <p className="mt-3 text-xs text-muted">
           Test channel: it never connects to WhatsApp, so there is nothing to link.
         </p>
+      ) : !isAdmin ? (
+        <p className="mt-3 text-xs text-muted">Only an admin can link or unlink a number.</p>
       ) : (
         <LinkPanel
           senderId={sender.id}

@@ -221,3 +221,36 @@ Checked and found sound by the review: tenant isolation (`withTenant` + `SET LOC
 | `npm ci` skipped install scripts (allow-scripts), so `baileys:build` had to be run by hand | `npm-ci.log` | Ran it |
 | `next build` fails ("<Html> should not be imported outside of pages/_document", on /404) when `NODE_ENV` comes from `.env` as development | `.dev-logs/build.log` | Built with `NODE_ENV=production` set in the shell; passes |
 | Automated suite: `antiban-v2-lane` AC-1.1 timed out once at 5 s, passed on the next run; `llm/src/settings.test.ts` fails twice on Windows (file mode 0666 vs 0600 expected) | test logs | not acted on |
+
+## Re-run after the go-live fixes (2026-11-10, from 00:20 IST)
+
+Code: branch `claude/whatsapp-crm-live-testing-a10837` (main at decf200 plus R-023, R-024, R-033 to R-040, not committed). Live install restarted from it (API 3120, gateway, web 3121), same database and numbers; number 123 reconnected with no QR. Quiet hours were switched off for the run (a settings row was added) and the row removed afterwards.
+
+| Group | Result |
+|---|---|
+| inbox | I-1, I-2 pass; I-3 (reply of only spaces) now **refused, 422** (R-023) |
+| campaign | C-1 to C-4 pass |
+| ai | AI-1, AI-3, AI-4, AI-5 pass; AI-9 (made-up "what to bring") and AI-10 ("automated helper") still fail: wording of the template, the owner's call (docs/49) |
+| interest | INT-1 (a clear yes is interested), INT-2, INT-3 pass. The first run on 2026-11-09 filed the same kind of yes as "talking": the model is not steady, one sample each way |
+| optout | O-2a closing message now quotes the campaign's own opening message; O-2b, **O-3 an agent cannot message someone who said STOP twice (LF-19 fixed)**, O-1 pass |
+
+Other checks on the scratch stack (fake channel): an agent flagging do-not-contact 204, clearing 403, adding a number 403; an admin clearing 204; NUL in text 422; the security headers present; six wrong guesses at the admin's email from one address gave 401 x5 then 429, and the admin signed in from another address at once; no session cookie in the API log of either stack. Import speed on a quiet machine with about 2 200 contacts: upload 0.4 to 0.5 s, check 0.5 to 0.8 s for 2 and 12 people (PERF-1 was not reproduced: the 10 s was other sessions' stacks using the CPU; the import tests that failed in a loaded full run passed or took 1 to 4 s alone).
+
+Not done: sending to many people at once (needs a daytime run and more numbers), F3 and F8 (need a person), the web app has no full CSP, redirects from a model address are followed.
+
+## Two people at once, and people who push (2026-11-10)
+
+File: `tests/integration/races-and-abuse.test.ts`, 33 tests, run on the test database (`whatsapp_crm_test_fm2`). Each area has normal-use tests, breaking-use tests and same-moment tests. The four open bugs were run as plain tests first, to read why each fails:
+
+| Bug | What the plain test said | Meaning |
+|---|---|---|
+| R-041 demote | `expected 0 to be >= 1` active admins | both requests committed; no admin left (25 rounds) |
+| R-041 disable | `expected 0 to be >= 1` active admins | same, by disabling |
+| R-042 | `expected 25 to be 0` rounds where both agents got 202 | the claim is not an ownership rule |
+| R-043 | `expected 2 to be 1` messages for one `Idempotency-Key` | nothing identifies a repeated send |
+
+Why they happen: `packages/core/src/team.ts` `changeMember` locks only the target's membership row and counts the other admins from the committed state; `apps/api/src/routes/messages.ts` reads the owner with a plain SELECT, and `claimIfUnowned` ignores a claim that updates no row. No version column, trigger or function exists in the schema (`packages/db`), so nothing else enforces either rule.
+
+What held up: a second agent in an owned chat (409), another organisation's chat, person or team member (404, nothing changed), no sign-in (401), a key without the scope or a cookie without the CSRF token (403), empty / spaces-only / oversized / NUL text (422), invented ids, `__proto__` and `constructor` as field names (no pollution), a 200 000-character value (no 500), thirty simultaneous replies (all 30 kept), different custom fields saved at once (both kept, 15 rounds).
+
+Not tested: a second browser on a real screen, load (hundreds of people), and the web screens' own double-click guard (read in `reply-box.tsx`, not driven).

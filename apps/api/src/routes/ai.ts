@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { setTenant, tenantDatabase, type Database } from '@crm/db';
@@ -215,6 +215,24 @@ export function aiRouter(
   // Admin session only (an API key can never change it). The key is never returned; the settings are written to the env file that the API and
   // the gateway re-read, so a change applies from the next model call with no restart.
 
+  /**
+   * The model, its key and its address are one setting for the whole install (an env file both processes read), not one per organisation.
+   * So only the admin of the organisation the install was set up for, the oldest one, may change, test or switch it off, and only that
+   * admin is shown the end of the key; any other organisation's admin could otherwise change or switch off the assistant for everyone, or
+   * point the saved key at a host they chose (R-036). The assistant itself still answers for every organisation.
+   */
+  const isInstallOwner = async (orgId: string): Promise<boolean> => {
+    const first = (await db.execute(sql`SELECT id FROM org ORDER BY created_at ASC, id ASC LIMIT 1`)) as unknown as Array<{ id: string }>;
+    return first[0]?.id === orgId;
+  };
+  const requireInstallOwner = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (req.crm!.kind === 'session' && !(await isInstallOwner(req.crm!.orgId))) {
+      res.status(403).json(problem(req, 403, 'FORBIDDEN', 'The AI model is set once for the whole install, by the admin of the organisation it was set up for.'));
+      return;
+    }
+    next();
+  };
+
   const llmCalls = new Map<string, number[]>();
   /** At most ten model-settings calls (listing, testing, saving) per organisation per minute; testing costs a little money. */
   const underLlmLimit = (orgId: string): boolean => {
@@ -259,9 +277,9 @@ export function aiRouter(
   }
 
   /** The providers the page offers and what is in use now. Anyone signed in may see it; only an admin sees the last four characters of the key. */
-  router.get('/llm', requireScope('conversations:read'), (req: Request, res: Response) => {
+  router.get('/llm', requireScope('conversations:read'), async (req: Request, res: Response) => {
     const status = llmSettings.live.status();
-    const isAdmin = req.crm!.kind !== 'session' || req.crm!.role === 'admin';
+    const isAdmin = (req.crm!.kind !== 'session' || req.crm!.role === 'admin') && (req.crm!.kind !== 'session' || await isInstallOwner(req.crm!.orgId));
     res.json({
       data: {
         ...status, keyLast4: isAdmin ? status.keyLast4 : null, baseUrl: isAdmin ? status.baseUrl : null,
@@ -272,7 +290,7 @@ export function aiRouter(
   });
 
   /** The models this provider and key offer, for the picker. A blank key reuses the saved one for the same provider. */
-  router.post('/llm/models', requireRole('admin'), async (req: Request, res: Response) => {
+  router.post('/llm/models', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     const parsed = llmInput.safeParse(req.body);
     if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider and enter the key.')); return; }
     if (!underLlmLimit(req.crm!.orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
@@ -288,7 +306,7 @@ export function aiRouter(
   });
 
   /** Tests a model with two tiny real calls. Saves nothing. */
-  router.post('/llm/test', requireRole('admin'), async (req: Request, res: Response) => {
+  router.post('/llm/test', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     const parsed = llmInput.safeParse(req.body);
     if (!parsed.success || parsed.data.model === undefined || parsed.data.model === '') { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider, enter the key and pick a model.')); return; }
     if (!underLlmLimit(req.crm!.orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
@@ -301,7 +319,7 @@ export function aiRouter(
    * Makes this the model the install uses from now on: tests it first (unless `anyway` is sent after a failed test the admin chose to ignore),
    * then writes the `LLM_*` lines to the env file. Audited without the key.
    */
-  router.put('/llm', requireRole('admin'), async (req: Request, res: Response) => {
+  router.put('/llm', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     const parsed = llmInput.extend({ anyway: z.boolean().optional() }).safeParse(req.body);
     if (!parsed.success || parsed.data.model === undefined || parsed.data.model === '') { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider, enter the key and pick a model.')); return; }
     const orgId = req.crm!.orgId;
@@ -327,7 +345,7 @@ export function aiRouter(
   });
 
   /** Turns the model off: the assistant keeps its settings but cannot answer until a model is set again. The key is removed from the file. */
-  router.delete('/llm', requireRole('admin'), async (req: Request, res: Response) => {
+  router.delete('/llm', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     await writeLlmEnv(llmSettings.envFile, { LLM_DRIVER: 'none', LLM_MODEL: undefined, LLM_API_KEY: undefined, LLM_BASE_URL: undefined });
     await auditLlmChange(db, req.crm!.orgId, auditActor(req), { provider: 'none', model: null, baseUrlHost: null, keyReplaced: false, tested: false });
     res.status(204).end();

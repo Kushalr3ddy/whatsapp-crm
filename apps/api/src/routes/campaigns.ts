@@ -311,7 +311,8 @@ export function campaignsRouter(storage: StorageDriver): Router {
         const map = {
           not_found: [404, 'NOT_FOUND', 'No such campaign.'],
           already_running: [409, 'ALREADY_RUNNING', 'This campaign is already running.'],
-          finished: [409, 'CAMPAIGN_FINISHED', 'This campaign has finished and cannot restart.']
+          finished: [409, 'CAMPAIGN_FINISHED', 'This campaign has finished and cannot restart.'],
+          number_removed: [409, 'NUMBER_REMOVED', 'The number this campaign sends from was removed. Pick another number.']
         } as const;
         const [status, code, detail] = map[result.error];
         res.status(status).json(problem(req, status, code, detail));
