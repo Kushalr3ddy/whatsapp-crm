@@ -22,7 +22,7 @@ export interface InboundSafetyInput {
 
 /** What `handleInboundSafety` did. */
 export interface InboundSafetyResult {
-  readonly outcome: 'opted_out' | 'restarted' | 'none';
+  readonly outcome: 'opted_out' | 'restarted' | 'review' | 'none';
   /** The closing message that was queued, or null (switched off, or nothing was opted out). */
   readonly closingMessageId: string | null;
   /** What recognised the opt-out. */
@@ -80,13 +80,31 @@ export async function handleInboundSafety(deps: OptOutDeps, input: InboundSafety
     return { outcome: 'restarted', closingMessageId: null, via: 'keyword' };
   }
 
-  let via: 'keyword' | 'classifier' | null = null;
-  if (matchesStopWord(body, settings.stopWords)) via = 'keyword';
-  else if (await looksNegative(deps.llm, body)) via = 'classifier';
-  if (via === null) return none;
+  if (matchesStopWord(body, settings.stopWords)) {
+    const done = await optOut(deps, { orgId: input.orgId, conversationId: input.conversationId, contactId: contact.id, actor: SYSTEM_ACTOR, via: 'keyword' });
+    return done.alreadyOptedOut ? none : { outcome: 'opted_out', closingMessageId: done.closingMessageId, via: 'keyword' };
+  }
 
-  const done = await optOut(deps, { orgId: input.orgId, conversationId: input.conversationId, contactId: contact.id, actor: SYSTEM_ACTOR, via });
-  return done.alreadyOptedOut ? none : { outcome: 'opted_out', closingMessageId: done.closingMessageId, via };
+  // The model's word alone never silences a person (R-046): a harmless "flood 10" was read as a refusal once in 32 texts. A message it reads
+  // as negative goes to a colleague with a note, the AI stops answering that chat, and nothing is flagged or sent.
+  if (await looksNegative(deps.llm, body)) {
+    await flagForReview(deps.db, input.orgId, input.conversationId, body);
+    return { outcome: 'review', closingMessageId: null, via: 'classifier' };
+  }
+  return none;
+}
+
+/** Leaves a note for the team and takes the chat off the AI, so a person reads what the contact wrote before anything else is sent. */
+async function flagForReview(db: Queryable, orgId: string, conversationId: string, body: string): Promise<void> {
+  const bot = (await db.execute(sql`SELECT bot_user_id AS "id" FROM ai_setting WHERE org_id = ${orgId}`) as unknown as Array<{ id: string | null }>)[0]?.id ?? null;
+  const quoted = body.replace(/\s+/g, ' ').slice(0, 200);
+  // Only a chat the AI owns is taken from it; a chat a person owns stays theirs.
+  if (bot !== null) {
+    await db.execute(sql`UPDATE conversation SET assignee_user_id = NULL, updated_at = now() WHERE id = ${conversationId} AND org_id = ${orgId} AND assignee_user_id = ${bot}`);
+  }
+  await db.execute(sql`
+    INSERT INTO internal_note (org_id, conversation_id, author_user_id, body)
+    VALUES (${orgId}, ${conversationId}, ${bot}, ${`The AI thinks this message may be a request to stop: "${quoted}". It has NOT been marked do-not-contact. Read it, and mark the person yourself if they do want to stop.`})`);
 }
 
 /** What `markOptOut` did. */

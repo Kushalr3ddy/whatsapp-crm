@@ -73,23 +73,31 @@ async function recentCollision(
 
 /**
  * A person who sends in a chat nobody owns becomes its owner (an unowned chat is one a campaign made, or one that was handed to nobody).
- * Only the owner or an admin may send afterwards. Returns nothing: a lost race (someone claimed it first) is caught by the next send's lock.
+ * Only the owner or an admin may send afterwards. Returns false when the send must be refused: another agent claimed the chat first
+ * (R-042). The claim is the rule, not the plain read before it: two agents both read "nobody owns it", and only one update wins.
  */
 async function claimIfUnowned(
   req: Request, tx: Parameters<typeof writeAudit>[0], orgId: string, conversationId: string
-): Promise<void> {
+): Promise<boolean> {
   const ctx = req.crm!;
-  if (ctx.kind !== 'session' || ctx.userId === null) return;
+  if (ctx.kind !== 'session' || ctx.userId === null) return true;
   const claimed = (await tx.execute(sql`
     UPDATE conversation SET assignee_user_id = ${ctx.userId}, updated_at = now()
     WHERE id = ${conversationId} AND org_id = ${orgId} AND assignee_user_id IS NULL
     RETURNING id`)) as unknown[];
-  if (claimed.length === 0) return;
+  if (claimed.length === 0) {
+    // Someone else owns it now (they won the race), or it was already ours. Only an admin may send into someone else's chat.
+    const now = (await tx.execute(sql`
+      SELECT assignee_user_id AS "assigneeUserId" FROM conversation WHERE id = ${conversationId} AND org_id = ${orgId}`)) as unknown as Array<{ assigneeUserId: string | null }>;
+    const owner = now[0]?.assigneeUserId ?? null;
+    return ctx.role === 'admin' || owner === null || owner === ctx.userId;
+  }
   await writeAudit(tx, {
     orgId, actor: auditActor(req), action: AUDIT.conversationAssigned, targetType: 'conversation', targetId: conversationId,
     before: { assigneeUserId: null }, after: { assigneeUserId: ctx.userId, reason: 'sent the first message in an unowned chat' },
     ip: req.ip ?? null, requestId: String(req.id)
   });
+  return true;
 }
 
 /**
@@ -955,7 +963,7 @@ export function messagesRouter(
         ) as unknown as Array<{ flagged: boolean }>;
         if (flagged[0]?.flagged === true) return { dnc: true as const };
 
-        await claimIfUnowned(req, tx, orgId, conversationId);
+        if (!(await claimIfUnowned(req, tx, orgId, conversationId))) return { locked: true as const };
         const stored = await storeOutboundMedia(tx, storage, { orgId, bytes, filename });
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
@@ -994,6 +1002,9 @@ export function messagesRouter(
     }
     const { to, conversationId, body, senderId, overrideDnc, overrideReason, acknowledgeCollision } = parsed.data;
     const orgIdEarly = req.crm!.orgId;
+    // The caller's own mark for this send: the same key again is the same message (R-043). Anything else is ignored.
+    const rawKey = req.get('idempotency-key')?.trim();
+    const idempotencyKey = rawKey !== undefined && rawKey.length > 0 && rawKey.length <= 200 ? rawKey : null;
 
     // Replying into an existing thread. No phone is involved, so no normalisation applies —
     // the conversation already knows which identity it belongs to, phone or privacy address.
@@ -1037,19 +1048,28 @@ export function messagesRouter(
           if (clash !== null) return { collision: clash };
         }
 
-        await claimIfUnowned(req, tx, orgIdEarly, conversationId);
+        if (!(await claimIfUnowned(req, tx, orgIdEarly, conversationId))) return { locked: true as const };
         const inserted = (await tx.execute(sql`
           INSERT INTO message (org_id, conversation_id, direction, status, content_type,
                                body_enc, body_hmac, sent_by, sent_by_user_id,
-                               dnc_override, dnc_override_reason)
+                               dnc_override, dnc_override_reason, idempotency_key)
           SELECT ${orgIdEarly}, v.id, 'outbound', 'queued', 'text',
                  ${Buffer.from(kms.encrypt(new TextEncoder().encode(body)))},
                  ${kms.blindIndex(body)}, 'api', ${authorOf(req)}, ${verdict === 'override'},
-                 ${verdict === 'override' ? overrideReason ?? null : null}
+                 ${verdict === 'override' ? overrideReason ?? null : null}, ${idempotencyKey}
           FROM conversation v
           WHERE v.id = ${conversationId} AND v.org_id = ${orgIdEarly}
+          ON CONFLICT (org_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
           RETURNING id, conversation_id AS "conversationId", status`)
         ) as unknown as Array<{ id: string; conversationId: string; status: string }>;
+        if (inserted.length === 0) {
+          // The same send again (R-043): the first one is the message. Answer with it, queue nothing.
+          const first = (await tx.execute(sql`
+            SELECT id, conversation_id AS "conversationId", status FROM message
+            WHERE org_id = ${orgIdEarly} AND idempotency_key = ${idempotencyKey}`)
+          ) as unknown as Array<{ id: string; conversationId: string; status: string }>;
+          return { row: first[0]! };
+        }
         if (verdict === 'override') await auditDncOverride(req, tx, orgIdEarly, conversationId, overrideReason);
         return { row: inserted[0]! };
       });

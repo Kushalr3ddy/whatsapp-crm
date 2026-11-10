@@ -611,6 +611,7 @@ function ContactFields({ contact, fields }: { contact: Contact; fields: CustomFi
       </summary>
       <form action={saveContactFieldsAction} className="mt-2 grid grid-cols-2 gap-2">
         <input type="hidden" name="contactId" value={contact.id} />
+        {fields.map((f) => <input key={`o_${f.key}`} type="hidden" name={`o_${f.key}`} value={String(values[f.key] ?? '')} />)}
         {fields.map((f) => (
           <label key={f.key} className="flex flex-col gap-0.5">
             <span className="text-muted">{f.label}</span>

@@ -95,12 +95,13 @@ describe('AC-6.1 opt-out intent', () => {
     expect(await outbound(c.conversationId)).toEqual([]);
   });
 
-  it('AC-6.1 the AI classifier can say negative (who is this, don\'t message me, abuse)', async () => {
+  it('AC-6.1 the AI classifier can say negative (who is this, do not message me, abuse): a person is told, nobody is flagged (R-046)', async () => {
     const ai = model('NEGATIVE');
     const c = await lane.contact({ inbound: 'old' });
     const r = await say(c, 'who is this? stop texting me you scammers', ai);
-    expect(r.outcome).toBe('opted_out');
+    expect(r.outcome).toBe('review');
     expect(ai.calls).toBe(1);
+    expect((await contactRow(c.contactId)).dnc).toBe(false);
   });
 
   it('AC-6.1 the classifier saying fine leaves the contact alone', async () => {

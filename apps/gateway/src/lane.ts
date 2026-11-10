@@ -242,6 +242,11 @@ export async function runLane(ctx: WorkContext, orgId: string, senderId: string)
     let next: { c: LaneCandidate; job: QueuedSend; decision: SendDecision } | null = null;
     let failedOne = false;
     for (const c of candidates) {
+      // A paused campaign's message waits for Resume, whatever else is true of it (R-045).
+      if (c.campaignPaused) {
+        await recordHold(ctx.db, c.messageId, { reason: 'campaign_paused', until: null });
+        continue;
+      }
       let job = jobs.get(c.messageId) ?? null;
       if (job === null) {
         job = await loadJob(ctx, c.messageId);

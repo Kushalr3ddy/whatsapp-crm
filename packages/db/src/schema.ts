@@ -484,6 +484,11 @@ export const message = pgTable('message', {
    */
   sendStartedAt: timestamp('send_started_at', { withTimezone: true }),
   /**
+   * The caller's `Idempotency-Key` for this send, so the same send repeated (a retry after a dropped connection, a second tab) is one
+   * message, not two (R-043). Unique per org; null for a message sent without one.
+   */
+  idempotencyKey: text('idempotency_key'),
+  /**
    * An admin knowingly sent this to someone flagged do-not-contact (the override is a per-message,
    * audited decision with a reason). The gateway's last-line check refuses to send to a
    * do-not-contact contact unless this is set, so a flag raised after queueing still stops a message.
@@ -511,6 +516,7 @@ export const message = pgTable('message', {
   readAt: timestamp('read_at', { withTimezone: true })
 }, (t) => [
   uniqueIndex('message_provider_id_uidx').on(t.orgId, t.providerMessageId),
+  uniqueIndex('message_idempotency_uidx').on(t.orgId, t.idempotencyKey).where(sql`idempotency_key IS NOT NULL`),
   index('message_conversation_idx').on(t.conversationId, t.createdAt),
   // Sends in flight, for the sweep that reports the ones never confirmed. Tiny: only a message being handed to WhatsApp is in it.
   index('message_in_flight_idx').on(t.sendStartedAt).where(sql`status = 'queued' AND send_started_at IS NOT NULL`)

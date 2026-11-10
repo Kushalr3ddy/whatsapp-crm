@@ -19,6 +19,8 @@ export interface LaneCandidate {
   readonly holdReason: string | null;
   readonly holdUntil: Date | null;
   readonly campaignId: string | null;
+  /** The campaign it belongs to is paused: it waits for Resume and is never sent meanwhile (R-045). */
+  readonly campaignPaused: boolean;
 }
 
 /**
@@ -39,21 +41,31 @@ export async function laneCandidates(
              EXISTS (SELECT 1 FROM message i WHERE i.conversation_id = v.id AND i.direction = 'inbound'
                      AND i.created_at > ${since}) AS "recentInbound",
              m.sent_by AS "sentBy",
+             coalesce(cp.status = 'paused', false) AS "campaignPaused",
+             -- The campaign's own message to this person (the one its recipient row points at), as opposed to a follow-up it queued after
+             -- they wrote. Whether they wrote to us in the last 24 hours does not make it a reply (R-049): quiet hours still hold it.
+             EXISTS (SELECT 1 FROM campaign_recipient cr WHERE cr.message_id = m.id) AS "opening",
              -- The closing message sent when someone opts out goes at reply priority, whenever they last wrote (F6 AC-6.2).
              coalesce(m.dnc_override_reason = ${CLOSING_MESSAGE_MARK}, false) AS "closing"
       FROM message m JOIN conversation v ON v.id = m.conversation_id
+      -- A paused campaign's queued messages stay candidates so they can show why they wait, but the lane never sends them (R-045): Pause
+      -- used to flip the status only, so what the dispatcher had already queued (the whole batch, within seconds of Start) kept going out.
+      -- Cancel withdraws them instead (campaign-actions).
+      LEFT JOIN campaign cp ON cp.id = m.campaign_id
       WHERE v.sender_identity_id = ${senderIdentityId} AND m.direction = 'outbound' AND m.status = 'queued'
         -- In flight: already handed to WhatsApp by a run that has not recorded it yet. Never a candidate again (no second send).
         AND m.send_started_at IS NULL
     )
-    SELECT "messageId", "conversationId", "contactId", "plannedGapMs", "holdReason", "holdUntil", "campaignId",
+    SELECT "messageId", "conversationId", "contactId", "plannedGapMs", "holdReason", "holdUntil", "campaignId", "campaignPaused",
            NOT "known" AS "newChat",
-           CASE WHEN "recentInbound" OR "closing" THEN 'reply'
+           CASE WHEN "closing" THEN 'reply'
+                WHEN "opening" THEN 'campaign'
+                WHEN "recentInbound" THEN 'reply'
                 WHEN "campaignId" IS NOT NULL THEN 'campaign'
                 WHEN "sentBy" = 'agent' THEN 'ai'
                 ELSE 'manual' END AS "priority"
     FROM q
-    ORDER BY CASE WHEN "recentInbound" OR "closing" THEN 0 WHEN "campaignId" IS NOT NULL THEN 3 WHEN "sentBy" = 'agent' THEN 2 ELSE 1 END,
+    ORDER BY CASE WHEN "closing" THEN 0 WHEN "opening" THEN 3 WHEN "recentInbound" THEN 0 WHEN "campaignId" IS NOT NULL THEN 3 WHEN "sentBy" = 'agent' THEN 2 ELSE 1 END,
              "createdAt" ASC, "messageId" ASC
     LIMIT ${limit}`);
   return (rows as unknown as Array<Omit<LaneCandidate, 'holdUntil'> & { holdUntil: string | null }>).map((r) => ({

@@ -198,11 +198,16 @@ export async function autoReply(
   return { outcome: 'sent', messageId };
 }
 
-/** True when any message in the thread is newer than the inbound one that triggered this run (compared in SQL, so no timestamp passes through JavaScript). */
+/**
+ * True when a message in the thread is newer than the inbound one that triggered this run (compared in SQL, so no timestamp passes
+ * through JavaScript). A campaign's own follow-up (the held picture or link, queued by the gateway a moment after the person wrote) is
+ * not an answer, so it does not count (R-048): counting it made the AI skip every first reply that had something held back for it.
+ */
 async function newerExists(db: Database, orgId: string, conversationId: string, inboundMessageId: string): Promise<boolean> {
   const rows = await db.execute(sql`
     SELECT 1 FROM message WHERE org_id = ${orgId} AND conversation_id = ${conversationId}
-      AND created_at > (SELECT created_at FROM message WHERE id = ${inboundMessageId}) LIMIT 1`);
+      AND created_at > (SELECT created_at FROM message WHERE id = ${inboundMessageId})
+      AND NOT (direction = 'outbound' AND sent_by = 'system' AND campaign_id IS NOT NULL) LIMIT 1`);
   return (rows as unknown as unknown[]).length > 0;
 }
 
@@ -259,7 +264,9 @@ const TURN_FORMAT = [
 
 /** The system text: how to talk, how to run the conversation to its end, the fixed safety rules, and the org's own instructions. Never contains customer text. */
 export function systemText(orgName: string, instructions: string, options: SystemTextOptions = {}): string {
-  const person = options.fallback?.name ?? null;
+  // A team member whose display name is their login email would be shown to a customer as "live@test.local" (R-047): a name only if it is one.
+  const rawName = options.fallback?.name?.trim() ?? '';
+  const person = rawName === '' || rawName.includes('@') ? null : rawName;
   const phone = options.fallback?.phone.trim() ?? '';
   const who = person === null ? 'a colleague' : `${person}${phone !== '' ? ` (${phone})` : ''}`;
   const facts = options.facts ?? [];

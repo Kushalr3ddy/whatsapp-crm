@@ -72,6 +72,9 @@ export function ReplyBox(props: ReplyBoxProps) {
   const [overrideReason, setOverrideReason] = useState('');
   const [pending, start] = useTransition();
   const lastPing = useRef(0);
+  // One mark for the send in progress, shared by two presses in the same instant (before React has drawn "sending"): the server
+  // keeps one message for one mark (R-043). Cleared when the send ends, so the next send is a new one.
+  const sendKey = useRef<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => { void senderStatusAction(conversationId).then((next) => { if (next !== null) setSenderStatus(next); }); }, STATUS_POLL_MS);
@@ -180,11 +183,13 @@ export function ReplyBox(props: ReplyBoxProps) {
         return;
       }
       const form = new FormData();
+      sendKey.current ??= crypto.randomUUID();
+      form.set('key', sendKey.current);
       form.set('text', fillInText(reply, who));
       for (const p of pasted) form.append('image', p.file);
       if (doNotContact) form.set('overrideReason', overrideReason.trim());
       if (anyway) form.set('acknowledge', '1');
-      const r = await sendInboxReply(conversationId, form);
+      const r = await sendInboxReply(conversationId, form).finally(() => { sendKey.current = null; });
       if (r.ok) {
         setReply(''); setImages([]); grow();
         props.say(senderStatus !== null ? `Sent from ${senderStatus.label}.` : 'Sent.');

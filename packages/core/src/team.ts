@@ -57,6 +57,9 @@ export async function changeMember(
 ): Promise<Member> {
   return db.transaction(async (tx) => {
     await setTenant(tx, orgId);
+    // One change to the team at a time per organisation (R-041): the "is another admin left" count below reads committed rows, so two
+    // admins stepping each other down at once each saw the other still in place. Locking only the target's row did not stop that.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`team:${orgId}`}, 0))`);
     const found = await tx.execute(sql`
       SELECT m.role, u.status, u.email, u.is_bot AS "isBot" FROM org_membership m JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${orgId} AND m.user_id = ${userId} FOR UPDATE OF m`);

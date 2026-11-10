@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { changedFields } from './changed-fields';
 import {
   createTag, deleteTag, attachTag, detachTag, listTags, createCampaign, createCustomField, deleteCustomField,
   setContactFields, setDoNotContact, bulkTagContacts, CrmApiError, NotAuthenticatedError
@@ -113,14 +114,13 @@ export async function deleteFieldAction(formData: FormData): Promise<void> {
   await run(() => deleteCustomField(key));
 }
 
-/** Saves the field values typed into one contact's form. An empty box clears that field. */
+/** Saves the field values changed in one contact's form. An empty box clears that field. */
 export async function saveContactFieldsAction(formData: FormData): Promise<void> {
   const contactId = String(formData.get('contactId') ?? '');
   if (contactId === '') return;
-  const values: Record<string, string> = {};
-  for (const [name, value] of formData.entries()) {
-    if (name.startsWith('f_') && typeof value === 'string') values[name.slice(2)] = value;
-  }
+  // Only what this person changed: a stale page must not put old values back over a colleague's newer ones (R-044).
+  const values = changedFields(formData.entries());
+  if (Object.keys(values).length === 0) return;
   await run(() => setContactFields(contactId, values));
 }
 

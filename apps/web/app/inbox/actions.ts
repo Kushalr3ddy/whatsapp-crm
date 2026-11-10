@@ -44,7 +44,8 @@ export async function sendInboxReply(conversationId: string, form: FormData): Pr
   try {
     if (files.length === 0) {
       const reason = typeof form.get('overrideReason') === 'string' ? (form.get('overrideReason') as string).trim() : '';
-      await queueReply(conversationId, text, reason === '' ? undefined : { reason }, form.get('acknowledge') === '1');
+      const key = typeof form.get('key') === 'string' ? (form.get('key') as string) : undefined;
+      await queueReply(conversationId, text, reason === '' ? undefined : { reason }, form.get('acknowledge') === '1', key);
     } else {
       let first = true;
       for (const file of files) {

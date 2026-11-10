@@ -18,9 +18,8 @@ import { tempStorage, type TempStorage } from '../fixtures/storage.js';
  *   - breaking use: a confused person or an attacker sends the wrong thing, the wrong person's thing or the same thing twice,
  *     and the app refuses it or stays correct, and never answers 500.
  *
- * A test written `it.fails` is a bug that is open and written down (R-041 to R-043): it says what SHOULD happen, passes only while the
- * bug exists, and goes red the day the bug is fixed, which is the reminder to change it to a plain `it`. R-044 is a characterisation:
- * it pins down today's behaviour so a change to it is a decision, not an accident.
+ * R-041 to R-043 were written `it.fails` while they were open and are plain tests now that they are fixed (2026-11-10). R-044 is fixed in
+ * the web form (apps/web/app/contacts/classic/changed-fields.test.ts); the test here pins the API, which is last write wins per field.
  */
 const url = process.env.TEST_DATABASE_URL ?? 'postgresql://dev:dev@localhost:5434/whatsapp_crm_test';
 const kms = new LocalKms({ keyHex: randomBytes(32).toString('hex'), indexKeyHex: randomBytes(32).toString('hex') });
@@ -158,7 +157,7 @@ describe('team: who is an admin', () => {
     });
 
     // R-041. Each request locks only the row of the person it changes, so each counts the other as "still an admin" and both commit.
-    it.fails('[R-041] two admins demoting each other at once never leave the organisation with no admin', async () => {
+    it('[R-041] two admins demoting each other at once never leave the organisation with no admin', async () => {
       let worst = 2;
       for (let round = 0; round < 25; round += 1) {
         await db.execute(sql`UPDATE org_membership SET role = 'admin' WHERE user_id IN (${adminA}, ${adminB})`);
@@ -169,7 +168,7 @@ describe('team: who is an admin', () => {
       expect(worst).toBeGreaterThanOrEqual(1);
     }, 60_000);
 
-    it.fails('[R-041] two admins disabling each other at once never leave the organisation with no active admin', async () => {
+    it('[R-041] two admins disabling each other at once never leave the organisation with no active admin', async () => {
       let worst = 2;
       for (let round = 0; round < 25; round += 1) {
         await db.execute(sql`UPDATE org_membership SET role = 'admin' WHERE user_id IN (${adminA}, ${adminB})`);
@@ -272,7 +271,7 @@ describe('sending into a chat', () => {
   describe('two people at the same moment', () => {
     // R-042. Both read "nobody owns it" before either claims it. The loser's claim updates no row and the code carries on and sends.
     // `acknowledgeCollision` is set so that only the ownership rule is being tested, not the "someone is typing" warning.
-    it.fails('[R-042] two agents sending the first message in an unowned chat at once: one is accepted and the other is told it is taken', async () => {
+    it('[R-042] two agents sending the first message in an unowned chat at once: one is accepted and the other is told it is taken', async () => {
       let bothThrough = 0;
       for (let round = 0; round < 25; round += 1) {
         const { conv } = await makeChat();
@@ -300,7 +299,7 @@ describe('sending into a chat', () => {
     // R-043. Nothing identifies "this is the same send again" (a retry after a dropped connection, a second tab, an integration
     // that retries). The screen disables the button while a send is running, so a human double-click is covered; the API is not.
     // The header name below is the proposal in the write-up, pending approval.
-    it.fails('[R-043] the same send repeated with the same Idempotency-Key creates one message', async () => {
+    it('[R-043] the same send repeated with the same Idempotency-Key creates one message', async () => {
       const { conv } = await makeChat(agent1);
       const key = randomUUID();
       const [x, y] = await Promise.all([

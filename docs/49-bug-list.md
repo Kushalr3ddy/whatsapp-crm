@@ -39,6 +39,23 @@ All four are reproduced. The first three have a test written as `it.fails`: it s
 
 Checked and fine (guarded by the same file): two requests to start one campaign (FM-5), two STOPs (AC-6.3), one number never sends two messages at once (AC-1.1), thirty replies at once by the owner (all kept), a second agent in an owned chat (409), a chat or person of another organisation (404), wrong types, unknown field names, `__proto__` and `constructor` field names, oversized text, no sign-in, a read-only key and a cookie without the CSRF token.
 
+### Fixed on 2026-11-10 (go-live fixes; each has a regression test named by its R-number, see tests/regression/REGISTRY.md)
+
+| Fixed | R | Issue | What changed |
+|---|---|---|---|
+| Pause did not stop messages already queued | R-045 | #36 | The sender never sends a message of a paused campaign; it shows "the campaign is paused" and goes on Resume |
+| The AI classifier opted a person out on its own word | R-046 | #37 | Only a STOP word (or the org's own) opts out. A message the AI reads as negative leaves a note, takes the chat off the AI and flags nobody |
+| Two admins demoting or disabling each other left no admin | R-041 | #38 | One lock per organisation around every change of role or status |
+| The AI told a customer the team member's login email | R-047 | #39 | An email is never used as the hand-over person's name: "a colleague" instead |
+| The AI never answered a new person's first reply when a picture was held back | R-048 | #40 | The campaign's own held picture no longer counts as "someone already answered" |
+| Two agents sending the first message in an unowned chat both went through | R-042 | #41 | The claim is the rule: the loser gets 409 THREAD_ASSIGNED |
+| A repeated send created two messages | R-043 | #42 | `Idempotency-Key` header (migration 0050); the Inbox sends one key per Send |
+| Quiet hours did not hold a campaign message to someone who wrote in the last 24 hours | R-049 | #43 | A campaign's own message is a campaign message for quiet hours whatever the chat history; the held picture sent after a reply still goes |
+| The Contacts form overwrote a colleague's newer value | R-044 | #44 | The form sends only the fields that changed |
+| A corrupt picture was accepted as a campaign picture | R-050 | #45 | A still picture must decode whole, or it is refused |
+
+Still open from the live run (Sev 2 and below, not fixed yet): the AI invented a time, mishandled a callback and agreed to reschedule on its own; a landline is accepted on import; the campaign page counts a STOP as "Talking"; the left-over security items; the polish list in docs/51.
+
 ### Live run on four phones (2026-11-10; the website driven by Playwright, the API by script; evidence in docs/47)
 
 Nothing here is fixed. Found by importing an Excel on the website and through the API, running AI campaigns to four real phones, and having the phones answer.

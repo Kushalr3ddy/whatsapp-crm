@@ -1297,10 +1297,11 @@ export async function queueMessage(to: string, body: string): Promise<{ id: stri
  * The conversation already knows how to reach them.
  */
 export async function queueReply(
-  conversationId: string, body: string, override?: { reason: string }, acknowledgeCollision?: boolean
+  conversationId: string, body: string, override?: { reason: string }, acknowledgeCollision?: boolean, idempotencyKey?: string
 ): Promise<{ id: string; conversationId: string }> {
   return request<{ id: string; conversationId: string }>('/messages', {
     method: 'POST',
+    ...(idempotencyKey === undefined || idempotencyKey === '' ? {} : { headers: { 'Idempotency-Key': idempotencyKey.slice(0, 200) } }),
     body: JSON.stringify({
       conversationId, body,
       ...(override ? { overrideDnc: true, overrideReason: override.reason } : {}),
