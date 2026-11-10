@@ -254,3 +254,33 @@ Why they happen: `packages/core/src/team.ts` `changeMember` locks only the targe
 What held up: a second agent in an owned chat (409), another organisation's chat, person or team member (404, nothing changed), no sign-in (401), a key without the scope or a cookie without the CSRF token (403), empty / spaces-only / oversized / NUL text (422), invented ids, `__proto__` and `constructor` as field names (no pollution), a 200 000-character value (no 500), thirty simultaneous replies (all 30 kept), different custom fields saved at once (both kept, 15 rounds).
 
 Not tested: a second browser on a real screen, load (hundreds of people), and the web screens' own double-click guard (read in `reply-box.tsx`, not driven).
+
+## Live run on four phones (2026-11-10, 10:30 to 11:45 IST)
+
+Stack: live API 3120, web 3121, database `whatsapp_crm_live`. The CRM's number is +91 99641 22631 (`mik`). Four test phones, each a standalone Baileys client run from `C:\Users\mikhi\wa-testers\t39xx` (ports 3998, 3997, 3996, 3995; login folders outside every checkout). The website was driven by Playwright (headless Chromium, text output), the API by node scripts; all of it lives in `C:\Users\mikhi\wa-testers\run`, outside the repo. Between scenarios the test people and their chats were cleared (`reset.mjs`: only the four phones, `@example.test` emails, test import runs and `LT-*` campaigns; never the 160 imported people or +91 90355 24447). Phones B and C are personal numbers: the scripts read only what the CRM sent, and the test clients log everything those phones receive to `events.jsonl`.
+
+### What ran and what it showed
+
+| Scenario | Result |
+|---|---|
+| Excel import on the website (16 rows: 4 phones, the same people written 3 other ways, bad numbers, blank rows, `=HYPERLINK`, `<script>`, SQL and 300-letter names) | 10 contacts (9 new, 1 existing renamed), 3 refused with plain reasons, duplicates merged by number, hostile text kept as text. Contacts screen at 375 and 1280 px: nothing ran, nothing overflowed |
+| Same file through the API (upload, dry run, commit with tag) | Same counts. The dry run said 0 warnings, the commit warned 3 |
+| AI campaign from the website (tag audience, interview-reminder template) | Openings reached all 4 phones in about 2 minutes, each with its first name and its own interview date. "Yes" counted interested, "no thanks, joined another company" not interested, a salary and internal-notes question stayed "talking" with no figure or note given. STOP: one closing message with the campaign quote and the org contact |
+| AI campaign from the API (explicit contact ids) | Same behaviour |
+| **Late reply**: phones answered 18 to 19 minutes after the opening | All four answered by the AI within 20 to 100 s |
+| **Late send**: CRM wrote to each phone after 18 minutes of silence, through the API | All 202, all arrived (18 s to 139 s: one number sends one at a time); the number and all phones stayed connected |
+| Four strangers write first at the same instant | One chat each, named by number, unassigned, unread 1, no reply |
+| Agent API replies, a 20-message flood, a 3,900-letter message, Arabic/Hebrew/emoji family/`<b>`/`{{name}}`/`${7*7}` text | All stored once, as typed (flood in arrival order) |
+| STOP, STOP, agent message, START | One closing message; second STOP silent; agent refused 422 `DO_NOT_CONTACT`; START lifts it; agent can message again |
+| Inbox on the website | Search by number, reply, phone receives, the phone's answer appears without reloading, empty reply blocked |
+| Phone sends two PDFs and text (typed on phone C) | Stored as `document` with the files; the AI answered the text |
+| Quiet hours, pause, resume, cancel | Resume and cancel right (no duplicates; cancel stops what has not started). **Pause and quiet hours failed**: see LV-14 and LV-15 |
+| 38 API edge cases and 10 website edge cases (nothing can be messaged) | All as expected except my own test mistake |
+
+### New bugs and observations
+
+LV-1 to LV-15 in `docs/49-bug-list.md`. In short: the AI opt-out classifier misread "flood 10" as an opt-out and silenced a person (confirmed against the live model: 1 in 32 harmless texts); the AI hand-over shows the login email to customers; the AI gave a time nobody gave; a landline imports as a phone; STOP counts as "Talking"; Pause lets queued messages go; quiet hours do not hold a campaign message to anyone who wrote in the last 24 hours.
+
+### Not done
+
+Removing the device on a phone and relinking (F3), a 2-minute internet drop (F8), a campaign to more than four people in daytime, load, quiet hours at night by the clock, a picture or voice note from a phone, and a human screen sign-off at phone width beyond the overflow check. The org's contact phone, email and purpose were set to test values for the closing message and put back to empty afterwards: a real organisation must fill them in.

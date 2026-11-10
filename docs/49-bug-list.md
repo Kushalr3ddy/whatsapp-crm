@@ -39,6 +39,31 @@ All four are reproduced. The first three have a test written as `it.fails`: it s
 
 Checked and fine (guarded by the same file): two requests to start one campaign (FM-5), two STOPs (AC-6.3), one number never sends two messages at once (AC-1.1), thirty replies at once by the owner (all kept), a second agent in an owned chat (409), a chat or person of another organisation (404), wrong types, unknown field names, `__proto__` and `constructor` field names, oversized text, no sign-in, a read-only key and a cookie without the CSRF token.
 
+### Live run on four phones (2026-11-10; the website driven by Playwright, the API by script; evidence in docs/47)
+
+Nothing here is fixed. Found by importing an Excel on the website and through the API, running AI campaigns to four real phones, and having the phones answer.
+
+| # | Id | Sev | What |
+|---|---|---|---|
+| v1 | LV-1 | S2 | The AI opt-out classifier read a harmless "flood 10" as an opt-out (checked directly against the live model: 1 false positive in 32 harmless texts, all 6 real opt-outs caught). The person was set to do-not-contact and sent "We will not message you again". Agents are then blocked, and only an admin can clear it (R-034), so an agent cannot undo it |
+| v2 | LV-2 | S2 | The AI's hand-over names the team member by login email and gives the CRM number: "a colleague from live@test.local (+91 99641 22631)". A customer sees an internal login (this is LF-4, still open) |
+| v3 | LV-3 | S2 | After a person's "yes" in Hindi the AI asked them to confirm "tomorrow 11 am". Their interview is 15 Nov at 4:00 PM and the chat holds only their own messages: a made-up time |
+| v4 | LV-4 | S3 | Import accepts a landline (`080 2345 6789`) as a phone and tags it with everyone, but sending to it is refused (NOT_REACHABLE). "Message them now" on the import result includes it. The sender checks WhatsApp registration, but a landline can be on WhatsApp |
+| v5 | LV-5 | S3 | Campaign page "What people said": a person who sent STOP is counted under "Talking" |
+| v6 | LV-6 | S3 | "maybe later, please call me next week" was filed as not interested. The chat was handed to a person (correct) but the reply to the customer did not mention a callback |
+| v7 | LV-7 | S3 | Import: a later duplicate row's shorter name replaces the fuller one (Anita Rao became Anita R; the screen warns). The button says "Import 13 people" for 10 created (it counts rows). The dry run reports 0 warnings and the real run warns 3 |
+| v8 | LV-8 | S4 | Import messages: a picture gives only "The request could not be completed."; an empty CSV says "Choose a file first."; a semicolon-separated CSV is read as one column |
+| v9 | LV-9 | S4 | Reading a chat through the API (`GET /conversations/:id/messages`) clears its unread count, so an integration can silently clear the flag for the team |
+| v10 | LV-10 | S4 | A flood of 20 messages sent 250 ms apart is shown in arrival order (1, 4, 3, 2, 6, 5…), not sent order |
+| v11 | LV-11 | S4 | Closing message: it reads badly when the organisation's purpose is not a clause ("because your interview with us"), and it quotes the opening cut mid-word ("on 12 N…") |
+| v12 | LV-12 | S4 | AI: a thumbs-up alone was answered by asking the question again; a PDF with only a file name was answered "Thanks for your response"; a request to move to 4 pm was agreed without a person |
+| v13 | LV-13 | S4 | Messages to one phone stay at one tick ("sent") while the phone received them: that phone's receipts do not come back (the phone, not the CRM) |
+| v14 | LV-14 | S2 | **Pause does not stop messages already queued.** Starting a campaign turns the whole audience (up to the dispatch batch) into queued messages within seconds; Pause only changes the campaign's status, and the sender never looks at it. Test: 4 queued at 11:39:37, Pause at 11:39:45, three more went out at 11:39:49, 11:39:56 and 11:40:31. Cancel is right (it withdraws what has not started, R-020); Pause was not given the same rule |
+| v15 | LV-15 | S3 | **Quiet hours do not hold a campaign message to anyone who wrote in the last 24 hours.** The sender files any queued message as a "reply" when the chat has an inbound message in the last 24 hours, whatever the message is (`lane-state.ts` priority `CASE`), and only `campaign` and `ai` priorities wait out quiet hours (`policy.ts`, AC-7.5). Test: quiet hours set to 10:37 to 13:37, a campaign to four people who had just written was sent at 11:38:40 to 11:39:16. A broadcast at 11 pm to people who messaged yesterday goes out |
+| v16 | LV-16 | S1 | **AI campaign with a held picture: the AI never answers the new person's first reply.** `autoReply` skips an inbound message as `superseded` when any newer message exists (`ai-reply.ts` `newerExists`), and the gateway queues the held picture (an outbound message 2 s later) before calling it (`apps/gateway/src/main.ts`). The person gets the picture and no answer until they write again (live: a first reply at 12:37:57, picture at 12:37:59, no AI message; a second reply 7 minutes later was answered in 4 s). The same split holds a link for new chats, so a campaign with a link in it is likely hit too (not tested). Standard campaigns and AI campaigns with the picture in the first message are fine |
+
+Related, already open as R-043: two clicks on Send in the same instant (0 ms) send two messages from the Inbox. With 30, 80 or 150 ms between them the screen sends one.
+
 ### Security (review of 2026-11-09; evidence in docs/47)
 
 | # | Id | Sev | What |
