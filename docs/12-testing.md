@@ -51,6 +51,19 @@ A known bug that is not fixed yet is a test marked `it.fails` with its `[R-nnn]`
 
 What only a person can check: the message on phone B's screen (the canary sees the tick, not the screen), and removing the device under Linked devices on the phone to see the Numbers page say so and the campaigns pause.
 
+## Organisations, roles and several people at once (2026-11-10)
+
+| Where | What it proves |
+|---|---|
+| `tests/integration/org-harness.ts` | Shared set-up: two organisations, admins, agents, a disabled person, a key per scope, revoked and expired keys, one of everything per organisation |
+| `tests/integration/orgs-roles-matrix.test.ts` | Every route against every kind of caller (admin, agent, each key scope, bootstrap key, nobody); access changes mid-session; passwords, lockout, bad input |
+| `tests/integration/orgs-isolation.test.ts` | One organisation reaching another's data by id, by list, inside creates, and through the database wall; same names in both |
+| `tests/integration/shared-template-campaign.test.ts` | Several people on one template, campaign, tag, reply and contact at the same moment |
+| `tests/integration/orgs-modules.test.ts` | **Written 2026-11-11, not run yet** (66 tests; skipped unless `RUN_ORG_MODULES=1`, until a person has run it once). The modules the first runs did not reach: contact export (admin only, audited, five an hour), API keys (secret shown once, per organisation), key rotation and encryption status, campaign pictures and downloads, imports in two organisations, segments and custom fields (including two admins at once), the audit trail, and chat presence. Each test states the correct behaviour; a failure is a new bug or a wrong assumption, to be decided when it is first run. ENC-7 pins SEC-8 as a decision |
+| `tests/e2e/orgs-and-roles.spec.ts` | The same cast through the screens (48 tests; the last 9, SCR-1 to SCR-9, are written and not run yet: Security, Linked numbers, Export, Billing, Import and Segments by role, sign-out in two tabs, and the sign-up page, which is a front-end mock that creates nothing): sign-in per role, admin-only screens, isolation, two browser sessions on one campaign, widths 375 and 1280. Needs its own stack and database (`E2E_BASE_URL`, `E2E_API_URL`, `E2E_BOOTSTRAP_KEY`, `E2E_DATABASE_URL` with "e2e" in its name; it refuses a live database) |
+
+Known bugs here are `it.fails` (API) or `test.fail` (browser): X-002 to X-004 in [`49`](49-bug-list.md). The live two-organisation runs (real phones, scripts outside the repo) are logged in [`47`](47-live-test-log.md).
+
 ## Regression tests for prior defects
 
 **Bugs found after launch** (reported by a tester, found by the audit, caught in CI) have their own system: the **regression registry** `tests/regression/REGISTRY.md`, where every bug gets an R-number and a test with `[R-nnn]` in its title, a bug-fix gate in CI, a production-build smoke run on every PR and a nightly full run. The whole flow, from report to merge, is in [`39-bug-workflow.md`](39-bug-workflow.md) and the mechanics are in [`tests/regression/README.md`](../tests/regression/README.md). The table below is the older list of defects from the previous system (`M*` in `00-prior-art.md`).

@@ -4,7 +4,7 @@ import type { Database } from '@crm/db';
 import type { PasswordHasher } from '@crm/auth-builtin';
 import {
   createOrgWithAdmin, addUserToOrg, issueApiKey, listApiKeys, revokeApiKey,
-  API_SCOPES, AlreadyExistsError, writeAuditInTenant, AUDIT,
+  API_SCOPES, AlreadyExistsError, EmailUnavailableError, writeAuditInTenant, AUDIT,
   listMembers, changeMember, resetMemberPassword, MemberNotFoundError, MemberRuleError
 } from '@crm/core';
 import { auditActor, requireBootstrap, requireRole } from '../auth.js';
@@ -165,6 +165,10 @@ export function adminRouter(db: Database, hasher: PasswordHasher): Router {
     } catch (error) {
       if (error instanceof AlreadyExistsError) {
         res.status(409).json(problem(req, 409, 'ALREADY_EXISTS', 'That person is already in this organisation.'));
+        return;
+      }
+      if (error instanceof EmailUnavailableError) {
+        res.status(409).json(problem(req, 409, 'EMAIL_UNAVAILABLE', 'That email address cannot be used here. Use a different one.'));
         return;
       }
       throw error;

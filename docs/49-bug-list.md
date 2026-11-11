@@ -26,18 +26,11 @@ One list of everything found by the automated failure suites (R-numbers), the li
 
 ## Open
 
-### Two people at once (2026-11-10; reproduced by `tests/integration/races-and-abuse.test.ts`, evidence in docs/47)
-
-All four are reproduced. The first three have a test written as `it.fails`: it says what should happen, passes only while the bug exists, and goes red the day it is fixed (the reminder to make it a plain `it`). Nothing is fixed yet: the cause is written up first and the fix waits for a yes.
-
-| # | Id | Sev | What |
-|---|---|---|---|
-| t1 | R-041 | S1 | Two admins demoting (or disabling) each other at the same moment leave the organisation with **no admin**: 25 of 25 rounds ended with 0. `changeMember` locks only the row of the person it changes, then counts the other admins from a snapshot that does not see the other request's change, so each sees the other as still an admin. No database rule backs it up. Nobody can then manage the team, numbers, do-not-contact or settings; the way back is a manual database edit |
-| t2 | R-042 | S2 | Two agents sending the first message in a chat nobody owns, at once: both messages are queued and sent (25 of 25 rounds), though the chat is meant to belong to one agent. The ownership check is a plain read and the claim (`UPDATE … WHERE assignee IS NULL`) ignores losing. The customer gets two people's words; the thread lock only starts from the next send. Same code on the attachment route |
-| t3 | R-043 | S2 | The same send repeated (a retry after a dropped connection, a second tab, an integration that retries) creates two messages: nothing says "this is the same send". The inbox screen disables Send while a send runs, so a human double-click is covered (read in `reply-box.tsx`); the API is not. Likely the same for notes, attachments and creating a campaign (not tested) |
-| t4 | R-044 | S3 | The Contacts form sends every custom field, changed or not, so a page opened earlier puts the old value of a field the person never touched back over a newer one, with no warning. Saving different fields at once is safe (merged in the database, 15 of 15 rounds kept both); the same field at once is last write wins, whole. Decision: send only what changed, or refuse a stale save |
+### Two people at once (all fixed: see "Fixed on 2026-11-10")
 
 Checked and fine (guarded by the same file): two requests to start one campaign (FM-5), two STOPs (AC-6.3), one number never sends two messages at once (AC-1.1), thirty replies at once by the owner (all kept), a second agent in an owned chat (409), a chat or person of another organisation (404), wrong types, unknown field names, `__proto__` and `constructor` field names, oversized text, no sign-in, a read-only key and a cookie without the CSRF token.
+
+**Written but not run (2026-11-11):** `tests/integration/orgs-modules.test.ts` and browser scenarios SCR-1 to SCR-9 cover the modules not reached before (export, API keys, key rotation, pictures, imports, segments, custom fields, audit trail, presence). Nothing from them is a bug yet; the first run decides.
 
 ### Several organisations and roles (2026-11-10; found by `tests/integration/orgs-*.test.ts` and `shared-template-campaign.test.ts`; repro steps only, not analysed yet)
 
@@ -45,10 +38,12 @@ Each has a test written as `it.fails` that goes green-for-the-right-reason when 
 
 | Id | Sev | Repro steps |
 |---|---|---|
-| X-001 | S1 | 1. Two organisations, A and B. A has an agent with email `p@a.test` and their own password. 2. Sign in as B's admin. `POST /api/v1/admin/users` with `{ "email": "p@a.test", "password": "any-12-chars+", "displayName": "x", "role": "agent" }`: answers 201. 3. `POST /api/v1/admin/users/<p's id>/password` with a new password: answers 200 (`sessionsRevoked` is 2: p's sessions in A are ended). 4. `POST /api/v1/auth/login` with `p@a.test` and that new password: 200, and `GET /auth/me` says `orgId` is **A** and `GET /contacts` lists A's contacts. 5. Variation: `PATCH /admin/users/<p's id>` `{ "status": "disabled" }` from B's admin: p is locked out of A at once. 6. Same with an admin of A as the target. Test: `orgs-isolation.test.ts` "X-001" |
 | X-002 | S3 | 1. As an admin, save an AI template. 2. Create a campaign using it (`aiTemplateId`). 3. Delete the template (it moves to Deleted). 4. `POST /campaigns` again with the same `aiTemplateId`: answers 201 (expected 404). Also `GET /ai/templates/<id>` of a deleted template answers 200. Test: `shared-template-campaign.test.ts` "X-002" |
 | X-003 | S3 | 1. Two people, one tag. 2. At the same moment: one `DELETE /tags/<id>`, the other `POST /contacts/<contact>/tags` `{ "tagId": "<id>" }`. 3. About one run in several: the second answers 500 (log: `contact_tag_tag_id_tag_id_fk` foreign key violation) instead of 404. Test: "X-003" |
 | X-004 | S3 | 1. Two people, same moment, `POST /contacts` with the same new phone (`{ "displayName": "x", "phone": "+9199xxxxxxxx" }`). 2. One answers 201; the other answers 500 (log: `contact_identity_lookup_uidx` unique violation) instead of 409 or the existing contact. One contact is created, never two. Test: "X-004" |
+| X-005 | S3 | **Same family as SC-11 (row 8b), still open**: SC-11 saw it while paused (it fixed itself on Resume); L12 saw it again in both organisations at once and here it did NOT fix itself: pause, Resume, then cancel left the rows `queued` for good. Found 2026-11-10 by the live run L12. 1. Campaign of 3 people (explicit contact ids, engagement gate lifted), started. 2. The three messages are sent and delivered on the phones (first at about 3 s, the others 40 to 50 s later). 3. Pause the campaign, resume it, cancel it (a minute or two after the start). 4. `GET /campaigns/<id>/recipients`: all three recipients still say `queued`, with no skip reason. The messages themselves (`GET /conversations/<id>/messages`) say `delivered` and the phones have them. The campaign says `cancelled`. Expected: `sent`. The earlier L8 run (pause after the first send showed as `sent`) ended `sent,sent,skipped`. Exact timing of the pause against the sends was not recorded: reproduce by pausing/cancelling after all three have arrived. Script: wa-testers
+un\l12.mjs (L8.5) To check for X-005 (not run yet, no fix): (a) a paused campaign whose rows are stuck `queued`: does a new campaign for the same person on the same number get skipped `in_other_campaign` although the message already went out; (b) does Resume on such a campaign send the message a second time; (c) pin the exact time of the pause against the sends. |
+un\l9.mjs |
 
 Decisions for the owner (current behaviour pinned by tests, not bugs yet): any agent can edit, start, pause or cancel any campaign of the organisation; two admins saving the same template at once is last write wins with no warning; `api_key` has no row-level policy (every route filters it by organisation); a campaign created with only another organisation's contact ids is accepted but empty and starts as `running` with nobody in it.
 
@@ -66,6 +61,11 @@ Decisions for the owner (current behaviour pinned by tests, not bugs yet): any a
 | Quiet hours did not hold a campaign message to someone who wrote in the last 24 hours | R-049 | #43 | A campaign's own message is a campaign message for quiet hours whatever the chat history; the held picture sent after a reply still goes |
 | The Contacts form overwrote a colleague's newer value | R-044 | #44 | The form sends only the fields that changed |
 | A corrupt picture was accepted as a campaign picture | R-050 | #45 | A still picture must decode whole, or it is refused |
+| An admin could add another organisation's person by email, reset their password or disable them | X-001 | this PR | An email that belongs to a person of another organisation is refused (409 `EMAIL_UNAVAILABLE`); the password and status of a person who is in two organisations cannot be changed by either organisation's admin. Only the operator CLI attaches an existing account |
+| The same phone linked twice in one organisation was accepted | X-006 | this PR | The second entry is unlinked again with the reason `number_already_linked`; it is never made active |
+| Two link requests opened two sockets | R-027 | this PR | One link attempt and one socket open per number at a time |
+| Repeated 515 restarts reconnected at once without limit | R-028 | this PR | Three in a row are the handshake; after that they back off and spend the retry budget |
+| After 403 (ban) or 440 (taken over) the adapter dialled again by itself | R-029, R-030 | this PR | Neither reconnects by itself; a person relinks or resumes from the Numbers page |
 
 Still open from the live run (Sev 2 and below, not fixed yet): the AI invented a time, mishandled a callback and agreed to reschedule on its own; a landline is accepted on import; the campaign page counts a STOP as "Talking"; the left-over security items; the polish list in docs/51.
 
@@ -75,8 +75,6 @@ Nothing here is fixed. Found by importing an Excel on the website and through th
 
 | # | Id | Sev | What |
 |---|---|---|---|
-| v1 | LV-1 | S2 | The AI opt-out classifier read a harmless "flood 10" as an opt-out (checked directly against the live model: 1 false positive in 32 harmless texts, all 6 real opt-outs caught). The person was set to do-not-contact and sent "We will not message you again". Agents are then blocked, and only an admin can clear it (R-034), so an agent cannot undo it |
-| v2 | LV-2 | S2 | The AI's hand-over names the team member by login email and gives the CRM number: "a colleague from live@test.local (+91 99641 22631)". A customer sees an internal login (this is LF-4, still open) |
 | v3 | LV-3 | S2 | After a person's "yes" in Hindi the AI asked them to confirm "tomorrow 11 am". Their interview is 15 Nov at 4:00 PM and the chat holds only their own messages: a made-up time |
 | v4 | LV-4 | S3 | Import accepts a landline (`080 2345 6789`) as a phone and tags it with everyone, but sending to it is refused (NOT_REACHABLE). "Message them now" on the import result includes it. The sender checks WhatsApp registration, but a landline can be on WhatsApp |
 | v5 | LV-5 | S3 | Campaign page "What people said": a person who sent STOP is counted under "Talking" |
@@ -88,9 +86,6 @@ Nothing here is fixed. Found by importing an Excel on the website and through th
 | v11 | LV-11 | S4 | Closing message: it reads badly when the organisation's purpose is not a clause ("because your interview with us"), and it quotes the opening cut mid-word ("on 12 N…") |
 | v12 | LV-12 | S4 | AI: a thumbs-up alone was answered by asking the question again; a PDF with only a file name was answered "Thanks for your response"; a request to move to 4 pm was agreed without a person |
 | v13 | LV-13 | S4 | Messages to one phone stay at one tick ("sent") while the phone received them: that phone's receipts do not come back (the phone, not the CRM) |
-| v14 | LV-14 | S2 | **Pause does not stop messages already queued.** Starting a campaign turns the whole audience (up to the dispatch batch) into queued messages within seconds; Pause only changes the campaign's status, and the sender never looks at it. Test: 4 queued at 11:39:37, Pause at 11:39:45, three more went out at 11:39:49, 11:39:56 and 11:40:31. Cancel is right (it withdraws what has not started, R-020); Pause was not given the same rule |
-| v15 | LV-15 | S3 | **Quiet hours do not hold a campaign message to anyone who wrote in the last 24 hours.** The sender files any queued message as a "reply" when the chat has an inbound message in the last 24 hours, whatever the message is (`lane-state.ts` priority `CASE`), and only `campaign` and `ai` priorities wait out quiet hours (`policy.ts`, AC-7.5). Test: quiet hours set to 10:37 to 13:37, a campaign to four people who had just written was sent at 11:38:40 to 11:39:16. A broadcast at 11 pm to people who messaged yesterday goes out |
-| v16 | LV-16 | S1 | **AI campaign with a held picture: the AI never answers the new person's first reply.** `autoReply` skips an inbound message as `superseded` when any newer message exists (`ai-reply.ts` `newerExists`), and the gateway queues the held picture (an outbound message 2 s later) before calling it (`apps/gateway/src/main.ts`). The person gets the picture and no answer until they write again (live: a first reply at 12:37:57, picture at 12:37:59, no AI message; a second reply 7 minutes later was answered in 4 s). The same split holds a link for new chats, so a campaign with a link in it is likely hit too (not tested). Standard campaigns and AI campaigns with the picture in the first message are fine |
 
 Related, already open as R-043: two clicks on Send in the same instant (0 ms) send two messages from the Inbox. With 30, 80 or 150 ms between them the screen sends one.
 
@@ -175,10 +170,6 @@ AI-INT-1 (S2): a clear "yes I will be there" was filed as "talking", not "intere
 
 | # | Id | Sev | What |
 |---|---|---|---|
-| 31 | R-030 | S2 | After 440 (session taken elsewhere) the adapter dials again by itself: two clients take the device from each other (the R-014 loop) |
-| 32 | R-027 | S2 | Two link requests at the same moment open two sockets |
-| 33 | R-028 | S2 | Repeated 515 restarts reconnect instantly with no limit |
-| 34 | R-029 | S2 | After a 403 (ban) the adapter dials the number again up to five times |
 | 35 | R-025 | S3 | A 440 leaves no health event; the Numbers page only says "not connected" |
 | 36 | R-031 | S3 | The adapter reports a logged-out number as "closed" |
 

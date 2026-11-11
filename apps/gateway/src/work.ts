@@ -4,7 +4,7 @@ import { setTenant, type Database, type Transaction } from '@crm/db';
 import { tenantDatabase } from './tenant.js';
 import type { ChannelProvider, NormalisedConnectionEvent, NormalisedNoticeEvent, NormalisedRetryEvent, NormalisedStatusEvent, Recipient } from '@crm/channels';
 import {
-  classifyLinkFailure, encodeLinkError,
+  classifyLinkFailure, encodeLinkError, linkErrorFor,
   dispatchCampaign, reconcileCampaign, writeOpenings, makeAntiBanPolicy,
   applyWhatsAppNotice, type AntiBanPolicy, recordHealthEvent, reencryptBatch,
   applyDeliveryStatus, markMessageFailedByProviderId, markDecryptBurst, liftRetryOnReceipt, conversationOfSent, snapshotDue, saveSnapshot,
@@ -710,6 +710,27 @@ async function applyConnectionEventInOrg(
   // plain close, not a logout, so it needs its own branch: say so loudly and stop the campaigns.
   if (event.code === 403) {
     await suspectBan(ctx, event.senderId, 'forbidden', event.at, { code: 403, reason: event.reason });
+  }
+
+  if (event.state === 'open' && event.phoneE164 !== undefined && event.phoneE164 !== null) {
+    // The phone that opened is already linked here as another number of this organisation (X-006): the same WhatsApp account twice.
+    // Every send from the second entry would leave from the first one's number and replies would all land on the first, so the
+    // second is unlinked again and says why. It is never promoted to active.
+    const twin = (await ctx.db.execute(sql`
+      SELECT 1 FROM sender_identity si JOIN sender_identity o
+        ON o.org_id = si.org_id AND o.provider = si.provider AND o.id <> si.id
+      WHERE si.id = ${event.senderId} AND o.phone_e164 = ${event.phoneE164} AND o.status = 'active' LIMIT 1`
+    ) as unknown as unknown[]).length > 0;
+    if (twin) {
+      try { await ctx.provider.logout(event.senderId); } catch { /* already gone from WhatsApp's side */ }
+      await ctx.db.execute(sql`
+        UPDATE channel_session SET connection_state = 'closed', disconnect_reason = 'duplicate_number', linked_since = NULL,
+            link_error = ${encodeLinkError(linkErrorFor('number_already_linked'))}, updated_at = now()
+        WHERE sender_identity_id = ${event.senderId}`);
+      await ctx.db.execute(sql`UPDATE sender_identity SET status = 'linking', updated_at = now() WHERE id = ${event.senderId}`);
+      ctx.logger.warn({ senderId: event.senderId }, 'the phone that was scanned is already linked as another number here; unlinked again');
+      return;
+    }
   }
 
   if (event.state === 'open') {

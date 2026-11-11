@@ -284,3 +284,52 @@ LV-1 to LV-15 in `docs/49-bug-list.md`. In short: the AI opt-out classifier misr
 ### Not done
 
 Removing the device on a phone and relinking (F3), a 2-minute internet drop (F8), a campaign to more than four people in daytime, load, quiet hours at night by the clock, a picture or voice note from a phone, and a human screen sign-off at phone width beyond the overflow check. The org's contact phone, email and purpose were set to test values for the closing message and put back to empty afterwards: a real organisation must fill them in.
+
+## Two organisations on real phones (2026-11-10, API scripts)
+
+One install, one gateway, two organisations. Org A "Live Test": CRM number mik (+91 99641 22631), admin live@test.local, plus live-a2@test.local (admin), live-agent1@ and live-agent2@test.local (agents). Org B "Live Org B": CRM number org-b-number (+91 88844 78039), admin live-b@test.local. Customers: A (+91 70199 47640, in both orgs), B (org A only), C (org B only), the friend (both). Quiet hours were switched OFF in both orgs for the run (restore: `node quiet.mjs on` in wa-testers\run). Scripts and map: wa-testers\run (l2, l4, l5, l6, l8, lib2) and MAP.txt.
+
+| Scenario | Result |
+|---|---|
+| L1 customer A texts both CRM numbers | Each org got exactly one inbound, on its own number, from a different @lid |
+| L2 STOP to org B, then START | Flagged only A's contact in B; B's send refused 422 `DO_NOT_CONTACT`; org A still sent to the same person; START lifted B only; B sends again. B's closing message came from org B's number |
+| L3 outbound from both to A | A's phone got one message from each number |
+| L4 one campaign per org started at the same moment | Both completed; friend got one from each number; B only from org A's number; C only from org B's number; no duplicates. Note: campaigns skip people an agent is mid-conversation with ("engaged") unless an admin lifts that gate |
+| L5 two admins press Start on one campaign | One 200, one 409 `ALREADY_RUNNING`; each recipient one message |
+| L6 two agents send the first message on one unassigned chat, 5 rounds | Each round one 202 and one 409 (`THREAD_ASSIGNED` or `COLLISION`); the friend got exactly one message per round (sends are queued about 20 s apart) |
+| L8 pause by agent 1, resume by admin 2, cancel by agent 2, real sends | Nothing sent while paused; cancel left the unsent person skipped; messages arrived equal recipients marked sent |
+
+No new bugs from L1 to L8. Not done: the same scenarios through the browser on the live stack, L9 (one org with two or three numbers).
+
+### Fill-ins and spam/anti-ban checks, both orgs at once (2026-11-10, API scripts, quiet hours off except where stated)
+
+The five phones are saved contacts of the owner (conversations already exist), so new-chat and ban-risk rules were not exercised; these runs test the rules that act on any chat. Scripts: wa-testers\run (l10, l11a to l11d, s4c).
+
+| Scenario | Result |
+|---|---|
+| L10 fill-ins `{{name}}`, `{{city}}`, `{Hello|Hey}` in both orgs; same key, different values; org A rule "skip blank", org B "fallback" | Each phone got its own org's name and city; skip left the blank person out (`missing_field`); fallback wrote "your city"; no raw braces; nothing crossed |
+| S3 gaps between campaign messages of one number | 4 s to 60 s, never under 1 s, per number |
+| S7 body with no variation | Both orgs: `no_variation` warning, campaign still saved |
+| S4 same person in two live campaigns on one number (started together, 2 rounds) | One of the two is skipped `in_other_campaign` at dispatch (the API start itself answers 200; the web form warns first). Another org's number is not blocked. Not blocked once the first message has already gone |
+| S6 do-not-contact inside a campaign | Skipped `dnc`, phone got nothing; admin override with a reason delivers once; an agent cannot lift a gate (403); org B campaign in parallel unaffected |
+| S10 STOP arrives while a campaign runs | Campaign completed; the person is flagged and skipped; the other recipients unaffected; START lifts it |
+| S2 / S1 a typed message while a campaign has a backlog; the other org at the same time | The typed message went out in 3 s, ahead of the campaign messages; org B's message went out in 2 s |
+| S5 same Idempotency-Key three times | One message, same id three times |
+| S12 12 inbound messages to each number at once | All 12 stored in each org, none in the other (the order inside one second is the known LV-10) |
+| S8 quiet hours on in org A only, campaign in each org | Org B sent at once; org A's campaign held (`quiet_hours`) and still running; a manual send in A went out; when quiet hours were switched off the held campaign released and delivered once each |
+
+No new bugs. Quiet hours are OFF in both live orgs right now and must be restored (`node quiet.mjs on`). Not done: AI templates across two orgs (org B has AI switched off and no consent given), L9.
+
+### AI on in both organisations (2026-11-10, live, l13 / l13b)
+
+Org B's AI was switched on (consent accepted by the owner's yes). Each org got its own template (company name and a code word only that org may use), a campaign with it to Anita (A, in both orgs) and one more, both started at the same moment.
+
+| Check | Result |
+|---|---|
+| Openings | Written per person by the AI: org A's named ORGA and ALPHA, org B's ORGB and BRAVO, in each person's own words; C (org B only) got only an org B opening; nothing crossed |
+| Reply on org B's number (chat with no owner) | The AI answered within 4 s, staying on org B's template |
+| Reply on org A's number | No answer while a person owned the chat (assigned by an earlier test): by design, the AI does not answer a chat a person owns. After the chat was unassigned the AI answered as "an automated helper of ORGA" and never named ORGB |
+
+### One organisation, two numbers: L9 attempt (2026-11-10, live)
+
+Org A got a second sending number slot (`second`) and the owner scanned its QR. It linked (`active`, `open`) but `phoneE164` stayed empty, and every send from `second` reached the friend from +91 99641 22631, the number of `mik`: the phone that scanned was the same WhatsApp account as `mik`. Replies to that number landed only in `mik`'s chat. This is not a valid two-number test; the finding is X-006 in `docs/49-bug-list.md`. What the run did show: two chats per person (one per sender slot) are created, a campaign per slot starts at once with no duplicate block, and two agents on the two chats do not collide. Still to run with a genuinely different number: chat stays on its number, replies on both land in one inbox, a campaign sends only from its chosen number, one number offline does not stop the other, removing one keeps the other.

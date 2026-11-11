@@ -67,6 +67,8 @@ export interface BaileysProviderOptions {
  */
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_MS = 1_000;
+/** Restarts (515) in a row that are treated as the normal handshake. */
+const RESTART_FREE_TRIES = 3;
 const RECONNECT_CAP_MS = 60_000;
 /** 429 means we are already going too fast; retrying soon would make it worse. */
 const RECONNECT_RATE_LIMITED_MS = 5 * 60_000;
@@ -125,6 +127,12 @@ export class BaileysChannelProvider implements ChannelProvider {
   readonly #reconnectAttempts = new Map<string, number>();
   /** Tries in a row that never reached WhatsApp (no internet). They only set the wait; they never give up. */
   readonly #offlineAttempts = new Map<string, number>();
+  /** Restarts (515) in a row since the last open, per number. One is the normal step after a scan; many in a row is WhatsApp refusing (R-028). */
+  readonly #restartStreak = new Map<string, number>();
+  /** Sockets being opened right now, so two callers at the same moment share one (R-027). */
+  readonly #opening = new Map<string, Promise<Connection>>();
+  /** Link attempts in progress, so pressing Link twice at the same moment is one attempt (R-027). */
+  readonly #linking = new Map<string, Promise<LinkChallenge>>();
   /** Scheduled reconnects, kept so shutdown can cancel them instead of firing into a closed pool. */
   readonly #reconnectTimers = new Map<string, NodeJS.Timeout>();
   readonly #options: BaileysProviderOptions;
@@ -143,6 +151,15 @@ export class BaileysChannelProvider implements ChannelProvider {
    * are not physically holding, the exact situation here where the phones belong to other people.
    */
   async link(senderId: string, mode: 'qr' | 'pairing_code', phoneE164?: string): Promise<LinkChallenge> {
+    const running = this.#linking.get(senderId);
+    if (running !== undefined) return running;
+    const attempt = this.#link(senderId, mode, phoneE164).finally(() => { this.#linking.delete(senderId); });
+    this.#linking.set(senderId, attempt);
+    return attempt;
+  }
+
+  /** One link attempt; `link` makes sure only one runs per number at a time. */
+  async #link(senderId: string, mode: 'qr' | 'pairing_code', phoneE164?: string): Promise<LinkChallenge> {
     const ttl = this.#options.qrTtlMs ?? 60_000;
     const expiresAt = new Date(Date.now() + ttl);
 
@@ -447,6 +464,17 @@ export class BaileysChannelProvider implements ChannelProvider {
   async #openSocket(senderId: string, opts: { expectQr: boolean }): Promise<Connection> {
     const existing = this.#connections.get(senderId);
     if (existing) return existing;
+    // The check above and the registration further down are separated by awaits: without this, two callers at the same moment both pass the
+    // check and each open a socket, and the two then take the device from each other (R-027).
+    const inflight = this.#opening.get(senderId);
+    if (inflight !== undefined) return inflight;
+    const opening = this.#openSocketNow(senderId, opts).finally(() => { this.#opening.delete(senderId); });
+    this.#opening.set(senderId, opening);
+    return opening;
+  }
+
+  /** Opens the socket for real. Only `#openSocket` calls this. */
+  async #openSocketNow(senderId: string, opts: { expectQr: boolean }): Promise<Connection> {
 
     const { state, saveCreds, flush } = await loadAuthState(this.#options.authStore, senderId);
     const version = this.#options.waVersion ?? (await fetchLatestBaileysVersion()).version;
@@ -555,6 +583,7 @@ export class BaileysChannelProvider implements ChannelProvider {
       // A successful open clears the budget: the next failure starts backing off from scratch.
       this.#reconnectAttempts.delete(senderId);
       this.#offlineAttempts.delete(senderId);
+      this.#restartStreak.delete(senderId);
       this.#options.logger.info({ senderId }, 'whatsapp connection open');
       this.#connectionEvents.push({
         senderId, state: 'open', reason: null, at: new Date(), phoneE164: phoneFromJid(conn.socket.user?.id)
@@ -644,11 +673,21 @@ export class BaileysChannelProvider implements ChannelProvider {
   #scheduleReconnect(senderId: string, reason: DisconnectReason, offline = false): void {
     if (this.#shuttingDown) return;
     if (reason === 'logged_out') return;
+    // WhatsApp refused the number (403, a ban), or another client took the session (440). Dialling again by itself makes a ban permanent, or
+    // starts the two clients taking the device from each other (R-029, R-030): a person decides, from the Numbers page.
+    if (reason === 'forbidden' || reason === 'connection_replaced') {
+      this.#options.logger.warn({ senderId, reason }, 'not reconnecting by itself; a person has to relink or resume the number');
+      return;
+    }
 
     // A try that never reached WhatsApp (this machine has no internet) is not a reconnect WhatsApp sees, so it carries no ban risk and
     // does not spend the budget: keep trying, backing off to once a minute, until the internet is back (R-026). Before this, five such
     // tries (about 30 s offline) used the budget up and the number stayed offline until a restart.
-    const handshake = reason === 'restart_required';
+    // The first restarts in a row are the handshake after a scan and cost nothing. Past RESTART_FREE_TRIES it is WhatsApp refusing (R-028), and
+    // the restart is treated like any other failure: it backs off and spends the budget.
+    const streak = reason === 'restart_required' ? (this.#restartStreak.get(senderId) ?? 0) + 1 : 0;
+    if (reason === 'restart_required') this.#restartStreak.set(senderId, streak);
+    const handshake = reason === 'restart_required' && streak <= RESTART_FREE_TRIES;
     const offlineTries = offline ? (this.#offlineAttempts.get(senderId) ?? 0) + 1 : 0;
     if (offline) this.#offlineAttempts.set(senderId, offlineTries);
     const attempts = handshake || offline ? (this.#reconnectAttempts.get(senderId) ?? 0) : (this.#reconnectAttempts.get(senderId) ?? 0) + 1;

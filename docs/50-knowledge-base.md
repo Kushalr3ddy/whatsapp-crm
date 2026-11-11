@@ -193,6 +193,10 @@ Decisions worth knowing:
   its own driver), delete `builtin` last. Do-not-contact, own number, socket down, empty body, fallback-number check and the
   recipient gates (engagement, cooldown, duplicate) always stay outside it.
 
+### 4b. Two organisations on the live install (2026-11-10)
+
+One install, one gateway, two organisations. Org A "Live Test": number `mik` (+91 99641 22631), admin `live@test.local`, extra people `live-a2@` (admin), `live-agent1@`, `live-agent2@test.local`. Org B "Live Org B": number `org-b-number` (+91 88844 78039), admin `live-b@test.local`, extra `live-b2@`, `live-bagent1@`, `live-bagent2@test.local`. Customer phones: A (+91 70199 47640, in both orgs), B (org A only), C (org B only), the friend (+91 90355 24447, both). The scripts, passwords, the MAP file and the send logs live outside the repo in `C:\Users\mikhi\wa-testers` (`run\lib2.mjs`, `l2` to `l13`, `MAP.txt`, `logs\`). Quiet hours were switched off in both orgs for the run: restore with `node quiet.mjs on`. Org A also has a sender slot `second` that was linked by the same WhatsApp account as `mik` (X-006); remove it before a real two-number test.
+
 ## 7. Where things stand (2026-11-09)
 
 - `main` has the redesigned screens (#12, #13, #15, #16, #18, #19, #21), the upstream sync (#20), and the failure-mode testing with four
@@ -209,5 +213,6 @@ Decisions worth knowing:
   written to the API log; anyone can lock the admin out by guessing passwords; the opt-out message quotes an old chat and a second
   STOP reopens messaging; opt-outs are not shown on the campaign page; text cut off at phone width on a few pages; console errors on
   Team, AI settings and Sign-up; drizzle-orm and zod have high advisories.
+- Two-organisation run (2026-11-10, [`47`](47-live-test-log.md)): inbound routing, STOP and START per organisation, outbound, parallel campaigns, fill-ins, two admins and two agents in each organisation at the same time, pause, resume and cancel by different people, quiet hours in one organisation only, AI templates in both: all as designed. Fixed since: X-001 (an admin of one organisation could take over a person of another by adding their email) and X-006 (the same number linked twice in one organisation), with R-027 to R-030 (adapter). Still open from it: X-002 to X-004, X-005 (the SC-11 family: recipients stay `queued`). Not done: L9 with a genuinely different second number. Written but not run (2026-11-11): `tests/integration/orgs-modules.test.ts` (66 tests: export, API keys, key rotation, pictures and downloads, imports, segments and custom fields, audit trail, presence) and browser scenarios SCR-1 to SCR-9; run them next and file what fails in `49`. The sign-up page (`/signup`) is a front-end mock (D-47, parked): it creates nothing.
 - Next: root-cause the go-live blockers the owner picks; F3 and F8 need the owner's phone and internet; a daytime run with several
   recipients.

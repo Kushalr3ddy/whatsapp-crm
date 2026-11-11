@@ -468,15 +468,28 @@ describe('X-001: an admin of one organisation cannot reach a person of another b
   }
   const signIn = (email: string, password: string) => request(h.app).post('/api/v1/auth/login').send({ email, password });
 
-  it('(how it works today) adding an email that already exists attaches that person and ignores the password given', async () => {
+  it('[X-001] adding an email that belongs to a person of another organisation is refused, and nothing about them changes', async () => {
     const victim = await personOfA();
     const add = await h.call('adminB', 'post', '/admin/users', { email: victim.email, password: 'some-other-password-77', displayName: 'Renamed by B', role: 'agent' });
-    expect(add.status).toBe(201);
+    expect(add.status).toBe(409);
+    expect(add.body.code).toBe('EMAIL_UNAVAILABLE');
     expect((await signIn(victim.email, PASSWORD)).status).toBe(200);
     expect((await signIn(victim.email, 'some-other-password-77')).status).toBe(401);
+    const team = await h.call('adminB', 'get', '/admin/users');
+    expect(JSON.stringify(team.body.data)).not.toContain(victim.email);
   });
 
-  it.fails('[X-001] after B\'s admin adds their email, resets "their" password and signs in with it, they do not get into A', async () => {
+  it('[X-001] a person an operator attached to both organisations cannot have their password or status changed by either organisation admin', async () => {
+    const victim = await personOfA();
+    await h.rows(sql`INSERT INTO org_membership (org_id, user_id, role) VALUES (${B().orgId}, ${victim.id}, 'agent')`);
+    const reset = await h.call('adminB', 'post', `/admin/users/${victim.id}/password`, { password: 'taken-over-password-1' });
+    expect(reset.status).toBeGreaterThanOrEqual(400);
+    const disable = await h.call('adminB', 'patch', `/admin/users/${victim.id}`, { status: 'disabled' });
+    expect(disable.status).toBeGreaterThanOrEqual(400);
+    expect((await signIn(victim.email, PASSWORD)).status).toBe(200);
+  });
+
+  it('[X-001] after B\'s admin adds their email, resets "their" password and signs in with it, they do not get into A', async () => {
     const victim = await personOfA();
     await h.call('adminB', 'post', '/admin/users', { email: victim.email, password: 'some-other-password-77', displayName: 'x', role: 'agent' });
     await h.call('adminB', 'post', `/admin/users/${victim.id}/password`, { password: 'taken-over-password-1' });
@@ -487,14 +500,14 @@ describe('X-001: an admin of one organisation cannot reach a person of another b
     expect(me.body.data.orgId, 'the session B\'s admin created for themselves is inside A').not.toBe(A().orgId);
   });
 
-  it.fails('[X-001] B\'s admin resetting the password of someone who also belongs to A does not change the password they use for A', async () => {
+  it('[X-001] B\'s admin resetting the password of someone who also belongs to A does not change the password they use for A', async () => {
     const victim = await personOfA();
     await h.call('adminB', 'post', '/admin/users', { email: victim.email, password: 'some-other-password-77', displayName: 'x', role: 'agent' });
     await h.call('adminB', 'post', `/admin/users/${victim.id}/password`, { password: 'taken-over-password-1' });
     expect((await signIn(victim.email, PASSWORD)).status, 'their own password still works').toBe(200);
   });
 
-  it.fails('[X-001] B\'s admin disabling a person who also belongs to A does not lock them out of A', async () => {
+  it('[X-001] B\'s admin disabling a person who also belongs to A does not lock them out of A', async () => {
     const victim = await personOfA();
     const session = await h.freshSession(victim.id, A().orgId);
     await h.call('adminB', 'post', '/admin/users', { email: victim.email, password: 'some-other-password-77', displayName: 'x', role: 'agent' });
@@ -503,7 +516,7 @@ describe('X-001: an admin of one organisation cannot reach a person of another b
     expect((await signIn(victim.email, PASSWORD)).status, 'their sign-in').toBe(200);
   });
 
-  it.fails('[X-001] the same, aimed at an ADMIN of A: B\'s admin cannot take over A\'s admin', async () => {
+  it('[X-001] the same, aimed at an ADMIN of A: B\'s admin cannot take over A\'s admin', async () => {
     const victim = await personOfA('admin');
     await h.call('adminB', 'post', '/admin/users', { email: victim.email, password: 'some-other-password-77', displayName: 'x', role: 'agent' });
     await h.call('adminB', 'post', `/admin/users/${victim.id}/password`, { password: 'taken-over-password-1' });

@@ -71,7 +71,7 @@ describe('linking a number', () => {
     expect(events.at(-1)).toMatchObject({ state: 'open', phoneE164: '+919000000001' });
   });
 
-  it.fails('[R-027] WA-L6 pressing Link twice at the same moment opens one socket, not two', async () => {
+  it('[R-027] WA-L6 pressing Link twice at the same moment opens one socket, not two', async () => {
     const w = wa();
     const id = randomUUID();
     const a = w.provider.link(id, 'qr');
@@ -94,7 +94,7 @@ describe('linking a number', () => {
     expect(w.sockets).toHaveLength(0);
   });
 
-  it.fails('[R-028] WA-L9 WhatsApp sending 515 over and over does not become a storm of sockets', async () => {
+  it('[R-028] WA-L9 WhatsApp sending 515 over and over does not become a storm of sockets', async () => {
     const w = wa();
     const id = randomUUID();
     const { socket } = await linkWithQr(w, id);
@@ -107,7 +107,7 @@ describe('linking a number', () => {
     await tick(200);
     // A real handshake needs one restart. Ten in a row is WhatsApp refusing, and must back off like any other failure.
     expect(w.sockets.length).toBeLessThanOrEqual(7);
-  });
+  }, 15_000);
 });
 
 describe('a linked number losing its connection', () => {
@@ -140,7 +140,7 @@ describe('a linked number losing its connection', () => {
     expect(w.sockets).toHaveLength(2);
   });
 
-  it.fails('[R-029] WA-C4 refused by WhatsApp (403, a ban): reported with its code, and not dialled again by itself', async () => {
+  it('[R-029] WA-C4 refused by WhatsApp (403, a ban): reported with its code, and not dialled again by itself', async () => {
     const w = wa();
     const events = collectConnections(w.provider);
     const { socket } = await linked(w);
@@ -151,7 +151,7 @@ describe('a linked number losing its connection', () => {
     expect(w.sockets).toHaveLength(2);
   });
 
-  it.fails('[R-030] WA-C5 taken over by another client (440): not dialled again by itself, or the two fight over the device', async () => {
+  it('[R-030] WA-C5 taken over by another client (440): not dialled again by itself, or the two fight over the device', async () => {
     const w = wa();
     const { socket } = await linked(w);
     socket.close(440, 'replaced');
