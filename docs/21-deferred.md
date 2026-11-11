@@ -118,12 +118,16 @@ Overlapping flags (a pin can be in a row above and one of these): 🔺 **priorit
 | [D-83](#d-83) | `npm run dev:fast` (production build) leaves some screens stale after an action | 📌 pinned |
 | [D-84](#d-84) | The AI runs whole conversations: auto-assign new chats, follow-ups, a goal field | 📌 pinned |
 | [D-85](#d-85) | AI templates: describe it, review, save, pick again; per chat, per campaign, all-chats default | 🔺 priority · ◐ built: describe, review, save, saved list, message a group · ⏳ test to myself, replies section, gallery, edit warning, precedence |
+| [D-86](#d-86) | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
+| [D-87](#d-87) | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
+| [D-88](#d-88) | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
 | [D-89](#d-89) | Speed: the Contacts page, sign out, and a production build for measuring (from the session audit) | 📌 pinned |
 | [D-90](#d-90) | Import duplicates: newest name wins now; "Needs review" choices later; a cleanup script for old copies | ◐ built: newest wins + audit + preview list + `npm run dedup:cleanup` · 📌 pinned: Needs-review list |
 | [D-91](#d-91) | A chat the AI is handling cannot be typed into (admins and participants too) until a person takes over from the AI; also while the AI is mid-reply | 📌 pinned (Kushal, 2026-10-22; raised again 2026-10-23) |
 | [D-92](#d-92) | A separate feedback portal: testers' Google Doc is pulled into GitHub issues by a scheduled worker; AI parsing and clarifying questions later | 📌 pinned (Kushal, 2026-10-22) · first slice (the worker) next |
 | [D-93](#d-93) | A separate log for the AI assistant, following one chat's reply through every step of the process | 📌 pinned (Kushal, 2026-10-22) |
 | [D-94](#d-94) | Messages the owner sends from their own phone (and older chat history) are missing from the inbox | 🔺 **HIGH PRIORITY** · 📌 pinned (Kushal, 2026-10-22) |
+| [D-95](#d-95) | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
 | [D-96](#d-96) | Forgot password: a way to reset your own password (no self-service reset today; the beta server has no operator at a keyboard) | 🔺 **PRIORITY** (Kushal, 2026-10-23) · 📌 pinned |
 | [D-97](#d-97) | AI settings say "add a model first" next to Save when no model is set up (and disable Hand to AI with that reason) | 📌 pinned (Kushal, 2026-10-23) |
 | [D-98](#d-98) | Usage and limits check for the chosen AI model: used, remaining, roughly how many messages it can still handle | 📌 pinned (Kushal, 2026-10-23) |
@@ -147,7 +151,6 @@ Overlapping flags (a pin can be in a row above and one of these): 🔺 **priorit
 | [D-116](#d-116) | Chats: a "go to the latest message" button that scrolls a long chat to the bottom | 📌 pinned (Kushal, 2026-10-23) |
 | [D-117](#d-117) | A warning before adding a number when this machine's RAM is too small for it (resource monitor + a calculator, built from docs/19 and D-46/D-61) | 📌 pinned (Kushal, 2026-10-25) |
 | [D-118](#d-118) | AI assistant: the Tasks and Other chats tabs are parked, with what would bring them back | 📌 pinned (Mikhil, 2026-11-09) |
-| [D-143](#d-143) | Anti-ban: fake typos (with corrections) and random distraction pauses, from `baileys-antiban` | 📌 pinned (2026-10-26) |
 | [D-119](#d-119) | Anti-ban presets (conservative / moderate / aggressive / high-volume) instead of one fixed policy | 📌 pinned (2026-10-26) |
 | [D-120](#d-120) | Survey: anti-ban ideas from other projects (WhatsApp tools, email warm-up, LinkedIn tools, Telegram, browser automation) | 📌 pinned (2026-10-26) |
 | [D-121](#d-121) | A proxy per WhatsApp number (regular datacenter, static residential, or mobile), so each number has its own steady, home-like address | 📌 pinned (2026-10-26) |
@@ -172,10 +175,7 @@ Overlapping flags (a pin can be in a row above and one of these): 🔺 **priorit
 | [D-140](#d-140) | Response and outreach analytics: how long people take to reply, per number and per campaign, in a dashboard | 📌 pinned (2026-10-27) |
 | [D-141](#d-141) | Number plans: bring your own number (BYON), or a tier where the customer pays for extra numbers | 📌 pinned (2026-10-27) |
 | [D-142](#d-142) | UI feel: skeleton loaders, optimistic updates, stale-while-revalidate, a command menu with shortcut hints, undo toasts, tabular numbers and idempotency keys | 📌 pinned (2026-10-27) |
-| [D-95](#d-95) | Caching and extra data layers: not faster today, revisit on a measured signal (docs/35 section 7) | 📌 pinned |
-| [D-88](#d-88) | OpenAPI spec and a Swagger page for the API (`/api/v1/openapi.json`, `/api/docs`) | 📌 pinned |
-| [D-87](#d-87) | Rule: every mass message goes to a tag (no untagged audiences) | 📌 pinned · RULE · ◐ the AI page's group message follows it; the API does not enforce it yet |
-| [D-86](#d-86) | AI page: the one-off orders box moves to the bottom; templated orders and order history | 📌 pinned |
+| [D-143](#d-143) | Anti-ban: fake typos (with corrections) and random distraction pauses, from `baileys-antiban` | 📌 pinned (2026-10-26) |
 
 ## By theme (added 2026-10-23)
 
@@ -3011,6 +3011,7 @@ Findings are in [`37-session-audit-findings.md`](37-session-audit-findings.md). 
 Related: D-46 (UI lag), D-61 (lighter web tier), D-70 (the Contacts page), D-83, D-72 (phone width).
 
 Pinned to come back to; not started.
+
 <a id="d-90"></a>
 ## D-90 · Import duplicates: newest name wins now; a "Needs review" list later; a cleanup script for old copies — pinned (Kushal, 2026-10-22)
 
@@ -3119,6 +3120,12 @@ Pinned to come back to; not started.
 
 Remaining work pinned as **high priority**.
 
+<a id="d-95"></a>
+## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (Kushal, 2026-10-23)
+
+**Question asked:** would adding them make it faster? **Answer today: no.** The measured API calls take 20 to 40 ms; the slowness people feel is the dev server compiling pages on first visit (fixed by `--fast-web`, PR #153) and the size of the Contacts page (D-46). A cache does not touch either, and it adds stale-data and cross-org-leak risks plus a third thing to host. So nothing is built.
+
+**Revisit when** a number says so: a query over about 1 s in the API log, an org past roughly 50,000 contacts, a second API process (rate limits and sessions must then be shared, so Redis), or `/auth/me` and `/senders` (0.3 to 1 s in one log) still slow after fetching less data per page. Order: indexes, then send less data (D-46), then a short cache for one named read, then Redis. The full table of signals and first steps is in [`35-database-and-queries.md`](35-database-and-queries.md) section 7.
 
 <a id="d-96"></a>
 ## D-96 · Forgot password: a way to reset your own password — 🔺 **PRIORITY** (Kushal, 2026-10-23)
@@ -3450,6 +3457,7 @@ Inbound messages keep their current look.
 **Design notes so it is not re-derived:** one generic `approval_request` table (id, org, kind, payload JSON, requested_by, note, status, decided_by, decided_at, decision_reason, expires_at) instead of one table per kind (D-76's `sender_access_request` becomes `kind = 'number'`); a registry mapping each kind to its `apply()` function and the role allowed to approve; the approver's session, not the requester's, performs the action; idempotent (approving twice does nothing); an org setting per kind says "needs approval" or "agents may do this alone" (so a small team can leave it off). Scopes (D-77) decide who may *ask*; roles decide who may *approve*.
 
 **Tests:** an integration test per kind (request, approve, decline, cancel, expire, cannot self-approve, audit rows, the underlying action runs only once and only on approve) and the do-not-contact and anti-ban rules still holding after approval; browser tests of "My requests", the Approvals inbox and the bell.
+
 <a id="d-115"></a>
 ## D-115 · Campaigns: a timeout for messages the AI sends — 📌 pinned (Kushal, 2026-10-23), meaning mostly clear
 
@@ -3501,15 +3509,6 @@ Inbound messages keep their current look.
 **What brings them back:** a person who wants to run the AI from a chat box (Tasks), or hand an ordinary chat to the AI with its own template (`conversation.ai_template_id`, see `docs/35`), would need these as screens again. A task would reuse the shared text box, and the credit log already counts its calls (`campaign_action`).
 
 **Also left for later:** per-template results (replies, hand-overs, interested), automatic follow-up when someone goes quiet (it affects ban risk, so it needs its own decision), the AI choosing between several files, and the AI reading pictures (the model connection takes text only). An opening for a template with no chosen columns still sends all of a person's columns to the model (`ai-opening.ts`); replies send only the chosen ones. The shared file and tag picker is used by the template editor only; Contacts and New campaign keep their own.
-
-<a id="d-143"></a>
-## D-143 · Anti-ban: fake typos and random distraction pauses — 📌 pinned (2026-10-26)
-
-**What:** two more "human" touches from the open-source `baileys-antiban` library (its README, read 2026-10-26), on top of the typing simulation and entropy we already have (`docs/08-antiban.md` Layer 3):
-- **Typos with corrections:** about **2.5% of messages** are "typed" with a slip that is then fixed. On WhatsApp this is the "typing…" indicator pausing, the text being edited or a quick correction message, depending on what is safe to do with a real person's text.
-- **Random distraction pauses:** a **5% chance** of a 5 to 20 minute pause and a **3% chance** of a 3 to 15 minute "offline" gap, plus mid-typing pauses (about 8% chance of a 0.8 to 3.5 s "thinking" pause per 10 characters). Real people are not perfectly steady; a machine-steady cadence is itself a signal (`baileys-antiban` calls it looking "too perfect").
-**Careful:** a typo that changes the message **text** the customer receives is a product decision (a sent message with a deliberate typo is a worse message). Safer first step: **typing and pause behaviour only**, no change to what is sent. Needs a setting, an off switch, and a test that proves message text is unchanged. These slow sending further, so they interact with campaign forecasts (D-115 timeouts, the forecast on the campaign page).
-**Ties to:** D-119 (a preset decides whether these are on), D-120, `packages/core/src/typing.ts`, `entropy.ts`, `pacing.ts`.
 
 <a id="d-119"></a>
 ## D-119 · Anti-ban presets: conservative, moderate, aggressive, high-volume — 📌 pinned (2026-10-26)
@@ -3750,16 +3749,11 @@ Implement: `WhatsApp CRM v2.dc.html`
 
 **Related:** D-46 (lag), D-52, D-106, D-132, D-138, D-140, R-004.
 
-<a id="d-95"></a>
-## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (2026-10-23)
+<a id="d-143"></a>
+## D-143 · Anti-ban: fake typos and random distraction pauses — 📌 pinned (2026-10-26)
 
-**Question asked:** would adding them make it faster? **Answer today: no.** The measured API calls take 20 to 40 ms; the slowness people feel is the dev server compiling pages on first visit (fixed by `--fast-web`, PR #153) and the size of the Contacts page (D-46). A cache does not touch either, and it adds stale-data and cross-org-leak risks plus a third thing to host. So nothing is built.
-
-**Revisit when** a number says so: a query over about 1 s in the API log, an org past roughly 50,000 contacts, a second API process (rate limits and sessions must then be shared, so Redis), or `/auth/me` and `/senders` (0.3 to 1 s in one log) still slow after fetching less data per page. Order: indexes, then send less data (D-46), then a short cache for one named read, then Redis. The full table of signals and first steps is in [`35-database-and-queries.md`](35-database-and-queries.md) section 7.
-
-
-## D-95 · Caching and extra data layers (Redis, result cache, views, replica, search server) — 📌 pinned for later (Kushal, 2026-10-23)
-
-**Question asked:** would adding them make it faster? **Answer today: no.** The measured API calls take 20 to 40 ms; the slowness people feel is the dev server compiling pages on first visit (fixed by `--fast-web`, PR #153) and the size of the Contacts page (D-46). A cache does not touch either, and it adds stale-data and cross-org-leak risks plus a third thing to host. So nothing is built.
-
-**Revisit when** a number says so: a query over about 1 s in the API log, an org past roughly 50,000 contacts, a second API process (rate limits and sessions must then be shared, so Redis), or `/auth/me` and `/senders` (0.3 to 1 s in one log) still slow after fetching less data per page. Order: indexes, then send less data (D-46), then a short cache for one named read, then Redis. The full table of signals and first steps is in [`35-database-and-queries.md`](35-database-and-queries.md) section 7.
+**What:** two more "human" touches from the open-source `baileys-antiban` library (its README, read 2026-10-26), on top of the typing simulation and entropy we already have (`docs/08-antiban.md` Layer 3):
+- **Typos with corrections:** about **2.5% of messages** are "typed" with a slip that is then fixed. On WhatsApp this is the "typing…" indicator pausing, the text being edited or a quick correction message, depending on what is safe to do with a real person's text.
+- **Random distraction pauses:** a **5% chance** of a 5 to 20 minute pause and a **3% chance** of a 3 to 15 minute "offline" gap, plus mid-typing pauses (about 8% chance of a 0.8 to 3.5 s "thinking" pause per 10 characters). Real people are not perfectly steady; a machine-steady cadence is itself a signal (`baileys-antiban` calls it looking "too perfect").
+**Careful:** a typo that changes the message **text** the customer receives is a product decision (a sent message with a deliberate typo is a worse message). Safer first step: **typing and pause behaviour only**, no change to what is sent. Needs a setting, an off switch, and a test that proves message text is unchanged. These slow sending further, so they interact with campaign forecasts (D-115 timeouts, the forecast on the campaign page).
+**Ties to:** D-119 (a preset decides whether these are on), D-120, `packages/core/src/typing.ts`, `entropy.ts`, `pacing.ts`.
