@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql, type SQL } from 'drizzle-orm';
 import type { KmsDriver } from '@crm/kms-local';
-import { loadCustomFields, sampleText } from '@crm/core';
+import { AUDIT, loadCustomFields, sampleText } from '@crm/core';
 import { requireScope } from '../auth.js';
 import { problem } from '../problem.js';
 import { requireUuidParam } from '../params.js';
@@ -267,7 +267,25 @@ export function inboxRouter(kms: KmsDriver): Router {
         if (v !== undefined && v !== null && String(v).trim() !== '') fillIns.push({ key: d.key, label: d.label, value: sampleText(d.type, String(v)) });
         else blankKeys.push(d.key);
       }
-      return { contactId: person.id, name: person.name, phone: person.phone, email: person.email, fillIns, blankKeys, files, campaigns };
+      // Whether they asked to stop or were marked do not contact, and the changes so far (#85): the thread used to say only "do not contact", never that
+      // they had opted out, when, or that they had started again.
+      const dnc = ((await tx.execute(sql`
+        SELECT do_not_contact AS "doNotContact", dnc_reason AS reason, dnc_at AS at FROM contact WHERE id = ${person.id} AND org_id = ${orgId}`)
+      ) as unknown as Array<{ doNotContact: boolean; reason: string | null; at: string | null }>)[0] ?? { doNotContact: false, reason: null, at: null };
+      const changes = (await tx.execute(sql`
+        SELECT a.at, a.after FROM audit_log a
+        WHERE a.org_id = ${orgId} AND a.target_id = ${person.id} AND a.action = ${AUDIT.contactDncChanged}
+        ORDER BY a.at DESC LIMIT 6`)) as unknown as Array<{ at: string; after: { doNotContact?: boolean; reason?: string; via?: string } | null }>;
+      const history = changes.map((c) => ({
+        at: c.at,
+        what: c.after?.doNotContact === true
+          ? (c.after.reason === 'opt_out' ? `Asked to stop${c.after.via === 'agent' ? ' (marked by a person)' : ''}` : 'Marked do not contact')
+          : (c.after?.reason === 'restart_word' ? 'Started again (sent a start word)' : 'Do not contact removed by a person')
+      }));
+      return {
+        contactId: person.id, name: person.name, phone: person.phone, email: person.email, fillIns, blankKeys, files, campaigns,
+        optOut: { doNotContact: dnc.doNotContact, askedToStop: dnc.doNotContact && dnc.reason === 'opt_out', at: dnc.at, history }
+      };
     });
     if (out === null) {
       res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such conversation.'));

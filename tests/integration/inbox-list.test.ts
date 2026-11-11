@@ -310,6 +310,41 @@ describe('GET /conversations/:id/person', () => {
   });
 });
 
+describe('[R-054] [#85] GET /conversations/:id/person says whether the person asked to stop, and the changes so far', () => {
+  const opt = async (a: { contact: string }, doNotContact: boolean, reason: string, via?: string): Promise<void> => {
+    await db.execute(sql`INSERT INTO audit_log (org_id, actor_type, actor_id, action, target_type, target_id, after)
+      VALUES (${orgId}, 'system', '00000000-0000-4000-8000-000000000000', 'contact.dnc_changed', 'contact', ${a.contact},
+              ${JSON.stringify({ doNotContact, reason, ...(via === undefined ? {} : { via }) })}::jsonb)`);
+  };
+
+  it('[#85] a person nobody flagged has no opt-out and no history', async () => {
+    const a = await chat('Priya Sharma', '+919845012345');
+    const r = await request(app).get(`/api/v1/conversations/${a.conv}/person`).set(admin);
+    expect(r.body.data.optOut).toEqual({ doNotContact: false, askedToStop: false, at: null, history: [] });
+  });
+
+  it('[#85] someone who said STOP: asked to stop, with the change in the history', async () => {
+    const a = await chat('Priya Sharma', '+919845012345');
+    await db.execute(sql`UPDATE contact SET do_not_contact = true, dnc_reason = 'opt_out', dnc_at = now() WHERE id = ${a.contact}`);
+    await opt(a, true, 'opt_out', 'keyword');
+    const r = await request(app).get(`/api/v1/conversations/${a.conv}/person`).set(admin);
+    expect(r.body.data.optOut).toMatchObject({ doNotContact: true, askedToStop: true });
+    expect(r.body.data.optOut.history.map((h: { what: string }) => h.what)).toEqual(['Asked to stop']);
+  });
+
+  it('[#85] flagged by hand is "do not contact", not "asked to stop"; after START they can be messaged and the history shows both changes', async () => {
+    const a = await chat('Priya Sharma', '+919845012345');
+    await db.execute(sql`UPDATE contact SET do_not_contact = true, dnc_reason = 'manual', dnc_at = now() WHERE id = ${a.contact}`);
+    await opt(a, true, 'manual');
+    expect((await request(app).get(`/api/v1/conversations/${a.conv}/person`).set(admin)).body.data.optOut).toMatchObject({ doNotContact: true, askedToStop: false });
+    await db.execute(sql`UPDATE contact SET do_not_contact = false, dnc_reason = NULL, dnc_at = NULL WHERE id = ${a.contact}`);
+    await opt(a, false, 'restart_word');
+    const r = await request(app).get(`/api/v1/conversations/${a.conv}/person`).set(admin);
+    expect(r.body.data.optOut).toMatchObject({ doNotContact: false, askedToStop: false });
+    expect(r.body.data.optOut.history.map((h: { what: string }) => h.what)).toEqual(['Started again (sent a start word)', 'Marked do not contact']);
+  });
+});
+
 describe('GET /conversations/:id/messages: the campaign each message belongs to', () => {
   it('says which campaign sent a message, so the thread can mark where it started', async () => {
     const a = await chat('Priya Sharma', '+919845012345');

@@ -38,6 +38,11 @@ const configSchema = z.object({
   // Browser origins allowed to call the API from another host or port, comma-separated, each exactly
   // `scheme://host[:port]` (e.g. `http://192.168.1.20:4000`). Empty = none. Server-to-server callers
   // (a backend, curl) need no entry — CORS only constrains browsers (apps/api/src/cors.ts).
+  // Which callers may tell the API a client's address with `X-Forwarded-For` (#60, #64). The default is the machine itself and private
+  // networks: the web app and the reverse proxy sit there. A caller from any other address that reaches the API directly is NOT believed, so it
+  // cannot pick its own address to dodge the per-address login limit or write a false address in the audit trail. Express names or addresses,
+  // comma separated (`loopback, uniquelocal`, `10.0.0.5`); a number is that many hops; `false` trusts nobody.
+  TRUST_PROXY: z.string().default('loopback, linklocal, uniquelocal'),
   CORS_ALLOWED_ORIGINS: z.string().default('').transform((v) =>
     v.split(',').map((o) => o.trim().replace(/\/$/, '')).filter((o) => o !== '')
   ).refine((list) => list.every((o) => /^https?:\/\/[^/\s]+$/.test(o)), {

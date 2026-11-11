@@ -440,13 +440,14 @@ describe('link failures and stale sessions', () => {
     expect(row[0]!.p).toBe('+12025550188');
   });
 
-  it('leaves a phone number someone typed in alone, and a number another sender already has', async () => {
+  it('replaces a typed number with the phone WhatsApp reports (#114), and leaves alone a number another sender already has', async () => {
     const ctx = { db, provider: new FakeChannelProvider(), logger, decrypt: () => '' };
     await db.execute(sql`UPDATE sender_identity SET phone_e164 = '+12025550177' WHERE id = ${senderId}`);
     await applyConnectionEvent(ctx, { senderId, state: 'open', reason: null, phoneE164: '+12025550188', at: new Date() });
     const kept = (await db.execute(sql`SELECT phone_e164 AS p FROM sender_identity WHERE id = ${senderId}`)
     ) as unknown as Array<{ p: string | null }>;
-    expect(kept[0]!.p).toBe('+12025550177');
+    // Before #114 a typed number stayed whatever the phone was; WhatsApp is the authority on which phone answered, so the recorded number follows it.
+    expect(kept[0]!.p).toBe('+12025550188');
 
     // Another sender of the same org already holds +12025550166: the update is skipped, not an error.
     const other = (await db.execute(sql`

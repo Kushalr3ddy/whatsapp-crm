@@ -1,3 +1,4 @@
+import { ungroundedClaims, groundingCorrection, UNGROUNDED_FALLBACK_REPLY, type UngroundedClaim } from './ai-grounding.js';
 import { sql } from 'drizzle-orm';
 import { campaignTemplateFor } from './campaign-reply.js';
 import type { Database } from '@crm/db';
@@ -121,25 +122,37 @@ export async function autoReply(
   if (!nonText && history.length === 0) { await record('skipped', 'no_history'); return { outcome: 'skipped', reason: 'no_history' }; }
 
   let answer: LlmResponse;
+  // Everything the AI is given to work from, kept so its answer can be checked against it (ai-grounding.ts).
+  const instructionsText = tpl?.instructions ?? settings.instructions;
+  const facts = tpl === null || nonText ? [] : await personFacts(db, orgId, conversationId, tpl.visibleColumns);
+  const system = systemText(conv.orgName, instructionsText, { ...(tpl === null ? {} : { fallback: { name: tpl.fallbackName, phone: tpl.fallbackPhone } }), facts });
+  let extraUsage = { inputTokens: 0, outputTokens: 0 };
+  let ungrounded: UngroundedClaim[] = [];
   if (nonText) {
     answer = { text: NON_TEXT_REPLY, toolCalls: [], usage: { inputTokens: 0, outputTokens: 0 }, model: 'none' };
   } else {
     try {
-      answer = await llm.complete({
-        // With a template: its instructions, the person's chosen columns and who to hand over to. Otherwise the organisation's own instructions.
-        system: systemText(conv.orgName, tpl?.instructions ?? settings.instructions, {
-          ...(tpl === null ? {} : { fallback: { name: tpl.fallbackName, phone: tpl.fallbackPhone } }),
-          facts: tpl === null ? [] : await personFacts(db, orgId, conversationId, tpl.visibleColumns)
-        }),
-        messages: history, maxTokens: MAX_REPLY_TOKENS
-      });
+      // With a template: its instructions, the person's chosen columns and who to hand over to. Otherwise the organisation's own instructions.
+      answer = await llm.complete({ system, messages: history, maxTokens: MAX_REPLY_TOKENS });
+      // A time, date, amount or document the AI was never given is its own invention (#47, #92): ask once more, and if it still does it, a person takes over.
+      const given = [instructionsText, ...facts, await chatText(db, kms, orgId, conversationId)].join('\n');
+      ungrounded =ungroundedClaims(parseAiTurn(answer.text).reply, given);
+      if (ungrounded.length > 0) {
+        const again = await llm.complete({
+          system, maxTokens: MAX_REPLY_TOKENS,
+          messages: [...history, { role: 'assistant', content: answer.text }, { role: 'user', content: groundingCorrection(ungrounded) }]
+        });
+        extraUsage = { inputTokens: again.usage.inputTokens, outputTokens: again.usage.outputTokens };
+        const second = ungroundedClaims(parseAiTurn(again.text).reply, given);
+        if (second.length === 0) { answer = { ...again, usage: answer.usage }; ungrounded = []; } else ungrounded = second;
+      }
     } catch (error) {
       const code = error instanceof Error && 'code' in error ? String((error as { code: unknown }).code) : 'model_error';
       await record('failed', `model_${code}`);
       return { outcome: 'failed', reason: `model_${code}` };
     }
   }
-  const usage = answer.usage;
+  const usage = { inputTokens: answer.usage.inputTokens + extraUsage.inputTokens, outputTokens: answer.usage.outputTokens + extraUsage.outputTokens };
 
   // The model took a while. If a newer message arrived, or a person took the chat, this reply is stale.
   const stillMine = (await db.execute(sql`
@@ -150,7 +163,11 @@ export async function autoReply(
   }
 
   // The model answers as JSON (reply, status, summary); only the reply is ever sent. A plain answer is just the reply.
-  const turn = parseAiTurn(answer.text);
+  // Still inventing after the second try: nothing it made up is sent. The customer is told a colleague will confirm, and the chat goes to a person.
+  const turn = ungrounded.length > 0
+    ? { reply: UNGROUNDED_FALLBACK_REPLY, status: 'needs_person' as const, handover: true,
+        summary: `The AI wanted to tell them ${ungrounded.map((c) => `"${c.text}"`).join(', ')}, which is not in its instructions or in this chat, so it did not. Please confirm it with them.` }
+    : parseAiTurn(answer.text);
   const text = turn.reply.slice(0, MAX_REPLY_CHARS).trim();
   let messageId: string | undefined;
   if (text !== '') {
@@ -209,6 +226,22 @@ async function newerExists(db: Database, orgId: string, conversationId: string, 
       AND created_at > (SELECT created_at FROM message WHERE id = ${inboundMessageId})
       AND NOT (direction = 'outbound' AND sent_by = 'system' AND campaign_id IS NOT NULL) LIMIT 1`);
   return (rows as unknown as unknown[]).length > 0;
+}
+
+/**
+ * The words of the whole chat, both directions, for checking an answer against (ai-grounding.ts). The model's own turns start with the customer, so
+ * the campaign's opening message (which carries the date and time of the interview) is not among them, but it is exactly what a detail is grounded in.
+ */
+async function chatText(db: Database, kms: KmsDriver, orgId: string, conversationId: string): Promise<string> {
+  const rows = (await db.execute(sql`
+    SELECT body_enc AS "bodyEnc" FROM message
+    WHERE org_id = ${orgId} AND conversation_id = ${conversationId} AND body_enc IS NOT NULL AND content_type = 'text'
+    ORDER BY created_at DESC LIMIT 200`)) as unknown as Array<{ bodyEnc: Uint8Array }>;
+  const out: string[] = [];
+  for (const r of rows) {
+    try { out.push(new TextDecoder().decode(kms.decrypt(r.bodyEnc))); } catch { /* an unreadable body grounds nothing */ }
+  }
+  return out.join('\n');
 }
 
 /** The last messages as model turns, oldest first, merged so roles alternate and starting with the customer. */

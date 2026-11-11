@@ -310,6 +310,9 @@ function DraftPreview({ preview }: { preview: CampaignPreview }) {
       <p className="mt-1 text-sm">
         Would message <span className="font-semibold tabular-nums">{audience.reachable}</span>{' '}
         {audience.reachable === 1 ? 'person' : 'people'}
+        {(audience.engaged ?? 0) > 0 && (
+          <> · <span className="tabular-nums">{audience.engaged}</span> in a chat an agent is handling (skipped unless an admin lets them through)</>
+        )}
         {audience.unreachable > 0 && (
           <> · <span className="tabular-nums">{audience.unreachable}</span> skipped (no number)</>
         )}

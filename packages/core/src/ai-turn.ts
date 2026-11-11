@@ -37,6 +37,23 @@ function jsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+/** The model's own note says the person agreed to come or go ahead. */
+const AGREED = /\b(confirm(?:ed|s)?\s+(?:his|her|their|the)?\s*(?:attendance|interest|visit|slot|interview)|agreed to (?:come|attend|join|go ahead|proceed|visit)|will (?:come|attend|be there|join)|is (?:coming|attending)|wants to (?:go ahead|proceed|join|attend)|said yes|is interested)\b/i;
+/** The model's own note says the person said no. */
+const DECLINED = /\b(not interested|declined|refused|said no|does not want|doesn't want|asked to stop|do not contact)\b/i;
+
+/**
+ * The status and the note come from the same answer and must agree (#91): a person whose note says "confirmed his attendance" was filed as
+ * "talking" because the model judged the status separately and conservatively. When the note itself says the person agreed, a status of "talking"
+ * (or none) becomes "interested"; a note that says they declined does not stay "talking". Any other status the model chose is left as it is.
+ */
+export function reconcileStatus(status: AiStatus | null, summary: string | null): AiStatus | null {
+  if (summary === null || (status !== null && status !== 'talking')) return status;
+  if (DECLINED.test(summary)) return 'not_interested';
+  if (AGREED.test(summary)) return 'interested';
+  return status;
+}
+
 /**
  * Reads the model's answer. It asks for a JSON object with `reply`, `status` and `summary`; a plain text answer is just the reply (the
  * model may ignore the format, and the customer should still get an answer). JSON that did not finish is never sent: it gives an empty
@@ -46,8 +63,8 @@ export function parseAiTurn(raw: string): AiTurn {
   const text = raw.trim();
   const json = jsonObject(text);
   if (json !== null && typeof json.reply === 'string') {
-    const status = AI_STATUSES.find((s) => s === json.status) ?? null;
     const summary = typeof json.summary === 'string' && json.summary.trim() !== '' ? json.summary.trim().slice(0, MAX_SUMMARY) : null;
+    const status = reconcileStatus(AI_STATUSES.find((s) => s === json.status) ?? null, summary);
     return { reply: json.reply.trim(), status, summary, handover: json.handover === true };
   }
   // Something that starts like our format but is not usable (cut off, or no reply in it) must not reach the customer.

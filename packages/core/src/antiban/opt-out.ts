@@ -39,6 +39,10 @@ export interface OptOutDeps {
 }
 
 const none: InboundSafetyResult = { outcome: 'none', closingMessageId: null, via: null };
+/** The campaign page's note for someone who asked to stop. */
+const OPTED_OUT_SUMMARY = 'Asked to stop. Not messaged again unless they start again.';
+/** How the note a colleague sees starts when a person who opted out writes again. */
+const OPTED_OUT_WROTE_NOTE = 'This person opted out earlier and has just written:';
 
 /**
  * Reads what a contact just wrote for an opt-out or a restart (F6 S6). An opt-out is a STOP word (the whole message), one of the org's
@@ -65,14 +69,21 @@ export async function handleInboundSafety(deps: OptOutDeps, input: InboundSafety
         await deps.db.execute(sql`
           UPDATE contact SET dnc_at = GREATEST(${now.toISOString()}::timestamptz, clock_timestamp()), updated_at = now()
           WHERE id = ${contact.id} AND do_not_contact AND dnc_reason = ${OPT_OUT_REASON}`);
+        return none;
       }
-      return none;
+      // Anything else they write is for a person to read (#84): "I want to talk to a real human" right after an opt-out used to meet silence, because the
+      // AI is blocked for an opted-out person and nothing else was told. The chat leaves the AI and a note says why; a colleague may answer by hand (AC-6.5).
+      await flagForReview(deps.db, input.orgId, input.conversationId, body, 'wrote_after_opt_out');
+      return { outcome: 'review', closingMessageId: null, via: null };
     }
     const now = (deps.now ?? (() => new Date()))();
     const lifted = await deps.db.execute(sql`
       UPDATE contact SET do_not_contact = false, dnc_reason = NULL, dnc_at = NULL, updated_at = ${now.toISOString()}
       WHERE id = ${contact.id} AND do_not_contact AND dnc_reason = ${OPT_OUT_REASON} RETURNING id`);
     if ((lifted as unknown as unknown[]).length === 0) return none;
+    await deps.db.execute(sql`
+      UPDATE campaign_recipient SET ai_status = 'talking', ai_summary = NULL, ai_status_at = now()
+      WHERE org_id = ${input.orgId} AND contact_id = ${contact.id} AND ai_summary = ${OPTED_OUT_SUMMARY}`);
     await writeAudit(deps.db, {
       orgId: input.orgId, actor: SYSTEM_ACTOR, action: AUDIT.contactDncChanged, targetType: 'contact', targetId: contact.id,
       after: { doNotContact: false, reason: 'restart_word' }
@@ -94,17 +105,39 @@ export async function handleInboundSafety(deps: OptOutDeps, input: InboundSafety
   return none;
 }
 
-/** Leaves a note for the team and takes the chat off the AI, so a person reads what the contact wrote before anything else is sent. */
-async function flagForReview(db: Queryable, orgId: string, conversationId: string, body: string): Promise<void> {
+/**
+ * Leaves a note for the team and takes the chat off the AI, so a person reads what the contact wrote before anything else is sent.
+ * `maybe_stop`: the AI read the message as a possible refusal. `wrote_after_opt_out`: the person had opted out and has written again (one note
+ * for each opt-out, however many messages follow).
+ */
+async function flagForReview(
+  db: Queryable, orgId: string, conversationId: string, body: string, kind: 'maybe_stop' | 'wrote_after_opt_out' = 'maybe_stop'
+): Promise<void> {
   const bot = (await db.execute(sql`SELECT bot_user_id AS "id" FROM ai_setting WHERE org_id = ${orgId}`) as unknown as Array<{ id: string | null }>)[0]?.id ?? null;
   const quoted = body.replace(/\s+/g, ' ').slice(0, 200);
   // Only a chat the AI owns is taken from it; a chat a person owns stays theirs.
   if (bot !== null) {
     await db.execute(sql`UPDATE conversation SET assignee_user_id = NULL, updated_at = now() WHERE id = ${conversationId} AND org_id = ${orgId} AND assignee_user_id = ${bot}`);
   }
+  const text = kind === 'maybe_stop'
+    ? `The AI thinks this message may be a request to stop: "${quoted}". It has NOT been marked do-not-contact. Read it, and mark the person yourself if they do want to stop.`
+    : `${OPTED_OUT_WROTE_NOTE} "${quoted}". The AI does not answer someone who opted out. Read it: you may answer by hand, and a START from them lifts the opt-out.`;
+  if (kind === 'wrote_after_opt_out') {
+    // One note per opt-out: later messages in the same period add nothing.
+    await db.execute(sql`
+      INSERT INTO internal_note (org_id, conversation_id, author_user_id, body)
+      SELECT ${orgId}, ${conversationId}, ${bot}, ${text}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM internal_note n JOIN conversation v ON v.id = n.conversation_id JOIN contact c ON c.id = v.contact_id
+        WHERE n.conversation_id = ${conversationId} AND n.body LIKE ${OPTED_OUT_WROTE_NOTE + '%'}
+          -- Counted from the database's own record of the opt-out (its clock stamped the note too), not from dnc_at, which carries the gateway's clock.
+          AND n.created_at > coalesce((SELECT max(a.at) FROM audit_log a WHERE a.org_id = ${orgId} AND a.target_id = c.id
+                                         AND a.action = ${AUDIT.contactDncChanged} AND a.after->>'doNotContact' = 'true'), 'epoch'))`);
+    return;
+  }
   await db.execute(sql`
     INSERT INTO internal_note (org_id, conversation_id, author_user_id, body)
-    VALUES (${orgId}, ${conversationId}, ${bot}, ${`The AI thinks this message may be a request to stop: "${quoted}". It has NOT been marked do-not-contact. Read it, and mark the person yourself if they do want to stop.`})`);
+    VALUES (${orgId}, ${conversationId}, ${bot}, ${text})`);
 }
 
 /** What `markOptOut` did. */
@@ -158,6 +191,11 @@ async function optOut(
     orgId: input.orgId, actor: input.actor, action: AUDIT.contactDncChanged, targetType: 'contact', targetId: input.contactId,
     after: { doNotContact: true, reason: OPT_OUT_REASON, via: input.via ?? 'agent' }
   });
+  // Where the AI had a chat with this person, the campaign page still said "Needs a person" with an old note (#77): the opt-out was only on the contact.
+  // Someone who asked to stop is not interested, and the note says so.
+  await deps.db.execute(sql`
+    UPDATE campaign_recipient SET ai_status = 'not_interested', ai_summary = ${OPTED_OUT_SUMMARY}, ai_status_at = now()
+    WHERE org_id = ${input.orgId} AND contact_id = ${input.contactId} AND ai_status IS NOT NULL AND ai_status <> 'not_interested'`);
 
   const settings = await loadAntiBanSettings(deps.db, input.orgId);
   if (!settings.closingMessageEnabled) return { closingMessageId: null, alreadyOptedOut: false };

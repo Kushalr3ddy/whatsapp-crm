@@ -247,6 +247,8 @@ Lockfile committed · `npm audit` and Renovate/Dependabot · CycloneDX SBOM per 
 base images pinned by digest · non-root container user · read-only root filesystem · dropped
 capabilities · Trivy image scan in CI.
 
+**Known advisories (2026-11-11, `npm audit --omit=dev`).** drizzle-orm: SQL injection through improperly escaped identifiers, fixed by moving to 0.45.4 (done, #59); the code builds no identifier from user input in any case (the one `sql.raw` is the database role from configuration). zod 3: memory exhaustion when validating oversized constrained collections; the fix is zod 4, a breaking change across every schema, so it is accepted for now on this reach: a request body is capped at 1 MB (`express.json` limit) and every array in a schema has a `.max`, so the size the advisory needs cannot arrive; imports are read by a separate capped child process, not by zod. Revisit when zod 4 is adopted. exceljs (via uuid, moderate): only reads files an admin uploads, in the capped import child.
+
 ## Compliance — the operator's responsibility, not the product's
 
 This is a **generic, self-hostable tool used anywhere in the world**, so it bakes in **no single

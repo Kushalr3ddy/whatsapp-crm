@@ -30,28 +30,28 @@ Tracked as GitHub issues since 2026-11-11. The old ids still appear in the docs 
 
 | Old id | Issue | Old id | Issue | Old id | Issue |
 |---|---|---|---|---|---|
-| LV-3 | #47 | LV-4 | #48 | LV-5 | #49 |
+| ~~LV-3~~ fixed | #47 | LV-4 | #48 | LV-5 | #49 |
 | LV-6 | #50 | LV-7 | #51 | LV-8 | #52 |
 | LV-9 | #53 | LV-10 | #54 | LV-11 | #55 |
 | LV-12 | #56 | LV-13 | #57 | held-picture wording | #58 |
-| DEP-1 | #59 | login limit at the proxy (SEC-2) | #60 | SEC-4 | #61 |
-| SEC-7 | #62 | SEC-9 | #63 | SEC-5 | #64 |
+| ~~DEP-1~~ fixed | #59 | ~~login limit at the proxy (SEC-2)~~ fixed | #60 | SEC-4 | #61 |
+| SEC-7 | #62 | SEC-9 | #63 | ~~SEC-5~~ fixed | #64 |
 | SEC-6 | #65 | SEC-8 | #66 | ISO-1 | #67 |
-| agent re-flag overwrites reason | #68 | PERF-1 | #69 | UI-1 | #70 |
+| agent re-flag overwrites reason | #68 | ~~PERF-1~~ fixed | #69 | UI-1 | #70 |
 | UI-2 | #71 | UI-5 | #72 | UI-7 | #73 |
-| UI-3 | #74 | UI-4, UI-6 | #75 | LF-1 | #76 |
-| SC-1 | #77 | SC-2 | #78 | SC-4 | #79 |
+| UI-3 | #74 | UI-4, UI-6 | #75 | ~~LF-1~~ fixed | #76 |
+| ~~SC-1~~ fixed | #77 | SC-2 | #78 | SC-4 | #79 |
 | SC-11 (and X-005) | #80 | SC-3 | #81 | LF-10 | #82 |
-| U-1 | #83 | LF-18 | #84 | SC-6 | #85 |
+| U-1 | #83 | ~~LF-18~~ fixed | #84 | ~~SC-6~~ fixed | #85 |
 | SC-5 | #86 | SC-7 | #87 | SC-8 | #88 |
-| LF-13 | #89 | SC-10 | #90 | AI-INT-1 | #91 |
-| LF-14 | #92 | LF-16 | #93 | LF-15 | #94 |
-| LF-3 | #95 | LF-6 | #96 | LF-5 | #97 |
+| LF-13 | #89 | SC-10 | #90 | ~~AI-INT-1~~ fixed | #91 |
+| ~~LF-14~~ fixed | #92 | LF-16 | #93 | LF-15 | #94 |
+| ~~LF-3~~ fixed | #95 | LF-6 | #96 | LF-5 | #97 |
 | LF-7 | #98 | R-025 | #103 | R-031 | #104 |
 | X-002 | #107 | X-003 | #108 | X-004 | #109 |
-| M-001 | #110 | M-002 | #111 | M-003 | #112 |
+| M-001 | #110 | M-002 | #111 | ~~M-003~~ fixed | #112 |
 
-Fixed but their issues are still open on GitHub (to be closed): R-030 #99, R-027 #100, R-028 #101, R-029 #102.
+Struck through: fixed on 2026-11-11 (see the table below); their issues close when that PR merges. Also fixed there: R-030 #99, R-027 #100, R-028 #101, R-029 #102 (PR #106).
 
 **Decisions for the owner** (current behaviour pinned by tests, not bugs): any agent can edit, start, pause or cancel any campaign of the organisation; two admins saving the same template at once is last write wins with no warning; `api_key` has no row-level policy (every route filters it by organisation); a campaign created with only another organisation's contact ids is accepted but empty and starts as `running` with nobody in it; a confused "who is this" or a rude message is read as an opt-out only if a STOP word is used (LF-12, LF-17, changed by R-046); the rotation brake is one for the whole install (SEC-8, ENC-7 pins it).
 
@@ -77,6 +77,20 @@ Fixed but their issues are still open on GitHub (to be closed): R-030 #99, R-027
 | Repeated 515 restarts reconnected at once without limit | R-028 | this PR | Three in a row are the handshake; after that they back off and spend the retry budget |
 | After 403 (ban) or 440 (taken over) the adapter dialled again by itself | R-029, R-030 | this PR | Neither reconnects by itself; a person relinks or resumes from the Numbers page |
 
+
+### Fixed on 2026-11-11 (all open Sev 2s; each has a regression test named by its issue number)
+
+| Issue | # | Fixed in | What changed |
+|---|---|---|---|
+| The AI invented a time, a date, an amount or a document to bring | #47, #92 | 2026-11-11 PR | The answer is checked before it is queued against the instructions, the facts about the person and the whole chat (`ai-grounding.ts`); one retry with the detail named; if it repeats, the customer is told a colleague will confirm and the chat goes to a person |
+| The rewrite of what the AI knows dropped the owner's rules and answers | #95 | same | Rule and answer lines are checked against the result; the model is asked once more; anything still missing is put back as written |
+| A clear "yes" was filed as Talking | #91 | same | The status is reconciled with the model's own note (agreed to come: interested; declined: not interested) |
+| A review said nobody was left out, then Start skipped engaged people | #76 | same | The review and the draft preview count the engaged people with the gate's own rule |
+| A person who opted out and wrote again met silence; the campaign page kept "Needs a person"; the inbox did not say they opted out | #84, #77, #85 | same | An opt-out also updates the campaign page status; a later message from an opted-out person takes the chat off the AI with one note for the team; Details shows asked to stop and the history |
+| Import double commit; a slot linked again kept the old number | #112, #114 | same | A commit claims the import atomically; the recorded number follows the phone WhatsApp reports |
+| Login limit and audit address could be forged | #60, #64 | same | `TRUST_PROXY`: X-Forwarded-For is believed only from this machine and private networks (or the proxy named) |
+| Import took 10 s for a few people | #69 | same | The file is read through the capped child once per import in this process, not once per step |
+| drizzle-orm advisory | #59 | same | drizzle-orm 0.45.4; zod and exceljs advisories recorded with their reach in `09-security.md` |
 
 ## AI template changes to consider (the owner's call; nothing changed)
 

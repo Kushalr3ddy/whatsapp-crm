@@ -407,13 +407,13 @@ suite('imports in two organisations', { timeout: 30_000 }, () => {
     expect((await run('adminA', id, false)).status).toBe(409);
   });
 
-  // M-003 (docs/49-bug-list.md): both commits are answered 200 and, about once in 60 rounds, an extra contact with no phone is created. Too rare for a pass/fail test, so it is skipped; reproduce with a loop of rounds.
-  it.skip('[IMP-6] two people committing the same import at the same moment: one wins, the other gets 409, and nobody is created twice', async () => {
+  // M-003 (#112), fixed: a commit claims the import before it writes, so exactly one of two simultaneous commits runs.
+  it('[R-051] [IMP-6] two people committing the same import at the same moment: one wins, the other gets 409, and nobody is created twice', async () => {
     const a = await up('adminA', csv('IMP6', ['9811100050', '9811100051', '9811100052']));
     const id = String(a.body.data.id);
     const both = await Promise.all([run('adminA', id, false), run('agentA', id, false)]);
     const codes = both.map((r) => r.status).sort();
-    expect(codes.every((c) => c === 200 || c === 409), codes.join(',')).toBe(true);
+    expect(codes, 'one commit runs, the other is told it is already committed or being committed').toEqual([200, 409]);
     const n = (await h.rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM contact WHERE org_id = ${A().orgId} AND display_name LIKE 'IMP6-imp-%'`))[0]!.n;
     expect(n).toBe(3);
   });

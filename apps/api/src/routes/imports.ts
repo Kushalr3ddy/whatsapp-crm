@@ -80,6 +80,13 @@ export function importsRouter(
 ): Router {
   const router = Router();
 
+  /**
+   * Runs whose stored file this process has already read through the capped child (at upload, or at the first run). Every step used to start a
+   * new child, and a child starts the TypeScript loader before it reads a byte: 2 to 3 s each on a quiet machine, more under load, so an import of
+   * a handful of people spent most of its ten seconds starting processes (#69). A file stored before the limits existed, or by another process,
+   * is not in here and is still read through the child once.
+   */
+  const checkedRuns = new Set<string>();
   /** The last few parsed files, so paging through a big sheet reads it once, not once per page. */
   const parsed = new Map<string, { table: CsvTable; at: number }>();
   /** A stored sheet parsed, from the small cache when it was read a moment ago. */
@@ -168,6 +175,8 @@ export function importsRouter(
       throw error;
     }
     await storage.put(key, stored, { contentType: 'text/csv' });
+    checkedRuns.add(id);
+    while (checkedRuns.size > 500) checkedRuns.delete(checkedRuns.values().next().value as string);
 
     await req.tenant!(async (tx) => {
       if (previous) {
@@ -224,9 +233,9 @@ export function importsRouter(
       const orgId = req.crm!.orgId;
       const runId = String(req.params.id);
       const found = await req.tenant!((tx) => tx.execute(sql`
-        SELECT storage_key AS "storageKey", status FROM import_run
+        SELECT storage_key AS "storageKey", status, summary FROM import_run
         WHERE id = ${runId} AND org_id = ${orgId}`));
-      const run = (found as unknown as Array<{ storageKey: string; status: string }>)[0];
+      const run = (found as unknown as Array<{ storageKey: string; status: string; summary: unknown }>)[0];
       if (!run) {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such import.'));
         return;
@@ -249,13 +258,42 @@ export function importsRouter(
         }
       }
 
+      // A commit claims the run before it writes anything (M-003). The check above is a plain read, and the run only becomes `committed` at the
+      // very end, so two commits at the same moment both passed it and both wrote: the second one's contact insert then lost to the first one's
+      // identity and left a contact with no phone behind. The claim is one UPDATE, so exactly one commit gets it; a claim older than 30 minutes
+      // belongs to a process that died and can be taken over.
+      if (!parsed.data.dryRun) {
+        const claimed = await req.tenant!((tx) => tx.execute(sql`
+          UPDATE import_run
+          SET status = 'committing', summary = jsonb_build_object('committingSince', now()::text)
+          WHERE id = ${runId} AND org_id = ${orgId} AND status <> 'committed'
+            AND (status <> 'committing' OR (summary->>'committingSince')::timestamptz < now() - interval '30 minutes')
+          RETURNING id`));
+        if ((claimed as unknown as unknown[]).length === 0) {
+          res.status(409).json(problem(req, 409, 'ALREADY_COMMITTED',
+            'This import has already been committed, or someone is committing it right now.'));
+          return;
+        }
+      }
+      /** Gives the run back its earlier state when a commit did not finish, so it can be tried again. */
+      const releaseClaim = async (): Promise<void> => {
+        if (parsed.data.dryRun) return;
+        await req.tenant!((tx) => tx.execute(sql`
+          UPDATE import_run SET status = ${run.status}, summary = ${run.summary === null ? null : JSON.stringify(run.summary)}::jsonb
+          WHERE id = ${runId} AND org_id = ${orgId} AND status = 'committing'`)).catch(() => undefined);
+      };
+
+      try {
       // Read through the child again: a file stored before the import limits existed has never been checked.
       const file = Buffer.from(await storage.get(run.storageKey));
-      try {
-        await parseImportIsolated(file, parse);
-      } catch (error) {
-        if (error instanceof ImportParseError) { refuseFile(req, res, error); return; }
-        throw error;
+      if (!checkedRuns.has(runId)) {
+        try {
+          await parseImportIsolated(file, parse);
+          checkedRuns.add(runId);
+        } catch (error) {
+          if (error instanceof ImportParseError) { await releaseClaim(); refuseFile(req, res, error); return; }
+          throw error;
+        }
       }
       const table = parseCsv(file.toString('utf8'), parse.limits);
       const mapping = parsed.data.mapping as ImportMapping;
@@ -281,7 +319,9 @@ export function importsRouter(
               mapping = ${JSON.stringify(mapping)}::jsonb,
               summary = ${JSON.stringify(finalSummary)}::jsonb,
               completed_at = now()
-          WHERE id = ${runId} AND org_id = ${orgId}`);
+          WHERE id = ${runId} AND org_id = ${orgId}
+            -- a dry run that finishes while someone commits must not take the run back from them
+            AND (${!parsed.data.dryRun} OR status NOT IN ('committing', 'committed'))`);
         await writeAudit(tx, {
           orgId, actor: auditActor(req),
           action: parsed.data.dryRun ? AUDIT.importDryRun : AUDIT.importCommitted,
@@ -292,6 +332,10 @@ export function importsRouter(
       });
 
       res.json({ data: result.summary });
+      } catch (error) {
+        await releaseClaim();
+        throw error;
+      }
     });
 
   /**

@@ -293,6 +293,8 @@ export interface CampaignPreview {
     sameNumberLive?: number;
     /** The live campaign most of them are in. */
     sameNumberLiveCampaign?: string | null;
+    /** Reachable people an agent is handling a chat with right now: Start skips them unless an admin lets them through. */
+    engaged?: number;
     /** The phone number this campaign sends from. */
     senderPhone?: string | null;
     /** People already in a campaign or messaged lately from a different number (a small note). */
@@ -1546,6 +1548,8 @@ export interface CampaignReview {
   total: number;
   askedToStop: number;
   noNumber: number;
+  /** People an agent is handling a chat with right now: Start skips them unless an admin lets them through. */
+  engaged: number;
   recentlyMessaged: number;
   recentDays: number;
   defaultRecentDays: number;

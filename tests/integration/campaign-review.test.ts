@@ -313,3 +313,42 @@ describe('editing a draft', { timeout: 60_000 }, () => {
     expect((await saved(id)).tag).toBe(tagA);
   });
 });
+
+describe('[R-053] [#76] the review and the draft say who Start will skip as engaged', { timeout: 60_000 }, () => {
+  /** An agent (here the admin) owns a chat with person `n` that has had traffic just now: the engagement gate's own definition. */
+  async function engage(n: number, ago = '1 hour'): Promise<void> {
+    const userId = (await rows<{ id: string }>(sql`SELECT user_id AS id FROM org_membership WHERE org_id = ${orgId} LIMIT 1`))[0]!.id;
+    await db.execute(sql`
+      INSERT INTO conversation (org_id, contact_id, sender_identity_id, assignee_user_id, last_inbound_at)
+      VALUES (${orgId}, ${people[n]!}, ${senderId}, ${userId}, now() - ${ago}::interval)`);
+  }
+  const recipients = async (id: string) => rows<{ contactId: string; status: string; skipReason: string | null }>(sql`
+    SELECT contact_id AS "contactId", status, skip_reason AS "skipReason" FROM campaign_recipient WHERE campaign_id = ${id}`);
+
+  it('counts a person whose chat an agent is handling, and does not count them again as recently messaged', async () => {
+    await engage(0);
+    const r = await review([tag(tagA)]);
+    expect(r.body.data).toMatchObject({ total: 2, engaged: 1, recentlyMessaged: 0, askedToStop: 0, noNumber: 0 });
+  });
+
+  it('does not count a chat nobody owns, or one that has been quiet for three days, or a person who asked to stop', async () => {
+    await db.execute(sql`INSERT INTO conversation (org_id, contact_id, sender_identity_id, last_inbound_at) VALUES (${orgId}, ${people[0]!}, ${senderId}, now())`);
+    await engage(1, '3 days');
+    await engage(3);
+    expect((await review([tag(tagA), tag(tagB)])).body.data.engaged).toBe(0);
+  });
+
+  it('is the same people Start skips as engaged: the draft preview and the recipients agree with the review', async () => {
+    await engage(0);
+    const made = await request(app).post('/api/v1/campaigns').set(asSession(adminToken))
+      .send({ name: 'engaged', body: 'hello', senderIdentityId: senderId, fromTagId: tagA });
+    const id = made.body.data.id as string;
+    const preview = await request(app).get(`/api/v1/campaigns/${id}/preview`).set(asSession(adminToken));
+    expect(preview.body.data.audience).toMatchObject({ total: 2, reachable: 2, engaged: 1 });
+    await request(app).post(`/api/v1/campaigns/${id}/start`).set(asSession(adminToken)).send({});
+    await dispatchCampaigns(ctx());
+    const skipped = (await recipients(id)).filter((r) => r.skipReason === 'engaged');
+    expect(skipped.map((r) => r.contactId)).toEqual([people[0]!]);
+    expect((await review([tag(tagA)])).body.data.engaged).toBe(skipped.length);
+  });
+});

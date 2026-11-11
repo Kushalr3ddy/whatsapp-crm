@@ -746,17 +746,19 @@ async function applyConnectionEventInOrg(
       SET status = 'active', updated_at = now()
       WHERE id = ${event.senderId} AND status = 'linking'`);
 
-    // Record the number this connection belongs to, so a linked number is not left reading "no number
-    // yet". Only fills a blank (a number someone typed in stays as typed), and only when no other number
-    // of this org already has that phone, which the unique index would otherwise reject.
+    // Record the number this connection belongs to, so a linked number is not left reading "no number yet". WhatsApp is the authority on
+    // which phone answered, so it also replaces a number that is recorded but different: a slot linked again with another phone must not keep
+    // the old phone's number (#114: the page showed the wrong number, a send to the old phone's number was refused as "your own number", and
+    // the duplicate check above compared against the old number). Not when another number of this org already has that phone, which the
+    // unique index would reject.
     if (event.phoneE164 !== undefined && event.phoneE164 !== null) {
       await ctx.db.execute(sql`
         UPDATE sender_identity si
         SET phone_e164 = ${event.phoneE164}, updated_at = now()
-        WHERE si.id = ${event.senderId} AND si.phone_e164 IS NULL
+        WHERE si.id = ${event.senderId} AND si.phone_e164 IS DISTINCT FROM ${event.phoneE164}
           AND NOT EXISTS (
             SELECT 1 FROM sender_identity o
-            WHERE o.org_id = si.org_id AND o.provider = si.provider AND o.phone_e164 = ${event.phoneE164})`);
+            WHERE o.org_id = si.org_id AND o.provider = si.provider AND o.id <> si.id AND o.phone_e164 = ${event.phoneE164})`);
     }
   }
 

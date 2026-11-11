@@ -137,7 +137,7 @@ export function NewCampaign(props: NewCampaignProps) {
     [body, review, total]);
   const blank = check?.mostMissing ?? null;
   const skipBlank = blank !== null && choice === 'skip' ? blank.missing : 0;
-  const hard = (review?.askedToStop ?? 0) + (review?.noNumber ?? 0);
+  const hard = (review?.askedToStop ?? 0) + (review?.noNumber ?? 0) + (review?.engaged ?? 0);
   const recent = review?.recentlyMessaged ?? 0;
   const reach = review === null ? 0 : Math.max(0, total - hard - skipBlank - (leaveOut ? recent : 0));
   const skipped = review === null ? 0 : total - reach;
@@ -225,6 +225,7 @@ export function NewCampaign(props: NewCampaignProps) {
   if (review !== null) {
     if (review.askedToStop > 0) whyParts.push(`${String(review.askedToStop)} asked to stop`);
     if (review.noNumber > 0) whyParts.push(`${String(review.noNumber)} with no number`);
+    if (review.engaged > 0) whyParts.push(`${String(review.engaged)} in a chat an agent is handling`);
     if (skipBlank > 0 && blank !== null) whyParts.push(`${String(skipBlank)} with no ${blank.label.toLowerCase()}`);
     if (leaveOut && recent > 0) whyParts.push(`${String(recent)} messaged recently`);
   }
@@ -234,6 +235,7 @@ export function NewCampaign(props: NewCampaignProps) {
   lines.push(body.trim() !== '' && unknownKeys.length === 0 ? ['y', 'Message is written'] : ['x', unknownKeys.length > 0 ? `Fix the fill-in “${unknownKeys[0]!.key}”` : 'Write the message']);
   lines.push(reach > 0 ? ['y', `${reach.toLocaleString('en-US')} people will get it`] : ['x', 'Choose who gets it']);
   if (sender !== undefined) lines.push(sender.linked ? ['y', `Sending from ${sender.label ?? 'number'}`] : ['n', `${sender.label ?? 'number'} is not linked: it will wait until you link it`]);
+  if ((review?.engaged ?? 0) > 0) lines.push(['n', `${String(review!.engaged)} people are in a chat an agent is handling right now: they are skipped at Start unless an admin lets them through`]);
   if (blank !== null && choice === 'skip') lines.push(['y', `${String(blank.missing)} people with a blank fill-in are left out`]);
   if (blank !== null && choice === 'any') lines.push(['n', `${String(blank.missing)} people will see a blank where the fill-in goes`]);
   if (recent > 0) lines.push(leaveOut ? ['y', `${String(recent)} recently messaged people will not get it`] : ['n', `${String(recent)} recently messaged people will get it (last ${String(review?.recentDays ?? 14)} days)`]);

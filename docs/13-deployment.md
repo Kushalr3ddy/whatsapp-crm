@@ -187,3 +187,12 @@ migrating role and the application role can be separated. Migrations still run a
 **Startup is a gated sequence** (M6): migrations verified, dependencies reachable, *then*
 listen. The prior system's bootstrap was fire-and-forget — it listened and served traffic even
 when table creation had failed.
+
+## The proxy and client addresses (`TRUST_PROXY`)
+
+The API believes `X-Forwarded-For` only from the callers named in `TRUST_PROXY`. The default is this machine and private networks (`loopback, linklocal, uniquelocal`), which is where the web app and a reverse proxy normally run. A caller from any other address that reaches the API directly is not believed, so it cannot pick its own address to get a fresh per-address login allowance (30 failures in 15 minutes) or to write a false address in the audit trail (#60, #64).
+
+- Web app and API on one machine or one private network: leave the default.
+- A reverse proxy at a public address in front of the API: set `TRUST_PROXY` to that address (or the number of proxies, for example `1`).
+- Nothing in front of the API, which is not recommended: `TRUST_PROXY=false`.
+- The reverse proxy in front of the web app must overwrite `X-Forwarded-For` with the real client address (Caddy does by default; nginx needs `proxy_set_header X-Forwarded-For $remote_addr;`), because the web app passes on the first address it is given. Also close the API's own port to the internet.

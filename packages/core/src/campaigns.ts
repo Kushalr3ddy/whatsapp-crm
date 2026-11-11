@@ -8,7 +8,7 @@ import { loadCustomFields } from './custom-fields.js';
 import { drawGapMs } from './antiban/gap.js';
 import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
 import type { TenantWork } from './ingestion.js';
-import { blockingPolicyGate, POLICY_SKIP_REASON, COOLDOWN_DAYS } from './policy-gates.js';
+import { blockingPolicyGate, POLICY_SKIP_REASON, COOLDOWN_DAYS, ENGAGEMENT_WINDOW_HOURS } from './policy-gates.js';
 
 /**
  * Bulk sends.
@@ -99,6 +99,11 @@ export interface AudiencePreview {
   readonly sameNumberLive: number;
   /** The live campaign most of them are in, or null when none. */
   readonly sameNumberLiveCampaign: string | null;
+  /**
+   * Reachable people an agent is handling a chat with right now (an owner and traffic in the last 48 hours). Start skips them as `engaged` unless an
+   * admin lets them through, so the draft says how many (#76).
+   */
+  readonly engaged: number;
   /** The phone number this campaign sends from, for the confirm's wording. */
   readonly senderPhone: string | null;
   /** Reachable people (not counted above) already in a campaign or messaged lately from a different number: a small note (CW-6.6a AC4). */
@@ -139,6 +144,10 @@ export async function previewAudience(
                 AND m.direction = 'outbound' AND m.campaign_id <> cp.id AND m.status <> 'failed'
                 AND m.created_at > now() - make_interval(days => ${recentDays})
               ORDER BY m.created_at DESC LIMIT 1) AS recent_campaign,
+             -- The engagement gate's own rule (policy-gates.ts), so the draft and Start agree (#76).
+             EXISTS (SELECT 1 FROM conversation ev WHERE ev.org_id = ${orgId} AND ev.contact_id = c.id AND ev.assignee_user_id IS NOT NULL
+                       AND greatest(coalesce(ev.last_inbound_at, 'epoch'), coalesce(ev.last_outbound_at, 'epoch'))
+                           > now() - make_interval(hours => ${ENGAGEMENT_WINDOW_HOURS})) AS engaged,
              -- A live campaign on this same number that still has this person waiting (CW-6.6a AC1).
              (SELECT cp3.name FROM campaign_recipient cr3 JOIN campaign cp3 ON cp3.id = cr3.campaign_id
               WHERE cr3.org_id = ${orgId} AND cr3.contact_id = c.id AND cr3.campaign_id <> cp.id
@@ -171,6 +180,7 @@ export async function previewAudience(
            count(*) FILTER (WHERE reachable AND live_campaign IS NOT NULL)::int AS "sameNumberLive",
            (SELECT live_campaign FROM audience WHERE reachable AND live_campaign IS NOT NULL
             GROUP BY live_campaign ORDER BY count(*) DESC LIMIT 1) AS "sameNumberLiveCampaign",
+           count(*) FILTER (WHERE reachable AND engaged)::int AS engaged,
            (SELECT si.phone_e164 FROM campaign cp5 JOIN sender_identity si ON si.id = cp5.sender_identity_id
             WHERE cp5.id = ${campaignId} AND cp5.org_id = ${orgId}) AS "senderPhone",
            count(*) FILTER (WHERE reachable AND other_number AND recent_campaign IS NULL AND live_campaign IS NULL)::int AS "otherNumberOverlap"
@@ -178,7 +188,7 @@ export async function previewAudience(
   const row = (rows as unknown as AudiencePreview[])[0];
   return row ?? {
     total: 0, reachable: 0, unreachable: 0, recentlyMessaged: 0, recentCampaign: null,
-    sameNumberLive: 0, sameNumberLiveCampaign: null, senderPhone: null, otherNumberOverlap: 0
+    sameNumberLive: 0, sameNumberLiveCampaign: null, engaged: 0, senderPhone: null, otherNumberOverlap: 0
   };
 }
 

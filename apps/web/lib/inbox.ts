@@ -73,6 +73,8 @@ export interface ChatPerson {
   blankKeys: string[];
   files: Array<{ id: string; name: string }>;
   campaigns: Array<{ id: string; name: string; startedAt: string; replied: boolean }>;
+  /** Do not contact, whether they asked to stop themselves, and the latest changes (newest first). */
+  optOut?: { doNotContact: boolean; askedToStop: boolean; at: string | null; history: Array<{ at: string; what: string }> };
 }
 
 /** Reads one page of the list. */

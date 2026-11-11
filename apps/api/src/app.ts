@@ -71,6 +71,15 @@ export interface AppDependencies {
   readonly importParse?: Partial<ImportParseOptions>;
 }
 
+/** The Express value for the TRUST_PROXY setting: `false`, a hop count, or a list of names and addresses. Undefined (a test's config) is the default. */
+export function trustProxySetting(raw: string | undefined): boolean | number | string[] {
+  const v = (raw ?? 'loopback, linklocal, uniquelocal').trim();
+  if (v === 'false' || v === '') return false;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v.split(',').map((x) => x.trim()).filter((x) => x !== '');
+}
+
+
 /**
  * Builds the HTTP application. Takes its dependencies as arguments so tests can pass fakes
  * and so the dependency graph stays readable — this is the composition root the layering
@@ -82,8 +91,9 @@ export interface AppDependencies {
 export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunner } {
   const app = express();
 
-  // Trust the reverse proxy for client IPs; Caddy sits in front (docs/13-deployment.md).
-  app.set('trust proxy', true);
+  // Believe `X-Forwarded-For` only from the proxy in front (docs/13-deployment.md), never from anyone who reaches the API directly (#60, #64).
+  // `true` believed every caller, so a caller could pick its own address and get a fresh login allowance each time.
+  app.set('trust proxy', trustProxySetting(deps.config.TRUST_PROXY));
   // Don't advertise the framework. Free, and one less thing for a scanner to fingerprint.
   app.disable('x-powered-by');
 

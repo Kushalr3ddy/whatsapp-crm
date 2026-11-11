@@ -55,6 +55,7 @@ export {
   runAiCommand, AiCommandError, type CommandAction, type CommandResult
 } from './ai-commands.js';
 
+export { ungroundedClaims, UNGROUNDED_FALLBACK_REPLY, type UngroundedClaim } from './ai-grounding.js';
 export { autoReply, getAiNotice, systemText, type AutoReplyResult, type AiNotice } from './ai-reply.js';
 export { parseAiTurn, recordTurn, listCampaignAiStatus, AI_STATUSES, type AiTurn, type AiStatus, type CampaignAiStatus } from './ai-turn.js';
 

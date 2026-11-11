@@ -220,11 +220,16 @@ export async function rewriteKnowledge(
 
   let text = '';
   let remaining: string[] = [];
+  let dropped: string[] = [];
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
+      const fix = [
+        remaining.length > 0 ? `Your last answer still contained these exact values: ${remaining.join(', ')}. Leave them out.` : '',
+        dropped.length > 0 ? `Your last answer dropped lines the owner wrote that must stay, word for word: ${dropped.map((d) => `"${d}"`).join('; ')}. Keep every one.` : ''
+      ].filter((x) => x !== '').join(' ');
       const answer = await llm.complete({
         system, maxTokens: 6000,
-        messages: [{ role: 'user', content: attempt === 0 ? user : `${user}\n\nYour last answer still contained these exact values: ${remaining.join(', ')}. Rewrite it again without them.` }]
+        messages: [{ role: 'user', content: attempt === 0 ? user : `${user}\n\n${fix} Rewrite it again.` }]
       });
       await recordAiRun(db, { orgId, kind: 'rewrite', outcome: 'done', model: answer.model, usage: answer.usage, userId: input.userId ?? null });
       text = answer.text.trim();
@@ -233,7 +238,41 @@ export async function rewriteKnowledge(
     }
     if (text === '') throw new AiTemplateError('no_model', 'The AI wrote nothing. Try again.');
     remaining = leaked(text, input.sensitive);
-    if (remaining.length === 0) return text.slice(0, 30000);
+    dropped = droppedLines(input.knowledge, text);
+    if (remaining.length === 0 && dropped.length === 0) return text.slice(0, 30000);
   }
-  throw new AiTemplateError('invalid', `The AI left ${remaining.map((v) => `“${v}”`).join(', ')} in the text. Try again, or take it out by hand.`);
+  if (remaining.length > 0) throw new AiTemplateError('invalid', `The AI left ${remaining.map((v) => `“${v}”`).join(', ')} in the text. Try again, or take it out by hand.`);
+  // The rewrite is clean but the model still dropped lines the owner wrote (a "never say" rule, the answer to a question): they are put back as written, never lost (#95).
+  return `${text}\n\nKept as the owner wrote them\n${dropped.map((d) => `- ${d}`).join('\n')}`.slice(0, 30000);
+}
+
+/** Words too common to show a line is still there. */
+const STOP_WORDS = new Set(['the', 'and', 'that', 'this', 'with', 'for', 'you', 'your', 'are', 'not', 'any', 'have', 'from', 'will', 'they', 'them', 'when', 'what', 'say', 'tell']);
+
+/** A line the owner wrote that is a rule (never, do not, avoid, must not, only if) or the answer of a question and answer pair. */
+function mustKeep(line: string): boolean {
+  return /\b(never|don'?t|do not|must not|should not|avoid|not allowed|only if|always)\b/i.test(line) || /^\s*[-*]?\s*(a|answer)\s*[:.)-]\s*\S/i.test(line);
+}
+
+/** The words that identify a line: lower case, four letters or more, not a common word. */
+function keyWords(line: string): string[] {
+  return (line.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []).filter((w) => !STOP_WORDS.has(w));
+}
+
+/**
+ * The lines the owner wrote that must stay (rules and answers) that the rewritten text no longer holds: fewer than six in ten of the line's own
+ * words are left in it. Exact wording is not needed (the rewrite tidies), but a rule that vanished must not go unnoticed (#95).
+ */
+export function droppedLines(original: string, rewritten: string): string[] {
+  const kept = new Set(keyWords(rewritten));
+  const out: string[] = [];
+  for (const raw of original.split(/\r?\n/)) {
+    const line = raw.replace(/^\s*[-*]\s*/, '').trim();
+    if (line.length < 8 || !mustKeep(line)) continue;
+    const words = keyWords(line.replace(/^\s*(a|answer)\s*[:.)-]\s*/i, ''));
+    if (words.length === 0) continue;
+    const present = words.filter((w) => kept.has(w)).length;
+    if (present / words.length < 0.6) out.push(line.replace(/^\s*(a|answer)\s*[:.)-]\s*/i, ''));
+  }
+  return out;
 }

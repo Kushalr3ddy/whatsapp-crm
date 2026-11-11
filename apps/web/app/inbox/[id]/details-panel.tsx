@@ -60,6 +60,22 @@ export function DetailsPanel(props: {
         )}
       </div>
 
+      {(props.person?.optOut?.doNotContact === true || (props.person?.optOut?.history.length ?? 0) > 0) && (
+        <div>
+          <h2>Messaging</h2>
+          <p className="ib-small" role="status" style={{ color: props.person?.optOut?.doNotContact === true ? 'var(--bad, #b42318)' : undefined }}>
+            {props.person?.optOut?.doNotContact !== true ? 'They can be messaged.'
+              : props.person.optOut.askedToStop ? 'They asked to stop. Nothing goes out to them except what a person types by hand after they write again.'
+                : 'Marked do not contact. Nothing goes out to them unless an admin lets it.'}
+          </p>
+          <ul className="ib-small" style={{ margin: '4px 0 0', paddingLeft: 16 }}>
+            {props.person?.optOut?.history.map((h) => (
+              <li key={`${h.at}-${h.what}`}>{h.what} · {new Date(h.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div>
         <h2>Who has this chat</h2>
         <select className="ib-select" aria-label="Who has this chat" value={props.assigneeUserId ?? ''} disabled={props.busy}

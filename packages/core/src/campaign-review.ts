@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
 import { audienceRule, fillInReportWhere, sampleText, segmentPredicateFor, type FillInReportField } from './campaigns.js';
 import { loadCustomFields } from './custom-fields.js';
-import { COOLDOWN_DAYS } from './policy-gates.js';
+import { COOLDOWN_DAYS, ENGAGEMENT_WINDOW_HOURS } from './policy-gates.js';
 import { loadAntiBanSettings } from './antiban/settings.js';
 import { GAP_MAX_MS, GAP_MIN_MS } from './antiban/constants.js';
 import type { QuietHoursSetting } from './antiban.js';
@@ -80,6 +80,12 @@ export interface CampaignReview {
   /** Who is left out whatever else is chosen, and why. */
   readonly askedToStop: number;
   readonly noNumber: number;
+  /**
+   * People an agent is handling a chat with right now (any of their chats has an owner and traffic in the last 48 hours). Start skips them as
+   * `engaged` unless an admin lets them through, so the review has to say so, or "Nobody is left out" is wrong at the moment of Start (#76).
+   * Not counted again in `recentlyMessaged`.
+   */
+  readonly engaged: number;
   /** People messaged by another campaign from this number within `recentDays`, who are not already counted above. */
   readonly recentlyMessaged: number;
   readonly recentDays: number;
@@ -112,15 +118,20 @@ export async function reviewCampaign(
              EXISTS (SELECT 1 FROM message m JOIN conversation v ON v.id = m.conversation_id
                      WHERE v.org_id = ${orgId} AND v.contact_id = c.id AND v.sender_identity_id = ${input.senderIdentityId}
                        AND m.direction = 'outbound' AND m.campaign_id IS NOT NULL AND m.status <> 'failed'
-                       AND m.created_at > now() - make_interval(days => ${recentDays})) AS recent
+                       AND m.created_at > now() - make_interval(days => ${recentDays})) AS recent,
+             -- The same rule the engagement gate applies at Start (policy-gates.ts), so the review and Start agree.
+             EXISTS (SELECT 1 FROM conversation v WHERE v.org_id = ${orgId} AND v.contact_id = c.id AND v.assignee_user_id IS NOT NULL
+                       AND greatest(coalesce(v.last_inbound_at, 'epoch'), coalesce(v.last_outbound_at, 'epoch'))
+                           > now() - make_interval(hours => ${ENGAGEMENT_WINDOW_HOURS})) AS engaged
       FROM contact c WHERE c.org_id = ${orgId} AND (${who})
     )
     SELECT count(*)::int AS total,
            count(*) FILTER (WHERE stop)::int AS "askedToStop",
            count(*) FILTER (WHERE NOT stop AND NOT has_number)::int AS "noNumber",
-           count(*) FILTER (WHERE NOT stop AND has_number AND recent)::int AS "recentlyMessaged"
-    FROM audience`) as unknown as Array<{ total: number; askedToStop: number; noNumber: number; recentlyMessaged: number }>)[0]
-    ?? { total: 0, askedToStop: 0, noNumber: 0, recentlyMessaged: 0 };
+           count(*) FILTER (WHERE NOT stop AND has_number AND engaged)::int AS engaged,
+           count(*) FILTER (WHERE NOT stop AND has_number AND NOT engaged AND recent)::int AS "recentlyMessaged"
+    FROM audience`) as unknown as Array<{ total: number; askedToStop: number; noNumber: number; engaged: number; recentlyMessaged: number }>)[0]
+    ?? { total: 0, askedToStop: 0, noNumber: 0, engaged: 0, recentlyMessaged: 0 };
 
   const report = await fillInReportWhere(tx, orgId, who);
   const defs = await loadCustomFields(tx, orgId);
