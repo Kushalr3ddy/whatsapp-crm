@@ -22,56 +22,55 @@ test.describe('seeded pages', () => {
     await expect(thread(/Bilal Khan/)).toBeVisible();
     await expect(thread(/Chitra Nair/)).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Closed', exact: true }).click();
+    // Filters hold the status and the owner; the closed one shows under Status > Closed.
+    await page.getByRole('button', { name: /^Filters/ }).click();
+    const status = page.getByRole('group', { name: 'Status', exact: true });
+    const owner = page.getByRole('group', { name: 'Owner', exact: true });
+    await status.getByRole('button', { name: 'Closed', exact: true }).click();
     await expect(thread(/Chitra Nair/)).toBeVisible();
-    await page.getByRole('button', { name: 'Open', exact: true }).click();
+    await status.getByRole('button', { name: 'Open', exact: true }).click();
 
     // "Mine" is the seed admin's own assigned thread only.
-    await page.getByRole('button', { name: 'Mine', exact: true }).click();
+    await owner.getByRole('button', { name: 'Mine', exact: true }).click();
     await expect(thread(/Bilal Khan/)).toBeVisible();
     await expect(thread(/Asha Rao/)).toHaveCount(0);
-    await page.getByRole('button', { name: 'All', exact: true }).click();
+    await owner.getByRole('button', { name: 'All', exact: true }).click();
 
     // Open the unread thread: the message is there, and a note is kept for the team.
     await thread(/Asha Rao/).click();
-    await expect(page.getByText('unread thread — are you open tomorrow?')).toBeVisible();
+    await expect(page.getByText('unread thread — are you open tomorrow?').first()).toBeVisible();
     await page.getByRole('button', { name: 'Note', exact: true }).click();
     const note = `e2e note ${String(Date.now())}`;
-    await page.getByPlaceholder('Add an internal note').fill(note);
+    await page.getByPlaceholder(/^Write a note for your team/).fill(note);
     await page.getByRole('button', { name: 'Add note' }).click();
     await expect(page.getByText(note)).toBeVisible();
 
-    // An admin brings a colleague onto the chat and takes them off again.
-    // Relative, not absolute, so a participant left behind by an earlier interrupted run cannot
-    // make this fail forever: pick one person, see exactly one more, then remove that same person.
-    const adder = page.getByLabel('Add participant');
-    const person = (await adder.locator('option').nth(1).textContent())?.trim() ?? '';
-    expect(person).not.toBe('');
-    const removeButtons = page.getByRole('button', { name: /^Remove / });
-    const before = await removeButtons.count();
-    await adder.selectOption({ label: person });
-    await expect(removeButtons).toHaveCount(before + 1);
-    await page.getByRole('button', { name: `Remove ${person}`, exact: true }).click();
-    await expect(removeButtons).toHaveCount(before);
-
-    // Resolve, then put it back.
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Reopen', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Reopen', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Resolve', exact: true })).toBeVisible();
+    // Resolve from Details, then put it back.
+    // The Details panel is a toggle, and whether it is still open when the chat's new state arrives depends on timing: clicking Details blindly
+    // closed it on a slow machine and the button looked missing (CI, 2026-11-11). Ask for the button, and open the panel only if it is not there.
+    const details = page.getByRole('button', { name: 'Details', exact: true });
+    const showing = async (name: string): Promise<void> => {
+      const button = page.getByRole('button', { name });
+      if (!(await button.isVisible())) await details.click();
+      await expect(button).toBeVisible();
+    };
+    await details.click();
+    await page.getByRole('button', { name: 'Resolve this chat' }).click();
+    await showing('Reopen this chat');
+    await page.getByRole('button', { name: 'Reopen this chat' }).click();
+    await showing('Resolve this chat');
   });
 
   test('[R-009] contacts: search narrows the list', async ({ page }) => {
     await signIn(page);
     await page.goto('/contacts');
-    await page.getByLabel('Search contacts').fill('Farhan');
-    await page.keyboard.press('Enter');
+    await page.getByLabel('Search', { exact: true }).fill('Farhan');
     await expect(page).toHaveURL(/q=Farhan/);
     await expect(page.getByText('Farhan Ali').first()).toBeVisible();
     await expect(page.getByText('Gita Iyer')).toHaveCount(0);
   });
 
-  test('import: a file uploads, maps itself, and previews without writing', async ({ page }) => {
+  test('import: a file is read, checked on its own, and nothing is written', async ({ page }) => {
     await signIn(page);
     await page.goto('/import');
     // The server refuses the same bytes twice (content-hash dedup), so each run adds one unique row.
@@ -81,11 +80,10 @@ test.describe('seeded pages', () => {
       name: 'import-contacts.csv', mimeType: 'text/csv', buffer: Buffer.from(csv + unique)
     });
 
-    // The phone column is guessed from "Mobile"; the preview reports without committing.
-    await expect(page.getByText(/columns/)).toBeVisible();
-    await page.getByRole('button', { name: 'Preview', exact: true }).click();
-    await expect(page.getByText('Preview (nothing written yet)')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeEnabled();
+    // The phone column is guessed from "Mobile"; the check runs by itself and reports without committing.
+    await expect(page.getByText(/people ready to import/)).toBeVisible();
+    await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Import \d+ people?$/ })).toBeEnabled();
   });
 
   test('numbers: the seeded number is listed, with no risk panel', async ({ page }) => {

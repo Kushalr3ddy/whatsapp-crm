@@ -29,20 +29,23 @@ test.describe('speed probe', () => {
       await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
       out[label] = Date.now() - t0;
     }
+    // The new Contacts screen: its own search field, a person opening in the side panel, and a search settling.
     await nav(page).getByRole('link', { name: 'Contacts', exact: true }).click();
-    await expect(page.getByLabel('Search contacts')).toBeVisible();
-    const row = page.locator('summary').filter({ has: page.getByLabel(/^Select /) }).first();
-    if (await row.count() > 0) {
-      const t1 = Date.now();
-      await row.click();
-      await expect(page.getByLabel('Add a tag').first()).toBeVisible();
-      out['open a contact row'] = Date.now() - t1;
-    }
+    const search = page.getByLabel('Search', { exact: true });
+    await expect(search).toBeVisible();
+    const first = page.locator('button[data-open]').first();
+    await expect(first).toBeVisible();
+    const t1 = Date.now();
+    await first.click();
+    await expect(page.getByRole('dialog').first()).toBeVisible();
+    out['open a contact row'] = Date.now() - t1;
+    await page.keyboard.press('Escape');
     const t2 = Date.now();
-    await page.getByLabel('Search contacts').fill('a');
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await search.fill('a');
     await page.waitForURL(/q=a/);
-    await expect(page.getByLabel('Search contacts')).toBeVisible();
+    // Settled: the table has been drawn for the new search (the frame is no longer busy and says how many people match).
+    await expect(page.locator('.ct-frame[aria-busy="false"]')).toBeVisible();
+    await expect(page.getByText(/^Showing /)).toBeVisible();
     out['Contacts search'] = Date.now() - t2;
     mkdirSync('test-results/regress', { recursive: true });
     writeFileSync('test-results/regress/budgets-run.json', JSON.stringify({ at: new Date().toISOString(), ms: out }, null, 2));

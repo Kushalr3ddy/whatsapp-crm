@@ -2,11 +2,15 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import {
-  resolveTarget, countMatching, bulkTag, bulkUntag, deleteTag, writeAudit, AUDIT, type TagTarget
+  resolveTarget, countMatching, bulkTagIds, bulkUntag, deleteTag, isFileTag, writeAudit, AUDIT, type TagTarget
 } from '@crm/core';
 import { auditActor, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
 import { problem } from '../problem.js';
+import { segmentDefinitionSchema } from './segments.js';
+
+/** The most people one bulk add hands back by id, for an Undo that removes exactly what was added. */
+const UNDO_LIMIT = 5000;
 
 /** Body for creating a tag: a label, and an optional colour for its chip. */
 const createTag = z.object({
@@ -28,7 +32,9 @@ const bulkBody = z.object({
     z.object({ kind: z.literal('all') }),
     z.object({
       kind: z.literal('search'), q: z.string().trim().max(100).optional(), tagId: z.string().uuid().optional(),
-      from: dayString.optional(), to: dayString.optional(), dateBy: z.enum(['added', 'imported']).optional()
+      from: dayString.optional(), to: dayString.optional(), dateBy: z.enum(['added', 'imported']).optional(),
+      /** One imported file's people, and the grouped filters of the Contacts screen (the same shape a saved list stores). */
+      importRunId: z.string().uuid().optional(), criteria: segmentDefinitionSchema.optional()
     }),
     z.object({ kind: z.literal('segment'), segmentId: z.string().uuid() }),
     z.object({ kind: z.literal('ids'), ids: z.array(z.string().uuid()).min(1).max(5000) })
@@ -82,7 +88,7 @@ export function tagsRouter(): Router {
   /**
    * Adds or removes this tag across many contacts in one statement: everyone, everyone matching a
    * search / tag filter, everyone in a segment, or an explicit list. Previews by default. Tagging
-   * *everyone* is admin-only. Do-not-contact people are tagged like anyone else — tagging is not
+   * everyone is admin-only. Do-not-contact people are tagged like anyone else — tagging is not
    * messaging, and the send gate is what stops a message to them.
    */
   router.post('/:id/bulk', requireUuidParam('id'), requireScope('contacts:write'),
@@ -114,9 +120,15 @@ export function tagsRouter(): Router {
         if (expectedCount !== undefined && expectedCount !== matched) {
           return { error: 'count_changed' as const, matched };
         }
-        const changed = action === 'add'
-          ? await bulkTag(tx, orgId, tagId, predicate)
-          : await bulkUntag(tx, orgId, tagId, predicate);
+        let addedIds: string[] | undefined;
+        let changed: number;
+        if (action === 'add') {
+          const added = await bulkTagIds(tx, orgId, tagId, predicate);
+          changed = added.length;
+          if (added.length <= UNDO_LIMIT) addedIds = added;
+        } else {
+          changed = await bulkUntag(tx, orgId, tagId, predicate);
+        }
         await writeAudit(tx, {
           orgId, actor: auditActor(req),
           action: action === 'add' ? AUDIT.contactsBulkTagged : AUDIT.contactsBulkUntagged,
@@ -124,7 +136,7 @@ export function tagsRouter(): Router {
           after: { target: target.kind, matched, changed },
           ip: req.ip ?? null, requestId: String(req.id)
         });
-        return { matched, changed };
+        return { matched, changed, addedIds };
       });
 
       if ('error' in outcome) {
@@ -140,18 +152,25 @@ export function tagsRouter(): Router {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', detail));
         return;
       }
-      res.json({ data: { action, dryRun, matched: outcome.matched, changed: outcome.changed } });
+      // `addedIds` is who got the tag now, so an Undo can take it off exactly them (left out above 5000 people).
+      res.json({
+        data: {
+          action, dryRun, matched: outcome.matched, changed: outcome.changed,
+          ...(outcome.addedIds === undefined ? {} : { addedIds: outcome.addedIds })
+        }
+      });
     });
 
   /**
    * Deletes a tag (needs the contacts:write scope, audited). Everyone who carried it is untagged; no contact and no
-   * campaign is deleted.
+   * campaign is deleted. The tag an import added to its file's people (named after the file) is refused with a 409.
    */
   router.delete('/:id', requireUuidParam('id'), requireScope('contacts:write'),
     async (req: Request, res: Response) => {
       const orgId = req.crm!.orgId;
       const tagId = String(req.params.id);
       const gone = await req.tenant!(async (tx) => {
+        if (await isFileTag(tx, orgId, tagId)) return 'file' as const;
         const done = await deleteTag(tx, orgId, tagId);
         if (done === null) return false;
         await writeAudit(tx, {
@@ -161,6 +180,11 @@ export function tagsRouter(): Router {
         });
         return true;
       });
+      if (gone === 'file') {
+        res.status(409).json(problem(req, 409, 'FILE_TAG',
+          'This tag was added by an imported file, so it stays as long as the file does.'));
+        return;
+      }
       if (!gone) {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such tag.'));
         return;

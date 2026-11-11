@@ -75,7 +75,7 @@ replicas the effective ceiling is the limit times the replica count (the shared 
 Branch on `code`, never on `detail`.
 
 > **The complete, always-current list of endpoints is generated from the code:** [`generated/api-reference.md`](generated/api-reference.md)
-> (104 endpoints in 14 groups, with who may call each one). Regenerate with `npm run api:docs`. This file explains how the API behaves
+> (128 endpoints in 16 groups on 2026-11-09, with who may call each one). Regenerate with `npm run api:docs`. This file explains how the API behaves
 > (sign-in, errors, limits, examples); the generated one says what exists. A machine-readable OpenAPI file and a Swagger page are pinned as D-88.
 >
 > **Added since the sections below were written (2026-10-25):** the AI assistant (`/api/v1/ai/*`: status, settings, model test, queue of
@@ -97,7 +97,7 @@ document (templates, webhooks, policy delegation, the SDK, OpenAPI) is design, n
 | Health | `GET /health` · `GET /ready` | No auth. `/ready` also checks Postgres |
 | Auth | `POST /api/v1/auth/login` · `/logout` · `GET /auth/me` | Session + CSRF cookies; `me` says who the caller is |
 | Admin | `POST /admin/orgs` · `POST/GET/DELETE /admin/keys` · `POST /admin/users` | `orgs` is bootstrap-key only; the rest an admin session |
-| Senders | `GET/POST /senders` · `POST/GET /senders/:id/link` · `POST /senders/:id/unlink` | Live connection state, health evidence, recovery state; link by QR or pairing code |
+| Senders | `GET/POST /senders` · `POST/GET /senders/:id/link` · `POST /senders/:id/unlink` | Live connection state, health evidence, recovery state; link by QR or pairing code. Adding, linking, reading the link code and unlinking are for an admin (a signed-in agent gets 403); an API key needs `senders:write` (`senders:read` for the link code) |
 | Inbox | `GET /conversations` (filters) · `GET/PATCH /conversations/:id` · `POST /conversations/:id/read` | Status, assignee, unread |
 | | `GET /conversations/:id/messages` | Bodies decrypted for display; carries `media` and `mediaUnavailable` |
 | | `GET/POST /conversations/:id/notes` | Team-only; never transmitted |
@@ -109,7 +109,7 @@ document (templates, webhooks, policy delegation, the SDK, OpenAPI) is design, n
 | | `POST /contacts/:id/tags` · `DELETE /contacts/:id/tags/:tagId` | Attach/detach |
 | Tags | `GET/POST /tags` · `DELETE /tags/:id` | Name unique per org; counts on the list |
 | Segments | `GET/POST /segments` · `POST /segments/preview` · `DELETE /segments/:id` | Saved criteria-based audiences, live count |
-| Import | `GET /imports` · `POST /imports` · `POST /imports/:id/run` · `GET /imports/:id` | Upload (`?force=true` to re-import) → dry run → commit |
+| Import | `GET /imports` · `POST /imports` · `POST /imports/:id/run` · `GET /imports/:id` · `GET /imports/:id/rows` | Upload (`?force=true` to re-import) → dry run → commit; `rows` looks through the uploaded sheet |
 | Campaigns | `GET/POST /campaigns` · `GET /campaigns/:id` | Create a **draft** (sends nothing); detail with progress |
 | | `POST /campaigns/:id/start` · `/pause` · `/cancel` | Start freezes the audience; pause is instant |
 | | `GET /campaigns/:id/preview` · `GET /campaigns/:id/recipients` | Dry run before start; per-recipient results |
@@ -210,6 +210,21 @@ Worked examples with real responses, including every failure case, are in
 
 ---
 
+## Inbox screen reads (2026-11)
+
+All under `/api/v1`, scope `conversations:read`, tenant-scoped.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /inbox` | The chat list. Query: `q` (name, number or last-message text; the last message is decrypted in the API and only the newest 3000 chats are searched), `status` (`open` default, `closed`, `any`), `owner` (`all`, `me`, `unassigned`, or a user id), `view` (`all`, `needs`, `unread`, `ai`, `you`), `campaigns` and `files` (comma-separated ids), `limit` (≤ 200), `offset`. Returns `data` rows (contact, number, owner, `isAi`, `needsYou`, `unreadCount`, `lastAt`, `lastMessage {text, kind, direction, at}`) and `meta {total, counts, orgTotal}`; `counts` hold every chip with the other filters applied. A malformed filter is a 422, never a wider list. |
+| `GET /inbox/filters` | The campaigns and imported files chats came from, each with how many chats. |
+| `GET /conversations/:id/person` | The person behind a chat: name, phone, email, `fillIns` (only those with a value), `blankKeys` (saved columns they have no value for), files and campaigns. |
+
+`GET /conversations/:id/messages` now also returns `campaignId` and `campaignName` on each message.
+
+**Who may send.** `POST /messages` and `POST /conversations/:id/attachments` answer 409 `THREAD_ASSIGNED` to a signed-in non-admin who is not the chat's owner (a participant included). Admins and API keys are not bound by it. When the chat has no owner, the first signed-in person to send becomes its owner and the change is audited as a reassignment.
+"Needs you" is an open chat where a person is meant to answer and the customer spoke last, or where the AI is stuck on the last message (blocked, failed or an empty answer).
+
 ## Endpoints added since the first slice (2026-10)
 
 All under `/api/v1`, all tenant-scoped. "admin" means a signed-in admin session (an API key never
@@ -217,13 +232,20 @@ qualifies). Errors use the problem shape above.
 
 | Method · path | Scope / role | What it does |
 |---|---|---|
-| `GET /contacts/count?q=&tag=` | `contacts:read` | How many contacts match a search / tag filter — the number a bulk action would touch |
-| `GET /contacts/export?format=csv\|vcf` | admin | Streams every contact (CSV for a spreadsheet, vCard for a phone). Audited; 5 per hour |
-| `PUT /contacts/:id/do-not-contact` | `contacts:write` | `{ value, reason? }` — flags or clears do-not-contact. Audited. A contact who opted out carries the reason `opt_out`; clearing it here is how an agent lifts it. An agent can answer by hand (`POST /messages` with `conversationId`) a flagged contact who wrote after being flagged |
+| `GET /contacts?q=&tag=&file=&filter=&sort=&limit=&offset=` | `contacts:read` | The Contacts screen's list: `limit` up to 250, `offset` paging, `sort` `name_asc\|name_desc\|added_*\|imported_desc`, a `total`, and per row `lastActiveAt` (their last message to us), `file`, `lastCampaign`, `fileValues` (only with `file`: their row of that file, every column) and `isFile` on each tag (the file's tag first). `file` is one imported file's people; `filter` is JSON in the shape a saved list stores (`422` for an unknown key). Search is name, phone and email only |
+| `GET /contacts/count?q=&tag=&file=&filter=` | `contacts:read` | How many contacts match the same view — the number a bulk action would touch |
+| `GET /contacts/sources` | `contacts:read` | `{ total, files[{ id, filename, importedAt, count, tagId, tagName, columns }], tags[{ id, name, count }] (a file's tag is not here), lists[{ id, name, definition, count }], campaigns, fields }` |
+| `GET /contacts/:id/detail` | `contacts:read` | `{ source: { fileId, filename, importedAt, columns[{ header, value }] } \| null, campaigns[{ id, name, numberLabel, at, outcome }], conversationId \| null }` — the person panel |
+| `GET /contacts/export?format=csv\|vcf&q=&tag=&file=&filter=` | admin | Streams every contact, or only the people the view matches (CSV for a spreadsheet, vCard for a phone). Audited (`filtered: true` when narrowed); 5 per hour |
+| `PUT /contacts/:id/do-not-contact` | `contacts:write` | `{ value, reason? }` — flags or clears do-not-contact. Audited. Anyone may flag; clearing is for an admin (a signed-in agent gets 403; an API key keeps its scope). A contact who opted out carries the reason `opt_out`; a second STOP from them stamps the opt-out again, so it does not count as the person writing to us. An agent can answer by hand (`POST /messages` with `conversationId`) a flagged contact who wrote after being flagged |
 | `PUT /contacts/:id/custom-fields` | `contacts:write` | `{ values: { key: value \| null } }` — set/clear custom field values, validated against the org's definitions |
 | `GET/POST /custom-fields`, `DELETE /custom-fields/:key` | read / admin | The org's typed field vocabulary (`text`, `number`, `date`, `select`); removing one clears it from every contact |
-| `POST /tags/:id/bulk` | `contacts:write` (`all` = admin) | `{ action: add\|remove, target: all\|search\|segment\|ids, dryRun (default true), expectedCount? }` — set-based, idempotent, previews first, `409 COUNT_CHANGED` if the audience moved |
+| `POST /tags/:id/bulk` | `contacts:write` (`all` = admin) | `{ action: add\|remove, target: all\|search\|segment\|ids, dryRun (default true), expectedCount? }` — set-based, idempotent, previews first, `409 COUNT_CHANGED` if the audience moved. A `search` target also takes `importRunId` and `criteria` (the Contacts filter). A committed add returns `addedIds` (up to 5000) so an Undo removes the tag from exactly them |
 | `POST /imports/:id/run` | `contacts:write` | Now takes `tag: { id } \| { name }` — tags everyone the run created/updated, atomically with the commit |
+| `POST /imports` | `contacts:write` | The response also carries `peek` (three people drawn at random, `[{ row, values }]`, `row` being the sheet row) and `columnFill` (`[{ header, blank }]`: how many people leave each column empty, a blank cell or only `NA`/`-`) |
+| `GET /imports/:id/rows?column=&mode=&q=&offset=&limit=` | `contacts:read` | Read-only look at the uploaded sheet before it is imported: `{ headers, total, rows: [{ row, values }] }`, one page (`limit` up to 200, default 50, `row` is the sheet row, the first person being 2). `column` (repeatable) keeps the people who leave those columns empty (a blank or only `NA`/`-`), `mode=any` (default) or `all` of them; `q` searches every column. `csv=1` instead returns `{ count, csv }` for every match: the sheet's own columns in the sheet's order and nothing added, to fill in and import again. Reads the stored file (the last two parsed files are kept five minutes so paging does not re-parse). `404` for a run that is not this org's, `422` for a column the file does not have or a bad `mode` |
+| `GET /imports/:id/numbers?column=&country=` | `contacts:read` | Read-only: the first three people's cells in those phone columns as they will be saved: `{ columns: [{ column, examples: [{ raw, numbers (E.164), dropped, problem }] }] }`. `country` is the two-letter code numbers without a country code are read as. `422` for a column the file does not have or a bad country |
+| `POST /imports/:id/run` | `contacts:write` | The summary also carries `withoutNumber`: people with an email and no mobile number (imported, but cannot be messaged) |
 | `POST /messages` | `messages:send` | Now `422 DO_NOT_CONTACT` for a flagged contact unless an admin sends `overrideDnc: true` + `overrideReason` |
 | `POST /conversations/:id/attachments` | `messages:send` | Raw-body file upload (≤ 16 MB; type decided from the bytes); `422` for a flagged contact |
 | `GET /conversations/:id/sender-status` | `conversations:read` | `{ canSend, reason, connectionState }` for the number behind a thread — drives the composer lock |
@@ -231,9 +253,14 @@ qualifies). Errors use the problem shape above.
 | `GET /campaigns/:id` | `conversations:read` | Now includes `gateOverrides`, `gateOverrideReason`, `pauseReason` |
 | `GET /senders/:id/health-events` | `senders:read` | The number's timeline (refused connections, logouts nobody asked for, devices removed on the phone), newest first |
 | `GET /senders` | `senders:read` | `id`, `label`, `provider`, `phoneE164`, `status`, `connectionState`, `linked`, `linkError`, and what WhatsApp last said about the number's limits (`timelockActive`, `timelockUntil`, `timelockType`, `cappingStatus`, `cappingTotalQuota`, `cappingUsedQuota`, `cappingCycleEnd`, `linkedSince`) with `hints` (advice only: `new_number`, `use_phone_too`) |
-| `POST /segments` | `contacts:write` | Now takes `saved` (default `true`); `false` makes a one-off inline audience that is not listed |
-| `PATCH /campaigns/:id` | `messages:send` | `{ name?, body?, mediaAfterReply? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise) |
+| `POST /segments` | `contacts:write` | Now takes `saved` (default `true`); `false` makes a one-off inline audience that is not listed. The definition also takes `notContactedWithinDays`, `activeWithinDays`, `activeOlderThanDays`, `waitingForUs`, `campaigns` (`some\|never`), `campaignId`, `dnc` (`only\|exclude`), `whatsapp` (`yes\|no\|unchecked`), `email` (`yes\|no`), `importedWithinDays` and `fieldRules[{ key, op: is\|isnot\|has\|blank\|filled, value? }]`. As a campaign audience a list still leaves out do-not-contact people |
+| `DELETE /tags/:id` | `contacts:write` | `409 FILE_TAG` for the tag an import added to its file (the tag named after the file) |
+| `PATCH /campaigns/:id` | `messages:send` | `{ name?, body?, mediaAfterReply?, blankFillInChoice?, fillInFallback? }`, only while the campaign is a draft or paused (`409 NOT_EDITABLE` otherwise). A **draft** can also change `senderIdentityId`, `targets` (same shape as on create; `404` when that is nobody), `aiTemplateId` and `mediaAssetId` (`null` takes one off), `recentDays` and `leaveOutRecent`; a paused campaign cannot. `GET /campaigns/:id` returns what a draft needs to be opened again: `audienceTargets`, `fromImportRunId`, `fromTagId`, `fromSegmentId`, `explicitContactIds`, `aiTemplateId`, `mediaAfterReply`, `recentDays`, `leaveOutRecent`, `blankFillInChoice`, `fillInFallback` |
 | `POST /campaigns` | `messages:send` | Takes `purpose` (one sentence: why these people are messaged, said in the closing message if one opts out; `GET /campaigns/:id` returns it) and `mediaAfterReply` (default `true`: new chats get the text alone, the picture or link follows when they reply). The answer carries `warnings` (`no_variation` when the text has no `{a\|b}` choice and no AI writes it; the campaign can still launch) |
+| `POST /campaigns` (more) | `messages:send` | Also takes `targets` (the New campaign screen's picks: `[{ kind: import\|tag\|segment, id } \| { kind: everyone }]`, up to 50, in place of `fromImportRunId` / `fromTagId` / `fromSegmentId` / `explicitContactIds`: exactly one way). One pick is kept as itself and read again at start; several picks (or everyone) are stored as the one list of people they come to, each counted once (`404 NOT_FOUND` when that is nobody). Also `recentDays` (1 to 60) and `leaveOutRecent`: people messaged by another campaign from this same number within `recentDays` are skipped as `cooldown` when `leaveOutRecent` is true, and sent (a warning, not a block) when it is not |
+| `POST /campaigns/review` | `conversations:read` | `{ targets, senderIdentityId, days? }` what those picks would reach from that number **before a draft exists**: `total` (counted once), `askedToStop`, `noNumber`, `recentlyMessaged` within `recentDays` (default the org's `recentDays` setting, else 14), the fill-ins (`key`, `label`, `type`, `have`, `sample`), up to 6 real people to preview as (`name`, `values`), the org's quiet hours and the shortest and longest wait between two messages. Reads the one audience rule the dry run and the freeze use; writes nothing |
+| `POST /campaigns/review/blanks` | `conversations:read` | `{ targets, key }` the people who can be messaged and have no value for one fill-in, as `[{ name, phone }]` (up to 50,000), for "Download the list to fix" |
+| `GET /campaigns/audience-history` | `conversations:read` | The last started campaign for each import file, tag and saved list: `{ imports, tags, segments }`, each `{ [id]: { name, at } }`. Drafts and cancelled campaigns do not count |
 | `GET /campaigns/:id` | `conversations:read` | Also `mediaAfterReply`, `aiTemplateId` and `warnings` |
 | `GET /campaigns/:id/eta` | `conversations:read` | `{ finishAt, goNow, afterReset, resetAt, basis: quota\|time_only, delayedBy: [{ reason: reply_priority\|timelock\|new_chat_cap\|quiet_hours, seconds }] }`. `finishAt` is null when nothing is left to send; `404` for a campaign that is not the caller's org's. No randomness: the same campaign gives the same answer |
 | `GET/PUT /antiban/settings` | admin (session) | The org's sending settings: `closingMessageEnabled` (default `true`), `contactPhone`, `contactEmail`, `defaultPurpose` (all quoted in the closing message sent when someone opts out), `stopWords`, `restartWords` (lower-cased), `quietHours { enabled, start, end, timeZone }`. `PUT` takes any part (`422` for a bad email, time or zone). `missing` lists `contactPhone` / `contactEmail` when not set. Audited (`antiban.settings_changed`) |
@@ -247,11 +274,10 @@ qualifies). Errors use the problem shape above.
 | `PUT /ai/llm` | admin (session) | Tests, then writes `LLM_*` to the settings file; applies from the next model call with no restart. `{ ..., anyway: true }` skips a failed test. `422 TEST_FAILED` changes nothing. Audited (`ai.llm_changed`) without the key. |
 | `DELETE /ai/llm` | admin (session) | Turns the AI model off (`LLM_DRIVER=none`) and removes the key from the file. |
 | (limits) | | 10 calls a minute per organisation across list, test and save; a custom address must be `https` on a public network (Ollama may use `localhost`; `LLM_ALLOW_PRIVATE_BASE_URL=true` lifts it for a private install). |
-| `POST /ai/jobs` | `messages:send` (`command` = admin session or API key) | `{ kind: command\|draft, input }` puts a request in the AI queue; `202 { id }`. `429 QUEUE_FULL` at 20 waiting |
+| `POST /ai/jobs` | `messages:send` (`command` = admin session or API key) | `{ kind: command, input }` puts a request in the AI queue; `202 { id }`. `429 QUEUE_FULL` at 20 waiting |
 | `GET /ai/jobs` | `messages:send` | The queue: waiting (with `position`), running, and the last 24 h. Admins and API keys see everyone's; anyone else only their own |
 | `POST /ai/jobs/:id/cancel` | `messages:send` | Cancels a **queued** request (`409 NOT_QUEUED` once started) |
 | `POST /ai/commands` | admin session or `messages:send` key | The same instruction run inline (waits for the model): `{ instruction }` returns `{ message, actions[] }`. Tools: create/pause/resume/edit campaign, `send_message`. Never lifts a gate; starts a campaign only if the org allows it |
-| `POST /ai/draft-campaign-text` | `messages:send` | `{ goal }` returns `{ body }`: wording for the campaign form. Creates and sends nothing |
 | `GET /ai/conversations/:id/notice` | `conversations:read` | Why the assistant is stuck on a chat (`held`, `do_not_contact`, `daily_cap`, `model_error`), or `null` |
 | `POST /ai/conversations/:id/allow-reply` | admin (session) | `{ reason }` (10+ chars): lets the assistant answer the contact's latest message although they are do-not-contact. One reply; audited |
 

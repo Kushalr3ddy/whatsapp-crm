@@ -124,9 +124,12 @@ describe('writes', () => {
     // The policies carry WITH CHECK as well as USING, so a compromised or simply buggy handler
     // cannot write into a tenant it is not acting for — which a `WHERE org_id` on reads would
     // never have caught.
-    await expect(asTenant(orgA)((tx) => tx.execute(sql`
+    // drizzle-orm 0.45 wraps a database error as "Failed query: ..." and keeps the database's own words in `cause`, so the reason is read from there.
+    const refused = await asTenant(orgA)((tx) => tx.execute(sql`
       INSERT INTO contact (org_id, display_name, source)
-      VALUES (${orgB}, 'planted by A', 'test')`))).rejects.toThrow(/row-level security/i);
+      VALUES (${orgB}, 'planted by A', 'test')`)).then(() => null, (error: unknown) => error as { message?: string; cause?: { message?: string } });
+    expect(refused, 'the insert into another tenant must be refused').not.toBeNull();
+    expect(`${refused?.message ?? ''} ${refused?.cause?.message ?? ''}`).toMatch(/row-level security/i);
 
     const planted = await db.execute(sql`
       SELECT count(*)::int AS n FROM contact WHERE display_name = 'planted by A'`);

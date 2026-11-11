@@ -20,6 +20,18 @@ export class AlreadyExistsError extends Error {
 }
 
 /**
+ * The email already belongs to an account of another organisation, and attaching it here would let this organisation's admin set that
+ * person's password or disable them (X-001). Never says whose account it is.
+ */
+export class EmailUnavailableError extends Error {
+  /** Builds the error. */
+  constructor() {
+    super('email is not available');
+    this.name = 'EmailUnavailableError';
+  }
+}
+
+/**
  * Creates an organisation and its first admin, as one transaction.
  *
  * **The single provisioning seam.** A future self-serve `/signup` is a thin caller of this, as
@@ -92,7 +104,14 @@ export async function createOrgWithAdmin(
 export async function addUserToOrg(
   db: Database,
   hasher: PasswordHasher,
-  input: { orgId: string; email: string; password: string; displayName: string; role: 'admin' | 'agent' },
+  input: {
+    orgId: string; email: string; password: string; displayName: string; role: 'admin' | 'agent';
+    /**
+     * Operator only (the CLI): attach an account that already belongs to another organisation. An organisation's admin never gets
+     * this: the account is one global row, so they could then set that person's password or disable them everywhere (X-001).
+     */
+    joinExisting?: boolean;
+  },
   actor: AuditActor = SYSTEM_ACTOR
 ): Promise<{ userId: string }> {
   const email = input.email.trim().toLowerCase();
@@ -103,6 +122,12 @@ export async function addUserToOrg(
 
     const existing = await tx.execute(sql`SELECT id FROM app_user WHERE email = ${email}`);
     let userId = (existing as unknown as Array<{ id: string }>)[0]?.id;
+
+    if (userId !== undefined && input.joinExisting !== true) {
+      const elsewhere = await tx.execute(sql`
+        SELECT 1 FROM org_membership WHERE user_id = ${userId} AND org_id <> ${input.orgId} LIMIT 1`);
+      if ((elsewhere as unknown as unknown[]).length > 0) throw new EmailUnavailableError();
+    }
 
     if (userId === undefined) {
       const created = await tx.execute(sql`

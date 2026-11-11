@@ -7,16 +7,16 @@ A campaign sends one message to everyone in an audience. It is never instant: th
 
 ![The Campaigns list: Sending now, Drafts and Finished.](../../../assets/shots/11-campaigns.png)
 
-Campaigns are grouped as **Sending now** (running or paused), **Drafts** and **Finished**. **Saved audiences** (top right) manages reusable audiences, and **How sending is paced** explains the protections.
+Campaigns are grouped as **Sending now** (running or paused), **Drafts** and **Finished**. **Saved audiences** (top right) manages reusable audiences. A campaign that is sending shows when it should finish.
 
 ## Creating a campaign
 
 ![The new campaign form.](../../../assets/shots/12-campaign-new.png)
 
-1.  **Start from a saved template (optional).** The box **Start from a saved template** lists the templates saved on the AI page. Picking one fills the message box; you can still change the text. A template that carries instructions for the AI also makes this an **AI campaign** (see below).
+1.  **Start from a saved template (optional).** Under **Message**, choose **Use a template** to list the templates saved on the AI page. Picking one fills the message box; you can still change the text. A template that carries instructions for the AI also makes this an **AI campaign** (see below).
 2.  **Write the message.** Use `{{name}}` for the person’s name and `{Hi|Hey|Hello}` to vary wording: each person gets a slightly different message, which is safer than hundreds of identical ones. Custom fields work too, as `{{city}}`.
 3.  **Add a picture or GIF (optional).** One JPG, PNG, WebP or GIF per campaign, up to 5 MB. It goes to everyone with your message as the caption, at the same safe pace. A GIF plays as a short looping video. **Use one I uploaded before** reuses an earlier picture.
-4.  **Choose who gets it.** Pick exactly one: a tag, an import, a saved audience, or a filter you build (has tag, reply status, "messaged in the last N days"; a live count shows "N people match right now"). The audience freezes the moment you start, so later changes never alter a running campaign. People marked do-not-contact are always left out.
+4.  **Choose who gets it.** Pick one or more files or tags (or send to everyone, or pick people in Contacts): the review panel shows how many people it reaches, how many are left out and why, and offers a list to download for anyone missing a fill-in. The audience freezes the moment you start, so later changes never alter a running campaign. People marked do-not-contact are always left out.
 5.  **Send from.** Choose the number.
 6.  Press **Create draft**. Nothing is sent yet.
 
@@ -24,7 +24,7 @@ Campaigns are grouped as **Sending now** (running or paused), **Drafts** and **F
 
 ![A draft campaign: the dry run and the Start button.](../../../assets/shots/13-campaign-detail.png)
 
-A draft shows a **dry run**: "Would message N people · N skipped (no number) · N in the audience", and a **forecast**, for example "About 3 days to finish at 40/day (number still warming up, so the daily cap is low)". New numbers send few messages a day on purpose and build up over time.
+A draft shows a **dry run**: "Would message N people · N skipped (no number) · N in the audience". New numbers send few messages a day on purpose and build up over time.
 
 1.  Read the message and the numbers. If nobody is reachable, the page says so: check the tag.
 2.  Press **Start**. The audience is frozen and sending begins at the safe pace.

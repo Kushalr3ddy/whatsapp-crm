@@ -225,6 +225,7 @@ test.describe('session audit', () => {
     // ───────────────────────────────────────────────────── 4 · contacts: import, upload anyway, search
     area = '4 contacts';
     await press('open Contacts', nav('Contacts'), page.getByRole('heading', { name: 'Contacts' }).first());
+    await page.goto('/contacts/classic');   // the controls below are the classic page's
     await step('Refresh button', async () => { await page.getByRole('link', { name: 'Refresh' }).click(); await page.waitForLoadState('domcontentloaded'); });
     await step('open the first contact row', async () => { await page.locator('summary').first().click({ timeout: 8_000 }); });
     await step('Dates and order box opens', async () => { await page.locator('summary', { hasText: 'Dates and order' }).click(); });
@@ -253,7 +254,7 @@ test.describe('session audit', () => {
       } catch {
         const stuck = await page.getByRole('button', { name: /Counting/ }).count();
         // Leave the stuck page so the steps after it measure their own screens.
-        await page.goto('/contacts');
+        await page.goto('/contacts/classic');
         throw new Error(stuck > 0 ? 'BUG: the button stayed on "Counting…" and the page never showed the result (server answered with a redirect that the browser did not follow)' : 'no answer was shown within 8 s');
       }
     });
@@ -350,7 +351,7 @@ test.describe('session audit', () => {
       });
     };
     area = '4 contacts: search';
-    await step('open Contacts to search', async () => { await page.goto('/contacts'); await expect(page.getByLabel('Search contacts')).toBeVisible(); });
+    await step('open Contacts to search', async () => { await page.goto('/contacts/classic'); await expect(page.getByLabel('Search contacts')).toBeVisible(); });
     const people = readPeople(CSV);
     const first = people[0]; const second = people[1] ?? people[0]; const last = people[people.length - 1];
     if (first === undefined || second === undefined || last === undefined) {
@@ -368,21 +369,23 @@ test.describe('session audit', () => {
       await search('random: part of a number', second.phone.replace(/\D/g, '').slice(-7), 'some');
       await search('random: an unrelated word', 'zzz-no-such-person', 'none');
     }
-    await step('tag filter chip for the import', async () => { await page.goto('/contacts'); await page.getByRole('link', { name: new RegExp(TAG) }).first().click({ timeout: 8_000 }); await page.waitForURL(/tag=/); });
+    await step('tag filter chip for the import', async () => { await page.goto('/contacts/classic'); await page.getByRole('link', { name: new RegExp(TAG) }).first().click({ timeout: 8_000 }); await page.waitForURL(/tag=/); });
 
     // ───────────────────────────────────────────────────── 5 · campaign to the imported numbers only
     area = '5 campaigns';
     await press('open Campaigns', nav('Campaigns'), page.getByRole('heading', { name: /campaigns|broadcast/i }).first());
-    await press('New campaign', page.getByRole('link', { name: /new campaign|new broadcast|create/i }).first(), page.locator('input[name="name"]'));
+    await press('New campaign', page.getByRole('link', { name: /new campaign|new broadcast|create/i }).first(), page.locator('#nc-nm'));
     const campaignName = `Session audit ${new Date().toISOString().slice(0, 16)}`;
     let campaignId = '';
     await step('fill the form (name, text, number, the import tag)', async () => {
-      await page.locator('input[name="name"]').fill(campaignName);
-      await page.locator('textarea[name="body"]').fill(CAMPAIGN_TEXT);
+      await page.locator('#nc-nm').fill(campaignName);
+      await page.locator('#nc-body').fill(CAMPAIGN_TEXT);
       const pick = async (select: string, text: string): Promise<void> => {
-        const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-        if (value === null) throw new Error(`no option containing "${text}" in ${select}`);
-        await page.locator(`select[name="${select}"]`).selectOption(value);
+        // New campaign has no <select>s: the number is a card, the audience a tag chosen from a list.
+        if (select === 'senderIdentityId') { await page.locator('.nc-opt', { hasText: text }).first().click(); return; }
+        await page.getByRole('button', { name: 'A tag', exact: true }).click();
+        await page.locator('#nc-aq').click();
+        await page.getByRole('option', { name: new RegExp(text) }).first().click();
       };
       await pick('senderIdentityId', sender?.label ?? SENDER_LABEL);
       await pick('fromTagId', TAG);

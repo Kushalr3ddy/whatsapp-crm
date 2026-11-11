@@ -29,11 +29,40 @@ cleared, and it is why the ports exist at all.
 | **Contract** | Vitest + LocalStack, Keycloak, MailHog | Every adapter and every driver | One conformance suite per port — `ChannelProvider`, `SourceConnector`, `StorageDriver`, `AuthProvider`, `QueueDriver`, `EmailDriver`, `KmsDriver`. New adapters are correct by construction; swapping drivers provably changes nothing. |
 | **Integration** | Vitest + Testcontainers | Repositories, queues, workers | Real Postgres, real queue, no mocks at the boundary. Migrations up and down. **RLS isolation asserted per table.** |
 | **API** | Supertest + Testcontainers | Every endpoint | Happy path, authz matrix (every role × every endpoint), validation, pagination, idempotency, rate limits, error shapes |
-| **E2E** | Playwright | Critical journeys | **Built (10 specs):** sign in/out, every page renders, import a CSV and tag it, mass-tag, tag one by hand, build a broadcast (from a tag and from an inline filter), flag do-not-contact, define a custom field. **Still to add:** inbox thread flows, sending verified in CI (needs a fake-number gateway) |
+| **E2E** | Playwright | Critical journeys | **Built (11 specs):** sign in/out, every page renders, import a CSV and tag it, mass-tag, tag one by hand, build a broadcast (from a tag, on the New campaign screen: review panel, fill-in table, draft), flag do-not-contact, define a custom field, the Contacts screen (pick a file, search, Filters with a live count, Select all N, Add tag and Undo, saved lists, Columns, the person panel). The Import screen has its own specs (`tests/e2e/import-*.spec.ts`: flow with a required tag, problems, re-upload, notice and reset, keep columns, looking through the sheet). **Still to add:** inbox thread flows, sending verified in CI (needs a fake-number gateway) |
 | **Load** | k6 | Throughput and soak | 10k campaign · 100 msg/s inbound burst · 50k-row import · 24 h soak |
 | **Security** | ZAP, Semgrep, gitleaks, Trivy, custom | Every PR | OWASP Top 10, cross-tenant IDOR, SSRF, authz bypass, injection |
 | **Chaos** | Scripted | Quarterly | Kill Postgres / queue / gateway mid-campaign |
 | **Manual** | Runbook | Pre-release | One real number, small scale, against a checklist |
+
+## WhatsApp, failures and mistakes
+
+The parts that break in real use (linking, the connection, sending) are tested at three levels.
+
+| Level | Where | What it proves | Needs a person |
+|---|---|---|---|
+| **Replay** | `tests/contract/baileys-replay.test.ts` | The real WhatsApp adapter, fed the event sequences WhatsApp produces through a scripted socket (`tests/fixtures/baileys-socket.ts`): QR, QR timeout, scan and the 515 restart, pairing code, 401 device removed, 403 ban, 408, 428, 440 taken elsewhere, giving up after five reconnects from WhatsApp's side, no internet for 20 minutes without giving up, a restart restoring the number, sending, refusals, inbound, ticks. Runs in CI. | No |
+| **Contract** | `tests/contract/baileys-channel.test.ts` | The same conformance suite the fake passes, run on the real adapter, so the fake cannot drift from it. | No |
+| **Failure modes** | `tests/integration/failure-modes.test.ts` | The gateway and API with a real database: the connection dropping before and during a send, the gateway killed mid-campaign, the database going away after WhatsApp accepted a message, two Starts at once, unlink and relink, ban, and what a person gets wrong (Cancel, Pause on a draft, blank messages, removed numbers, Link pressed three times). The rule they hold the code to: nobody is messaged twice, nobody in a campaign is lost without a reason shown, and work carries on when the number is back. | No |
+| **Live suite** | `npm run live:suite` (`tests/live/live-suite.ts`, groups `inbox`, `campaign`, `ai`, `interest`, `optout`) | Number A in the install, number B on the standalone tester (`tests/live/tester.mjs`): a message in, a reply out, a campaign once, Cancel, Pause on a draft, the AI's answers (salary kept general, nothing internal, injection refused), whether the AI files a yes as interested and a no as not interested, STOP and START. Run the groups one after another, never together (they share B). Steps and settings: [`48`](48-live-test-playbook.md). | Once: link both numbers |
+| **Live canary** | `npm run live:canary` (`scripts/live-canary.ts`) | Two spare numbers in one install: A sends to B, B sees it, B replies, A sees it, with the delivered tick both ways. `--check` only lists what a person still has to do. Run from cron every few hours; `CANARY_ALERT_URL` posts a failure to Slack or Discord. Exit 0 healthy, 1 failed, 2 not ready. | Once: two spare numbers, each linked with a QR scan |
+
+A known bug that is not fixed yet is a test marked `it.fails` with its `[R-nnn]` tag: it passes while the bug is there and fails the run the day it is fixed, so the marker and the registry row get updated together. In the shared contract suite, an adapter lists its open bugs in `knownBugs`.
+
+What only a person can check: the message on phone B's screen (the canary sees the tick, not the screen), and removing the device under Linked devices on the phone to see the Numbers page say so and the campaigns pause.
+
+## Organisations, roles and several people at once (2026-11-10)
+
+| Where | What it proves |
+|---|---|
+| `tests/integration/org-harness.ts` | Shared set-up: two organisations, admins, agents, a disabled person, a key per scope, revoked and expired keys, one of everything per organisation |
+| `tests/integration/orgs-roles-matrix.test.ts` | Every route against every kind of caller (admin, agent, each key scope, bootstrap key, nobody); access changes mid-session; passwords, lockout, bad input |
+| `tests/integration/orgs-isolation.test.ts` | One organisation reaching another's data by id, by list, inside creates, and through the database wall; same names in both |
+| `tests/integration/shared-template-campaign.test.ts` | Several people on one template, campaign, tag, reply and contact at the same moment |
+| `tests/integration/orgs-modules.test.ts` | **Run 2026-11-11** (66 tests: 65 pass, 1 skipped; `[EXP-9]` and `[FLD-4]` are `it.fails` for M-001 and M-002, `[IMP-6]` is skipped for M-003). The modules the first runs did not reach: contact export (admin only, audited, five an hour), API keys (secret shown once, per organisation), key rotation and encryption status, campaign pictures and downloads, imports in two organisations, segments and custom fields (including two admins at once), the audit trail, and chat presence. Each test states the correct behaviour; a new failure is a new bug or a wrong assumption. ENC-7 pins SEC-8 as a decision |
+| `tests/e2e/orgs-and-roles.spec.ts` | The same cast through the screens (48 tests, all passing on 2026-11-11; the last 9, SCR-1 to SCR-9, cover Security, Linked numbers, Export, Billing, Import and Segments by role, sign-out in two tabs, and the sign-up page, which is a front-end mock that creates nothing): sign-in per role, admin-only screens, isolation, two browser sessions on one campaign, widths 375 and 1280. Needs its own stack and database (`E2E_BASE_URL`, `E2E_API_URL`, `E2E_BOOTSTRAP_KEY`, `E2E_DATABASE_URL` with "e2e" in its name; it refuses a live database) |
+
+Known bugs here are `it.fails` (API) or `test.fail` (browser): X-002 to X-004 and M-001 to M-003 (GitHub issues #107 to #112; the map from old ids to issues is in [`49`](49-bug-list.md)). The live two-organisation runs (real phones, scripts outside the repo) are logged in [`47`](47-live-test-log.md).
 
 ## Regression tests for prior defects
 
@@ -51,6 +80,13 @@ Every `M*` in `00-prior-art.md` gets a named regression test. The highest-value 
 | M13 in-process state | Multi-worker run produces correct shared-budget behaviour |
 | M26 poison message | One unresolvable recipient does not affect the session or other sends |
 | M31 context bleed | Two conversations with one contact stay separate |
+
+## The Inbox screen
+
+- `tests/integration/inbox-list.test.ts` (needs a database): search by name, number and last message, the quick views and their counts, filters, paging, the person panel's fill-ins, and the campaign of each message.
+- `tests/integration/thread-lock.test.ts` and `participants.test.ts`: only the owner or an admin may send (a participant may read, not reply), and the first sender in an unowned chat becomes its owner.
+- `apps/web/lib/inbox-format.test.ts`: list times, search highlight and snippet, campaign dividers, reply fill-ins.
+- Playwright: `seeded-pages.spec.ts` (Filters, a note, Resolve and Reopen from Details), `ai-notice.spec.ts`, `zz-roles-flow.spec.ts` (presence and typing are read from the API, the Inbox no longer prints them).
 
 ## Preset and resource testing
 
@@ -82,7 +118,7 @@ at one cause. Workflow: `.github/workflows/ci.yml`.
 | Check | Time | What it does | What a failure means |
 |---|---|---|---|
 | **ci / check** | ~2 min | Starts a real Postgres (and an S3 emulator, moto, for the storage contract suite), migrates the test database, runs typecheck (API and web), lint (including the "every function has a comment saying why" rule), the whole vitest suite (unit, contract, integration, the RLS isolation tests), and re-applies the migrations to prove they are idempotent. | The code does not compile, breaks a rule, a behaviour regressed, or a migration is not safe to re-run. |
-| **ci / e2e** | ~2 min | Builds the schema, creates the e2e admin and seeds the test org, starts the API, the gateway on the in-memory fake channel, and the web app, then drives a real Chromium through the browser specs: login and logout, inbox, contacts and tags, import, broadcasts, do-not-contact, numbers, saved audiences, and a message sent end to end. | A screen or flow a person uses is broken, even though the unit tests pass. |
+| **ci / e2e** | ~2 min | Builds the schema, creates the e2e admin and seeds the test org, starts the API, the gateway on the in-memory fake channel, and the web app, then drives a real Chromium through the browser specs: login and logout, inbox, contacts and tags, import, broadcasts, the campaigns list, the campaign page and its chat panel, do-not-contact, numbers, saved audiences, and a message sent end to end. | A screen or flow a person uses is broken, even though the unit tests pass. |
 | **ci / secrets-scan** | ~10 s | Runs gitleaks over the diff for API keys, tokens and private keys. The CI-only throwaway keys are marked `gitleaks:allow`. | A secret was about to be committed. Remove it and rotate it; deleting the commit is not enough. |
 
 Notes:

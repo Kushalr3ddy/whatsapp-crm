@@ -1,37 +1,33 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getAiSettings, getMe, listAiJobs, listAiTemplates, getAiAlwaysOnRules, getLlmSettings, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { AiJob, AiSettings, AiTemplate } from '@/lib/crm';
+import { getAiSettings, getMe, listAiTemplates, listDeletedAiTemplates, getLlmSettings, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { AiSettings, AiTemplate, LlmSettings } from '@/lib/crm';
 import { PageHeader } from '../ui';
-import { AiPanel } from './ai-panel';
-import { AiQueue } from './ai-queue';
-import { TemplatesPanel } from './templates-panel';
 import { AiTabs } from './ai-tabs';
+import { TemplatesHome } from './templates-home';
+import { SetupSteps } from './setup-steps';
 
-/** Rendered per request: the switch and the consent come from the database. */
+/** Rendered per request: the templates, the switch and the consent come from the database. */
 export const dynamic = 'force-dynamic';
 
 /**
- * The AI assistant's settings: switch it on, tell it what it may talk about, and cap what it can send.
- *
- * Admin only. A non-admin who opens the address is told so; the API refuses them as well.
+ * The AI assistant: the templates are its home. Each template is a playbook for one kind of conversation; campaigns that use one get
+ * their openings written and their replies answered by the AI. Admin only.
  */
 export default async function AiPage() {
   let settings: AiSettings | null = null;
-  let jobs: AiJob[] = [];
+  let llm: LlmSettings | null = null;
   let templates: AiTemplate[] = [];
-  let rules: string[] = [];
-  let modelReady = true;
+  let deleted: AiTemplate[] = [];
   let isAdmin = false;
   let failure: string | null = null;
   let expired = false;
   try {
     isAdmin = (await getMe()).role === 'admin';
-    modelReady = await getLlmSettings().then((l) => l.ready).catch(() => true);
+    llm = await getLlmSettings().catch(() => null);
     if (isAdmin) {
-      [settings, jobs, templates, rules] = await Promise.all([
-        getAiSettings(), listAiJobs().catch((): AiJob[] => []),
-        listAiTemplates().catch((): AiTemplate[] => []), getAiAlwaysOnRules().catch((): string[] => [])
+      [settings, templates, deleted] = await Promise.all([
+        getAiSettings(), listAiTemplates().catch((): AiTemplate[] => []), listDeletedAiTemplates().catch((): AiTemplate[] => [])
       ]);
     }
   } catch (error) {
@@ -40,27 +36,40 @@ export default async function AiPage() {
   }
   if (expired) redirect('/login?next=/ai');
 
+  const provider = llm === null ? null : (llm.providers.find((p) => p.id === llm?.provider)?.label ?? llm.driver);
+  const ready = settings?.enabled === true && llm?.ready === true;
+  const consented = settings?.consentAcceptedAt !== null && settings?.consentAcceptedAt !== undefined;
+  // First run: no working model yet, or nobody has agreed that messages are shared.
+  const needsSetup = isAdmin && settings !== null && (llm?.ready !== true || !consented);
+
   return (
-    <main className="page page-wide">
+    <main className="page page-studio">
       <PageHeader
         title="AI assistant"
-        description="An assistant that replies in conversations you assign to it. It has its own name in the inbox and in the audit log."
+        description="Build a template once. Campaigns that use it get their openings written and their replies answered by the AI."
       />
+      {failure === null && needsSetup && <SetupSteps modelReady={llm?.ready === true} modelLabel={provider} consented={consented} />}
+      {failure === null && isAdmin && settings !== null && !needsSetup && (
+        <section className="card flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm" aria-label="AI status">
+          {ready
+            ? <span className="inline-flex items-center gap-2 font-medium text-success"><span className="h-2 w-2 rounded-full bg-current" />Ready</span>
+            : <span className="inline-flex items-center gap-2 font-medium text-warning"><span className="h-2 w-2 rounded-full bg-current" />{llm?.ready === true ? 'Switched off' : 'No AI model'}</span>}
+          <span className="min-w-0 flex-1 basis-72 text-muted">
+            {ready
+              ? <>{provider} · at most {settings.dailyMessageCap} AI messages a day.</>
+              : llm?.ready === true
+                ? 'The AI is off, so templates cannot write or answer yet.'
+                : 'No AI model is set up, so nothing here can write yet.'}
+          </span>
+          <Link href="/ai/settings" className="btn btn-sm btn-ghost">{ready ? 'Change' : llm?.ready === true ? 'Switch on' : 'Set up'}</Link>
+        </section>
+      )}
       <AiTabs />
-      {failure === null && !modelReady && (
-        <p className="notice notice-warning mt-4" role="status">
-          No AI model is set up, so nothing here can write yet. <Link href="/ai/settings" className="font-medium underline">Open AI settings</Link> to choose a provider, enter its key and pick a model.
-        </p>
-      )}
-      {failure !== null && <p className="notice notice-danger">{failure}</p>}
+      {failure !== null && <p className="notice notice-danger mt-4">{failure}</p>}
       {failure === null && !isAdmin && (
-        <p className="notice notice-warning">Only admins can change the AI assistant. Ask an admin if you need a change.</p>
+        <p className="notice notice-warning mt-4">Only admins can change the AI assistant. Ask an admin if you need a change.</p>
       )}
-      {failure === null && settings?.enabled === true && <TemplatesPanel templates={templates} rules={rules} />}
-      {failure === null && settings !== null && <AiPanel settings={settings} rules={rules} />}
-      {failure === null && settings?.enabled === true && (
-        <div className="mt-6"><AiQueue initial={jobs} mayStart={settings.mayStartCampaigns} /></div>
-      )}
+      {failure === null && isAdmin && <TemplatesHome templates={templates} deleted={deleted} />}
     </main>
   );
 }

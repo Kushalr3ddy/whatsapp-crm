@@ -1,12 +1,14 @@
 import { resolveSendAsset } from './campaign-media.js';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { Transaction } from '@crm/db';
 import type { KmsDriver } from '@crm/kms-local';
-import { planFirstMessage, renderRecipientBody } from './antiban/campaign-text.js';
+import { missingFillIns, planFirstMessage, renderRecipientBody } from './antiban/campaign-text.js';
+import { fillInKeys } from './body-variation.js';
+import { loadCustomFields } from './custom-fields.js';
 import { drawGapMs } from './antiban/gap.js';
 import { buildSegmentPredicate, type SegmentDefinition } from './segments.js';
 import type { TenantWork } from './ingestion.js';
-import { blockingPolicyGate, POLICY_SKIP_REASON, COOLDOWN_DAYS } from './policy-gates.js';
+import { blockingPolicyGate, POLICY_SKIP_REASON, COOLDOWN_DAYS, ENGAGEMENT_WINDOW_HOURS } from './policy-gates.js';
 
 /**
  * Bulk sends.
@@ -32,6 +34,52 @@ export interface CampaignProgress {
   readonly skipped: number;
 }
 
+/**
+ * THE audience rule, written once: who is in an audience (a contact aliased `c`) given where each of its four ways of being chosen
+ * is read from (a campaign's columns, or bound values). The dry run, the freeze at start and the fill-in report all use it, so a
+ * change to who an audience contains changes all three. Exactly one way is set; with none set, nobody is in it ("never everyone").
+ */
+export function audienceRule(
+  orgId: string,
+  cols: { importRun: SQL; explicit: SQL; tag: SQL; segment: SQL },
+  segmentPredicate: SQL | undefined
+): SQL {
+  return sql`(
+    -- Either everyone a named import run actually created or updated …
+    (${cols.importRun} IS NOT NULL AND EXISTS (
+      SELECT 1 FROM import_row ir
+      WHERE ir.import_run_id = ${cols.importRun} AND ir.contact_id = c.id AND ir.outcome IN ('created', 'updated')
+    ))
+    -- … or exactly the contacts that were listed …
+    OR (${cols.explicit} IS NOT NULL AND ${cols.explicit} @> to_jsonb(c.id::text))
+    -- … or everyone carrying a named tag, resolved at start so later tagging never changes a running campaign …
+    OR (${cols.tag} IS NOT NULL AND EXISTS (
+      SELECT 1 FROM contact_tag ct WHERE ct.tag_id = ${cols.tag} AND ct.contact_id = c.id AND ct.org_id = ${orgId}
+    ))
+    -- … or everyone a dynamic segment's filter matches.
+    ${segmentPredicate === undefined ? sql`` : sql`OR (${cols.segment} IS NOT NULL AND (${segmentPredicate}))`}
+  )`;
+}
+
+/** A dynamic segment resolves in TypeScript (its stored filter becomes a bound predicate); undefined when there is none. */
+export async function segmentPredicateFor(tx: Transaction, orgId: string, segmentId: string | null): Promise<SQL | undefined> {
+  if (segmentId === null) return undefined;
+  const def = (await tx.execute(sql`
+    SELECT definition FROM segment WHERE id = ${segmentId} AND org_id = ${orgId}`
+  ) as unknown as Array<{ definition: SegmentDefinition }>)[0]?.definition;
+  return def === undefined ? undefined : buildSegmentPredicate(def, orgId);
+}
+
+/** The audience rule for a campaign row (`cp`), which is how the dry run and the freeze read it. */
+async function campaignAudienceWhere(tx: Transaction, orgId: string, campaignId: string): Promise<SQL> {
+  const seg = (await tx.execute(sql`
+    SELECT from_segment_id AS "id" FROM campaign WHERE id = ${campaignId} AND org_id = ${orgId}`
+  ) as unknown as Array<{ id: string | null }>)[0]?.id ?? null;
+  return audienceRule(orgId, {
+    importRun: sql`cp.from_import_run_id`, explicit: sql`cp.explicit_contact_ids`, tag: sql`cp.from_tag_id`, segment: sql`cp.from_segment_id`
+  }, await segmentPredicateFor(tx, orgId, seg));
+}
+
 /** The prospective audience of a draft, worked out without freezing it — a dry run's counts. */
 export interface AudiencePreview {
   /** Everyone the audience rule matches right now. */
@@ -40,10 +88,26 @@ export interface AudiencePreview {
   readonly reachable: number;
   /** The rest — no phone/`wa_*` identity, so they would be recorded as skipped, never dropped. */
   readonly unreachable: number;
-  /** Reachable people already sent a different campaign inside the cooldown window (they would be skipped). */
+  /**
+   * Reachable people sent a different campaign from this same number in the last 14 days, with nothing live: a warning only,
+   * they are sent (CW-6.6a AC3).
+   */
   readonly recentlyMessaged: number;
   /** The campaign that most of them were messaged by, or null when none. */
   readonly recentCampaign: string | null;
+  /** Reachable people still waiting in a live campaign on this same number: the red confirm names them (CW-6.6a AC1). */
+  readonly sameNumberLive: number;
+  /** The live campaign most of them are in, or null when none. */
+  readonly sameNumberLiveCampaign: string | null;
+  /**
+   * Reachable people an agent is handling a chat with right now (an owner and traffic in the last 48 hours). Start skips them as `engaged` unless an
+   * admin lets them through, so the draft says how many (#76).
+   */
+  readonly engaged: number;
+  /** The phone number this campaign sends from, for the confirm's wording. */
+  readonly senderPhone: string | null;
+  /** Reachable people (not counted above) already in a campaign or messaged lately from a different number: a small note (CW-6.6a AC4). */
+  readonly otherNumberOverlap: number;
 }
 
 /**
@@ -57,15 +121,12 @@ export interface AudiencePreview {
 export async function previewAudience(
   tx: Transaction, orgId: string, campaignId: string
 ): Promise<AudiencePreview> {
-  // Same segment branch as snapshotAudience, so the dry-run count matches what start would freeze.
-  const segRows = await tx.execute(sql`
-    SELECT s.definition AS "definition"
-    FROM campaign cp JOIN segment s ON s.id = cp.from_segment_id
-    WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}`);
-  const segDef = (segRows as unknown as Array<{ definition: SegmentDefinition }>)[0]?.definition;
-  const segmentBranch = segDef === undefined
-    ? sql``
-    : sql`OR (cp.from_segment_id IS NOT NULL AND (${buildSegmentPredicate(segDef, orgId)}))`;
+  // The same rule snapshotAudience uses, so the dry-run count matches what start would freeze.
+  const who = await campaignAudienceWhere(tx, orgId, campaignId);
+  // "Recently" is the campaign's own number of days, else the org's default, else 14.
+  const recentDays = (await tx.execute(sql`
+    SELECT coalesce(cp.recent_days, (SELECT recent_days FROM antiban_setting WHERE org_id = ${orgId}), ${COOLDOWN_DAYS})::int AS d
+    FROM campaign cp WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}`) as unknown as Array<{ d: number }>)[0]?.d ?? COOLDOWN_DAYS;
 
   const rows = await tx.execute(sql`
     WITH audience AS (
@@ -75,41 +136,147 @@ export async function previewAudience(
                WHERE ci.contact_id = c.id AND ci.org_id = ${orgId}
                  AND ci.kind IN ('phone', 'wa_jid', 'wa_lid')
              ) AS reachable,
-             -- The latest other campaign that already messaged this person inside the cooldown window, if any.
+             -- The latest other campaign that already messaged this person from THIS number inside the cooldown window, if any.
              (SELECT cp2.name FROM message m
                 JOIN conversation v ON v.id = m.conversation_id
                 JOIN campaign cp2 ON cp2.id = m.campaign_id
-              WHERE v.org_id = ${orgId} AND v.contact_id = c.id
+              WHERE v.org_id = ${orgId} AND v.contact_id = c.id AND v.sender_identity_id = cp.sender_identity_id
                 AND m.direction = 'outbound' AND m.campaign_id <> cp.id AND m.status <> 'failed'
-                AND m.created_at > now() - make_interval(days => ${COOLDOWN_DAYS})
-              ORDER BY m.created_at DESC LIMIT 1) AS recent_campaign
+                AND m.created_at > now() - make_interval(days => ${recentDays})
+              ORDER BY m.created_at DESC LIMIT 1) AS recent_campaign,
+             -- The engagement gate's own rule (policy-gates.ts), so the draft and Start agree (#76).
+             EXISTS (SELECT 1 FROM conversation ev WHERE ev.org_id = ${orgId} AND ev.contact_id = c.id AND ev.assignee_user_id IS NOT NULL
+                       AND greatest(coalesce(ev.last_inbound_at, 'epoch'), coalesce(ev.last_outbound_at, 'epoch'))
+                           > now() - make_interval(hours => ${ENGAGEMENT_WINDOW_HOURS})) AS engaged,
+             -- A live campaign on this same number that still has this person waiting (CW-6.6a AC1).
+             (SELECT cp3.name FROM campaign_recipient cr3 JOIN campaign cp3 ON cp3.id = cr3.campaign_id
+              WHERE cr3.org_id = ${orgId} AND cr3.contact_id = c.id AND cr3.campaign_id <> cp.id
+                AND cr3.status IN ('pending', 'queued') AND cp3.status IN ('running', 'paused')
+                AND cp3.sender_identity_id = cp.sender_identity_id
+              ORDER BY cp3.created_at DESC LIMIT 1) AS live_campaign,
+             -- Messaged by a campaign, or waiting in a live one, from a DIFFERENT number (CW-6.6a AC4): only a note.
+             (EXISTS (
+                SELECT 1 FROM message m
+                  JOIN conversation v ON v.id = m.conversation_id
+                WHERE v.org_id = ${orgId} AND v.contact_id = c.id AND v.sender_identity_id <> cp.sender_identity_id
+                  AND m.direction = 'outbound' AND m.campaign_id IS NOT NULL AND m.campaign_id <> cp.id AND m.status <> 'failed'
+                  AND m.created_at > now() - make_interval(days => ${recentDays}))
+              OR EXISTS (
+                SELECT 1 FROM campaign_recipient cr4 JOIN campaign cp4 ON cp4.id = cr4.campaign_id
+                WHERE cr4.org_id = ${orgId} AND cr4.contact_id = c.id AND cr4.campaign_id <> cp.id
+                  AND cr4.status IN ('pending', 'queued') AND cp4.status IN ('running', 'paused')
+                  AND cp4.sender_identity_id <> cp.sender_identity_id)) AS other_number
       FROM campaign cp
       JOIN contact c ON c.org_id = cp.org_id
-      WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}
-        AND (
-          (cp.from_import_run_id IS NOT NULL AND EXISTS (
-            SELECT 1 FROM import_row ir
-            WHERE ir.import_run_id = cp.from_import_run_id
-              AND ir.contact_id = c.id AND ir.outcome IN ('created', 'updated')
-          ))
-          OR (cp.explicit_contact_ids IS NOT NULL
-              AND cp.explicit_contact_ids @> to_jsonb(c.id::text))
-          OR (cp.from_tag_id IS NOT NULL AND EXISTS (
-            SELECT 1 FROM contact_tag ct
-            WHERE ct.tag_id = cp.from_tag_id AND ct.contact_id = c.id AND ct.org_id = ${orgId}
-          ))
-          ${segmentBranch}
-        )
+      WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId} AND (${who})
     )
     SELECT count(*)::int AS total,
            count(*) FILTER (WHERE reachable)::int AS reachable,
            count(*) FILTER (WHERE NOT reachable)::int AS unreachable,
-           count(*) FILTER (WHERE reachable AND recent_campaign IS NOT NULL)::int AS "recentlyMessaged",
-           (SELECT recent_campaign FROM audience WHERE reachable AND recent_campaign IS NOT NULL
-            GROUP BY recent_campaign ORDER BY count(*) DESC LIMIT 1) AS "recentCampaign"
+           -- Messaged from this number lately with nothing live: a warning line, they are sent (CW-6.6a AC3).
+           count(*) FILTER (WHERE reachable AND recent_campaign IS NOT NULL AND live_campaign IS NULL)::int AS "recentlyMessaged",
+           (SELECT recent_campaign FROM audience WHERE reachable AND recent_campaign IS NOT NULL AND live_campaign IS NULL
+            GROUP BY recent_campaign ORDER BY count(*) DESC LIMIT 1) AS "recentCampaign",
+           count(*) FILTER (WHERE reachable AND live_campaign IS NOT NULL)::int AS "sameNumberLive",
+           (SELECT live_campaign FROM audience WHERE reachable AND live_campaign IS NOT NULL
+            GROUP BY live_campaign ORDER BY count(*) DESC LIMIT 1) AS "sameNumberLiveCampaign",
+           count(*) FILTER (WHERE reachable AND engaged)::int AS engaged,
+           (SELECT si.phone_e164 FROM campaign cp5 JOIN sender_identity si ON si.id = cp5.sender_identity_id
+            WHERE cp5.id = ${campaignId} AND cp5.org_id = ${orgId}) AS "senderPhone",
+           count(*) FILTER (WHERE reachable AND other_number AND recent_campaign IS NULL AND live_campaign IS NULL)::int AS "otherNumberOverlap"
     FROM audience`);
   const row = (rows as unknown as AudiencePreview[])[0];
-  return row ?? { total: 0, reachable: 0, unreachable: 0, recentlyMessaged: 0, recentCampaign: null };
+  return row ?? {
+    total: 0, reachable: 0, unreachable: 0, recentlyMessaged: 0, recentCampaign: null,
+    sameNumberLive: 0, sameNumberLiveCampaign: null, engaged: 0, senderPhone: null, otherNumberOverlap: 0
+  };
+}
+
+/** One fill-in a message can use, for the Insert list (CW-7.6). */
+export interface FillInReportField {
+  readonly key: string;
+  /** What a person sees next to it; the built-ins are "Name" and "First name". */
+  readonly label: string;
+  /** A real value from one person in the audience, or null when nobody has one. */
+  readonly sample: string | null;
+  /** How many people in the audience have a value. */
+  readonly have: number;
+  /** How the value is read: `text`, `number`, `date` or `select`. The built-in name fields are `text`. */
+  readonly type: string;
+}
+
+/** The fill-ins for an audience, each with a sample value and how many of the people have it. */
+export interface FillInReport {
+  /** Everyone the audience matches right now (not only the reachable ones: a fill-in is read for each person). */
+  readonly total: number;
+  readonly fields: readonly FillInReportField[];
+}
+
+/** An audience stated one way, like a campaign's: the report works on a draft's choice before the draft exists. */
+export interface FillInAudience {
+  readonly fromImportRunId?: string | undefined;
+  readonly fromTagId?: string | undefined;
+  readonly fromSegmentId?: string | undefined;
+  readonly explicitContactIds?: readonly string[] | undefined;
+}
+
+/** "2026-11-12" read as a date shows as "12 Nov 2026"; anything else is shown as it was stored. */
+export function sampleText(type: string, value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (type !== 'date' || m === null) return value;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${String(Number(m[3]))} ${months[Number(m[2]) - 1] ?? m[2]!} ${m[1]!}`;
+}
+
+/**
+ * The fill-ins an audience offers (CW-7.6): `name`, `first_name`, and every field the org defines, each with a real sample value and
+ * how many of the people have it. Reads the same people a campaign would freeze, without writing anything.
+ */
+export async function fillInReport(
+  tx: Transaction, orgId: string, audience: FillInAudience
+): Promise<FillInReport> {
+  const who = audienceRule(orgId, {
+    importRun: sql`${audience.fromImportRunId ?? null}::uuid`,
+    explicit: sql`${audience.explicitContactIds === undefined ? null : JSON.stringify(audience.explicitContactIds)}::jsonb`,
+    tag: sql`${audience.fromTagId ?? null}::uuid`,
+    segment: sql`${audience.fromSegmentId ?? null}::uuid`
+  }, await segmentPredicateFor(tx, orgId, audience.fromSegmentId ?? null));
+  return fillInReportWhere(tx, orgId, who);
+}
+
+/** The same report for any audience rule (a contact aliased `c`): the New campaign review reads several picks at once through it. */
+export async function fillInReportWhere(tx: Transaction, orgId: string, who: SQL): Promise<FillInReport> {
+  const fields = await loadCustomFields(tx, orgId);
+  const out: FillInReportField[] = [];
+
+  // Name, then the first word of it: both come from the display name.
+  const nameRow = (await tx.execute(sql`
+    SELECT count(*)::int AS total,
+           count(*) FILTER (WHERE nullif(trim(c.display_name), '') IS NOT NULL)::int AS have,
+           (array_agg(trim(c.display_name) ORDER BY c.id) FILTER (WHERE nullif(trim(c.display_name), '') IS NOT NULL))[1] AS sample
+    FROM contact c WHERE c.org_id = ${orgId} AND (${who})`
+  ) as unknown as Array<{ total: number; have: number; sample: string | null }>)[0];
+  const total = nameRow?.total ?? 0;
+  out.push({ key: 'name', label: 'Name', sample: nameRow?.sample ?? null, have: nameRow?.have ?? 0, type: 'text' });
+  out.push({
+    key: 'first_name', label: 'First name', have: nameRow?.have ?? 0, type: 'text',
+    sample: nameRow?.sample?.split(/\s+/)[0] ?? null
+  });
+
+  // Every field in one pass over the audience: each person's custom_fields unpacked into (key, value) rows, grouped by key.
+  const perKey = new Map((await tx.execute(sql`
+    SELECT kv.key AS "key",
+           count(*) FILTER (WHERE nullif(trim(kv.value), '') IS NOT NULL)::int AS have,
+           (array_agg(kv.value ORDER BY c.id) FILTER (WHERE nullif(trim(kv.value), '') IS NOT NULL))[1] AS sample
+    FROM contact c, LATERAL jsonb_each_text(coalesce(c.custom_fields, '{}'::jsonb)) AS kv
+    WHERE c.org_id = ${orgId} AND (${who})
+    GROUP BY kv.key`
+  ) as unknown as Array<{ key: string; have: number; sample: string | null }>).map((r) => [r.key, r]));
+  for (const f of fields) {
+    const r = perKey.get(f.key);
+    out.push({ key: f.key, label: f.label, type: f.type, have: r?.have ?? 0, sample: r?.sample === null || r?.sample === undefined ? null : sampleText(f.type, r.sample) });
+  }
+  return { total, fields: out };
 }
 
 /** Counts every recipient of a campaign by status. */
@@ -141,17 +308,7 @@ export async function campaignProgress(
 export async function snapshotAudience(
   tx: Transaction, orgId: string, campaignId: string
 ): Promise<number> {
-  // A dynamic segment resolves in TypeScript (the filter engine turns its stored definition into a
-  // bound predicate) and is composed into the audience WHERE as one more branch. Fetched first so
-  // the branch is empty for the other targeting modes, leaving their SQL untouched.
-  const segRows = await tx.execute(sql`
-    SELECT s.definition AS "definition"
-    FROM campaign cp JOIN segment s ON s.id = cp.from_segment_id
-    WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}`);
-  const segDef = (segRows as unknown as Array<{ definition: SegmentDefinition }>)[0]?.definition;
-  const segmentBranch = segDef === undefined
-    ? sql``
-    : sql`OR (cp.from_segment_id IS NOT NULL AND (${buildSegmentPredicate(segDef, orgId)}))`;
+  const who = await campaignAudienceWhere(tx, orgId, campaignId);
 
   const rows = await tx.execute(sql`
     WITH audience AS (
@@ -171,26 +328,7 @@ export async function snapshotAudience(
              ) AS own_number
       FROM campaign cp
       JOIN contact c ON c.org_id = cp.org_id
-      WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId}
-        AND (
-          -- Either everyone a named import run actually created or updated …
-          (cp.from_import_run_id IS NOT NULL AND EXISTS (
-            SELECT 1 FROM import_row ir
-            WHERE ir.import_run_id = cp.from_import_run_id
-              AND ir.contact_id = c.id AND ir.outcome IN ('created', 'updated')
-          ))
-          -- … or exactly the contacts that were listed. Never "everyone" implicitly.
-          OR (cp.explicit_contact_ids IS NOT NULL
-              AND cp.explicit_contact_ids @> to_jsonb(c.id::text))
-          -- … or everyone carrying a named tag, resolved here so adding a contact to the tag
-          -- after launch never changes who a running campaign is messaging.
-          OR (cp.from_tag_id IS NOT NULL AND EXISTS (
-            SELECT 1 FROM contact_tag ct
-            WHERE ct.tag_id = cp.from_tag_id AND ct.contact_id = c.id AND ct.org_id = ${orgId}
-          ))
-          -- … or everyone a dynamic segment's filter matches, resolved and frozen here.
-          ${segmentBranch}
-        )
+      WHERE cp.id = ${campaignId} AND cp.org_id = ${orgId} AND (${who})
     )
     INSERT INTO campaign_recipient (org_id, campaign_id, contact_id, status, skip_reason)
     SELECT ${orgId}, ${campaignId}, contact_id,
@@ -225,9 +363,15 @@ export async function dispatchCampaign(
   return tenant(async (tx) => {
     // A campaign with a picture or GIF sends it to everyone, the message being its caption; a GIF goes as its converted looping clip.
     const settings = (await tx.execute(sql`
-      SELECT media_asset_id AS "pictureId", media_after_reply AS "mediaAfterReply"
+      SELECT media_asset_id AS "pictureId", media_after_reply AS "mediaAfterReply",
+             blank_fill_in_choice AS "blankChoice", fill_in_fallback AS "fallback",
+             CASE WHEN leave_out_recent THEN coalesce(recent_days, (SELECT recent_days FROM antiban_setting WHERE org_id = ${input.orgId}), ${COOLDOWN_DAYS}) END AS "leaveOutDays"
       FROM campaign WHERE id = ${input.campaignId} AND org_id = ${input.orgId}`
-    ) as unknown as Array<{ pictureId: string | null; mediaAfterReply: boolean }>)[0];
+    ) as unknown as Array<{ pictureId: string | null; mediaAfterReply: boolean; blankChoice: string | null; fallback: string | null; leaveOutDays: number | null }>)[0];
+    // What to do when a fill-in has no value for a person (CW-7.7): skip them, fill the gap with the fallback, or (null) leave it blank.
+    const blankChoice = settings?.blankChoice ?? null;
+    const fallback = blankChoice === 'fallback' ? settings?.fallback ?? null : null;
+    const knownFillIns = blankChoice === 'skip' ? fillInKeys((await loadCustomFields(tx, input.orgId)).map((f) => f.key)) : [];
     const withPicture = settings?.pictureId ?? null;
     const mediaAfterReply = settings?.mediaAfterReply ?? true;
     const asset = withPicture === null ? null : await resolveSendAsset(tx, input.orgId, withPicture);
@@ -263,11 +407,25 @@ export async function dispatchCampaign(
       // Recipient-experience gates: skip with a reported reason unless an admin lifted them.
       const blocked = await blockingPolicyGate(tx, {
         orgId: input.orgId, campaignId: input.campaignId, contactId: recipient.contactId,
-        overrides: input.gateOverrides ?? []
+        senderIdentityId: input.senderIdentityId, overrides: input.gateOverrides ?? [],
+        leaveOutRecentDays: settings?.leaveOutDays ?? null
       });
       if (blocked !== null) {
         await tx.execute(sql`
           UPDATE campaign_recipient SET status = 'skipped', skip_reason = ${POLICY_SKIP_REASON[blocked]}
+          WHERE id = ${recipient.id} AND org_id = ${input.orgId}`);
+        continue;
+      }
+
+      // "Skip them" for a blank fill-in (CW-7.7): someone with no value for a field the message uses is left out, with the reason
+      // shown. Only a real column counts; a mistyped key is blank for everyone and is dealt with before launch. The AI's own opening
+      // for a person does not use the campaign wording, so it is not checked.
+      if (blankChoice === 'skip' && recipient.openingEnc === null && missingFillIns(input.body, {
+        campaignId: input.campaignId, contactId: recipient.contactId,
+        displayName: recipient.contactName, customFields: recipient.customFields
+      }, knownFillIns).length > 0) {
+        await tx.execute(sql`
+          UPDATE campaign_recipient SET status = 'skipped', skip_reason = 'missing_field'
           WHERE id = ${recipient.id} AND org_id = ${input.orgId}`);
         continue;
       }
@@ -280,7 +438,7 @@ export async function dispatchCampaign(
         ? new TextDecoder().decode(kms.decrypt(recipient.openingEnc))
         : renderRecipientBody(input.body, {
           campaignId: input.campaignId, contactId: recipient.contactId,
-          displayName: recipient.contactName, customFields: recipient.customFields
+          displayName: recipient.contactName, customFields: recipient.customFields, fallback
         });
       // A new chat gets the text alone when the campaign has a picture or a link; they get the rest if they reply (F6 AC-7.3).
       const plan = planFirstMessage({

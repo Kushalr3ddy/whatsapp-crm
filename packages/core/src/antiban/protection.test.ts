@@ -87,7 +87,8 @@ describe('AC-7.2 variants and the no-variation warning', () => {
 
   it('AC-7.2 fills {{first_name}}, {{name}} and custom fields', () => {
     expect(renderRecipientBody('Hi {{first_name}} ({{name}}) from {{city}}', person)).toBe('Hi Asha (Asha Verma) from Pune');
-    expect(renderRecipientBody('Hi {{first_name}}', { ...person, displayName: null })).toBe('Hi ');
+    expect(renderRecipientBody('Hi {{first_name}}', { ...person, displayName: null })).toBe('Hi there');
+    expect(renderRecipientBody('Hi {{name}}', { ...person, displayName: '  ' })).toBe('Hi there');
   });
 
   it('AC-7.2 one recipient always gets the same pick, from a draw seeded by campaign and contact', () => {

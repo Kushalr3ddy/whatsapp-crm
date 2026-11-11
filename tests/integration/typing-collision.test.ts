@@ -68,7 +68,7 @@ beforeEach(async () => {
   });
   orgId = org.orgId;
   agent1 = (await addUserToOrg(db, hasher, {
-    orgId, email: 'a1@lock.test', password: 'x', displayName: 'Agent One', role: 'agent'
+    orgId, email: 'a1@lock.test', password: 'x', displayName: 'Agent One', role: 'admin'
   })).userId;
   agent2 = (await addUserToOrg(db, hasher, {
     orgId, email: 'a2@lock.test', password: 'x', displayName: 'Agent Two', role: 'agent'

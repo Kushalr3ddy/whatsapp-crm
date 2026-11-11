@@ -184,17 +184,20 @@ export async function runAiCommand(
       } else if (call.name === 'send_message') {
         action = await sendOne(deps, settings.cap, orgId, bot, str(a.to), str(a.text));
       } else if (call.name === 'pause_campaign') {
-        action = !known(campaigns, id) ? { tool: call.name, ok: false, detail: 'No such campaign.' }
-          : await db.transaction((tx) => setCampaignStatus(tx, orgId, { actor: bot }, id, 'paused'))
-            ? { tool: call.name, ok: true, detail: 'Paused. Nothing more is sent until it is resumed.', campaignId: id }
-            : { tool: call.name, ok: false, detail: 'It has already finished, so it cannot be paused.', campaignId: id };
+        if (!known(campaigns, id)) action = { tool: call.name, ok: false, detail: 'No such campaign.' };
+        else {
+          const paused = await db.transaction((tx) => setCampaignStatus(tx, orgId, { actor: bot }, id, 'paused'));
+          action = paused === 'ok' ? { tool: call.name, ok: true, detail: 'Paused. Nothing more is sent until it is resumed.', campaignId: id }
+            : paused === 'not_started' ? { tool: call.name, ok: false, detail: 'It has not started yet, so there is nothing to pause.', campaignId: id }
+              : { tool: call.name, ok: false, detail: 'It has already finished, so it cannot be paused.', campaignId: id };
+        }
       } else if (call.name === 'resume_campaign') {
         if (!known(campaigns, id)) action = { tool: call.name, ok: false, detail: 'No such campaign.' };
         else if (!settings.mayStart) action = { tool: call.name, ok: false, campaignId: id, detail: 'Not done: the organisation has not allowed the assistant to start campaigns. An admin must press Start.' };
         else {
           const started = await db.transaction((tx) => startCampaign(tx, orgId, { actor: bot }, id));
           action = 'error' in started
-            ? { tool: call.name, ok: false, campaignId: id, detail: started.error === 'already_running' ? 'It is already running.' : started.error === 'finished' ? 'It has finished and cannot restart.' : 'No such campaign.' }
+            ? { tool: call.name, ok: false, campaignId: id, detail: started.error === 'already_running' ? 'It is already running.' : started.error === 'finished' ? 'It has finished and cannot restart.' : started.error === 'number_removed' ? 'The number it sends from was removed.' : 'No such campaign.' }
             : { tool: call.name, ok: true, campaignId: id, detail: `Running: ${String(started.progress.pending)} people waiting to be sent at the safe rate.` };
         }
       } else if (call.name === 'edit_campaign') {
@@ -227,33 +230,6 @@ export async function runAiCommand(
   }));
 
   return { message: answer.text, actions };
-}
-
-/**
- * Writes the wording of a campaign message from a short goal ("remind people about Friday's walk-in interview"). Nothing
- * is created or sent: the text goes into the campaign form for a person to read and change. No contact data is shared,
- * only the goal and the org's own instructions.
- */
-export async function draftCampaignText(deps: { db: Database; llm: LlmDriver }, orgId: string, goal: string): Promise<string> {
-  const settings = (await deps.db.execute(sql`
-    SELECT enabled, instructions FROM ai_setting WHERE org_id = ${orgId}`) as unknown as Array<{ enabled: boolean; instructions: string }>)[0];
-  if (settings === undefined || !settings.enabled) throw new AiCommandError('ai_off', 'The AI assistant is switched off for this organisation.');
-  try {
-    const answer = await deps.llm.complete({
-      system: [
-        'You write WhatsApp campaign messages for a business. Reply with only the message text: plain text, no quotes, no markdown, under 600 characters.',
-        'Be warm and specific, and make clear what the reader should do. Use {{name}} where the contact\'s name fits, and {option one|option two} for a few words that can vary between people.',
-        settings.instructions.trim() === '' ? '' : `The organisation's own instructions:\n${settings.instructions.trim()}`
-      ].filter((l) => l !== '').join('\n'),
-      messages: [{ role: 'user', content: goal }], maxTokens: 400
-    });
-    const text = answer.text.trim();
-    if (text === '') throw new AiCommandError('no_model', 'The AI gave no text. Try describing the goal differently.');
-    return text.slice(0, 4096);
-  } catch (error) {
-    if (error instanceof AiCommandError) throw error;
-    throw providerFailure(error);
-  }
 }
 
 /** Turns a model failure into words that say what to do: not configured, slow, busy, or refused. */

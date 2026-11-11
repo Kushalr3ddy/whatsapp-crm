@@ -295,6 +295,69 @@
       "when": 1793467257780,
       "tag": "0041_antiban_v2_contact_state",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793542125075,
+      "tag": "0042_yellow_sleeper",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793628186796,
+      "tag": "0043_recent_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793631877736,
+      "tag": "0044_audience_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794072438414,
+      "tag": "0045_ai_template_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794123556828,
+      "tag": "0046_ai_credits_stop",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794155997157,
+      "tag": "0047_ai_run_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794205689031,
+      "tag": "0048_ai_contact_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794220468256,
+      "tag": "0049_message_send_started",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794299196555,
+      "tag": "0050_message_idempotency_key",
+      "breakpoints": true
     }
   ]
 }

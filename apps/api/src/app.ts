@@ -11,11 +11,13 @@ import { attachPrincipal, requireAuthenticated, requireTenant, requireCsrf } fro
 import { withTenant } from './tenant.js';
 import { rateLimitApiKey } from './rate-limit.js';
 import { corsAllowlist } from './cors.js';
+import { rejectNulText, securityHeaders } from './hardening.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { sendersRouter } from './routes/senders.js';
 import { antibanRouter } from './routes/antiban.js';
 import { messagesRouter } from './routes/messages.js';
+import { inboxRouter } from './routes/inbox.js';
 import { mediaRouter } from './routes/media.js';
 import { importsRouter } from './routes/imports.js';
 import { contactsRouter } from './routes/contacts.js';
@@ -69,6 +71,15 @@ export interface AppDependencies {
   readonly importParse?: Partial<ImportParseOptions>;
 }
 
+/** The Express value for the TRUST_PROXY setting: `false`, a hop count, or a list of names and addresses. Undefined (a test's config) is the default. */
+export function trustProxySetting(raw: string | undefined): boolean | number | string[] {
+  const v = (raw ?? 'loopback, linklocal, uniquelocal').trim();
+  if (v === 'false' || v === '') return false;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v.split(',').map((x) => x.trim()).filter((x) => x !== '');
+}
+
+
 /**
  * Builds the HTTP application. Takes its dependencies as arguments so tests can pass fakes
  * and so the dependency graph stays readable — this is the composition root the layering
@@ -80,8 +91,9 @@ export interface AppDependencies {
 export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunner } {
   const app = express();
 
-  // Trust the reverse proxy for client IPs; Caddy sits in front (docs/13-deployment.md).
-  app.set('trust proxy', true);
+  // Believe `X-Forwarded-For` only from the proxy in front (docs/13-deployment.md), never from anyone who reaches the API directly (#60, #64).
+  // `true` believed every caller, so a caller could pick its own address and get a fresh login allowance each time.
+  app.set('trust proxy', trustProxySetting(deps.config.TRUST_PROXY));
   // Don't advertise the framework. Free, and one less thing for a scanner to fingerprint.
   app.disable('x-powered-by');
 
@@ -98,6 +110,9 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
       }
     })
   );
+
+  // Headers every answer carries, including refusals and errors raised further down (R-040).
+  app.use(securityHeaders(deps.config.NODE_ENV === 'production'));
 
   // Allowlisted browser origins (and their preflights) before anything that needs credentials.
   app.use(corsAllowlist(deps.config.CORS_ALLOWED_ORIGINS ?? []));
@@ -124,6 +139,8 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
     ],
     limit: IMPORT_LIMIT
   }));
+  // After every body is read: text with a NUL character is refused with 422 instead of failing in the database with a 500 (R-039).
+  app.use(rejectNulText);
 
   /**
    * Liveness. Answers "is this process running?" and nothing more — it must not touch the
@@ -204,6 +221,7 @@ export function buildApp(deps: AppDependencies): Express & { aiRunner: AiJobRunn
   api.use('/encryption', encryptionRouter({ kms: deps.kms }));
   api.use('/segments', segmentsRouter());
   api.use('/campaigns', campaignsRouter(deps.storage));
+  api.use('/', inboxRouter(deps.kms));
   api.use('/', messagesRouter(deps.kms, deps.config.DEFAULT_COUNTRY, deps.storage, ATTACHMENT_LIMIT_BYTES));
   app.use('/api/v1', api);
 

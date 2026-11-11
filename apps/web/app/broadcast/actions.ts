@@ -3,22 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  createCampaign, startCampaign, pauseCampaign, cancelCampaign, createSegment, previewSegmentCount, uploadCampaignPicture,
-  CrmApiError, NotAuthenticatedError
+  createCampaign, editCampaignDraft, startCampaign, pauseCampaign, cancelCampaign, uploadCampaignPicture,
+  previewCampaign, getFillIns, reviewCampaign, listBlankFillIns, stopCampaignAi, CrmApiError, NotAuthenticatedError
 } from '@/lib/crm';
-import type { CampaignPicture, CampaignTarget, SegmentDefinition } from '@/lib/crm';
-
-/** Builds a segment filter from the inline audience builder, including only criteria that were set. */
-function filterFromForm(get: (name: string) => string): SegmentDefinition {
-  const def: SegmentDefinition = {};
-  const tagId = get('filterTagId');
-  if (tagId !== '') def.tagIds = [tagId];
-  const replied = get('filterReplied');
-  if (replied === 'ever' || replied === 'never') def.replied = replied;
-  const days = Number(get('filterDays'));
-  if (Number.isInteger(days) && days > 0) def.lastContactedWithinDays = days;
-  return def;
-}
+import type { CampaignPicture, CampaignPreview, CampaignReview, FillInReport, ReviewTarget } from '@/lib/crm';
 
 /**
  * Uploads the picture or GIF chosen on the new-campaign form. The server decides everything (type from the bytes, 5 MB, GIF
@@ -37,25 +25,6 @@ export async function uploadPictureAction(formData: FormData): Promise<{ ok: boo
 }
 
 /**
- * Counts who an inline filter would reach, for the audience builder's live number. Called from the
- * browser as the person changes a field; returns null when the count could not be read, so the
- * builder shows nothing rather than a wrong number.
- */
-export async function previewAudienceAction(
-  filter: { tagId: string; replied: string; days: string }
-): Promise<number | null> {
-  const def = filterFromForm((n) => ({
-    filterTagId: filter.tagId, filterReplied: filter.replied, filterDays: filter.days
-  } as Record<string, string>)[n] ?? '');
-  if (Object.keys(def).length === 0) return null;
-  try {
-    return await previewSegmentCount(def);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Runs one campaign control (start/pause/cancel) on the server, then refreshes that campaign's
  * page so the new state shows. A lapsed session goes to /login; a benign failure is swallowed —
  * reloading shows the true state, which is all the operator needs.
@@ -69,60 +38,53 @@ async function control(id: string, fn: () => Promise<unknown>): Promise<void> {
   revalidatePath(`/broadcast/${id}`);
 }
 
+/** What the New campaign form posts, read the same way for making a draft and for saving changes to one. */
+function readCampaignForm(formData: FormData) {
+  const days = Number(formData.get('recentDays') ?? '');
+  let targets: ReviewTarget[] = [];
+  try { targets = JSON.parse(String(formData.get('targets') ?? '[]')) as ReviewTarget[]; } catch { targets = []; }
+  const blank = String(formData.get('blankFillInChoice') ?? '');
+  return {
+    name: String(formData.get('name') ?? '').trim(),
+    body: String(formData.get('body') ?? '').trim(),
+    senderIdentityId: String(formData.get('senderIdentityId') ?? ''),
+    mediaAssetId: String(formData.get('mediaAssetId') ?? ''),
+    aiTemplateId: String(formData.get('aiTemplateId') ?? ''),
+    // A checkbox sends nothing when it is off; off is a choice, so it is sent as false.
+    mediaAfterReply: formData.get('mediaAfterReply') === 'on',
+    // The answer to "N people have no <field>" (CW-7.7): leave them out, or fill the gap with a word. Anything else = send anyway.
+    blankChoice: blank === 'skip' ? 'skip' as const : blank === 'fallback' ? 'fallback' as const : null,
+    fillInFallback: String(formData.get('fillInFallback') ?? '').trim(),
+    recentDays: Number.isInteger(days) && days >= 1 && days <= 60 ? days : undefined,
+    leaveOutRecent: formData.get('leaveOutRecent') === 'on',
+    targets: Array.isArray(targets) ? targets : []
+  };
+}
+
 /**
  * Creates a draft campaign from the new-campaign form and sends the operator to its page.
  *
- * On a bad input or a rejected sender/tag it redirects back to the form with an error code rather
- * than throwing an unstyled page. `redirect` is called outside the try because it works by
- * throwing, which a catch-all would otherwise swallow.
+ * The audience arrives as `targets`, a JSON list of picks (files, tags, everyone); more than one is stored as the one list of people they
+ * come to. On a bad input or a rejected sender/tag it redirects back to the form with an error code rather than throwing an unstyled page.
+ * `redirect` is called outside the try because it works by throwing, which a catch-all would otherwise swallow.
  */
 export async function createCampaignAction(formData: FormData): Promise<void> {
-  const name = String(formData.get('name') ?? '').trim();
-  const body = String(formData.get('body') ?? '').trim();
-  const senderIdentityId = String(formData.get('senderIdentityId') ?? '');
-  const fromTagId = String(formData.get('fromTagId') ?? '');
-  const fromImportRunId = String(formData.get('fromImportRunId') ?? '');
-  const fromSegmentId = String(formData.get('fromSegmentId') ?? '');
-  const mediaAssetId = String(formData.get('mediaAssetId') ?? '');
-
-  // Inline audience: a filter built right in the form. It becomes a segment (so it is resolved and
-  // frozen at launch like any other audience); `keepAudience` decides whether it is listed for reuse.
-  let inlineSegmentId = '';
-  if (String(formData.get('audienceMode') ?? '') === 'filter') {
-    const def = filterFromForm((n) => String(formData.get(n) ?? ''));
-    const keep = formData.get('keepAudience') === 'on';
-    const keptName = String(formData.get('audienceName') ?? '').trim();
-    // Never "everyone" by accident: an empty filter is not an audience.
-    if (Object.keys(def).length === 0 || (keep && keptName === '') || name === '') {
-      redirect('/broadcast/new?error=missing');
-    }
-    try {
-      const made = await createSegment(
-        keep ? keptName : `${name} · audience ${Date.now().toString(36)}`, def, keep
-      );
-      inlineSegmentId = made.id;
-    } catch (error) {
-      if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');
-      const code = error instanceof CrmApiError ? error.code : 'ERROR';
-      redirect(`/broadcast/new?error=${encodeURIComponent(code)}`);
-    }
-  }
-
-  // The audience is a tag, an import, or a segment — exactly one. The form offers all three selects
-  // with a "none" default; picking neither or more than one is a mistake worth a clear message.
-  const chosen: CampaignTarget[] = [];
-  if (inlineSegmentId !== '') chosen.push({ fromSegmentId: inlineSegmentId });
-  if (fromTagId !== '') chosen.push({ fromTagId });
-  if (fromImportRunId !== '') chosen.push({ fromImportRunId });
-  if (fromSegmentId !== '' && inlineSegmentId === '') chosen.push({ fromSegmentId });
-
-  if (name === '' || body === '' || senderIdentityId === '' || chosen.length !== 1) {
+  const f = readCampaignForm(formData);
+  if (f.name === '' || f.body === '' || f.senderIdentityId === '' || f.targets.length === 0) {
     redirect('/broadcast/new?error=missing');
   }
 
   let id: string;
   try {
-    const created = await createCampaign({ name, body, senderIdentityId, ...(mediaAssetId !== '' ? { mediaAssetId } : {}), ...chosen[0]! });
+    const created = await createCampaign({
+      name: f.name, body: f.body, senderIdentityId: f.senderIdentityId, mediaAfterReply: f.mediaAfterReply, targets: f.targets,
+      ...(f.mediaAssetId !== '' ? { mediaAssetId: f.mediaAssetId } : {}),
+      ...(f.aiTemplateId !== '' ? { aiTemplateId: f.aiTemplateId } : {}),
+      ...(f.blankChoice === 'skip' ? { blankFillInChoice: 'skip' as const } : {}),
+      ...(f.blankChoice === 'fallback' && f.fillInFallback !== '' ? { blankFillInChoice: 'fallback' as const, fillInFallback: f.fillInFallback } : {}),
+      ...(f.recentDays !== undefined ? { recentDays: f.recentDays } : {}),
+      leaveOutRecent: f.leaveOutRecent
+    });
     id = created.id;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');
@@ -133,6 +95,65 @@ export async function createCampaignAction(formData: FormData): Promise<void> {
   redirect(`/broadcast/${id}?created=1`);
 }
 
+/**
+ * Saves the New campaign form onto an existing draft (the Edit button on a draft opens the form with its values) and goes back to
+ * the draft's page. Only a draft can be saved this way: once it has started, the API refuses and the form says so.
+ */
+export async function saveCampaignAction(formData: FormData): Promise<void> {
+  const id = String(formData.get('campaignId') ?? '');
+  const f = readCampaignForm(formData);
+  if (id === '') redirect('/broadcast');
+  if (f.name === '' || f.body === '' || f.senderIdentityId === '' || f.targets.length === 0) {
+    redirect(`/broadcast/new?edit=${id}&error=missing`);
+  }
+
+  try {
+    await editCampaignDraft(id, {
+      name: f.name, body: f.body, senderIdentityId: f.senderIdentityId, targets: f.targets,
+      aiTemplateId: f.aiTemplateId === '' ? null : f.aiTemplateId,
+      mediaAssetId: f.mediaAssetId === '' ? null : f.mediaAssetId,
+      mediaAfterReply: f.mediaAfterReply,
+      blankFillInChoice: f.blankChoice === 'fallback' && f.fillInFallback === '' ? null : f.blankChoice,
+      fillInFallback: f.blankChoice === 'fallback' && f.fillInFallback !== '' ? f.fillInFallback : null,
+      recentDays: f.recentDays ?? 14,
+      leaveOutRecent: f.leaveOutRecent
+    });
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect(`/login?next=/broadcast/new?edit=${id}`);
+    const code = error instanceof CrmApiError ? error.code : 'ERROR';
+    redirect(`/broadcast/new?edit=${id}&error=${encodeURIComponent(code)}`);
+  }
+  revalidatePath('/broadcast');
+  revalidatePath(`/broadcast/${id}`);
+  redirect(`/broadcast/${id}?saved=1`);
+}
+
+/**
+ * What the picks would reach from this number, for the review panel and the fill-in table. Called from the browser as the person
+ * chooses; null when it could not be read, so the panel shows nothing rather than a wrong number.
+ */
+export async function reviewAction(targets: ReviewTarget[], senderIdentityId: string, days?: number): Promise<CampaignReview | null> {
+  if (targets.length === 0 || senderIdentityId === '') return null;
+  try {
+    return await reviewCampaign(targets, senderIdentityId, days);
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');
+    return null;
+  }
+}
+
+/** The people with no value for a fill-in as a spreadsheet file (CSV), for "Download the list to fix". */
+export async function blankListAction(targets: ReviewTarget[], key: string): Promise<{ ok: boolean; csv?: string }> {
+  try {
+    const rows = await listBlankFillIns(targets, key);
+    const cell = (v: string | null): string => `"${(v ?? '').replace(/"/g, '""')}"`;
+    return { ok: true, csv: ['name,phone', ...rows.map((r) => `${cell(r.name)},${cell(r.phone)}`)].join('\r\n') };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect('/login?next=/broadcast/new');
+    return { ok: false };
+  }
+}
+
 /** Starts (or resumes) a campaign. */
 export async function startCampaignAction(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '');
@@ -141,9 +162,34 @@ export async function startCampaignAction(formData: FormData): Promise<void> {
   // anyone else); a plain start sends no override at all.
   const overrideGates = formData.getAll('overrideGates').map(String);
   const reason = String(formData.get('reason') ?? '').trim();
-  await control(id, () => startCampaign(
-    id, overrideGates.length > 0 ? { overrideGates, reason } : undefined
-  ));
+  // The yes to launching with a `{{key}}` that is not a column (CW-7.7 AC4).
+  const confirmUnknownFillIns = formData.get('confirmUnknownFillIns') === 'yes';
+  await control(id, () => startCampaign(id, {
+    ...(overrideGates.length > 0 ? { overrideGates, reason } : {}),
+    ...(confirmUnknownFillIns ? { confirmUnknownFillIns } : {})
+  }));
+}
+
+/**
+ * What the start button needs to know before it sends: who is still in a live campaign on the same number, who got a campaign from
+ * this number lately, and which `{{keys}}` are not columns. Null when it cannot be read, so Start just goes ahead and the server decides.
+ */
+export async function startCheckAction(id: string): Promise<CampaignPreview | null> {
+  try {
+    return await previewCampaign(id);
+  } catch {
+    return null;
+  }
+}
+
+/** The fill-ins the chosen audience offers, for the Insert list; null when there is no audience to read yet or it cannot be read. */
+export async function fillInsAction(audience: { fromTagId?: string; fromImportRunId?: string; fromSegmentId?: string }): Promise<FillInReport | null> {
+  if (Object.values(audience).every((v) => v === undefined || v === '')) return null;
+  try {
+    return await getFillIns(audience);
+  } catch {
+    return null;
+  }
 }
 
 /** Pauses a running campaign. */
@@ -158,4 +204,17 @@ export async function cancelCampaignAction(formData: FormData): Promise<void> {
   const id = String(formData.get('id') ?? '');
   if (id === '') return;
   await control(id, () => cancelCampaign(id));
+}
+
+/** Stops the AI on one campaign: no more AI openings or replies; its chats go to the person the template names. */
+export async function stopAiAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await stopCampaignAi(id);
+    revalidatePath(`/broadcast/${id}`);
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) redirect(`/login?next=/broadcast/${id}`);
+    if (error instanceof CrmApiError) return { ok: false, error: error.message };
+    throw error;
+  }
 }

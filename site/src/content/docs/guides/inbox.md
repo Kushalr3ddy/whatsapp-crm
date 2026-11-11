@@ -3,42 +3,38 @@ title: "Inbox"
 description: 'Answer customers, assign chats, add notes, and read the warnings above the message box.'
 ---
 
-![The inbox list.](../../../assets/shots/03-inbox.png)
+## The list
 
-Each row shows the person, the last activity time, an unread count, how many messages, which of your numbers it is on, who owns it (or *Unassigned*), a **closed** badge, and a red **⚠** if a message in it is waiting to be sent. The list refreshes itself every few seconds.
+-   **Search** looks in the person’s name, number and the last message, and shows the matching words highlighted.
+-   **Five quick views**, each with a count: **All**, **Needs you** (an open chat where the customer spoke last and a person is meant to answer, or where the AI is stuck), **Unread**, **AI answering** and **You answering**.
+-   **Filters** (one button): campaign, imported file, owner and status. What you pick appears as chips you can remove.
 
-## Handing one chat to the AI
+## Inside a chat
 
-In the chat header, **Hand to AI** gives this one conversation to the AI assistant (it needs to be switched on); **Take back from AI** returns it to you. The AI stops at once when you take it back. This is the same as choosing the AI assistant as the assignee.
+The header shows only the person’s name and **AI is answering** or **You’re answering**. Dividers in the timeline show where a campaign messaged them, and internal notes sit in the timeline too. **Details** opens a panel at the side, closed until you ask for it: who has the chat (the AI assistant, a person or nobody), **Resolve** and **Reopen** (with Undo), the number and whether it is linked, the campaigns that messaged this person, and **Open in Contacts**. Admins add and remove the other people on a chat there.
+
+## Taking over from the AI
+
+While the AI owns a chat, the reply box is blurred with a **Take over** button in the middle. Pressing it stops the AI at once (it checks who owns the chat before it writes and again before it sends). The chat header then offers **Hand back**, which gives the chat to the AI assistant again (it needs to be switched on). If the AI skips a chat, a card says so with **Reply myself** and **Let the AI try again**.
 
 ## When a customer’s phone says “Waiting for this message”
 
-Under a message you sent you may see **delivered, but the other phone could not read it yet**. That means WhatsApp delivered it but their phone could not unlock it, so it shows “Waiting for this message” for them until it works. It usually fixes itself in a moment. If the composer says **the encryption session of this number looks broken**, unlink the number on **Linked numbers** and link it again. Messages you type on your own phone or on WhatsApp Web only reach the inbox once that is fixed.
-
-## Inside a conversation
-
-![An open conversation.](../../../assets/shots/04-thread.png)
-
-The right-hand panel shows the contact, who it is assigned to, its status and the number of messages, with **Open in Contacts**.
+Under a message you sent you may see **delivered, but the other phone could not read it yet**. That means WhatsApp delivered it but their phone could not unlock it, so it shows “Waiting for this message” for them until it works. It usually fixes itself in a moment. If the box says **the encryption session of this number looks broken**, unlink the number on **Linked numbers** and link it again. Messages you type on your own phone or on WhatsApp Web only reach the inbox once that is fixed.
 
 ## Replying
 
-1.  Type in the box and press **Send** (or press Enter; Shift+Enter makes a new line).
-2.  The 📎 button attaches a file (image, video, audio, PDF or Office document). It sends as soon as you choose it, and anything typed becomes its caption.
-3.  If your organisation has **saved replies**, a **Saved reply…** dropdown inserts one; `{{name}}` becomes the person’s name.
+1.  Choose **Reply** (sent to the customer) or **Note** (an internal note only your team sees; press **Add note**). Notes appear in the chat marked “internal, not sent”.
+2.  Type your message. The toolbar has bold, italic, strike-through and monospace, **Fill-in** to insert something from the person (name, first name, phone, email or a column kept from their file), and **Saved replies**. A **Preview** line shows the message as WhatsApp will show it. You can paste up to five pictures.
+3.  Press **Send**. If the preview shows a fill-in that is blank or unknown, Send waits until you fix it.
 4.  Watch the little status under each message: sent, delivered, read or failed.
 
-## Internal notes
+This is the same message box as **New campaign**, so the formatting and fill-ins work the same way in both.
 
-![Writing an internal note. Nothing here is sent to the customer.](../../../assets/shots/05-note.png)
+## Who can reply
 
-Press **Note**, type, and press **Add note**. Notes appear in the thread, centred and marked "internal, not sent". Use them to hand a chat over ("asked about night shifts, call back after 4pm").
-
-## Chat ownership: assigning, resolving, adding people
-
--   **Assign** a chat to yourself to take it, or to a colleague to hand it on. If you assign it to the **AI assistant**, the assistant answers (see the AI chapter).
--   A chat owned by another agent is **locked** to you: you can read it and add notes, but Reply is disabled until it is reassigned to you. Admins and people added to the chat are never locked.
--   **Resolve** when the conversation is finished; **Reopen** if it picks up again.
+-   Only a chat’s owner or an admin can send in it. Other people on the chat can read it and add notes, but cannot reply.
+-   The first person to send in a chat nobody owns becomes its owner. An admin replying to someone else’s chat does not take it.
+-   To hand a chat to a colleague, change who has it in **Details**.
 
 ## Warnings you may meet in a chat
 

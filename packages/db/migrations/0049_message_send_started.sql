@@ -1,0 +1,2 @@
+ALTER TABLE "message" ADD COLUMN "send_started_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "message_in_flight_idx" ON "message" USING btree ("send_started_at") WHERE status = 'queued' AND send_started_at IS NOT NULL;

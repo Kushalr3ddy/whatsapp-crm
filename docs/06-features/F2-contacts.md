@@ -11,6 +11,9 @@ false — it has no domain fields, only user-defined ones.
 
 - As a user I add custom fields that suit my business, and the UI adapts.
 - As a user I find a contact by any identifier they have ever used.
+- As a user I see everyone in one table, narrow it by the file it came from, a tag, a saved list or grouped filters with a live
+  count, and save a filter as a list I can use as a campaign audience.
+- As a user I tag many people at once (ticked, or everyone a filter matches) and undo it straight away.
 - As a user I merge two records that turn out to be the same person, seeing first exactly
   what would be overwritten.
 - As a user I mark someone do-not-contact and be certain nothing reaches them again.
@@ -52,7 +55,9 @@ silently destroy richer data.
 ## API surface
 
 ```
-GET    /api/v1/contacts            filter, search, cursor paginate
+GET    /api/v1/contacts            search, file, tag, filter; pages by offset (up to 250) with a total
+GET    /api/v1/contacts/sources    files, own tags, saved lists, campaigns, saved columns
+GET    /api/v1/contacts/{id}/detail  the person's panel: their row from the file, campaigns, chat
 POST   /api/v1/contacts            upsert semantics via identity rules
 GET    /api/v1/contacts/{id}
 PATCH  /api/v1/contacts/{id}

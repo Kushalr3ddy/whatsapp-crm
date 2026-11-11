@@ -2,7 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
-import { parseCsv, profileColumns, suggestColumns } from '@crm/shared';
+import {
+  blankCounts, isBlankMarker, matchRows, normalisePhoneCell, rowsCsv, parseCsv, pickRows, profileColumns, suggestColumns, type CsvTable
+} from '@crm/shared';
 import {
   runImport, writeAudit, AUDIT, ensureTag, tagImportRun, type ImportMapping
 } from '@crm/core';
@@ -19,6 +21,13 @@ function refuseFile(req: Request, res: Response, error: ImportParseError): void 
   if (error.detail !== undefined) req.log.warn({ code: error.code, detail: error.detail }, 'import file not read');
   res.status(status).json(problem(req, status, error.code, error.message));
 }
+
+/** The most people one page of the sheet view carries, and how many parsed files are kept for paging, and for how long. */
+const ROWS_PAGE_MAX = 200;
+const ROWS_CACHE_FILES = 2;
+const ROWS_CACHE_MS = 5 * 60_000;
+/** How many people's numbers the "how the file was read" card shows as examples. */
+const NUMBER_EXAMPLES = 3;
 
 /** A transform a mapping may name. An allowlist — never an expression, never `eval`. */
 const transform = z.enum(['trim', 'lower', 'upper', 'digits']);
@@ -70,6 +79,28 @@ export function importsRouter(
   storage: StorageDriver, maxBytes: number, defaultCountry: string, parse: ImportParseOptions
 ): Router {
   const router = Router();
+
+  /**
+   * Runs whose stored file this process has already read through the capped child (at upload, or at the first run). Every step used to start a
+   * new child, and a child starts the TypeScript loader before it reads a byte: 2 to 3 s each on a quiet machine, more under load, so an import of
+   * a handful of people spent most of its ten seconds starting processes (#69). A file stored before the limits existed, or by another process,
+   * is not in here and is still read through the child once.
+   */
+  const checkedRuns = new Set<string>();
+  /** The last few parsed files, so paging through a big sheet reads it once, not once per page. */
+  const parsed = new Map<string, { table: CsvTable; at: number }>();
+  /** A stored sheet parsed, from the small cache when it was read a moment ago. */
+  async function cachedTable(runId: string, storageKey: string): Promise<CsvTable> {
+    const now = Date.now();
+    for (const [k, v] of parsed) if (now - v.at > ROWS_CACHE_MS) parsed.delete(k);
+    const hit = parsed.get(runId);
+    if (hit !== undefined) { hit.at = now; return hit.table; }
+    const table = parseCsv(Buffer.from(await storage.get(storageKey)).toString('utf8'), parse.limits);
+    parsed.set(runId, { table, at: now });
+    // Keep the newest few: a parsed 50,000-row sheet is large, so this is a small number on purpose.
+    while (parsed.size > ROWS_CACHE_FILES) parsed.delete(parsed.keys().next().value as string);
+    return table;
+  }
 
   /**
    * Stores a file and reports what is in it.
@@ -144,6 +175,8 @@ export function importsRouter(
       throw error;
     }
     await storage.put(key, stored, { contentType: 'text/csv' });
+    checkedRuns.add(id);
+    while (checkedRuns.size > 500) checkedRuns.delete(checkedRuns.values().next().value as string);
 
     await req.tenant!(async (tx) => {
       if (previous) {
@@ -174,6 +207,10 @@ export function importsRouter(
         id, sha256, rowCount: table.rows.length, headers: table.headers,
         // Straight from the file, so a mapping is built from fact rather than guesswork.
         sample: table.rows.slice(0, 3),
+        // Three people drawn from anywhere in the file, in full, so a person can see what they are about to import.
+        peek: pickRows(table.rows.length, 3).map((i) => ({ row: i + 2, values: table.rows[i] ?? {} })),
+        // How many people leave each column empty, so missing details are said before anything is saved.
+        columnFill: blankCounts(table.headers, table.rows),
         // Which column looks like the phone, email and name, judged by the values in the first rows
         // (not only the header), so the screen can pre-fill the pickers and warn about a bad choice.
         suggestions: suggestColumns(profiles),
@@ -196,9 +233,9 @@ export function importsRouter(
       const orgId = req.crm!.orgId;
       const runId = String(req.params.id);
       const found = await req.tenant!((tx) => tx.execute(sql`
-        SELECT storage_key AS "storageKey", status FROM import_run
+        SELECT storage_key AS "storageKey", status, summary FROM import_run
         WHERE id = ${runId} AND org_id = ${orgId}`));
-      const run = (found as unknown as Array<{ storageKey: string; status: string }>)[0];
+      const run = (found as unknown as Array<{ storageKey: string; status: string; summary: unknown }>)[0];
       if (!run) {
         res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such import.'));
         return;
@@ -221,13 +258,42 @@ export function importsRouter(
         }
       }
 
+      // A commit claims the run before it writes anything (M-003). The check above is a plain read, and the run only becomes `committed` at the
+      // very end, so two commits at the same moment both passed it and both wrote: the second one's contact insert then lost to the first one's
+      // identity and left a contact with no phone behind. The claim is one UPDATE, so exactly one commit gets it; a claim older than 30 minutes
+      // belongs to a process that died and can be taken over.
+      if (!parsed.data.dryRun) {
+        const claimed = await req.tenant!((tx) => tx.execute(sql`
+          UPDATE import_run
+          SET status = 'committing', summary = jsonb_build_object('committingSince', now()::text)
+          WHERE id = ${runId} AND org_id = ${orgId} AND status <> 'committed'
+            AND (status <> 'committing' OR (summary->>'committingSince')::timestamptz < now() - interval '30 minutes')
+          RETURNING id`));
+        if ((claimed as unknown as unknown[]).length === 0) {
+          res.status(409).json(problem(req, 409, 'ALREADY_COMMITTED',
+            'This import has already been committed, or someone is committing it right now.'));
+          return;
+        }
+      }
+      /** Gives the run back its earlier state when a commit did not finish, so it can be tried again. */
+      const releaseClaim = async (): Promise<void> => {
+        if (parsed.data.dryRun) return;
+        await req.tenant!((tx) => tx.execute(sql`
+          UPDATE import_run SET status = ${run.status}, summary = ${run.summary === null ? null : JSON.stringify(run.summary)}::jsonb
+          WHERE id = ${runId} AND org_id = ${orgId} AND status = 'committing'`)).catch(() => undefined);
+      };
+
+      try {
       // Read through the child again: a file stored before the import limits existed has never been checked.
       const file = Buffer.from(await storage.get(run.storageKey));
-      try {
-        await parseImportIsolated(file, parse);
-      } catch (error) {
-        if (error instanceof ImportParseError) { refuseFile(req, res, error); return; }
-        throw error;
+      if (!checkedRuns.has(runId)) {
+        try {
+          await parseImportIsolated(file, parse);
+          checkedRuns.add(runId);
+        } catch (error) {
+          if (error instanceof ImportParseError) { await releaseClaim(); refuseFile(req, res, error); return; }
+          throw error;
+        }
       }
       const table = parseCsv(file.toString('utf8'), parse.limits);
       const mapping = parsed.data.mapping as ImportMapping;
@@ -253,7 +319,9 @@ export function importsRouter(
               mapping = ${JSON.stringify(mapping)}::jsonb,
               summary = ${JSON.stringify(finalSummary)}::jsonb,
               completed_at = now()
-          WHERE id = ${runId} AND org_id = ${orgId}`);
+          WHERE id = ${runId} AND org_id = ${orgId}
+            -- a dry run that finishes while someone commits must not take the run back from them
+            AND (${!parsed.data.dryRun} OR status NOT IN ('committing', 'committed'))`);
         await writeAudit(tx, {
           orgId, actor: auditActor(req),
           action: parsed.data.dryRun ? AUDIT.importDryRun : AUDIT.importCommitted,
@@ -264,6 +332,10 @@ export function importsRouter(
       });
 
       res.json({ data: result.summary });
+      } catch (error) {
+        await releaseClaim();
+        throw error;
+      }
     });
 
   /**
@@ -286,6 +358,114 @@ export function importsRouter(
       LIMIT 100`));
     res.json({ data: rows });
   });
+
+  /**
+   * Looks through the sheet before it is imported: one page of people with the sheet row each was on, narrowed to the people
+   * who leave some columns empty (`column`, repeatable, `any` or `all` of them) and/or whose cells contain `q`. With `csv=1` it
+   * gives every match, not a page, as a CSV of the sheet's own columns to fill in and import again. Read-only.
+   * Nobody is in the database yet, so this reads the stored file; the last few parsed files are kept for a few minutes so
+   * paging does not re-parse a big sheet on every page.
+   */
+  router.get('/:id/rows', requireUuidParam('id'), requireScope('contacts:read'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const runId = String(req.params.id);
+      const found = await req.tenant!((tx) => tx.execute(sql`
+        SELECT storage_key AS "storageKey", headers FROM import_run
+        WHERE id = ${runId} AND org_id = ${orgId}`));
+      const run = (found as unknown as Array<{ storageKey: string; headers: string[] | null }>)[0];
+      if (!run) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such import.'));
+        return;
+      }
+
+      const asList = (v: unknown): string[] =>
+        (Array.isArray(v) ? v : v === undefined ? [] : [v]).filter((x): x is string => typeof x === 'string');
+      const missing = asList(req.query.column);
+      const headers = run.headers ?? [];
+      const unknown = missing.find((c) => !headers.includes(c));
+      if (unknown !== undefined) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'This file has no column with that name.'));
+        return;
+      }
+      const mode = req.query.mode === undefined ? 'any' : req.query.mode;
+      if (mode !== 'any' && mode !== 'all') {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'mode is "any" or "all".'));
+        return;
+      }
+      const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 100) : '';
+      const num = (v: unknown, fallback: number): number => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+      };
+      const offset = num(req.query.offset, 0);
+      const limit = Math.min(ROWS_PAGE_MAX, Math.max(1, num(req.query.limit, 50)));
+
+      const table = await cachedTable(runId, run.storageKey);
+      const hits = matchRows(table.headers, table.rows, { missing, mode, q });
+      if (req.query.csv === '1') {
+        res.json({ data: rowsCsv(table.headers, table.rows, hits) });
+        return;
+      }
+      res.json({
+        data: {
+          headers: table.headers,
+          total: hits.length,
+          // The sheet's first row is the column names, so the first person is row 2.
+          rows: hits.slice(offset, offset + limit).map((i) => ({ row: i + 2, values: table.rows[i] ?? {} }))
+        }
+      });
+    });
+
+  /**
+   * The first people's phone cells as they will be saved, for the "how the file was read" card: each valid number in international
+   * form, the parts that could not be read, and the reason when none could. The country is the one numbers without a code are
+   * read as. Read-only; reads the same stored file (and cache) as the sheet view.
+   */
+  router.get('/:id/numbers', requireUuidParam('id'), requireScope('contacts:read'),
+    async (req: Request, res: Response) => {
+      const orgId = req.crm!.orgId;
+      const runId = String(req.params.id);
+      const found = await req.tenant!((tx) => tx.execute(sql`
+        SELECT storage_key AS "storageKey", headers FROM import_run
+        WHERE id = ${runId} AND org_id = ${orgId}`));
+      const run = (found as unknown as Array<{ storageKey: string; headers: string[] | null }>)[0];
+      if (!run) {
+        res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such import.'));
+        return;
+      }
+      const columns = (Array.isArray(req.query.column) ? req.query.column : req.query.column === undefined ? [] : [req.query.column])
+        .filter((x): x is string => typeof x === 'string');
+      const headers = run.headers ?? [];
+      if (columns.length === 0 || columns.some((c) => !headers.includes(c))) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Name one or more columns this file has.'));
+        return;
+      }
+      const country = typeof req.query.country === 'string' ? req.query.country : defaultCountry;
+      if (!/^[A-Za-z]{2}$/.test(country)) {
+        res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'country is a two-letter code, such as IN.'));
+        return;
+      }
+      const table = await cachedTable(runId, run.storageKey);
+      const people = table.rows.slice(0, NUMBER_EXAMPLES);
+      res.json({
+        data: {
+          columns: columns.map((column) => ({
+            column,
+            examples: people.map((row) => {
+              const raw = (row[column] ?? '').trim();
+              // An empty cell, or one that only says NA, is an empty example, not a failure.
+              if (raw === '' || isBlankMarker(raw)) return { raw, numbers: [], dropped: [], problem: null };
+              const cell = normalisePhoneCell(raw, country);
+              return {
+                raw, numbers: cell.numbers.map((n) => n.e164), dropped: cell.dropped,
+                problem: cell.numbers.length === 0 ? cell.firstFailure?.message ?? null : null
+              };
+            })
+          }))
+        }
+      });
+    });
 
   /** The run, its summary, and the rows that went wrong. */
   router.get('/:id', requireUuidParam('id'), requireScope('contacts:read'),

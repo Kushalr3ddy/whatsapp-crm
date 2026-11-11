@@ -284,6 +284,10 @@
   .page { margin-inline: auto; width: 100%; max-width: 56rem; padding: 2rem 1.5rem 4rem; animation: fade-in var(--m100) var(--ease-out) both; }
   .page-narrow { max-width: 36.75rem; }
   .page-wide { max-width: 49rem; }
+  /* Lists and live pages use the room: the campaign page is read beside its message, not in a narrow column. */
+  .page-full { max-width: 82rem; }
+  /* The AI studio: templates and the editor use the width of a big screen. */
+  .page-studio { max-width: 100rem; }
   .page-title { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
   .page-desc { margin-top: 0.35rem; font-size: 1rem; color: var(--color-muted); }
   .section-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; color: var(--color-muted); text-transform: uppercase; }
@@ -306,6 +310,13 @@
   .badge-warning { border-color: transparent; background: var(--color-warning-soft); color: var(--color-warning); }
   .badge-danger { border-color: transparent; background: var(--color-danger-soft); color: var(--color-danger); }
   .badge-accent { border-color: transparent; background: var(--color-accent-soft); color: var(--color-accent); }
+  .badge-info { border-color: transparent; background: color-mix(in srgb, var(--color-info) 14%, var(--color-surface)); color: var(--color-info); }
+  /* The dot of a campaign that is sending: it dims and returns, the one loop a page may have for live work. */
+  .live-dot { animation: live-dim 1.6s ease-in-out infinite; }
+  @keyframes live-dim { 50% { opacity: 0.3; } }
+  /* A list that loads: rows arrive one by one, 25 ms apart (the first dozen only). */
+  .row-in { animation: row-in var(--m200) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 25ms); }
+  @keyframes row-in { from { opacity: 0; transform: translateY(6px); } }
 
   .notice {
     border-radius: var(--radius-card);

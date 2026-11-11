@@ -28,6 +28,14 @@ export class MemberRuleError extends Error {
   constructor(readonly reason: string) { super(reason); this.name = 'MemberRuleError'; }
 }
 
+/** True when the person also belongs to an organisation other than this one. Their account is one global row, so this org's admin must not change it (X-001). */
+async function belongsElsewhere(
+  tx: { execute: (q: ReturnType<typeof sql>) => PromiseLike<unknown> }, orgId: string, userId: string
+): Promise<boolean> {
+  const rows = await tx.execute(sql`SELECT 1 FROM org_membership WHERE user_id = ${userId} AND org_id <> ${orgId} LIMIT 1`);
+  return (rows as unknown as unknown[]).length > 0;
+}
+
 /** Lists everyone in the org, admins first, then by name. */
 export async function listMembers(db: Database, orgId: string): Promise<Member[]> {
   return db.transaction(async (tx) => {
@@ -57,6 +65,9 @@ export async function changeMember(
 ): Promise<Member> {
   return db.transaction(async (tx) => {
     await setTenant(tx, orgId);
+    // One change to the team at a time per organisation (R-041): the "is another admin left" count below reads committed rows, so two
+    // admins stepping each other down at once each saw the other still in place. Locking only the target's row did not stop that.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`team:${orgId}`}, 0))`);
     const found = await tx.execute(sql`
       SELECT m.role, u.status, u.email, u.is_bot AS "isBot" FROM org_membership m JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${orgId} AND m.user_id = ${userId} FOR UPDATE OF m`);
@@ -67,6 +78,9 @@ export async function changeMember(
 
     const newRole = change.role ?? current.role;
     const newStatus = change.status ?? current.status;
+    if (newStatus !== current.status && await belongsElsewhere(tx, orgId, userId)) {
+      throw new MemberRuleError('This person also belongs to another organisation, so their account cannot be disabled or enabled from here.');
+    }
     const losesAdmin = current.role === 'admin' && current.status === 'active'
       && (newRole !== 'admin' || newStatus !== 'active');
 
@@ -124,7 +138,11 @@ export async function resetMemberPassword(
     const rows = await tx.execute(sql`
       SELECT u.email, u.is_bot AS "isBot" FROM org_membership m JOIN app_user u ON u.id = m.user_id
       WHERE m.org_id = ${orgId} AND m.user_id = ${userId}`);
-    return (rows as unknown as Array<{ email: string; isBot: boolean }>)[0];
+    const row = (rows as unknown as Array<{ email: string; isBot: boolean }>)[0];
+    if (row !== undefined && await belongsElsewhere(tx, orgId, userId)) {
+      throw new MemberRuleError('This person also belongs to another organisation, so their password cannot be changed from here.');
+    }
+    return row;
   }).then((r) => {
     // A password on the assistant would let someone sign in as it.
     if (r?.isBot === true) throw new MemberRuleError('The AI assistant has no password and cannot sign in.');

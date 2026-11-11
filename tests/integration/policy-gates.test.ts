@@ -118,17 +118,22 @@ describe('the policy gates', () => {
     expect(byContact.get(contacts[1]!)!.status).toBe('queued');
   });
 
-  it('skips someone sent a different campaign within the cooldown', async () => {
+  it('does not skip someone sent a different campaign from this number in the last 14 days: it only warns (CW-6.6a)', async () => {
     const first = await newCampaign([contacts[0]!]);
     await startAs(first, adminToken);
     await dispatchCampaigns(ctx());                                  // contact 0 gets a campaign message
+    // The first campaign is done, so nothing is live: only the 14-day history is left.
+    await db.execute(sql`UPDATE campaign SET status = 'completed' WHERE id = ${first}`);
+    await db.execute(sql`UPDATE campaign_recipient SET status = 'sent' WHERE campaign_id = ${first}`);
 
     const second = await newCampaign([contacts[0]!, contacts[1]!]);
+    const preview = await request(app).get(`/api/v1/campaigns/${second}/preview`).set(asSession(adminToken));
+    expect(preview.body.data.audience.recentlyMessaged).toBe(1);
     await startAs(second, adminToken);
     await dispatchCampaigns(ctx());
 
     const r = new Map((await recipientStatus(second)).map((x) => [x.contactId, x]));
-    expect(r.get(contacts[0]!)).toMatchObject({ status: 'skipped', skipReason: 'cooldown' });
+    expect(r.get(contacts[0]!)!.status).toBe('queued');
     expect(r.get(contacts[1]!)!.status).toBe('queued');
   });
 

@@ -5,7 +5,7 @@ const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const PHONE = '+12025550102';
 const NAME = 'E2E DNC Person';
 
-/** Flagging a contact do-not-contact from the Contacts page, and clearing it again. */
+/** Flagging a contact do-not-contact from the classic Contacts page (the new screen has no control for it), and clearing it again. */
 test.describe('do-not-contact', () => {
   test.skip(CREDS_MISSING, 'set TEST_EMAIL / TEST_PASSWORD in .env');
 
@@ -20,7 +20,7 @@ test.describe('do-not-contact', () => {
     // Start from a known state, whatever a previous run left.
     await page.request.put(`${API}/contacts/${id}/do-not-contact`, { headers, data: { value: false } });
 
-    await page.goto(`/contacts?q=${encodeURIComponent(PHONE)}`);
+    await page.goto(`/contacts/classic?q=${encodeURIComponent(PHONE)}`);
     // A row is a line that opens to show its less-used controls.
     const row = page.locator('li', { hasText: NAME });
     await row.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });

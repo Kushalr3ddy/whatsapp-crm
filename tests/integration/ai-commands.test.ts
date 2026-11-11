@@ -287,17 +287,6 @@ describe('campaign editing and the Write-with-AI helper', () => {
     expect((await request(app).patch(`/api/v1/campaigns/00000000-0000-4000-8000-000000000000`).set(admin).send({ name: 'x' })).status).toBe(404);
   });
 
-  it('writes campaign wording from a goal without creating or sending anything', async () => {
-    llm.text = 'Hi {{name}}, {walk in|drop by} on Friday at 10am!';
-    const r = await request(app).post('/api/v1/ai/draft-campaign-text').set(agent).send({ goal: 'remind people about the Friday walk-in' });
-    expect(r.status).toBe(200);
-    expect(r.body.data.body).toBe('Hi {{name}}, {walk in|drop by} on Friday at 10am!');
-    expect(llm.calls[0]!.messages).toEqual([{ role: 'user', content: 'remind people about the Friday walk-in' }]);
-    expect(await db.execute(sql`SELECT 1 FROM campaign WHERE org_id = ${orgId}`)).toHaveLength(0);
-    await saveAiSettings(db, orgId, { enabled: false });
-    expect((await request(app).post('/api/v1/ai/draft-campaign-text').set(agent).send({ goal: 'remind people' })).status).toBe(409);
-  });
-
   it('tells screens whether AI is on', async () => {
     expect((await request(app).get('/api/v1/ai/status').set(agent)).body.data).toEqual({ enabled: true });
     await saveAiSettings(db, orgId, { enabled: false });

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { signIn, CREDS_MISSING } from './helpers';
+import { signIn, CREDS_MISSING, fillNewCampaign } from './helpers';
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3000/api/v1';
 const SENDER = 'E2E flow number';
@@ -21,20 +21,20 @@ test.describe('forms that redirect, on a production build', () => {
     if (!senders.some((s) => s.label === SENDER)) await page.request.post(`${API}/senders`, { headers, data: { label: SENDER, provider: 'baileys' } });
     const tags = ((await (await page.request.get(`${API}/tags`, { headers })).json()) as { data: Array<{ name: string }> }).data;
     if (!tags.some((t) => t.name === TAG)) await page.request.post(`${API}/tags`, { headers, data: { name: TAG } });
+    // Someone has to be in the tag: the screen will not make a draft for nobody.
+    const tagId = ((await (await page.request.get(`${API}/tags`, { headers })).json()) as { data: Array<{ id: string; name: string }> }).data.find((t) => t.name === TAG)?.id;
+    const made = await page.request.post(`${API}/contacts`, { headers, data: { displayName: 'Regression Person', phone: '+12025550177' } });
+    const contactId = made.status() === 201
+      ? ((await made.json()) as { data: { id: string } }).data.id
+      : ((await made.json()) as { existingContactId: string }).existingContactId;
+    if (tagId !== undefined) await page.request.post(`${API}/contacts/${contactId}/tags`, { headers, data: { tagId } });
   }
 
   /** Fills the New campaign form with a unique name and returns it. */
   async function fillForm(page: Page): Promise<string> {
     await page.goto('/broadcast/new');
     const name = `Regression ${String(Date.now())}`;
-    await page.locator('input[name="name"]').fill(name);
-    await page.locator('textarea[name="body"]').fill('Hi {{name}}, regression test.');
-    const pick = async (select: string, text: string): Promise<void> => {
-      const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-      await page.locator(`select[name="${select}"]`).selectOption(value ?? '');
-    };
-    await pick('senderIdentityId', SENDER);
-    await pick('fromTagId', TAG);
+    await fillNewCampaign(page, { name, body: 'Hi {{name}}, regression test.', sender: SENDER, tag: TAG });
     return name;
   }
 
@@ -69,7 +69,7 @@ test.describe('forms that redirect, on a production build', () => {
     // Originally the button gave no answer. The tag choice is now required in the browser, so no request is made at all (an instant server redirect
     // can hang on a production server: see R-008). The browser's own message stands in for the server's "Choose a tag first".
     await signIn(page);
-    await page.goto('/contacts');
+    await page.goto('/contacts/classic');   // the form this guards lives on the classic Contacts page
     await page.waitForLoadState('networkidle');
     await page.locator('summary', { hasText: 'Tag many at once' }).click();
     const posts: string[] = [];
@@ -85,7 +85,7 @@ test.describe('forms that redirect, on a production build', () => {
   test('[R-007] @smoke a contact row opened by script right after the page loads still shows its panel', async ({ page }) => {
     // The row's panel is built when it is opened (D-89). A row opened before the page finished starting up used to stay empty.
     await signIn(page);
-    await page.goto('/contacts');
+    await page.goto('/contacts/classic');   // the rows with a panel built on open live on the classic Contacts page
     const row = page.locator('li').filter({ has: page.getByLabel(/^Select /) }).first();
     await row.locator('details').first().evaluate((el) => { (el as unknown as { open: boolean }).open = true; });
     await expect(row.getByLabel('Add a tag')).toBeVisible({ timeout: 8_000 });

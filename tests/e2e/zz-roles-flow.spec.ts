@@ -164,9 +164,12 @@ test.describe('two roles on one chat: admin and agent', () => {
     await test.step('presence: each person sees the other viewing', async () => {
       await page.goto(`/inbox/${conv}`);
       await second.page.goto(`/inbox/${conv}`);
-      // Heartbeat every 12 s plus the inbox's 5 s refresh, so allow a few cycles.
-      await expect(page.getByText(new RegExp(`${AGENT_NAME}.*viewing`))).toBeVisible({ timeout: 45_000 });
-      await expect(second.page.getByText(new RegExp(`${adminName}.*viewing`))).toBeVisible({ timeout: 45_000 });
+      // The Inbox no longer prints who is viewing, but the heartbeat still runs and the API still says who has the chat open
+      // (every 12 s, so allow a few cycles).
+      const viewers = async (who: typeof admin): Promise<string[]> =>
+        ((await who.call('GET', `/conversations/${conv}`)).json.data as { viewers: Array<{ name: string }> }).viewers.map((v) => v.name);
+      await expect.poll(() => viewers(admin), { timeout: 45_000, intervals: [3_000] }).toContain(AGENT_NAME);
+      await expect.poll(() => viewers(agent), { timeout: 45_000, intervals: [3_000] }).toContain(adminName);
     });
 
     // ── 4 · assignment and the lock ───────────────────────────────────────────────────
@@ -219,51 +222,29 @@ test.describe('two roles on one chat: admin and agent', () => {
     });
 
     // ── 6 · participants: the admin brings the agent on, then takes them off ──────────
-    await test.step('the admin adds the agent as a participant; they can reply and see it in Mine', async () => {
+    await test.step('the admin adds the agent as a participant; they can read and see it in Mine, but not reply', async () => {
       const added = await admin.call('POST', `/conversations/${conv}/participants`, { userId: agent.userId });
       expect(added.status).toBe(201);
+      // Only the owner or an admin send: a person on the chat reads it, and is refused when they try to reply.
       const replied = await reply(agent, 'agent replies as a participant');
-      expect(replied.status).toBe(202);
+      expect(replied.status).toBe(409);
+      expect(replied.json.code).toBe('THREAD_ASSIGNED');
       const mine = (await agent.call('GET', '/conversations?assignee=me')).json.data as Array<{ id: string }>;
       expect(mine.map((c) => c.id)).toContain(conv);
-      const rows = (await agent.call('GET', `/conversations/${conv}/messages`)).json.data as Array<{
-        direction: string; sentByName: string | null;
-      }>;
-      expect(rows.filter((m) => m.direction === 'outbound').some((m) => m.sentByName === AGENT_NAME)).toBe(true);
+      const read = await agent.call('GET', `/conversations/${conv}/messages`);
+      expect(read.status).toBe(200);
+      expect((read.json.data as unknown[]).length).toBeGreaterThan(0);
     });
 
     await test.step('typing: each person sees the other typing', async () => {
-      // The agent drafts a reply: the admin's open thread says so within a poll or two.
+      // The Inbox no longer prints who is typing, but the API still reports it on the chat.
+      const typing = async (who: typeof admin): Promise<string[]> =>
+        ((await who.call('GET', `/conversations/${conv}`)).json.data as { viewers: Array<{ name: string; typing: boolean }> }).viewers.filter((v) => v.typing).map((v) => v.name);
       expect((await agent.call('POST', `/conversations/${conv}/typing`)).status).toBe(204);
-      await expect(page.getByText(new RegExp(`${AGENT_NAME} is typing`))).toBeVisible({ timeout: 20_000 });
-      // And the other way round, on the agent's page.
+      await expect.poll(() => typing(admin), { timeout: 20_000, intervals: [1_000] }).toContain(AGENT_NAME);
+      // And the other way round.
       expect((await admin.call('POST', `/conversations/${conv}/typing`)).status).toBe(204);
-      await expect(second.page.getByText(new RegExp(`${adminName} is typing`))).toBeVisible({ timeout: 20_000 });
-    });
-
-    await test.step('collision: a second reply seconds after the first asks "send anyway?"', async () => {
-      // Get the admin's box ready first, so the page work cannot eat into the 15 s window.
-      // A fresh stack briefly reads the number as down, which drops the box to Note mode and does
-      // not switch back by itself, so choose Reply explicitly once it can send.
-      const replyTab = page.getByRole('button', { name: 'Reply', exact: true });
-      await expect(replyTab).toBeEnabled({ timeout: 30_000 });
-      await replyTab.click();
-      const text = `admin answers via the box ${String(Date.now())}`;
-      const box = page.locator('form textarea').first();
-      await box.fill(text);
-
-      // Now the agent replies; moments later the admin tries to as well.
-      expect((await reply(agent, 'agent answers first')).status).toBe(202);
-      const held = await admin.call('POST', '/messages', { conversationId: conv, body: 'admin answers too' });
-      expect(held.status).toBe(409);
-      expect(held.json.code).toBe('COLLISION');
-      expect(String(held.json.detail)).toContain(AGENT_NAME);
-
-      // In the box: Enter shows the warning, and "Send anyway" sends.
-      await box.press('Enter');
-      await expect(page.getByText(/just replied to this chat/)).toBeVisible();
-      await page.getByRole('button', { name: 'Send anyway' }).click();
-      await expect(page.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect.poll(() => typing(agent), { timeout: 20_000, intervals: [1_000] }).toContain(adminName);
     });
 
     await test.step('the admin removes the agent; they are locked out again', async () => {
@@ -280,6 +261,38 @@ test.describe('two roles on one chat: admin and agent', () => {
       expect((await reply(admin, 'admin steps in')).status).toBe(202);
       const mine = (await agent.call('GET', '/conversations?assignee=me')).json.data as Array<{ id: string }>;
       expect(mine.map((c) => c.id)).toContain(conv);
+      // Authorship, now that the agent is the owner: the thread names them.
+      const rows = (await agent.call('GET', `/conversations/${conv}/messages`)).json.data as Array<{
+        direction: string; sentByName: string | null;
+      }>;
+      expect(rows.filter((m) => m.direction === 'outbound').some((m) => m.sentByName === AGENT_NAME)).toBe(true);
+    });
+
+    // ── 8 · collision: the owner (the agent) and an admin answer the same customer ────
+    await test.step('collision: a second reply seconds after the first asks "send anyway?"', async () => {
+      // Get the admin's box ready first, so the page work cannot eat into the 15 s window.
+      // A fresh stack briefly reads the number as down, which drops the box to Note mode and does
+      // not switch back by itself, so choose Reply explicitly once it can send.
+      const replyTab = page.getByRole('button', { name: 'Reply', exact: true });
+      await expect(replyTab).toBeEnabled({ timeout: 30_000 });
+      await replyTab.click();
+      const text = `admin answers via the box ${String(Date.now())}`;
+      const box = page.locator('.ib-cbox textarea').first();
+      await box.fill(text);
+
+      // Now the owner (the agent) replies; moments later the admin tries to as well.
+      expect((await reply(agent, 'agent answers first')).status).toBe(202);
+      const held = await admin.call('POST', '/messages', { conversationId: conv, body: 'admin answers too' });
+      expect(held.status).toBe(409);
+      expect(held.json.code).toBe('COLLISION');
+      expect(String(held.json.detail)).toContain(AGENT_NAME);
+
+      // In the box: Enter shows the warning, and "Send anyway" sends.
+      await box.press('Enter');
+      await expect(page.getByText(/just replied to this chat/)).toBeVisible();
+      await page.getByRole('button', { name: 'Send anyway' }).click();
+      // In the chat as a message (the box and its preview line hold the same words while it is being sent).
+      await expect(page.locator('.ib-m', { hasText: text })).toBeVisible({ timeout: 20_000 });
     });
 
     await second.context.close();

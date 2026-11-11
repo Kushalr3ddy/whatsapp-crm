@@ -15,7 +15,7 @@ export {
 } from './api-keys.js';
 
 export {
-  createOrgWithAdmin, addUserToOrg, setPassword, AlreadyExistsError,
+  createOrgWithAdmin, addUserToOrg, setPassword, AlreadyExistsError, EmailUnavailableError,
   type ProvisionedOrg
 } from './provisioning.js';
 
@@ -36,14 +36,14 @@ export {
 export { gifToMp4, GifConversionError } from './media-convert.js';
 
 export {
-  generateTemplate, parseGenerated, listTemplates, getTemplate, saveTemplate, useTemplate, deleteTemplate,
+  generateTemplate, parseGenerated, listTemplates, getTemplate, saveTemplate, useTemplate, deleteTemplate, listDeletedTemplates, restoreTemplate, removeTemplateNow, duplicateTemplate, TEMPLATE_KEEP_DAYS,
   AiTemplateError, AI_ALWAYS_ON_RULES, AI_TEMPLATE_MAX_DESCRIPTION,
-  type AiTemplate, type AiTemplateInput, type GeneratedTemplate
+  type AiTemplate, type AiTemplateInput, type TemplateQuestion, type SensitiveDetail, buildInstructions, type GeneratedTemplate
 } from './ai-templates.js';
 
 export {
   createCampaignDraft, startCampaign, setCampaignStatus, editCampaign,
-  type ActionContext, type CampaignAudience, type NewCampaign, type StartedCampaign
+  type ActionContext, type CampaignAudience, type NewCampaign, type StartedCampaign, type BlankFillInChoice
 } from './campaign-actions.js';
 
 export {
@@ -52,10 +52,12 @@ export {
 } from './ai-jobs.js';
 
 export {
-  runAiCommand, draftCampaignText, AiCommandError, type CommandAction, type CommandResult
+  runAiCommand, AiCommandError, type CommandAction, type CommandResult
 } from './ai-commands.js';
 
-export { autoReply, getAiNotice, type AutoReplyResult, type AiNotice } from './ai-reply.js';
+export { ungroundedClaims, UNGROUNDED_FALLBACK_REPLY, type UngroundedClaim } from './ai-grounding.js';
+export { autoReply, getAiNotice, systemText, type AutoReplyResult, type AiNotice } from './ai-reply.js';
+export { parseAiTurn, recordTurn, listCampaignAiStatus, AI_STATUSES, type AiTurn, type AiStatus, type CampaignAiStatus } from './ai-turn.js';
 
 export {
   writeAudit, writeAuditInTenant, SYSTEM_ACTOR, AUDIT,
@@ -109,10 +111,13 @@ export {
   type AntiBanSettings, type AntiBanSettingsPatch
 } from './antiban/settings.js';
 
-export { renderBody, resolveSpintax, fillVariables } from './body-variation.js';
+export {
+  renderBody, resolveSpintax, fillVariables, fillInKeys, usedFillIns, unknownFillIns, suggestFillIn, blankFillIns, BUILTIN_FILL_INS
+} from './body-variation.js';
 
 export {
-  buildSegmentPredicate, countSegmentMatches, type SegmentDefinition
+  buildSegmentPredicate, segmentCriteria, countSegmentMatches, countSegmentCriteria,
+  type SegmentDefinition, type FieldRule, type FieldRuleOp
 } from './segments.js';
 
 export {
@@ -130,13 +135,17 @@ export {
 } from './ingestion.js';
 
 export {
-  campaignProgress, previewAudience, snapshotAudience, dispatchCampaign,
+  campaignProgress, previewAudience, snapshotAudience, dispatchCampaign, fillInReport, sampleText,
   reconcileCampaign,
-  type CampaignProgress, type AudiencePreview
+  type CampaignProgress, type AudiencePreview, type FillInReport, type FillInReportField, type FillInAudience
 } from './campaigns.js';
 export {
-  searchPredicate, resolveTarget, countMatching, bulkTag, bulkUntag, tagImportRun, ensureTag, deleteTag,
-  type TagTarget
+  reviewCampaign, resolveTargetContactIds, audienceColumnsFromTargets, blankFillInPeople, audienceHistory,
+  type AudienceColumns, type ReviewTarget, type CampaignReview, type ReviewPerson, type BlankPerson, type AudienceHistory
+} from './campaign-review.js';
+export {
+  searchPredicate, resolveTarget, countMatching, bulkTag, bulkTagIds, bulkUntag, tagImportRun, ensureTag, deleteTag, isFileTag,
+  type TagTarget, type ContactFilter
 } from './tagging.js';
 export {
   CUSTOM_FIELD_TYPES, FIELD_KEY, checkFieldValue, validateCustomFields, loadCustomFields,
@@ -146,7 +155,7 @@ export {
   POLICY_GATES, POLICY_SKIP_REASON, ENGAGEMENT_WINDOW_HOURS, COOLDOWN_DAYS, isPolicyGate,
   blockingPolicyGate, type PolicyGate
 } from './policy-gates.js';
-export { markMessageFailedByProviderId } from './messages.js';
+export { markMessageFailedByProviderId, markUnconfirmedSends, UNCONFIRMED_AFTER_MS } from './messages.js';
 export {
   classifyLinkFailure, linkErrorFor, encodeLinkError, decodeLinkError,
   type LinkErrorInfo, type LinkErrorCode
@@ -158,3 +167,6 @@ export {
 } from './key-rotation.js';
 export { claimCampaignReply, campaignTemplateFor } from './campaign-reply.js';
 export { writeOpenings, campaignWritesOpenings } from './ai-opening.js';
+
+export { writeExample, suggestFillIns, detectSensitive, rewriteKnowledge, parseExample, type ExampleDraft, type ExampleLine, type FillInSuggestion, type SensitiveCandidate } from './ai-example.js';
+export { recordAiRun, estimateAiCredits, campaignAiUsage, stopCampaignAi, listAiUsage, AI_ASSUMED_REPLIES, type CampaignAiUsage, type AiRunInput, type AiUsageLog, type AiActivity, type AiUsagePart } from './ai-usage.js';

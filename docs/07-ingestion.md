@@ -159,6 +159,24 @@ First rule to match wins. **Empty values never match anything** — enforced by 
 `libphonenumber-js` to E.164, with a per-source `default_country`. Unparseable values become
 a row error with the original preserved in `import_row.raw`, never a silently stored string.
 
+### Rules for rows and for importing a file again (decided 2026-11-06)
+- **The newest file wins.** A value in a kept column replaces the one on the person; a name is replaced by a different name (the old one
+  is audited). A **blank, or an `NA`, never erases anything**, so a sparse file cannot destroy richer data (M9). Identities (a second number,
+  an email) are only ever added.
+- **A person with a number and no name** is saved with **no name** (`display_name` NULL), not with their number as the name, so a
+  campaign greets them "Hi there" (`recipientVars`). A saved name that is only a phone number reads "there" too (older people).
+- **Names are saved exactly as typed**: capitals, apostrophes and initials are never reformatted.
+- **The same number twice in a file** is one person. The check counts the second row as already there (it remembers who it has counted as
+  new, since a check writes nobody), so its numbers match the import's.
+- **A person with an email and no number** is imported; the summary counts them in `withoutNumber` and the screen says they cannot be
+  messaged.
+- **A bad email never fails a row that has a good number**: the person comes in without the email and the row carries a warning. A row
+  whose only identity is a bad email still fails.
+- **A phone cell** may hold several numbers separated by a comma, semicolon, slash, pipe or line break, or only by spaces (when every
+  piece belongs to a valid number). A letter between the digits makes a part invalid; a label before or after the number is ignored.
+- **The tag is required on the Import screen**: the real import is refused without a tag name (the screen blocks the button and the
+  server action refuses), because the tag is how the people are found later. The API itself still treats `tag` as optional.
+
 ### Per-row error ledger (M4)
 Every row writes an `import_row`. A run **always completes**. Failed rows are downloadable as
 a spreadsheet with an appended `_error` column — fix and re-upload just those.
@@ -175,6 +193,28 @@ place. Here those ship as **editable mapping presets** a user can apply, inspect
 Repeatable jobs with cursor-based incremental reads, per-source concurrency limits, and
 overlap protection (a run still in flight defers the next rather than running concurrently —
 which is what the old system's advisory lock was really trying to say, M28).
+
+## The Import screen
+
+`/import` is one screen (code: `apps/web/app/import/`, logic in `apps/web/lib/import.ts`).
+
+1. **Drop a file.** `POST /imports` stores and reads it and the screen runs the check straight away; nothing is saved. The screen shows
+   the real stages (sending and reading the sheet, finding the name and number, checking each person against Contacts) with a clock;
+   the server reports once per stage, so there is no percentage.
+2. **The check.** A country for numbers with no country code (every country, India first); the name and mobile columns found for the
+   person (`GET /imports/:id/numbers` shows real numbers as they will be saved); if two columns look like numbers the person picks one;
+   one name column, or first and last name joined; other columns come in as they are, shown as a count with a few names; the details
+   some people leave empty, with how many; three people drawn at random with everything the file says about them (`peek`,
+   `columnFill` in the upload response); and **People in your sheet**, a read-only table of the sheet (`GET /imports/:id/rows`: 25
+   people a page, every column, the sheet's own row numbers, filter chips for a missing detail with any / all, search, one Download of
+   everyone shown).
+3. **The tag.** Required. It starts as the file's name (long date-times removed) and Import stays blocked until it has a name.
+4. **Import.** `POST /imports/:id/run` with the tag. The screen lists what it does in order.
+5. **Done.** Added to your contacts, Already in your contacts and Skipped (downloadable), with links to Contacts and a new campaign
+   (or Link a number first when none is linked), and Import another file.
+
+The same bytes again answer "You uploaded this exact file before" with **Import it again** (`?force=true`) or **Choose another file**.
+The place is kept across a reload and leaving mid-import asks first.
 
 ## Mapping format
 

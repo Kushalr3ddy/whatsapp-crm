@@ -33,14 +33,17 @@ logout nobody asked for, `unlinked_on_phone` when the device was removed under L
 | Code | Meaning | Action |
 |---|---|---|
 | 401 | Logged out — unlinked on the phone | Re-link required; see RB-01 first |
-| 408 | Timeout | Should self-heal; check network/DNS |
+| 408 | Timeout, or this machine has no internet (Baileys reports `ENOTFOUND` and the like as 408) | Self-heals. With no internet the adapter keeps trying, backing off to once a minute, until the internet is back; those tries never reach WhatsApp, so they do not count toward the 5-try limit |
 | 428 | Connection closed | Self-heals via backoff |
 | 429 | Rate limited | Back off; check what was sending |
 | 440 | Replaced — linked elsewhere | Someone linked the number on another device |
 | 515 | Restart required | Normal; the supervisor handles it |
 
 **Fix** Most codes self-heal through backoff — **wait first**. A reconnect storm is worse than
-a slow recovery. If down > 30 min with repeated 515s, restart the gateway. If 401, re-link.
+a slow recovery. Closes that come from WhatsApp back off 1, 2, 4, 8, 16 s and stop after 5 tries ("giving up reconnecting"
+in the gateway log); after that the gateway's sweep tries a linked number that has been down 10 minutes again, every 10 minutes,
+except after 401 (logged out), 403 (refused) and 440 (taken elsewhere). A gateway restart also brings every linked number back
+with no QR. If down > 30 min with repeated 515s, restart the gateway. If 401, re-link.
 
 **Prevent** Do not link the same number in another tool. Keep the gateway's Postgres reachable —
 auth state lives there.
@@ -239,8 +242,8 @@ and web with `bash infra/scripts/dev-up.sh --no-gateway`. Never run two gateways
 | `decrypt_wave` | Phones of 3 or more contacts asked for retries within 10 minutes. The whole number is held and a critical health event is recorded: suspect the session store, not the contacts. | **Only relinking the number** (a reconnect does not). Check `docs/45` and RB-13 first. |
 | `many_undelivered` | 8 or more of the last 20 sends to fast-delivering contacts are still at one tick after 30 minutes. The number's campaigns are held (replies and manual sends still go). | When the count falls below 4, or `POST /senders/:id/resume` (needs `senders:write`; audited). Look at the Numbers page timeline first: WhatsApp may be limiting the number. |
 | `likely_blocked` | The contact's photo and about were visible and are gone: they probably blocked the number. Campaigns and the AI stop; an agent can still send by hand. | When the contact writes to us. |
-| `sender_not_connected` | The number is down. | When it reconnects (RB-02). |
+| `sender_not_connected` | The number is down, or it dropped during the send (the message stays queued). | When it reconnects (RB-02). |
 
-A message that failed rather than waited: `do_not_contact` (the contact is on the list; an `opt_out` flag lifts with `PUT /contacts/:id/do-not-contact` or the contact sending `start`), `not_on_whatsapp`, `whatsapp_refused_463`, `send_error` (`message.error_detail` has the provider's words). Failed messages are never retried automatically.
+A message that failed rather than waited: `send_unconfirmed` (it was handed to WhatsApp but the send was never recorded, because the gateway stopped or the database went in between; it may have arrived, so check the chat on the phone before sending it again), `campaign_cancelled` (the campaign was cancelled while it was queued), `do_not_contact` (the contact is on the list; an `opt_out` flag lifts with `PUT /contacts/:id/do-not-contact` or the contact sending `start`), `not_on_whatsapp`, `whatsapp_refused_463`, `send_error` (`message.error_detail` has the provider's words). Failed messages are never retried automatically.
 
 **Prevent** Target people who expect the message; the engine reacts to WhatsApp's warnings, it cannot make a number safe.

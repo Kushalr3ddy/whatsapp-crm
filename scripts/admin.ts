@@ -87,7 +87,7 @@ async function main(): Promise<void> {
         if (role !== 'admin' && role !== 'agent') { say('--role must be admin or agent'); process.exit(1); }
         await addUserToOrg(db, hasher, {
           orgId: need(f, 'org'), email: need(f, 'email'),
-          displayName: f.get('display') ?? need(f, 'email'), password, role
+          displayName: f.get('display') ?? need(f, 'email'), password, role, joinExisting: true
         });
         say(`  ${need(f, 'email')} added as ${role}`);
         say(`  password ${password}`);

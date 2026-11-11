@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { clientIpHeaders } from './client-ip';
+import { peopleParams } from './contacts-screen';
 
 /**
  * The server-side client for the CRM HTTP API.
@@ -104,6 +105,9 @@ export interface Message {
   mediaUnavailable: boolean;
   /** Why the file could not be fetched, when the gateway recorded a reason (D-30). */
   mediaError?: string | null;
+  /** The campaign that sent this message, when one did. */
+  campaignId?: string | null;
+  campaignName?: string | null;
 }
 
 /** One internal note on a thread. Mirrors `GET /api/v1/conversations/:id/notes`. */
@@ -250,6 +254,25 @@ export interface CampaignDetail {
   mediaFilename: string | null;
   mediaContentType: string | null;
   mediaSizeBytes: number | null;
+  /** What the draft was made with, so it can be edited with it all back. */
+  mediaAfterReply: boolean;
+  aiTemplateId: string | null;
+  /** The picks it was chosen with on New campaign; null for a campaign made another way (then the columns below say who). */
+  audienceTargets: ReviewTarget[] | null;
+  fromImportRunId: string | null;
+  fromTagId: string | null;
+  fromSegmentId: string | null;
+  explicitContactIds: string[] | null;
+  recentDays: number | null;
+  leaveOutRecent: boolean;
+  blankFillInChoice: BlankFillInChoice | null;
+  fillInFallback: string | null;
+  /** The owner stopped the AI on this campaign. */
+  aiStopped: boolean;
+  /** What the AI has used so far, in credits; null when the campaign has no template. */
+  aiUsage: { credits: number; openings: number; replies: number } | null;
+  /** The people by where the AI's conversation stands; null when the campaign has no template. */
+  aiStatus: CampaignAiStatus | null;
 }
 
 /** The prospective audience of a draft — a dry run's counts. Mirrors the `preview` route. */
@@ -262,12 +285,32 @@ export interface CampaignPreview {
     reachable: number;
     /** The rest: no number, so they would be recorded as skipped, never dropped. */
     unreachable: number;
-    /** Reachable people another campaign messaged in the last 14 days (they would be skipped). */
+    /** Reachable people another campaign messaged from this same number in the last 14 days, nothing live (a warning; they are sent). */
     recentlyMessaged?: number;
     /** The campaign that most of them were messaged by. */
     recentCampaign?: string | null;
+    /** Reachable people still waiting in a live campaign on this same number (the red confirm). */
+    sameNumberLive?: number;
+    /** The live campaign most of them are in. */
+    sameNumberLiveCampaign?: string | null;
+    /** Reachable people an agent is handling a chat with right now: Start skips them unless an admin lets them through. */
+    engaged?: number;
+    /** The phone number this campaign sends from. */
+    senderPhone?: string | null;
+    /** People already in a campaign or messaged lately from a different number (a small note). */
+    otherNumberOverlap?: number;
   };
+  /** `{{keys}}` in the message that are not a column, with the closest real one. */
+  unknownFillIns?: Array<{ key: string; suggestion: string | null }>;
 }
+
+/** One fill-in for the Insert list. Mirrors `GET /api/v1/campaigns/fill-ins`. */
+export interface FillInField { key: string; label: string; sample: string | null; have: number; type: string }
+/** The fill-ins an audience offers, and how many people it has. */
+export interface FillInReport { total: number; fields: FillInField[] }
+
+/** What to do for a person with no value for a fill-in the message uses. Unset = send anyway. */
+export type BlankFillInChoice = 'skip' | 'fallback';
 
 /** One recipient's outcome. Mirrors a row of `GET /api/v1/campaigns/:id/recipients`. */
 export interface CampaignRecipient {
@@ -284,7 +327,14 @@ export interface CampaignRecipient {
   holdReason?: string | null;
   /** The contact's primary phone or email, for identifying them in the list. */
   identity: string | null;
+  /** Where the AI's chat with them stands (`talking`, `interested`, `not_interested`, `needs_person`), or null before they answered. */
+  aiStatus?: string | null;
+  /** The AI's note for a colleague: what they said and what it could not answer. */
+  aiSummary?: string | null;
 }
+
+/** How many people of a campaign are in each state of the AI's conversation. */
+export interface CampaignAiStatus { interested: number; not_interested: number; needs_person: number; talking: number; noAnswer: number }
 
 /** What the API returns when a request fails: RFC 7807, plus our stable `code`. */
 export interface ApiProblem {
@@ -354,7 +404,7 @@ async function forwardedAuth(): Promise<Record<string, string>> {
  * `cache: 'no-store'` because an inbox is live data — Next would otherwise cache the fetch
  * for the lifetime of the build and show a thread frozen at deploy time.
  */
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = await forwardedAuth();
   const response = await fetch(`${baseUrl()}/api/v1${path}`, {
     ...init,
@@ -382,6 +432,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (payload as { data: T }).data;
+}
+
+/** Like `request`, but also gives back the envelope's `meta` (totals and counts), for the endpoints that send one. */
+export async function requestWithMeta<T, M>(path: string): Promise<{ data: T; meta: M }> {
+  const auth = await forwardedAuth();
+  const response = await fetch(`${baseUrl()}/api/v1${path}`, {
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...auth }
+  });
+  if (response.status === 401) throw new NotAuthenticatedError();
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = payload as Partial<ApiProblem> | null;
+    throw new CrmApiError({
+      code: problem?.code ?? 'UNKNOWN',
+      detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
+      status: response.status
+    });
+  }
+  return payload as { data: T; meta: M };
 }
 
 /**
@@ -474,6 +544,29 @@ export interface SegmentDefinition {
   tagIds?: string[];
   replied?: 'ever' | 'never';
   lastContactedWithinDays?: number;
+  /** Nobody on our side has messaged them within this many days (never messaged counts). */
+  notContactedWithinDays?: number;
+  /** They last wrote to us within, or longer ago than, this many days. */
+  activeWithinDays?: number;
+  activeOlderThanDays?: number;
+  /** In a chat where the last message is theirs. */
+  waitingForUs?: boolean;
+  campaigns?: 'some' | 'never';
+  campaignId?: string;
+  /** `only` the do-not-contact people, or `exclude` them. */
+  dnc?: 'only' | 'exclude';
+  whatsapp?: 'yes' | 'no' | 'unchecked';
+  email?: 'yes' | 'no';
+  importedWithinDays?: number;
+  /** Rules on the person's saved columns. */
+  fieldRules?: FieldRule[];
+}
+
+/** One rule on a saved column, for example City is Pune. */
+export interface FieldRule {
+  key: string;
+  op: 'is' | 'isnot' | 'has' | 'blank' | 'filled';
+  value?: string;
 }
 
 /** A saved criteria-based audience with its live match count. Mirrors a row of `GET /segments`. */
@@ -649,6 +742,7 @@ export async function getAiStatus(): Promise<{ enabled: boolean }> {
 /** One request in the AI queue. Mirrors `GET /api/v1/ai/jobs`. */
 export interface AiJob {
   id: string;
+  /** `draft` is an older kind (campaign wording, removed): its rows still show in the list. */
   kind: 'command' | 'draft';
   input: string;
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
@@ -668,7 +762,7 @@ export async function listAiJobs(): Promise<AiJob[]> {
 }
 
 /** Puts a request in the AI queue; it runs when its turn comes. */
-export async function enqueueAiJob(kind: 'command' | 'draft', input: string): Promise<{ id: string }> {
+export async function enqueueAiJob(kind: 'command', input: string): Promise<{ id: string }> {
   return request<{ id: string }>('/ai/jobs', { method: 'POST', body: JSON.stringify({ kind, input }) });
 }
 
@@ -683,8 +777,12 @@ export interface GeneratedAiTemplate {
   instructions: string;
   audience: string;
   firstMessage: string;
-  /** Short questions for facts the description did not give. */
+  /** Short questions for facts the description did not give (at most 5). */
   missing: string[];
+  /** The one text of what the AI knows. */
+  knowledge: string;
+  /** Kept for older answers; the sensitive details now come from `detectAiSensitive`. */
+  sensitive: Array<{ detail: string; value: string }>;
 }
 
 /** A saved template. Mirrors a row of `GET /api/v1/ai/templates`. */
@@ -698,6 +796,24 @@ export interface AiTemplate {
   useCount: number;
   lastUsedAt: string | null;
   updatedAt: string;
+  /** The one text of what the AI knows; empty on a template whose instructions were written by hand. */
+  knowledge: string;
+  /** The AI's questions and what happened to each. */
+  questions: Array<{ question: string; answer: string; skipped: boolean }>;
+  /** Details the AI shows exactly (`show`) or only roughly (`general`). */
+  sensitive: Array<{ detail: string; mode: 'show' | 'general' }>;
+  /** The team member a chat goes to when the AI is not sure, and their number. */
+  fallbackUserId: string | null;
+  fallbackPhone: string;
+  /** The columns of a person's row the AI may see. */
+  visibleColumns: string[];
+  /** The file or tag the template is for (same shape as a campaign's picks). */
+  audienceTargets: ReviewTarget[] | null;
+  /** When it was moved to Deleted; null while live. */
+  deletedAt: string | null;
+  /** How many campaigns use it, and how many of those have not finished. */
+  campaignCount: number;
+  unfinishedCount: number;
 }
 
 /** A provider the AI settings tab offers. */
@@ -768,9 +884,14 @@ export async function getAiTemplate(id: string): Promise<AiTemplate> {
 }
 
 /** Saves a template: replaces the one with `id`, or creates a new one. */
-export async function saveAiTemplate(
-  input: { id?: string; name: string; description: string; instructions: string; audience: string; firstMessage: string }
-): Promise<AiTemplate> {
+export interface AiTemplateInput {
+  id?: string; name: string; description: string; instructions: string; audience: string; firstMessage: string;
+  knowledge?: string; questions?: AiTemplate['questions']; sensitive?: AiTemplate['sensitive'];
+  fallbackUserId?: string | null; fallbackPhone?: string; visibleColumns?: string[]; audienceTargets?: ReviewTarget[] | null;
+}
+
+/** Saves a template with everything the editor holds. */
+export async function saveAiTemplate(input: AiTemplateInput): Promise<AiTemplate> {
   return request<AiTemplate>('/ai/templates', { method: 'POST', body: JSON.stringify(input) });
 }
 
@@ -779,9 +900,82 @@ export async function useAiTemplate(id: string, setAsDefault: boolean): Promise<
   return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}/use`, { method: 'POST', body: JSON.stringify({ setAsDefault }) });
 }
 
-/** Removes a saved template. */
+/** One line of the example conversation. `event` is the note the hand-over leaves. */
+export interface ExampleLine { from: 'ai' | 'customer' | 'event'; text: string }
+
+/** The template as the editor holds it, for an example or a fill-in suggestion. */
+export interface ExampleDraft {
+  templateId?: string; knowledge: string; sensitive: AiTemplate['sensitive']; fallbackUserId: string | null; fallbackPhone: string; visibleColumns: string[];
+}
+
+/** Asks the AI to write an example conversation from the template and one person of the list. Sends nothing; costs 1 credit. */
+export async function writeAiExample(draft: ExampleDraft, personId: string): Promise<ExampleLine[]> {
+  return request<ExampleLine[]>('/ai/templates/example', { method: 'POST', body: JSON.stringify({ ...draft, personId }) });
+}
+
+/** The columns the AI suggests it may see, and why. */
+export interface FillInSuggestion { columns: string[]; reason: string }
+
+/** Which columns would help the AI, from the column names only. */
+export async function suggestAiFillIns(knowledge: string, columns: string[]): Promise<FillInSuggestion> {
+  return request<FillInSuggestion>('/ai/templates/suggest-fillins', { method: 'POST', body: JSON.stringify({ knowledge, columns }) });
+}
+
+/** One detail the AI found in the text that may be sensitive; `suggested` is only the starting choice. */
+export interface SensitiveCandidate { detail: string; value: string; suggested: 'show' | 'general' }
+
+/** One activity in the credit log: a campaign's AI messages for a day, a person's work on a template for a day, or chats without a campaign. */
+export interface AiActivity {
+  at: string; scope: 'campaign' | 'chat' | 'template'; name: string | null; who: string | null;
+  parts: Array<{ kind: string; count: number }>; models: string[]; tokens: number; credits: number;
+}
+
+/** The credit log. */
+export interface AiUsageLog { today: number; month: number; total: number; activities: AiActivity[] }
+
+/** What the AI has used: totals, and the latest calls with model and time. */
+export async function getAiUsage(): Promise<AiUsageLog> {
+  return request<AiUsageLog>('/ai/usage');
+}
+
+/** Rewrites the text of what the AI knows to match the owner's choices. Nothing is saved. */
+export async function rewriteAiKnowledge(knowledge: string, sensitive: AiTemplate['sensitive']): Promise<string> {
+  return (await request<{ knowledge: string }>('/ai/templates/rewrite', { method: 'POST', body: JSON.stringify({ knowledge, sensitive }) })).knowledge;
+}
+
+/** Lists the details in the text that could be sensitive. The owner decides each one. */
+export async function detectAiSensitive(knowledge: string): Promise<SensitiveCandidate[]> {
+  return request<SensitiveCandidate[]>('/ai/templates/detect-sensitive', { method: 'POST', body: JSON.stringify({ knowledge }) });
+}
+
+/** Stops the AI on one campaign. */
+export async function stopCampaignAi(id: string): Promise<void> {
+  await requestVoid(`/campaigns/${encodeURIComponent(id)}/stop-ai`, { method: 'POST', body: '{}' });
+}
+
+/** Moves a saved template to Deleted. Refused (with the reason) while a campaign that has not finished uses it. */
 export async function deleteAiTemplate(id: string): Promise<void> {
   await requestVoid(`/ai/templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** The templates in Deleted, which can be restored for 30 days. */
+export async function listDeletedAiTemplates(): Promise<AiTemplate[]> {
+  return request<AiTemplate[]>('/ai/templates/deleted');
+}
+
+/** Brings a template back from Deleted. */
+export async function restoreAiTemplate(id: string): Promise<AiTemplate> {
+  return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}/restore`, { method: 'POST', body: '{}' });
+}
+
+/** Removes a template that is in Deleted for good. */
+export async function removeAiTemplateNow(id: string): Promise<void> {
+  await requestVoid(`/ai/templates/${encodeURIComponent(id)}/permanent`, { method: 'DELETE' });
+}
+
+/** Copies a template as "… (copy)". */
+export async function duplicateAiTemplate(id: string): Promise<AiTemplate> {
+  return request<AiTemplate>(`/ai/templates/${encodeURIComponent(id)}/duplicate`, { method: 'POST', body: '{}' });
 }
 
 /** What the assistant did about an instruction. Mirrors `POST /api/v1/ai/commands`. */
@@ -939,6 +1133,10 @@ export interface ImportUpload {
   columns?: Array<{ header: string; sampled: number; phoneShare: number; emailShare: number }>;
   /** The run this deliberately re-imported (via ?force), or null. */
   reimportOf: string | null;
+  /** Three people drawn from anywhere in the file, in full, with the sheet row each was on. */
+  peek?: Array<{ row: number; values: Record<string, string> }>;
+  /** How many people leave each column empty (a blank cell, or one that only says NA or -). */
+  columnFill?: Array<{ header: string; blank: number }>;
 }
 
 /** The outcome of a dry run or a commit. */
@@ -950,6 +1148,8 @@ export interface ImportSummary {
   errors: number;
   /** Rows that imported but left something out, e.g. a second phone number that was not valid. */
   warnings?: number;
+  /** People with no mobile number (an email only): they come in, but cannot be messaged. */
+  withoutNumber?: number;
   dryRun: boolean;
   /** People tagged by this run, when a tag was asked for on a commit. */
   tagged?: number;
@@ -974,14 +1174,31 @@ export async function uploadImport(
   if (response.status === 401) throw new NotAuthenticatedError();
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const problem = payload as Partial<ApiProblem> | null;
-    throw new CrmApiError({
+    const problem = payload as (Partial<ApiProblem> & { previousRunId?: string }) | null;
+    const refusal = {
       code: problem?.code ?? 'UNKNOWN',
       detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
       status: response.status
-    });
+    };
+    // The same file again: the earlier run is named, so the screen can link to its people.
+    if (refusal.code === 'ALREADY_IMPORTED' && typeof problem?.previousRunId === 'string') {
+      throw new AlreadyImportedError(refusal, problem.previousRunId);
+    }
+    throw new CrmApiError(refusal);
   }
   return (payload as { data: ImportUpload }).data;
+}
+
+/** The API refused a file it has already imported; `previousRunId` is the earlier import. */
+export class AlreadyImportedError extends CrmApiError {
+  readonly previousRunId: string;
+
+  /** Keeps the earlier import's id alongside the usual code and status. */
+  constructor(problem: ApiProblem, previousRunId: string) {
+    super(problem);
+    this.name = 'AlreadyImportedError';
+    this.previousRunId = previousRunId;
+  }
 }
 
 /** Runs a mapping over an uploaded file — a dry run to preview, or a commit to write contacts. */
@@ -994,18 +1211,63 @@ export async function runImportMapping(
   });
 }
 
+/** Which people of an uploaded sheet to look at: who lacks some details (any or all of them), and a search. */
+export interface SheetFilter { missing: string[]; mode: 'any' | 'all'; q: string }
+
+/** One page of the sheet: the people with the sheet row each was on. */
+export interface SheetPage {
+  headers: string[];
+  total: number;
+  rows: Array<{ row: number; values: Record<string, string> }>;
+}
+
+/** The query string for a sheet filter; each missing column is its own `column=`. */
+function sheetQuery(f: SheetFilter, extra: Record<string, string>): string {
+  const p = new URLSearchParams();
+  for (const c of f.missing) p.append('column', c);
+  if (f.missing.length > 1) p.set('mode', f.mode);
+  if (f.q.trim() !== '') p.set('q', f.q.trim());
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  return p.toString();
+}
+
+/** One page of an uploaded sheet, before anything is imported. Read-only. */
+export async function getSheetPage(id: string, f: SheetFilter, offset: number, limit: number): Promise<SheetPage> {
+  return request<SheetPage>(
+    `/imports/${encodeURIComponent(id)}/rows?${sheetQuery(f, { offset: String(offset), limit: String(limit) })}`);
+}
+
+/** Every person the filter keeps, as a CSV of the sheet's own columns. */
+export async function getSheetCsv(id: string, f: SheetFilter): Promise<{ count: number; csv: string }> {
+  return request<{ count: number; csv: string }>(`/imports/${encodeURIComponent(id)}/rows?${sheetQuery(f, { csv: '1' })}`);
+}
+
+/** The first people's phone cells in the given columns, read the way the import will read them. */
+export async function getNumberExamples(
+  id: string, columns: string[], country: string
+): Promise<{ columns: Array<{ column: string; examples: Array<{ raw: string; numbers: string[]; dropped: string[]; problem: string | null }> }> }> {
+  const p = new URLSearchParams({ country });
+  for (const c of columns) p.append('column', c);
+  return request(`/imports/${encodeURIComponent(id)}/numbers?${p.toString()}`);
+}
+
 /** What a bulk tag action would do or did. Mirrors `POST /tags/:id/bulk`. */
 export interface BulkTagResult {
   action: 'add' | 'remove';
   dryRun: boolean;
   matched: number;
   changed: number;
+  /** For an add: who got the tag now (up to 5000), so an Undo can take it off exactly them. */
+  addedIds?: string[];
 }
 
 /** Who a bulk tag action applies to. */
 export type BulkTarget =
   | { kind: 'all' }
-  | { kind: 'search'; q?: string; tagId?: string; from?: string; to?: string; dateBy?: 'added' | 'imported' }
+  | {
+    kind: 'search'; q?: string; tagId?: string; from?: string; to?: string; dateBy?: 'added' | 'imported';
+    importRunId?: string; criteria?: SegmentDefinition;
+  }
   | { kind: 'ids'; ids: string[] };
 
 /** Previews (default) or applies adding/removing one tag across many contacts. */
@@ -1037,10 +1299,11 @@ export async function queueMessage(to: string, body: string): Promise<{ id: stri
  * The conversation already knows how to reach them.
  */
 export async function queueReply(
-  conversationId: string, body: string, override?: { reason: string }, acknowledgeCollision?: boolean
+  conversationId: string, body: string, override?: { reason: string }, acknowledgeCollision?: boolean, idempotencyKey?: string
 ): Promise<{ id: string; conversationId: string }> {
   return request<{ id: string; conversationId: string }>('/messages', {
     method: 'POST',
+    ...(idempotencyKey === undefined || idempotencyKey === '' ? {} : { headers: { 'Idempotency-Key': idempotencyKey.slice(0, 200) } }),
     body: JSON.stringify({
       conversationId, body,
       ...(override ? { overrideDnc: true, overrideReason: override.reason } : {}),
@@ -1206,15 +1469,33 @@ export async function previewCampaign(id: string): Promise<CampaignPreview> {
   return request<CampaignPreview>(`/campaigns/${encodeURIComponent(id)}/preview`);
 }
 
+/** When a campaign finishes. Mirrors `GET /api/v1/campaigns/:id/eta` (F6 AC-3.2). */
+export interface CampaignEta {
+  /** When the last message is expected to go, or null when nothing is left to send. */
+  finishAt: string | null;
+  goNow: number;
+  afterReset: number;
+  resetAt: string | null;
+  /** `quota` when WhatsApp has told us how many new chats are left, `time_only` when it has not. */
+  basis: 'quota' | 'time_only';
+  delayedBy: Array<{ reason: string; seconds: number }>;
+}
+
+/** The estimate for one campaign: when it finishes, and what moved it. */
+export async function getCampaignEta(id: string): Promise<CampaignEta> {
+  return request<CampaignEta>(`/campaigns/${encodeURIComponent(id)}/eta`);
+}
+
 /**
  * Lists a campaign's recipients — the per-recipient results. `status` narrows to one state and
  * `q` searches the contact's name or number. Returns the first page; keyset paging is a follow-up.
  */
 export async function listCampaignRecipients(
-  id: string, opts: { status?: string; q?: string } = {}
+  id: string, opts: { status?: string; q?: string; ai?: string } = {}
 ): Promise<CampaignRecipient[]> {
   const params = new URLSearchParams();
   if (opts.status !== undefined && opts.status !== '') params.set('status', opts.status);
+  if (opts.ai !== undefined && opts.ai !== '') params.set('ai', opts.ai);
   if (opts.q !== undefined && opts.q.trim() !== '') params.set('q', opts.q.trim());
   const qs = params.toString();
   return request<CampaignRecipient[]>(
@@ -1254,6 +1535,58 @@ export async function uploadCampaignPicture(bytes: ArrayBuffer, filename: string
   return (payload as { data: CampaignPicture }).data;
 }
 
+/** One pick of the audience on New campaign: a file, a tag, a saved list, or every contact. */
+export type ReviewTarget =
+  | { kind: 'import'; id: string }
+  | { kind: 'tag'; id: string }
+  | { kind: 'segment'; id: string }
+  | { kind: 'people'; ids: string[] }
+  | { kind: 'everyone' };
+
+/** What the picks would reach from one number, before a draft exists. Mirrors `POST /api/v1/campaigns/review`. */
+export interface CampaignReview {
+  total: number;
+  askedToStop: number;
+  noNumber: number;
+  /** People an agent is handling a chat with right now: Start skips them unless an admin lets them through. */
+  engaged: number;
+  recentlyMessaged: number;
+  recentDays: number;
+  defaultRecentDays: number;
+  quietHours: { enabled: boolean; start: string; end: string; timeZone: string };
+  gapMinMs: number;
+  gapMaxMs: number;
+  fields: FillInField[];
+  /** A few real people to preview as: `values` has a key for each fill-in they have a value for. */
+  people: Array<{ name: string | null; values: Record<string, string> }>;
+}
+
+/** Reads the review for some picks from one number (writes nothing). */
+export async function reviewCampaign(targets: ReviewTarget[], senderIdentityId: string, days?: number): Promise<CampaignReview> {
+  return request<CampaignReview>('/campaigns/review', {
+    method: 'POST', body: JSON.stringify({ targets, senderIdentityId, ...(days !== undefined ? { days } : {}) })
+  });
+}
+
+/** The people the picks reach who have no value for a fill-in, as rows to fix. */
+export async function listBlankFillIns(targets: ReviewTarget[], key: string): Promise<Array<{ name: string | null; phone: string | null }>> {
+  return request<Array<{ name: string | null; phone: string | null }>>('/campaigns/review/blanks', {
+    method: 'POST', body: JSON.stringify({ targets, key })
+  });
+}
+
+/** The last campaign each file, tag and saved list was used for. */
+export interface AudienceHistory {
+  imports: Record<string, { name: string; at: string }>;
+  tags: Record<string, { name: string; at: string }>;
+  segments: Record<string, { name: string; at: string }>;
+}
+
+/** Reads where each file and tag was last used. */
+export async function getAudienceHistory(): Promise<AudienceHistory> {
+  return request<AudienceHistory>('/campaigns/audience-history');
+}
+
 /** How a campaign's audience is chosen. Exactly one field is set — never "everyone" implicitly. */
 export type CampaignTarget =
   | { fromTagId: string }
@@ -1266,11 +1599,35 @@ export type CampaignTarget =
  * Throws `CrmApiError` (`NOT_FOUND`) if the sender or the tag does not belong to the org.
  */
 export async function createCampaign(
-  input: { name: string; body: string; senderIdentityId: string; aiTemplateId?: string; mediaAssetId?: string } & CampaignTarget
+  input: {
+    name: string; body: string; senderIdentityId: string; aiTemplateId?: string; mediaAssetId?: string;
+    /** Why these people are messaged, in a sentence. */
+    purpose?: string;
+    /** A picture or link goes after the first reply to a new chat (on by default). */
+    mediaAfterReply?: boolean;
+    /** What to do for people with a blank fill-in (CW-7.7), and the text for `fallback`. */
+    blankFillInChoice?: BlankFillInChoice;
+    fillInFallback?: string;
+    /** What "messaged recently" means for this campaign, and whether those people are left out. */
+    recentDays?: number;
+    leaveOutRecent?: boolean;
+  } & (CampaignTarget | { targets: ReviewTarget[] })
 ): Promise<{ id: string; status: string }> {
   return request<{ id: string; status: string }>('/campaigns', {
     method: 'POST', body: JSON.stringify(input)
   });
+}
+
+/** What a draft can be changed to from the New campaign screen. `null` takes a template or picture off. */
+export interface CampaignEditInput {
+  name: string; body: string; senderIdentityId: string; targets: ReviewTarget[];
+  aiTemplateId: string | null; mediaAssetId: string | null; mediaAfterReply: boolean;
+  blankFillInChoice: BlankFillInChoice | null; fillInFallback: string | null; recentDays: number; leaveOutRecent: boolean;
+}
+
+/** Saves changes to a draft (`PATCH /campaigns/:id`). Throws `CrmApiError` (`NOT_EDITABLE` once it has started). */
+export async function editCampaignDraft(id: string, input: CampaignEditInput): Promise<void> {
+  await request<unknown>(`/campaigns/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
 }
 
 /**
@@ -1278,11 +1635,17 @@ export async function createCampaign(
  * begin. Resuming a paused campaign does not re-snapshot.
  */
 export async function startCampaign(
-  id: string, override?: { overrideGates: string[]; reason: string }
+  id: string, override?: { overrideGates?: string[]; reason?: string; confirmUnknownFillIns?: boolean }
 ): Promise<{ status: string }> {
   return request<{ status: string }>(`/campaigns/${encodeURIComponent(id)}/start`, {
     method: 'POST', ...(override ? { body: JSON.stringify(override) } : {})
   });
+}
+
+/** The fill-ins an audience offers, each with a sample and how many people have it (CW-7.6). */
+export async function getFillIns(audience: { fromTagId?: string; fromImportRunId?: string; fromSegmentId?: string }): Promise<FillInReport> {
+  const q = new URLSearchParams(Object.entries(audience).filter(([, v]) => v !== undefined && v !== '') as Array<[string, string]>);
+  return request<FillInReport>(`/campaigns/fill-ins?${q.toString()}`);
 }
 
 /** Pauses a running campaign. Instant — pending recipients are simply not dispatched. */
@@ -1311,4 +1674,106 @@ export async function getImportProblems(id: string): Promise<ImportProblems> {
     errors?: ImportProblems['errors']; warnings?: ImportProblems['warnings'];
   }>(`/imports/${encodeURIComponent(id)}`);
   return { errors: run.errors ?? [], warnings: run.warnings ?? [] };
+}
+
+// ---- The Contacts screen: people with their file, last campaign and last active; the sources on its left. ----
+
+/** One person as the Contacts table shows them. Mirrors a row of `GET /api/v1/contacts`. */
+export interface PersonRow {
+  id: string;
+  displayName: string | null;
+  doNotContact: boolean;
+  createdAt: string;
+  identities: ContactIdentity[];
+  /** The file's own tag comes first; `isFile` marks it. */
+  tags: Array<Tag & { isFile: boolean }>;
+  customFields: Record<string, string | number>;
+  /** When they last wrote to us; null if they never did. */
+  lastActiveAt: string | null;
+  /** The file that last brought them in. */
+  file: { id: string; filename: string | null; importedAt: string } | null;
+  lastCampaign: { id: string; name: string; at: string } | null;
+  /** With a file picked: this person's row of that file, every column as it was read. */
+  fileValues: Record<string, string> | null;
+}
+
+/** What narrows the people on the Contacts screen. The same view the count, bulk tagging and the export read. */
+export interface PeopleView {
+  q?: string;
+  /** One imported file's people. */
+  file?: string;
+  /** One tag's people. */
+  tag?: string;
+  filter?: SegmentDefinition;
+  sort?: 'name_asc' | 'name_desc';
+  limit?: number;
+  offset?: number;
+}
+
+/** One page of the people a view matches, with how many match in all. */
+export async function listPeople(v: PeopleView): Promise<{ rows: PersonRow[]; total: number }> {
+  const auth = await forwardedAuth();
+  const response = await fetch(`${baseUrl()}/api/v1/contacts${peopleParams(v)}`, {
+    cache: 'no-store', headers: { 'Content-Type': 'application/json', ...auth }
+  });
+  if (response.status === 401) throw new NotAuthenticatedError();
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const problem = payload as Partial<ApiProblem> | null;
+    throw new CrmApiError({
+      code: problem?.code ?? 'UNKNOWN', detail: problem?.detail ?? `The API returned ${String(response.status)}.`,
+      status: response.status
+    });
+  }
+  const body = payload as { data: PersonRow[]; total: number };
+  return { rows: body.data, total: body.total };
+}
+
+/** One imported file on the left: its people, its tag and the columns it had beyond name, phone and email. */
+export interface SourceFile {
+  id: string;
+  filename: string | null;
+  importedAt: string;
+  count: number;
+  /** The tag the import put on its people (named after the file); null if it was imported without one. */
+  tagId: string | null;
+  /** The tag's name (the file's name without its extension). */
+  tagName: string | null;
+  columns: string[];
+}
+
+/** Everything the left list and the Filters need to name. Mirrors `GET /api/v1/contacts/sources`. */
+export interface ContactSources {
+  total: number;
+  files: SourceFile[];
+  /** The person's own tags (a file's tag is not here). */
+  tags: Array<{ id: string; name: string; colour: string | null; count: number }>;
+  lists: Array<{ id: string; name: string; definition: SegmentDefinition; count: number }>;
+  campaigns: Array<{ id: string; name: string }>;
+  /** The saved columns a column rule can name. */
+  fields: Array<{ key: string; label: string }>;
+}
+
+/** Files, own tags and saved lists with counts. */
+export async function getContactSources(): Promise<ContactSources> {
+  return request<ContactSources>('/contacts/sources');
+}
+
+/** What the side panel shows for one person. Mirrors `GET /api/v1/contacts/:id/detail`. */
+export interface PersonDetail {
+  source: {
+    fileId: string; filename: string | null; importedAt: string;
+    columns: Array<{ header: string; value: string }>;
+  } | null;
+  campaigns: Array<{
+    id: string; name: string; campaignStatus: string; numberLabel: string; at: string;
+    outcome: 'replied' | 'read' | 'delivered' | 'sent' | 'failed' | 'skipped' | 'pending' | 'queued';
+  }>;
+  /** Their latest chat, or null when there is none yet. */
+  conversationId: string | null;
+}
+
+/** One person for the side panel. */
+export async function getPersonDetail(id: string): Promise<PersonDetail> {
+  return request<PersonDetail>(`/contacts/${encodeURIComponent(id)}/detail`);
 }

@@ -43,7 +43,8 @@ export interface ImportMapping {
   readonly unmapped?: 'keep' | 'drop';
   /**
    * Columns to keep **on each contact** as custom fields, so they show on Contacts and can be searched.
-   * A field is created for a column that has none yet (text); a value never overwrites one already there.
+   * A field is created for a column that has none yet (text). A value in the file replaces the one on the person (the newest
+   * file wins); a blank or an `NA` never erases anything.
    */
   readonly fields?: ReadonlyArray<{ readonly from: string }>;
 }
@@ -56,6 +57,8 @@ export interface RowOutcome {
   readonly error: string | null;
   /** A row that imported but lost something (a bad second number). Kept in the ledger's text column. */
   readonly note?: string | null;
+  /** True when the row has no phone number to message (an email-only person). */
+  readonly noPhone?: boolean;
   readonly raw: Record<string, string> | null;
 }
 
@@ -68,6 +71,8 @@ export interface ImportSummary {
   readonly errors: number;
   /** Rows that imported but dropped something, e.g. a second phone number that was not valid. */
   readonly warnings: number;
+  /** People in the file with no mobile number (an email only): imported, but they cannot be messaged. */
+  readonly withoutNumber: number;
   readonly dryRun: boolean;
 }
 
@@ -171,6 +176,9 @@ function identitiesFor(
 ): { identities: ResolvedIdentity[]; error: string | null; note: string | null } {
   const identities: ResolvedIdentity[] = [];
   const notes: string[] = [];
+  // A bad email only fails a row that has nothing else to identify the person by.
+  let emailError: string | null = null;
+  let emailNote: string | null = null;
 
   for (const rule of mapping.identities) {
     const raw = applyTransforms(row[rule.from] ?? '', rule.transform);
@@ -202,7 +210,9 @@ function identitiesFor(
       const candidates = splitEmailCell(raw);
       const index = candidates.findIndex((c) => EMAIL_SHAPE.test(c));
       if (index === -1) {
-        return { identities, error: `${rule.from}: "${raw}" is not an email address`, note: null };
+        emailError ??= `${rule.from}: "${raw}" is not an email address`;
+        emailNote ??= `${rule.from}: not imported, not an email address: "${raw}"`;
+        continue;
       }
       if (index > 0) notes.push(`${rule.from}: first address "${candidates[0] ?? ''}" is not valid, used "${candidates[index] ?? ''}"`);
       identities.push({ kind: 'email', value: candidates[index] ?? '' });
@@ -210,6 +220,8 @@ function identitiesFor(
       identities.push({ kind: 'external', value: raw });
     }
   }
+  if (emailError !== null && identities.length === 0) return { identities, error: emailError, note: null };
+  if (emailNote !== null) notes.push(emailNote);
   return { identities, error: null, note: notes.length === 0 ? null : notes.join('; ') };
 }
 
@@ -235,6 +247,10 @@ export async function runImport(
 ): Promise<ImportSummary> {
   const counts = { created: 0, updated: 0, skipped: 0, errors: 0 };
   let warnings = 0;
+  let withoutNumber = 0;
+  // A check writes nobody, so a person who appears twice in the file would be "new" both times. This remembers the people the
+  // check has already counted as new, so the second row is counted as already there, as the real import will find it.
+  const planned = new Set<string>();
   const rows = input.table.rows;
   const kept = input.dryRun ? [] : await ensureKeptFields(tenant, input.orgId, keptFieldsFor(input.mapping));
 
@@ -246,16 +262,17 @@ export async function runImport(
       for (let i = 0; i < chunk.length; i++) {
         const rowNumber = start + i + 1;
         const row = chunk[i]!;
-        const outcome = await importOneRow(tx, input.orgId, rowNumber, row, input.mapping, input.dryRun, kept, input.importRunId, input.actor ?? SYSTEM_ACTOR);
+        const outcome = await importOneRow(tx, input.orgId, rowNumber, row, input.mapping, input.dryRun, kept, input.importRunId, input.actor ?? SYSTEM_ACTOR, planned);
         outcomes.push(outcome);
         counts[outcome.outcome === 'error' ? 'errors' : outcome.outcome] += 1;
         if (outcome.outcome !== 'error' && outcome.note) warnings += 1;
+        if (outcome.outcome !== 'error' && outcome.noPhone === true) withoutNumber += 1;
       }
       await recordRows(tx, input.orgId, input.importRunId, outcomes, input.mapping);
     });
   }
 
-  return { read: rows.length, ...counts, warnings, dryRun: input.dryRun };
+  return { read: rows.length, ...counts, warnings, withoutNumber, dryRun: input.dryRun };
 }
 
 /**
@@ -284,10 +301,11 @@ async function ensureKeptFields(tenant: TenantWork, orgId: string, wanted: reado
 async function importOneRow(
   tx: Transaction, orgId: string, rowNumber: number, row: Record<string, string>,
   mapping: ImportMapping, dryRun: boolean, kept: readonly KeptField[],
-  importRunId: string, actor: AuditActor
+  importRunId: string, actor: AuditActor, planned: Set<string>
 ): Promise<RowOutcome> {
   const raw = mapping.unmapped === 'drop' ? null : row;
   const { identities, error, note } = identitiesFor(row, mapping);
+  const noPhone = !identities.some((i) => i.kind === 'phone');
 
   if (error !== null) {
     return { rowNumber, outcome: 'error', contactId: null, error, raw };
@@ -326,9 +344,13 @@ async function importOneRow(
   const rowNote = [note, nameNote].filter((n): n is string => n !== null && n !== undefined).join('; ') || null;
 
   if (dryRun) {
+    const keys = identities.map((i) => `${i.kind}:${i.value}`);
+    // Nobody is saved by a check, so an earlier row of this file counts as the person already being there.
+    const seenEarlier = contactId === null && keys.some((k) => planned.has(k));
+    if (contactId === null) for (const k of keys) planned.add(k);
     return {
-      rowNumber, outcome: contactId === null ? 'created' : 'updated',
-      contactId, error: null, note: rowNote, raw
+      rowNumber, outcome: contactId === null && !seenEarlier ? 'created' : 'updated',
+      contactId, error: null, note: rowNote, noPhone, raw
     };
   }
 
@@ -341,7 +363,7 @@ async function importOneRow(
   if (contactId === null) {
     const created = await tx.execute(sql`
       INSERT INTO contact (org_id, display_name, source, custom_fields)
-      VALUES (${orgId}, ${displayName === '' ? identities[0]!.value : displayName}, 'import',
+      VALUES (${orgId}, ${displayName === '' ? null : displayName}, 'import',
               ${JSON.stringify(keptValues)}::jsonb)
       RETURNING id`);
     contactId = (created as unknown as Array<{ id: string }>)[0]!.id;
@@ -352,7 +374,7 @@ async function importOneRow(
         VALUES (${orgId}, ${contactId}, ${identity.kind}, ${identity.value}, ${index === 0})
         ON CONFLICT DO NOTHING`);
     }
-    return { rowNumber, outcome: 'created', contactId, error: null, note: rowNote, raw };
+    return { rowNumber, outcome: 'created', contactId, error: null, note: rowNote, noPhone, raw };
   }
 
   // An existing contact. A blank name never overwrites anything (a sparse file must not destroy
@@ -380,11 +402,12 @@ async function importOneRow(
       ON CONFLICT DO NOTHING`);
   }
 
-  // Kept columns fill gaps only: `new || existing` leaves any value already on the contact as it was.
+  // Kept columns: a value in this file replaces the one on the person (`existing || new`, the newest file wins). `keptValues` only
+  // holds cells with something in them, so a blank or an `NA` never erases anything.
   let fieldsAdded = false;
   if (Object.keys(keptValues).length > 0) {
     const filled = await tx.execute(sql`
-      UPDATE contact SET custom_fields = ${JSON.stringify(keptValues)}::jsonb || custom_fields, updated_at = now()
+      UPDATE contact SET custom_fields = custom_fields || ${JSON.stringify(keptValues)}::jsonb, updated_at = now()
       WHERE id = ${contactId} AND org_id = ${orgId} AND NOT (custom_fields @> ${JSON.stringify(keptValues)}::jsonb)
       RETURNING id`);
     fieldsAdded = (filled as unknown as unknown[]).length > 0;
@@ -392,7 +415,7 @@ async function importOneRow(
 
   const changed = (touched as unknown as unknown[]).length > 0 || fieldsAdded;
   return {
-    rowNumber, outcome: changed ? 'updated' : 'skipped', contactId, error: null, note: rowNote, raw
+    rowNumber, outcome: changed ? 'updated' : 'skipped', contactId, error: null, note: rowNote, noPhone, raw
   };
 }
 

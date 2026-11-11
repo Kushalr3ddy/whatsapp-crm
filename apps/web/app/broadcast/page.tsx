@@ -1,9 +1,12 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { listCampaigns, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { Campaign } from '@/lib/crm';
+import type { CSSProperties } from 'react';
+import { ChevronRight, Megaphone } from 'lucide-react';
+import { listCampaigns, getCampaignEta, NotAuthenticatedError } from '@/lib/crm';
+import type { Campaign, CampaignEta } from '@/lib/crm';
 import { campaignStatusBadge } from './campaign-status';
-import { PageHeader, Section, EmptyState } from '../ui';
+import { PageHeader, EmptyState } from '../ui';
+import { etaLine, formatWhen } from '@/lib/campaign-time';
 
 /** Rendered per request — campaigns are live data that changes as the gateway dispatches. */
 export const dynamic = 'force-dynamic';
@@ -16,15 +19,13 @@ export const dynamic = 'force-dynamic';
  */
 export default async function BroadcastPage() {
   let campaigns: Campaign[] = [];
-  let failure: string | null = null;
+  let failure = false;
   let expired = false;
   try {
     campaigns = await listCampaigns();
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
-    failure = error instanceof CrmApiError
-      ? `${error.code}: ${error.message}`
-      : 'Could not reach the API. Is it running? Start it with: npm run dev';
+    failure = true;
   }
 
   if (expired) redirect('/login?next=/broadcast');
@@ -33,8 +34,14 @@ export default async function BroadcastPage() {
   const drafts = campaigns.filter((c) => c.status === 'draft');
   const finished = campaigns.filter((c) => !['running', 'paused', 'draft'].includes(c.status));
 
+  // One estimate per campaign that is sending. A campaign whose estimate cannot be read just shows no finish time.
+  const etas = new Map<string, CampaignEta | null>(await Promise.all(
+    active.filter((c) => c.status === 'running').map(async (c): Promise<[string, CampaignEta | null]> =>
+      [c.id, await getCampaignEta(c.id).catch((): null => null)])
+  ));
+
   return (
-    <main className="page">
+    <main className="page page-full">
       <PageHeader
         title="Campaigns"
         description="Send one message to many people, a few at a time, so a burst never goes out at once."
@@ -46,9 +53,14 @@ export default async function BroadcastPage() {
         }
       />
 
-      {failure !== null && <p className="notice notice-danger">{failure}</p>}
+      {failure && (
+        <div role="alert" className="notice notice-danger flex flex-wrap items-center justify-between gap-3">
+          <p>We couldn&apos;t load your campaigns. Check your connection and try again.</p>
+          <Link href="/broadcast" className="btn btn-sm">Try again</Link>
+        </div>
+      )}
 
-      {failure === null && campaigns.length === 0 && (
+      {!failure && campaigns.length === 0 && (
         <EmptyState
           title="No campaigns yet"
           body="Pick an audience (a tag, a segment, or an import), write the message, preview who it will reach, then start it."
@@ -56,64 +68,89 @@ export default async function BroadcastPage() {
         />
       )}
 
-      {active.length > 0 && (
-        <Section title={`Sending now (${String(active.length)})`}>
-          <CampaignList campaigns={active} />
-        </Section>
-      )}
-      {drafts.length > 0 && (
-        <Section title={`Drafts (${String(drafts.length)})`}>
-          <CampaignList campaigns={drafts} />
-        </Section>
-      )}
-      {finished.length > 0 && (
-        <Section title={`Finished (${String(finished.length)})`}>
-          <CampaignList campaigns={finished} />
-        </Section>
-      )}
+      <div className="flex flex-col gap-6">
+        {active.length > 0 && <Group title="Sending now" campaigns={active} etas={etas} />}
+        {drafts.length > 0 && <Group title="Drafts" campaigns={drafts} etas={etas} />}
+        {finished.length > 0 && <Group title="Finished" campaigns={finished} etas={etas} />}
+      </div>
     </main>
   );
 }
 
-/** A card of campaign rows. */
-function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
+/** A titled card of campaign rows, with how many there are. */
+function Group({ title, campaigns, etas }: { title: string; campaigns: Campaign[]; etas: Map<string, CampaignEta | null> }) {
   return (
-    <ul className="card list overflow-hidden">
-      {campaigns.map((c) => <CampaignRow key={c.id} campaign={c} />)}
-    </ul>
+    <section aria-label={title}>
+      <h2 className="section-title mb-2.5 flex items-baseline gap-2">
+        {title} <b className="font-mono font-medium text-ink">{campaigns.length}</b>
+      </h2>
+      <ul className="card list overflow-hidden">
+        {campaigns.map((c, i) => <CampaignRow key={c.id} campaign={c} index={i} eta={etaLine(etas.get(c.id) ?? null)} />)}
+      </ul>
+    </section>
   );
 }
 
-/** One campaign: name, status and when it started, linking to its per-recipient results. */
-function CampaignRow({ campaign }: { campaign: Campaign }) {
+/** The first part of the message, with each {{fill-in}} drawn as a small chip instead of raw brackets. */
+function Snippet({ text }: { text: string }) {
+  const parts = text.split(/\{\{(\w+)\}\}/);
+  return (
+    <>
+      “{parts.map((p, i) => i % 2 === 1
+        ? <span key={i} className="rounded-md bg-accent-soft px-1.5 font-mono text-xs text-accent">{p}</span>
+        : p)}”
+    </>
+  );
+}
+
+/** One campaign: name, status, when it started, who it reaches and from which number, and the start of the message. */
+function CampaignRow({ campaign, index, eta }: { campaign: Campaign; index: number; eta: string | null }) {
   const badge = campaignStatusBadge(campaign.status);
   const when = campaign.startedAt ?? campaign.createdAt;
+  const sender = campaign.senderLabel ?? campaign.senderPhone ?? null;
+  const isDraft = campaign.status === 'draft';
   return (
-    <li>
+    <li className="row-in relative" style={{ '--i': Math.min(index, 12) } as CSSProperties}>
       <Link
         href={`/broadcast/${campaign.id}`}
-        className="flex items-center justify-between gap-3 px-4 py-3.5 hover:bg-canvas"
+        className={`grid min-h-[4.5rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5 px-[1.125rem] py-3.5 transition-colors hover:bg-surface-2 `}
       >
-        <div className="min-w-0">
-          <p className="truncate font-medium">{campaign.name}</p>
-          <p className="mt-0.5 text-sm text-muted">
-            {campaign.startedAt !== null ? 'Started' : 'Created'} {new Date(when).toLocaleString()}
-            {campaign.audienceSize !== undefined && <> · {campaign.audienceSize} {campaign.audienceSize === 1 ? 'person' : 'people'}</>}
-            {(campaign.senderLabel ?? campaign.senderPhone ?? null) !== null && (
-              <> · from {campaign.senderLabel ?? 'number'}{(campaign.senderPhone ?? null) !== null ? ` ${campaign.senderPhone}` : ''}</>
+        <span aria-hidden className="flex size-9 items-center justify-center rounded-[0.625rem] bg-accent-soft text-accent">
+          <Megaphone size={18} strokeWidth={1.75} />
+        </span>
+        <div className={`min-w-0 ${isDraft ? 'mr-14 sm:mr-20' : ''}`}>
+          <p className="break-words font-medium">{campaign.name}</p>
+          <p className="mt-0.5 flex flex-wrap gap-x-3.5 text-sm text-muted">
+            <span>{campaign.startedAt !== null ? 'Started' : 'Created'} {formatWhen(when)}</span>
+            {campaign.audienceSize !== undefined && (
+              <span><b className="font-mono font-medium text-ink">{campaign.audienceSize}</b> {campaign.audienceSize === 1 ? 'person' : 'people'}</span>
             )}
+            {sender !== null && (
+              <span>from {sender}{campaign.senderLabel !== null && campaign.senderPhone !== null && campaign.senderPhone !== undefined ? ` ${campaign.senderPhone}` : ''}</span>
+            )}
+            {eta !== null && <span className="font-medium text-accent">{eta}</span>}
           </p>
           {campaign.bodySnippet !== undefined && campaign.bodySnippet !== '' && (
-            <p className="mt-0.5 truncate text-sm text-muted">“{campaign.bodySnippet}”</p>
+            <p className="mt-1 truncate text-sm text-muted"><Snippet text={campaign.bodySnippet} /></p>
           )}
         </div>
         <span className="flex shrink-0 items-center gap-3">
-          <span className={`badge ${badge.cls}`}>{badge.label}</span>
-          <svg aria-hidden viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
-            <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <span className={`badge hidden sm:inline-flex ${badge.cls}`}>
+            <span aria-hidden className={`size-1.5 rounded-full bg-current ${campaign.status === 'running' ? 'live-dot' : ''}`} />
+            {badge.label}
+          </span>
+          <ChevronRight aria-hidden size={16} strokeWidth={2} className="text-muted" />
         </span>
       </Link>
+      {/* A draft can be changed from here: its own link, laid over the row (a link inside the row's link is not allowed). */}
+      {isDraft && (
+        <Link
+          href={`/broadcast/new?edit=${campaign.id}`} aria-label={`Edit ${campaign.name}`}
+          className="btn btn-sm absolute right-11 top-1/2 -translate-y-1/2 sm:right-[8.5rem]"
+        >
+          Edit
+        </Link>
+      )}
     </li>
   );
 }

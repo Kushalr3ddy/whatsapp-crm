@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { detectMediaType } from '@crm/shared';
 import { mediaKey, type StorageDriver } from '@crm/storage';
@@ -55,6 +56,11 @@ export async function storeCampaignPicture(
     throw new CampaignPictureError('unsupported', 'That file type is not supported. Use a JPG, PNG, WebP or GIF.');
   }
   const gif = type.contentType === 'image/gif';
+  // The type comes from the first bytes only, so a picture cut short still looked like a PNG (R-050). A still picture must decode whole;
+  // a GIF is proved by the conversion below, which fails on a file ffmpeg cannot read.
+  if (!gif && !(await decodes(upload.bytes))) {
+    throw new CampaignPictureError('unsupported', 'That picture is damaged and cannot be opened. Export it again and upload it.');
+  }
   // Convert first: a GIF that cannot be turned into a clip is refused before anything is stored.
   const clip = gif ? await gifToMp4(upload.bytes) : null;
 
@@ -75,6 +81,16 @@ export async function storeCampaignPicture(
   }
   const row = await readPicture(tx, upload.orgId, stored.mediaId);
   return row!;
+}
+
+/** Whether the whole picture decodes, not just its first bytes. */
+async function decodes(bytes: Uint8Array): Promise<boolean> {
+  try {
+    await sharp(Buffer.from(bytes), { failOn: 'warning' }).resize(32, 32, { fit: 'inside' }).toBuffer();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** One campaign picture with its use count, or null when it is not one of this organisation's pictures. */

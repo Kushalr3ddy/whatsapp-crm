@@ -1,0 +1,2 @@
+ALTER TABLE "message" ADD COLUMN "idempotency_key" text;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "message_idempotency_uidx" ON "message" USING btree ("org_id","idempotency_key") WHERE idempotency_key IS NOT NULL;

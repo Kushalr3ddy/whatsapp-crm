@@ -277,7 +277,7 @@ it when an operator chooses to keep one.
 
 ## `segment` ✅ (minimal slice)
 
-> **Built differently from the spec below:** a `definition` jsonb holding an allowlisted AND-only filter (has-tag, replied ever/never, last-contacted-within-N-days), evaluated on read — no `kind`, no cached count. See D-28.
+> **Built differently from the spec below:** a `definition` jsonb holding an allowlisted AND-only filter, evaluated on read — no cached count. Keys: `tagIds`, `replied`, `lastContactedWithinDays`, `notContactedWithinDays`, `activeWithinDays`, `activeOlderThanDays`, `waitingForUs`, `campaigns`, `campaignId`, `dnc`, `whatsapp`, `email`, `importedWithinDays`, `fieldRules` (rules on `contact.custom_fields`; the column key is a bound parameter). See D-28. The Contacts screen saves its filter here ("Save as a list"); `segmentCriteria` is the filter alone, `buildSegmentPredicate` adds "never a removed or do-not-contact person" for campaign audiences. "On WhatsApp" reads `contact_identity.wa_registered`, which is only filled for a contact with more than one number (D-60), so most people read "not checked".
 
 A saved audience. What a campaign targets.
 
@@ -400,6 +400,7 @@ One row per org (0040, extended in 0041): how that org's numbers send. RLS force
 | `closing_message_enabled` | bool | Whether one closing message is sent when someone opts out (default on). The opt-out itself happens either way. |
 | `contact_phone`, `contact_email`, `default_purpose` | text NULL | Quoted in the closing message. A line is left out when its value is not set. |
 | `stop_words`, `restart_words` | text[] | The org's own words, added to the built-in `stop`, `unsubscribe`, `opt out` and `start`. |
+| `recent_days` | int | What "messaged recently" means on a new campaign, in days. 14 unless changed (0043). Read by the New campaign review and set with `PUT /antiban/settings`. |
 | `updated_at` | timestamptz | Last change. |
 
 ## `channel_auth_state` ✅
@@ -473,6 +474,7 @@ worked for two campaigns at once (M31).
 | `planned_gap_ms` | int NULL | The gap drawn for this message once, so the schedule is known in advance (0040). Copied from the campaign recipient. |
 | `read_requested_at`, `read_marked_at` | timestamptz NULL | On an inbound message: when a reply asked for it to be marked read, and when WhatsApp was told it was read (0040). |
 | `tick_checked_at`, `tick_verdict` | timestamptz / text NULL | When the sweep looked at an outbound message still at one tick after 30 minutes, and what it found: `likely_blocked`, `likely_offline` or `decrypt_retry` (0041). Nothing is resent. |
+| `send_started_at` | timestamptz NULL | Set just before the gateway hands a queued message to WhatsApp. A queued message that has it is in flight and is never sent again; after 10 minutes unrecorded the sweep marks it failed `send_unconfirmed` (0049). |
 
 ## `media_asset` ✅
 
@@ -545,6 +547,9 @@ into a browser and never persisted, so nothing was reusable, auditable or A/B-te
 | `sender_pool` | jsonb | Which numbers may send, and their weights. Spreading load across numbers is how volume scales safely. |
 | `scheduled_at` | timestamptz NULL | When to start. |
 | `quiet_hours` / `timezone` | jsonb / text | **Not built.** Quiet hours are an org setting (`antiban_setting`), not a campaign column. |
+| `recent_days` | int NULL | How many days back "messaged recently" looks for this campaign; null = the org's default `antiban_setting.recent_days` (0043). |
+| `audience_targets` | jsonb NULL | The picks the audience was chosen with on New campaign (`[{ kind: import\|tag\|segment\|people\|everyone, ... }]`), kept so a draft can be edited with them back; null for a campaign made another way (0044). |
+| `leave_out_recent` | bool | People messaged by another campaign from this same number within `recent_days` are skipped as `cooldown` when true; they are sent (a warning, not a block) when false, the default (0043). |
 | `purpose` | text NULL | One sentence: why these people are messaged. Said in the closing message if someone opts out (0041). |
 | `media_after_reply` | bool | Default true: a new chat gets the text alone and the picture or link follows when they reply (0040). |
 | `created_by` | uuid FK | Who launched it. |
@@ -565,6 +570,7 @@ mid-run cannot change who is being messaged.
 | `planned_gap_ms` | int NULL | The gap drawn for this person at launch (0040). |
 | `followup_pending` | bool | The picture or link is waiting for this person's reply (0040). |
 | `attempted_at` | timestamptz NULL | When it was tried. |
+| `ai_status`, `ai_summary`, `ai_status_at` | text, text, timestamptz NULL | For a campaign with an AI template: where the AI's chat with this person stands (`talking`, `interested`, `not_interested`, `needs_person`) and a 1 to 3 line note for a colleague, kept up to date after every turn (0048). |
 
 ## `campaign_metric` ⬜
 
@@ -766,6 +772,10 @@ original shape; these are the deltas.
 | `antiban_setting.closing_message_enabled`, `contact_phone`, `contact_email`, `default_purpose`, `stop_words`, `restart_words`; `campaign.purpose` | 0041 | The opt-out closing message and the words that start and end an opt-out |
 | `channel_session.many_undelivered_at`, `many_undelivered_resumed_at`, `decrypt_wave_at` | 0041 | Number-wide holds |
 | `conversation.likely_blocked_at`, `decrypt_retry_at`, `profile_snapshot`, `profile_probe_at`; `message.tick_checked_at`, `tick_verdict` | 0041 | Per-contact delivery state (ticks, retries, probable block) |
+| `message.send_started_at` | 0049 | A send in flight, so a crash or a database blip never sends a message twice |
+| `campaign.blank_fill_in_choice`, `fill_in_fallback` | 0042 | What to do for a person with no value for a fill-in the message uses: skip them, or fill the gap with a word. Null = send anyway. |
+| `campaign.audience_targets` | 0044 | The picks a draft was made with, so Edit can open it with them back. |
+| `campaign.recent_days`, `campaign.leave_out_recent`, `antiban_setting.recent_days` | 0043 | "Messaged recently" as a choice with its own number of days, and the org's default for it. |
 | `contact.do_not_contact` with `dnc_reason = 'opt_out'` | — | An opt-out (a STOP word, the classifier, or an agent marking it) sets the flag with this reason; only a flag with this reason is lifted by a restart word |
 
 Contacts also gain behaviour without new columns: a `wa_lid` identity can be linked to a `phone`
@@ -776,13 +786,13 @@ soft-deleted).
 
 The full, always-current list of tables, columns, keys, indexes, policies and triggers is generated from the live database:
 [`generated/database-reference.md`](generated/database-reference.md) (and the diagram page `generated/schema.html`). Regenerate with
-`npm run db:docs`. This section only says what changed in meaning since the tables above were written. 32 tables now.
+`npm run db:docs`. This section only says what changed in meaning for migrations 0024 to 0038; migrations 0039 to 0044 (the anti-ban purge, the anti-ban v2 engine, "messaged recently" and the campaign audience) are described in their own sections above. 34 tables now (checked on a database with all 49 migrations applied, 2026-11-09).
 
 | What | Migration | Meaning |
 |---|---|---|
 | `contact_identity.wa_registered`, `wa_checked_at` | 0029 | Whether WhatsApp has an account on this number and when it was checked (number fallback, D-60) |
 | `message.media_error`, `media_failed_at` | 0030 | Why an attachment could not be stored, so the thread can say so (D-30) |
-| `app_user.is_bot` | 0031 | The AI assistant's own user. A chat assigned to it is "handled by the AI" (D-91, Hand to AI) |
+| `app_user.is_bot` | 0031 | The AI assistant's own user. A chat assigned to it is "handled by the AI" (D-91; in the Inbox this is **Take over** and **Hand back**) |
 | `ai_setting` | 0031, 0032 | One row per org: `enabled`, `instructions`, `daily_message_cap` (default 200), `may_start_campaigns` (default off), the consent record (`consent_accepted_at/by`) and `bot_user_id`. Off until an admin accepts |
 | `ai_run` | 0031 | One row each time the assistant sends, tries or is held back: `kind` (`reply`, `campaign_action`), `outcome` (`sent`, `blocked`, `failed`, `skipped`), `reason` (a gate name, `daily_cap`, `model_error`, `empty_answer`), `model` and token counts. Cost and behaviour can be checked from it |
 | `ai_job` | 0033 | The assistant's waiting list, one running per org at a time: `kind` (`command`, `draft`), `input`, `status` (`queued`, `running`, `done`, `failed`, `cancelled`), `result` (JSON), `error` |
@@ -793,6 +803,17 @@ The full, always-current list of tables, columns, keys, indexes, policies and tr
 | `channel_session.own_decrypt_burst_at` | 0038 | A burst of undecryptable messages from the account's own other devices (the owner's phone or WhatsApp Web). Kept apart from `decrypt_burst_at` and never scored for ban health (D-102) |
 | `message.retry_requests`, `last_retry_at` | 0038 | How many times the recipient's phone asked for this message again because it could not decrypt it ("Waiting for this message"); the thread shows it until the message is read (D-101, `45-rca-waiting-for-this-message-2026-10-23.md`) |
 | indexes `message_body_keyver_idx`, `channel_auth_state_keyver_idx` | 0028 | Find rows still under an old encryption key version during key rotation (`envelope_key_version()`) |
+
+## Added by the AI templates screens: migrations 0045 to 0048 (2026-11-09)
+
+| What | Migration | Meaning |
+|---|---|---|
+| `ai_template.knowledge`, `questions`, `sensitive`, `fallback_user_id`, `fallback_phone`, `visible_columns`, `audience_targets`, `deleted_at` | 0045 | The one text of what the AI knows (the instructions are rebuilt from it, and from the sensitive choices, on every save), the questions the AI asked the owner with their answers, each sensitive detail marked `show` or `general`, the person who gets a chat the AI hands over (set null if they leave the team) and their number, the columns of a person's row the AI may see, the file or tag the template was made for, and when it was moved to Deleted (kept 30 days, then removed) |
+| `campaign.ai_stopped`; `ai_run.template_id` | 0046 | The owner stopped the AI on this campaign; every AI call is recorded against its campaign and template. One credit is one call that reached the model |
+| `ai_run.user_id` | 0047 | The person who asked for the call (writing a template, an example, a rewrite); null when the AI acted by itself |
+| `campaign_recipient.ai_status`, `ai_summary`, `ai_status_at` | 0048 | Where the AI's chat with the person stands and a short note for a colleague |
+
+`ai_run.kind` now takes `reply`, `opening`, `handover`, `fixed_reply` (the fixed line for a photo, voice note or file; no model, no credit), `draft`, `example`, `fillins`, `sensitive`, `rewrite` and `campaign_action`.
 
 Rules that still hold: every table that belongs to an org has `org_id` and a forced row-level-security policy; the app runs each request
 as the restricted `crm_app` role with `app.org_id` set (the gateway runs outside it, D-41); message bodies, campaign openings and

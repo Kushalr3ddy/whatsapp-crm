@@ -40,7 +40,6 @@ let agent1: string;
 let conv: string;
 let adminToken: string;
 let agent1Token: string;
-let agent2Token: string;
 let key: string;
 
 beforeAll(async () => {
@@ -70,13 +69,12 @@ beforeEach(async () => {
   agent1 = (await addUserToOrg(db, hasher, {
     orgId, email: 'a1@lock.test', password: 'x', displayName: 'Agent One', role: 'agent'
   })).userId;
-  const agent2 = (await addUserToOrg(db, hasher, {
+  await addUserToOrg(db, hasher, {
     orgId, email: 'a2@lock.test', password: 'x', displayName: 'Agent Two', role: 'agent'
-  })).userId;
+  });
 
   adminToken = (await createSession(db, { userId: adminId, orgId })).token;
   agent1Token = (await createSession(db, { userId: agent1, orgId })).token;
-  agent2Token = (await createSession(db, { userId: agent2, orgId })).token;
   key = (await issueApiKey(db, { orgId, name: 'k', scopes: ['messages:send'] })).secret;
 
   const s = (await db.execute(sql`
@@ -115,8 +113,9 @@ describe('who sent a message', () => {
       .send({ conversationId: conv, body: 'first' });
     // Two agents answering within seconds is exactly what the collision warning (D-54) holds;
     // this test is about who is named, so the second acknowledges it.
-    const messages = await replyAndList(asSession(agent2Token), { acknowledgeCollision: true });
-    expect(messages.map((m) => m.sentByName)).toEqual(['Agent One', 'Agent Two']);
+    // Only the owner or an admin may send, so the second author is the admin.
+    const messages = await replyAndList(asSession(adminToken), { acknowledgeCollision: true });
+    expect(messages.map((m) => m.sentByName)).toEqual(['Agent One', 'Admin']);
   });
 
   it('leaves an API key’s message without an author', async () => {

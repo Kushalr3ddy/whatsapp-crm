@@ -139,3 +139,49 @@ describe('isBlankMarker', () => {
     }
   });
 });
+
+describe('letters in a number', () => {
+  it('still reads a number that has a label before or after it', () => {
+    for (const f of ['Mob: 98765 43210', '9876543210 (home)', 'WhatsApp +91 98765 43210']) {
+      const r = normalisePhone(f, 'IN');
+      expect(r.ok, f).toBe(true);
+      expect(r.ok ? r.value.e164 : '').toBe('+919876543210');
+    }
+  });
+
+  it('refuses a letter between the digits instead of silently dropping it', () => {
+    for (const f of ['98765x43210', '98765 43210 ext 12', '9.87655E+09', 'call 9876543210 after 5']) {
+      const r = normalisePhone(f, 'IN');
+      expect(r.ok, f).toBe(false);
+      expect(r.ok ? '' : r.reason, f).toBe('unparseable');
+      expect(r.ok ? '' : r.message, f).toContain('letters');
+    }
+  });
+});
+
+describe('two numbers in one cell with only a space between them', () => {
+  const e164 = (cell: string): string[] => normalisePhoneCell(cell, 'IN').numbers.map((n) => n.e164);
+
+  it('keeps both numbers', () => {
+    expect(e164('9876543210 9876543211')).toEqual(['+919876543210', '+919876543211']);
+    expect(e164('98765 43210 98765 43211')).toEqual(['+919876543210', '+919876543211']);
+    expect(e164('+91 9876543210 +91 9876543211')).toEqual(['+919876543210', '+919876543211']);
+  });
+
+  it('leaves one number written with spaces as one number', () => {
+    expect(e164('+91 98765 43210')).toEqual(['+919876543210']);
+    expect(e164('98765 43210')).toEqual(['+919876543210']);
+  });
+
+  it('keeps a number that is written twice only once', () => {
+    expect(e164('9876543210 9876543210')).toEqual(['+919876543210']);
+  });
+
+  it('does not guess when a piece is not a number: the cell fails as it did', () => {
+    for (const cell of ['+91 98765 432101', '9876543210 12345']) {
+      const r = normalisePhoneCell(cell, 'IN');
+      expect(r.numbers, cell).toHaveLength(0);
+      expect(r.firstFailure?.reason, cell).toBe('invalid_for_country');
+    }
+  });
+});

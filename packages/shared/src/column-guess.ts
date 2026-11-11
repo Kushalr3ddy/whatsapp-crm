@@ -75,3 +75,86 @@ export function suggestColumns(profiles: readonly ColumnProfile[]): ColumnSugges
     && p.phoneShare < MIN_SHARE && p.emailShare < MIN_SHARE)?.header ?? null;
   return { phone, email, name };
 }
+
+/** How many rows have nothing in one column. A blank cell, or a cell that only says "no value" (`NA`, `-`), counts as nothing. */
+export interface ColumnBlanks {
+  readonly header: string;
+  readonly blank: number;
+}
+
+/** Counts, for every column, the rows that leave it empty. One pass over the file. */
+export function blankCounts(headers: readonly string[], rows: readonly Record<string, string>[]): ColumnBlanks[] {
+  const blank = new Map<string, number>(headers.map((h) => [h, 0]));
+  for (const row of rows) {
+    for (const h of headers) {
+      const v = (row[h] ?? '').trim();
+      if (v === '' || isBlankMarker(v)) blank.set(h, (blank.get(h) ?? 0) + 1);
+    }
+  }
+  return headers.map((header) => ({ header, blank: blank.get(header) ?? 0 }));
+}
+
+/**
+ * Picks up to `count` different positions out of `total`, in file order, for showing a few real people from a file.
+ * `random` is a parameter so a test can fix the draw.
+ */
+export function pickRows(total: number, count: number, random: () => number = Math.random): number[] {
+  const wanted = Math.min(count, Math.max(0, total));
+  // A partial shuffle: each step takes one position from what is left, so it always finishes, whatever `random` returns.
+  const pool = Array.from({ length: Math.max(0, total) }, (_, i) => i);
+  for (let i = 0; i < wanted; i++) {
+    const j = i + Math.min(total - i - 1, Math.floor(random() * (total - i)));
+    [pool[i], pool[j]] = [pool[j] as number, pool[i] as number];
+  }
+  return pool.slice(0, wanted).sort((x, y) => x - y);
+}
+
+/** Quotes a value for CSV: wrapped in quotes, with inner quotes doubled. */
+const csvQuote = (value: string): string => `"${value.replace(/"/g, '""')}"`;
+
+/** Which people of a sheet to look at. */
+export interface RowFilter {
+  /** Columns to look for gaps in. A column the sheet does not have is ignored. */
+  readonly missing?: readonly string[];
+  /** `any`: a gap in at least one of them (the default). `all`: a gap in every one of them. */
+  readonly mode?: 'any' | 'all';
+  /** Text to find in any column, ignoring case. */
+  readonly q?: string;
+}
+
+/**
+ * The positions, in file order, of the people a filter keeps. "Empty" is the same test the missing-details counts use (a blank
+ * cell, or one that only says NA or a dash), so the number on the screen and the rows listed always agree.
+ */
+export function matchRows(
+  headers: readonly string[], rows: readonly Record<string, string>[], filter: RowFilter
+): number[] {
+  const columns = (filter.missing ?? []).filter((c) => headers.includes(c));
+  const all = filter.mode === 'all';
+  const needle = (filter.q ?? '').trim().toLowerCase();
+  const out: number[] = [];
+  rows.forEach((row, i) => {
+    if (columns.length > 0) {
+      const gap = (c: string): boolean => {
+        const v = (row[c] ?? '').trim();
+        return v === '' || isBlankMarker(v);
+      };
+      if (!(all ? columns.every(gap) : columns.some(gap))) return;
+    }
+    if (needle !== '' && !headers.some((h) => (row[h] ?? '').toLowerCase().includes(needle))) return;
+    out.push(i);
+  });
+  return out;
+}
+
+/**
+ * The chosen people as a CSV of the sheet's own columns in the sheet's own order and nothing added, so it can be filled in
+ * and imported again as it is.
+ */
+export function rowsCsv(
+  headers: readonly string[], rows: readonly Record<string, string>[], positions: readonly number[]
+): { count: number; csv: string } {
+  const lines = [headers.map(csvQuote).join(',')];
+  for (const i of positions) lines.push(headers.map((h) => csvQuote(rows[i]?.[h] ?? '')).join(','));
+  return { count: positions.length, csv: lines.join('\n') };
+}

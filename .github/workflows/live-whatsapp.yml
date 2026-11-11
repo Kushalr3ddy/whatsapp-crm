@@ -1,0 +1,123 @@
+# The live WhatsApp suite on every pull request that changes code: the PR's code runs against two real numbers on a machine that keeps
+# them linked (a self-hosted runner labelled `whatsapp-live`), and `npm run live:suite` checks inbox, campaigns, the AI and opt-outs end to
+# end (docs/48-live-test-playbook.md). GitHub's own runners cannot do this: a WhatsApp login lives on one machine, and the same login used
+# from two places makes WhatsApp drop one of them (440).
+#
+# The runner is a Linux machine (or WSL) that stays on, with node 22+, Postgres and the number-B tester running.
+#
+# Safety:
+# - Only pull requests from branches of THIS repository run here. A fork's code never runs on the runner, which holds real WhatsApp logins.
+# - One run at a time (the two numbers are shared), newer pushes wait rather than cancel, so a send is never cut off halfway.
+# - The runner's .env, database and the number-B tester live on the runner, never in the repository or in GitHub secrets.
+# - The stack is started from the PR checkout on its own ports (API 3120, web 3121) and stopped at the end, whatever happened.
+name: live-whatsapp
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tests/live/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: live-whatsapp
+  cancel-in-progress: false
+
+jobs:
+  live:
+    # Off until a runner exists: set the repository variable LIVE_ENABLED to true once the self-hosted runner is registered.
+    if: vars.LIVE_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft))
+    runs-on: [self-hosted, whatsapp-live]
+    timeout-minutes: 60
+    env:
+      # Where the runner keeps what must never be in the repository: the .env with the database, the AI key and the test login.
+      LIVE_HOME: ${{ vars.LIVE_HOME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the runner's settings
+        shell: bash
+        run: |
+          test -f "$LIVE_HOME/.env" || { echo "::error::$LIVE_HOME/.env is missing on the runner (see docs/48-live-test-playbook.md)"; exit 2; }
+          cp "$LIVE_HOME/.env" .env
+
+      - name: Install and build
+        shell: bash
+        run: |
+          npm ci
+          npm run baileys:build
+          NEXT_TELEMETRY_DISABLED=1 npm --workspace @crm/web run build
+
+      - name: Migrate the live database
+        shell: bash
+        run: npm run db:migrate
+
+      - name: Start the stack (API, gateway, web)
+        shell: bash
+        run: |
+          mkdir -p .dev-logs
+          setsid nohup node_modules/.bin/tsx --env-file-if-exists=.env apps/api/src/server.ts > .dev-logs/api.log 2>&1 &
+          echo $! > .dev-logs/api.pid
+          setsid nohup node_modules/.bin/tsx --env-file-if-exists=.env apps/gateway/src/main.ts > .dev-logs/gateway.log 2>&1 &
+          echo $! > .dev-logs/gateway.pid
+          NODE_ENV=production setsid nohup node --env-file-if-exists=.env node_modules/next/dist/bin/next start apps/web --port 3121 > .dev-logs/web.log 2>&1 &
+          echo $! > .dev-logs/web.pid
+          for i in $(seq 1 60); do curl -sf http://localhost:3120/health >/dev/null && break; sleep 2; done
+          # Give the gateway time to restore number A from its stored login.
+          sleep 20
+
+      - name: Check number B's tester is up
+        shell: bash
+        run: |
+          curl -sf "${LIVE_TESTER_URL:-http://127.0.0.1:3998}/status" | grep -q '"connection":"open"' || {
+            echo "::error::The number-B tester is not connected. On the runner: node tester.mjs <checkout>, then scan its QR (docs/48)."; exit 2; }
+
+      - name: Live suite
+        shell: bash
+        run: npm run live:suite
+
+      - name: Comment the report on the pull request
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.existsSync('live-suite-report.md') ? fs.readFileSync('live-suite-report.md', 'utf8') : 'The live suite did not produce a report (see the job log).';
+            const marker = '<!-- live-whatsapp -->';
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
+            const mine = comments.find((c) => c.body.includes(marker));
+            const text = `${marker}\n${body}`;
+            if (mine) await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body: text });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body: text });
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-logs
+          path: |
+            .dev-logs/*.log
+            live-suite-report.md
+          retention-days: 7
+
+      - name: Stop the stack
+        if: always()
+        shell: bash
+        run: |
+          # Each process was started in its own process group (setsid), so only this run's API, gateway and web are stopped, children
+          # included. A gateway left running would hold number A's login and fight the next run for the device.
+          for p in api gateway web; do
+            if [ -f ".dev-logs/$p.pid" ]; then kill -TERM -- "-$(cat .dev-logs/$p.pid)" 2>/dev/null || true; fi
+          done
+          sleep 5
+          for p in api gateway web; do
+            if [ -f ".dev-logs/$p.pid" ]; then kill -KILL -- "-$(cat .dev-logs/$p.pid)" 2>/dev/null || true; fi
+          done

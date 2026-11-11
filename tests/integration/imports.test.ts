@@ -416,10 +416,12 @@ describe('cells that hold more than one email address', () => {
     unmapped: 'drop' as const
   };
 
-  it('uses the first valid address, and fails only the row where none is valid', async () => {
+  it('uses the first valid address, and keeps a person with a good number whose addresses are all bad, without an email', async () => {
     const uploaded = await upload(SHEET);
     const r = await run(uploaded.body.data.id, false, MAP);
-    expect(r.body.data).toMatchObject({ read: 4, created: 3, errors: 1 });
+    // The row whose addresses are all bad still has a good number, so the person comes in and the email is only noted.
+    expect(r.body.data).toMatchObject({ read: 4, created: 4, errors: 0 });
+    expect(r.body.data.warnings).toBeGreaterThanOrEqual(2);
     const rows = await db.execute(sql`
       SELECT c.display_name AS n, ci.value_normalized AS v
       FROM contact_identity ci JOIN contact c ON c.id = ci.contact_id
@@ -603,3 +605,258 @@ describe('importing with several phone columns and a joined name', () => {
   });
 });
 
+describe('looking through the sheet before it is imported', () => {
+  const SHEET =
+    'Name,Mobile,City\n' +
+    'A One,9876500001,Pune\n' +
+    ',9876500002,Mumbai\n' +
+    'C Three,9876500003,\n' +
+    'D Four,9876500004,NA\n' +
+    ',9876500005,\n';
+
+  const rows = (id: string, query: Record<string, string | string[] | number> = {}) =>
+    request(app).get(`/api/v1/imports/${id}/rows`).query(query).set(...auth());
+
+  it('pages through the people with the sheet row each was on', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    const r = await rows(id, { offset: 1, limit: 2 });
+    expect(r.status).toBe(200);
+    expect(r.body.data.headers).toEqual(['Name', 'Mobile', 'City']);
+    expect(r.body.data.total).toBe(5);
+    // The sheet's first row is the column names, so the first person is row 2.
+    expect(r.body.data.rows.map((x: { row: number }) => x.row)).toEqual([3, 4]);
+    expect(r.body.data.rows[0].values).toEqual({ Name: '', Mobile: '9876500002', City: 'Mumbai' });
+  });
+
+  it('filters by several missing details at once, "any" by default and "all" on request', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    const any = await rows(id, { column: ['Name', 'City'] });
+    expect(any.body.data.total).toBe(4);
+    expect(any.body.data.rows.map((x: { row: number }) => x.row)).toEqual([3, 4, 5, 6]);
+    const all = await rows(id, { column: ['Name', 'City'], mode: 'all' });
+    expect(all.body.data.rows.map((x: { row: number }) => x.row)).toEqual([6]);
+  });
+
+  it('searches, and a limit above the cap is cut down rather than refused', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    expect((await rows(id, { q: 'pune' })).body.data.total).toBe(1);
+    const big = await rows(id, { limit: 100000 });
+    expect(big.status).toBe(200);
+    expect(big.body.data.rows).toHaveLength(5);
+  });
+
+  it('hands over every match, not just a page, as a sheet to fill in and import again', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    const r = await rows(id, { column: 'City', csv: '1', limit: 1 });
+    expect(r.body.data.count).toBe(3);
+    expect(r.body.data.csv.split('\n')).toEqual([
+      '"Name","Mobile","City"', '"C Three","9876500003",""', '"D Four","9876500004","NA"', '"","9876500005",""'
+    ]);
+  });
+
+  it('works for a file that was uploaded but never checked, and needs no mapping', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    expect((await rows(id, { column: 'Name' })).body.data.total).toBe(2);
+  });
+
+  it('refuses a column the file does not have, and a run that is not this org’s', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    expect((await rows(id, { column: 'Nope' })).status).toBe(422);
+    expect((await rows(id, { mode: 'sideways' })).status).toBe(422);
+    expect((await rows('00000000-0000-4000-8000-000000000000')).status).toBe(404);
+    const otherOrg = (await db.execute(sql`
+      INSERT INTO org(name,slug) VALUES ('k','imports-3') RETURNING id`) as unknown as Array<{ id: string }>)[0]!.id;
+    const otherKey = (await issueApiKey(db, { orgId: otherOrg, name: 'o', scopes: ['contacts:read'] })).secret;
+    const crossed = await request(app).get(`/api/v1/imports/${id}/rows`).set('Authorization', `Bearer ${otherKey}`);
+    expect(crossed.status).toBe(404);
+  });
+
+  it('filling the gaps and importing the sheet again fills them on the same people, and a different value in the sheet replaces the old one', async () => {
+    const first = (await upload(SHEET)).body.data.id as string;
+    const mapping = {
+      version: 1 as const, displayName: { from: 'Name' },
+      identities: [{ kind: 'phone' as const, from: 'Mobile' }],
+      defaultCountry: 'IN', unmapped: 'keep' as const, fields: [{ from: 'City' }]
+    };
+    expect((await run(first, false, mapping)).body.data).toMatchObject({ created: 5 });
+
+    // A blank and an "NA" are both gaps: both rows come back, both get filled.
+    const sheet = (await rows(first, { column: 'City', csv: '1' })).body.data.csv as string;
+    const filled = sheet.replace('"C Three","9876500003",""', '"C Three","9876500003","Nagpur"')
+      .replace('"D Four","9876500004","NA"', '"D Four","9876500004","Surat"');
+    const second = (await upload(filled)).body.data.id as string;
+    expect((await run(second, false, mapping)).body.data).toMatchObject({ read: 3, created: 0, updated: 2 });
+
+    // And a missing name, on a sheet whose city differs from the one the person has: the newer file wins.
+    const names = (await rows(first, { column: 'Name', csv: '1' })).body.data.csv as string;
+    const named = names.replace('"","9876500002","Mumbai"', '"B Two","9876500002","Elsewhere"');
+    const third = (await upload(named)).body.data.id as string;
+    expect((await run(third, false, mapping)).body.data).toMatchObject({ read: 2, created: 0, updated: 1 });
+
+    const people = await db.execute(sql`
+      SELECT c.display_name AS name, c.custom_fields->>'city' AS city FROM contact c
+      WHERE c.org_id = ${orgId}`) as unknown as Array<{ name: string | null; city: string | null }>;
+    expect(people).toHaveLength(5);
+    expect(people.find((x) => x.name === 'C Three')?.city).toBe('Nagpur');
+    expect(people.find((x) => x.name === 'D Four')?.city).toBe('Surat');
+    expect(people.find((x) => x.name === 'A One')?.city).toBe('Pune');
+    // The person who had no name gets one, and the sheet's city replaces the one they had.
+    expect(people.find((x) => x.name === 'B Two')?.city).toBe('Elsewhere');
+  }, 60_000);
+});
+
+describe('numbers written with spaces, and letters, in a phone cell', () => {
+  const SHEET =
+    'Name,Mobile\n' +
+    'A One,9876500001 9876500002\n' +
+    'B Two,98765x00003\n' +
+    'C Three,Mob: 9876500004\n';
+  const mapping = {
+    version: 1 as const, displayName: { from: 'Name' },
+    identities: [{ kind: 'phone' as const, from: 'Mobile' }],
+    defaultCountry: 'IN', unmapped: 'keep' as const
+  };
+
+  it('keeps both numbers when only a space separates them, refuses a letter inside a number, and ignores a label', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    const r = await run(id, false, mapping);
+    // One row fails visibly instead of quietly becoming a different number.
+    expect(r.body.data).toMatchObject({ read: 3, created: 2, errors: 1 });
+
+    const detail = await request(app).get(`/api/v1/imports/${id}`).set(...auth());
+    expect(detail.body.data.errors).toHaveLength(1);
+    expect(detail.body.data.errors[0]).toMatchObject({ rowNumber: 2, raw: { Mobile: '98765x00003' } });
+    expect(detail.body.data.errors[0].error).toContain('letters');
+
+    const numbers = await db.execute(sql`
+      SELECT c.display_name AS name, array_agg(ci.value_normalized ORDER BY ci.value_normalized) AS numbers
+      FROM contact c JOIN contact_identity ci ON ci.contact_id = c.id AND ci.kind = 'phone'
+      WHERE c.org_id = ${orgId} GROUP BY c.display_name ORDER BY c.display_name`) as unknown as Array<{ name: string; numbers: string[] }>;
+    expect(numbers).toEqual([
+      { name: 'A One', numbers: ['+919876500001', '+919876500002'] },
+      { name: 'C Three', numbers: ['+919876500004'] }
+    ]);
+  }, 60_000);
+});
+
+describe('example numbers for the "how the file was read" card', () => {
+  const SHEET =
+    'Name,Mobile\n' +
+    'A One,9876500001\n' +
+    'B Two,"9876500002, +9156006008553912035"\n' +
+    'C Three,\n' +
+    'D Four,NA\n';
+
+  const numbers = (id: string, query: Record<string, string | string[]>) =>
+    request(app).get(`/api/v1/imports/${id}/numbers`).query(query).set(...auth());
+
+  it('shows the first people’s numbers as they will be saved, and says which part could not be read', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    const r = await numbers(id, { column: 'Mobile', country: 'IN' });
+    expect(r.status).toBe(200);
+    expect(r.body.data.columns).toEqual([{
+      column: 'Mobile',
+      examples: [
+        { raw: '9876500001', numbers: ['+919876500001'], dropped: [], problem: null },
+        { raw: '9876500002, +9156006008553912035', numbers: ['+919876500002'], dropped: ['+9156006008553912035'], problem: null },
+        { raw: '', numbers: [], dropped: [], problem: null }
+      ]
+    }]);
+  });
+
+  it('reads a number without a country code as the country asked for', async () => {
+    const id = (await upload('Name,Mobile\nA,2025550101\n')).body.data.id as string;
+    expect((await numbers(id, { column: 'Mobile', country: 'US' })).body.data.columns[0].examples[0].numbers).toEqual(['+12025550101']);
+    // The same digits mean a different number in another country.
+    expect((await numbers(id, { column: 'Mobile', country: 'IN' })).body.data.columns[0].examples[0].numbers).toEqual(['+912025550101']);
+  });
+
+  it('gives the reason when nothing in a cell can be read', async () => {
+    const id = (await upload('Name,Mobile\nA,98765x43210\n')).body.data.id as string;
+    const e = (await numbers(id, { column: 'Mobile', country: 'IN' })).body.data.columns[0].examples[0];
+    expect(e.numbers).toEqual([]);
+    expect(e.problem).toContain('letters');
+  });
+
+  it('refuses a column the file does not have, a bad country, no column, and another org’s run', async () => {
+    const id = (await upload(SHEET)).body.data.id as string;
+    expect((await numbers(id, { column: 'Nope', country: 'IN' })).status).toBe(422);
+    expect((await numbers(id, { column: 'Mobile', country: 'India' })).status).toBe(422);
+    expect((await numbers(id, { country: 'IN' })).status).toBe(422);
+    expect((await numbers('00000000-0000-4000-8000-000000000000', { column: 'Mobile', country: 'IN' })).status).toBe(404);
+  });
+});
+
+describe('rules for rows and for importing a file again', () => {
+  const mapping = {
+    version: 1 as const, displayName: { from: 'Name' },
+    identities: [{ kind: 'phone' as const, from: 'Mobile' }, { kind: 'email' as const, from: 'Email' }],
+    defaultCountry: 'IN', unmapped: 'keep' as const, fields: [{ from: 'City' }]
+  };
+
+  /** Uploads a sheet and runs it, returning the summary. */
+  const runSheet = async (csv: string, dryRun: boolean) => {
+    const id = (await upload(csv, '?force=true')).body.data.id as string;
+    return (await run(id, dryRun, mapping)).body.data as Record<string, number>;
+  };
+
+  const cityOf = async (phone: string): Promise<string | null> => {
+    const rows = await db.execute(sql`
+      SELECT c.custom_fields->>'city' AS city FROM contact c
+      JOIN contact_identity ci ON ci.contact_id = c.id AND ci.value_normalized = ${phone}
+      WHERE c.org_id = ${orgId}`) as unknown as Array<{ city: string | null }>;
+    return rows[0]?.city ?? null;
+  };
+
+  it('a: a different value in a newer file replaces the saved one, and a blank never erases anything', async () => {
+    await runSheet('Name,Mobile,Email,City\nA One,9876500001,,Pune\n', false);
+    expect(await cityOf('+919876500001')).toBe('Pune');
+
+    expect(await runSheet('Name,Mobile,Email,City\nA One,9876500001,,Delhi\n', false)).toMatchObject({ created: 0, updated: 1 });
+    expect(await cityOf('+919876500001')).toBe('Delhi');
+
+    await runSheet('Name,Mobile,Email,City\nA One,9876500001,,\n', false);
+    expect(await cityOf('+919876500001')).toBe('Delhi');
+    await runSheet('Name,Mobile,Email,City\nA One,9876500001,,NA\n', false);
+    expect(await cityOf('+919876500001')).toBe('Delhi');
+  }, 60_000);
+
+  it('b: a person with a number and no name is saved with no name, so nothing greets them by their number', async () => {
+    expect(await runSheet('Name,Mobile,Email,City\n,9876500002,,\nB Two,9876500003,,\n', false)).toMatchObject({ created: 2, errors: 0 });
+    const rows = await db.execute(sql`
+      SELECT ci.value_normalized AS phone, c.display_name AS name FROM contact c
+      JOIN contact_identity ci ON ci.contact_id = c.id AND ci.kind = 'phone'
+      WHERE c.org_id = ${orgId} ORDER BY ci.value_normalized`) as unknown as Array<{ phone: string; name: string | null }>;
+    expect(rows).toEqual([{ phone: '+919876500002', name: null }, { phone: '+919876500003', name: 'B Two' }]);
+  }, 60_000);
+
+  it('c: names are saved exactly as typed, capitals and all', async () => {
+    await runSheet('Name,Mobile,Email,City\nRAVI KUMAR,9876500004,,\nD\'Souza,9876500005,,\nmcDonald,9876500006,,\n', false);
+    const rows = await db.execute(sql`
+      SELECT display_name AS name FROM contact WHERE org_id = ${orgId} ORDER BY display_name`) as unknown as Array<{ name: string }>;
+    expect(rows.map((r) => r.name)).toEqual(['D\'Souza', 'RAVI KUMAR', 'mcDonald']);
+  }, 60_000);
+
+  it('d: the check counts a number that appears twice as one new person and one already there, as the import does', async () => {
+    const sheet = 'Name,Mobile,Email,City\nA One,9876500007,,Pune\nA One,9876500007,,Delhi\nC Three,9876500008,,\n';
+    const check = await runSheet(sheet, true);
+    expect(check).toMatchObject({ read: 3, created: 2, updated: 1, dryRun: true });
+    const real = await runSheet(sheet, false);
+    expect(real).toMatchObject({ read: 3, created: 2, updated: 1 });
+  }, 60_000);
+
+  it('e: counts the people who have no mobile number (an email only), in the check and in the import', async () => {
+    const sheet = 'Name,Mobile,Email,City\nA One,9876500009,a@example.test,\nB Two,,b@example.test,\n';
+    expect(await runSheet(sheet, true)).toMatchObject({ created: 2, withoutNumber: 1 });
+    expect(await runSheet(sheet, false)).toMatchObject({ created: 2, withoutNumber: 1 });
+  }, 60_000);
+
+  it('f: a good number with a bad email keeps the person and says the email was not used; a bad email alone still fails', async () => {
+    const sheet = 'Name,Mobile,Email,City\nA One,9876500010,not-an-email,\nB Two,,also-bad,\n';
+    const s = await runSheet(sheet, false);
+    expect(s).toMatchObject({ read: 2, created: 1, errors: 1, warnings: 1 });
+    const kept = await db.execute(sql`
+      SELECT count(*)::int AS n FROM contact_identity WHERE org_id = ${orgId} AND kind = 'email'`) as unknown as Array<{ n: number }>;
+    expect(kept[0]?.n).toBe(0);
+  }, 60_000);
+});

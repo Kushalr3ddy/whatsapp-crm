@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import type { Database } from '@crm/db';
 
 /** What a queued request asks the assistant to do. */
-export type AiJobKind = 'command' | 'draft';
+/** Only instructions are queued now. Older rows of kind `draft` (campaign wording) stay in the table as history and are never run. */
+export type AiJobKind = 'command';
 /** Where a request stands. Only `queued` can be cancelled. */
 export type AiJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 

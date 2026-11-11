@@ -156,7 +156,7 @@ test.describe('live walkthrough', () => {
     const castTag = `live-broadcast-${stamp}`;
     const handTag = `live-vip-${stamp}`;
     await unlessTourOnly('tag people', async () => {
-      await page.goto('/contacts');
+      await page.goto('/contacts/classic');
       await openDetails(page, /^New tag/);
       await page.getByPlaceholder('New tag name…').fill(castTag);
       await page.getByRole('button', { name: 'Add tag' }).click();
@@ -167,7 +167,7 @@ test.describe('live walkthrough', () => {
       await expect(page.getByRole('link', { name: handTag })).toBeVisible();
 
       // The recipients are the only people named "Live Test …", so a search narrows to exactly them.
-      await page.goto(`/contacts?q=${encodeURIComponent('Live Test')}`);
+      await page.goto(`/contacts/classic?q=${encodeURIComponent('Live Test')}`);
       await openDetails(page, 'Tag many at once');
       await page.getByLabel('Add or remove').first().selectOption('add');
       await page.getByLabel('Tag to apply').selectOption({ label: castTag });
@@ -177,7 +177,7 @@ test.describe('live walkthrough', () => {
       await expect(page.getByText(new RegExp(`Done — ${String(BROADCAST_TO.length)} people added`))).toBeVisible();
 
       // One person by hand: pick the tag on that person's row, then the tag's chip count proves it applied.
-      await page.goto(`/contacts?q=${encodeURIComponent(BROADCAST_TO[0]!.replace(/\D/g, ''))}`);
+      await page.goto(`/contacts/classic?q=${encodeURIComponent(BROADCAST_TO[0]!.replace(/\D/g, ''))}`);
       const row = page.locator('li').filter({ has: page.getByLabel('Add a tag') }).first();
       await row.getByLabel('Add a tag').fill(handTag);
       await row.getByRole('button', { name: 'Add', exact: true }).click();
@@ -188,11 +188,14 @@ test.describe('live walkthrough', () => {
     await unlessTourOnly('broadcast to the tagged people', async () => {
       await page.goto('/broadcast/new');
       const name = `Live broadcast ${stamp}`;
-      await page.locator('input[name="name"]').fill(name);
-      await page.locator('textarea[name="body"]').fill('{Hi|Hello} {{name}}, this is a CRM broadcast test. No reply needed.');
+      await page.locator('#nc-nm').fill(name);
+      await page.locator('#nc-body').fill('{Hi|Hello} {{name}}, this is a CRM broadcast test. No reply needed.');
       const pick = async (select: string, text: string): Promise<void> => {
-        const value = await page.locator(`select[name="${select}"] option`, { hasText: text }).first().getAttribute('value');
-        await page.locator(`select[name="${select}"]`).selectOption(value ?? '');
+        // New campaign has no <select>s: the number is a card, the audience a tag chosen from a list.
+        if (select === 'senderIdentityId') { await page.locator('.nc-opt', { hasText: text }).first().click(); return; }
+        await page.getByRole('button', { name: 'A tag', exact: true }).click();
+        await page.locator('#nc-aq').click();
+        await page.getByRole('option', { name: new RegExp(text) }).first().click();
       };
       await pick('senderIdentityId', sender.label ?? '');
       await pick('fromTagId', castTag);
@@ -275,7 +278,7 @@ test.describe('live walkthrough', () => {
         await page.getByRole('button', { name: 'Sign out' }).click();
       }
       await expect(page).toHaveURL(/\/login/);
-      await page.goto('/contacts');
+      await page.goto('/contacts/classic');
       await expect(page).toHaveURL(/\/login/);
     });
 

@@ -158,17 +158,17 @@ await shot('10-link');
 await go('/broadcast', 760);
 await shot('11-campaigns');
 await go('/broadcast/new', 1500);
-await page.locator('input[name="name"]').fill('Friday walk-in reminder');
-await page.locator('textarea[name="body"]').fill('{Hi|Hello} {{name}}, a reminder that our walk-in interview is this Friday at 10am. Reply YES if you can make it.');
-const tagOptions = await page.locator('select[name="fromTagId"] option').allTextContents();
-const leads = tagOptions.find((t) => t.includes('seed-leads'));
-if (leads !== undefined) await page.locator('select[name="fromTagId"]').selectOption({ label: leads });
+await page.locator('#nc-nm').fill('Friday walk-in reminder');
+await page.locator('#nc-body').fill('{Hi|Hello} {{name}}, a reminder that our walk-in interview is this Friday at 10am. Reply YES if you can make it.');
+await page.getByRole('button', { name: 'A tag', exact: true }).click();
+await page.locator('#nc-aq').click();
+const leads = page.getByRole('option', { name: /seed-leads/ }).first();
+if (await leads.count() > 0) await leads.click();
 await mark([
-  [1, page.getByLabel('Write with AI', { exact: true })],
-  [2, page.locator('input[name="name"]')],
-  [3, page.locator('textarea[name="body"]')],
-  [4, page.getByRole('tab', { name: 'A tag' })],
-  [5, page.getByRole('tab', { name: 'Build a filter' })]
+  [1, page.locator('#nc-nm')],
+  [2, page.locator('#nc-body')],
+  [3, page.getByRole('button', { name: 'A tag', exact: true })],
+  [4, page.getByRole('complementary', { name: 'Review' })]
 ]);
 await shot('12-campaign-new');
 // Save it as a draft, so the next shot has a campaign to open (a fresh demo org has none).

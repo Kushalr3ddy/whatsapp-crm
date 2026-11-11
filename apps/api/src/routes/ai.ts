@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { setTenant, tenantDatabase, type Database } from '@crm/db';
@@ -9,8 +9,8 @@ import {
 } from '@crm/llm';
 import {
   enqueueAiJob, listAiJobs, cancelAiJob, AiJobError, type QueueViewer,
-  getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, draftCampaignText, AiCommandError,
-  auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, AiTemplateError
+  getAiSettings, saveAiSettings, AiSettingsRuleError, getAiNotice, autoReply, runAiCommand, AiCommandError,
+  auditLlmChange, generateTemplate, listTemplates, getTemplate, AI_ALWAYS_ON_RULES, saveTemplate, useTemplate, deleteTemplate, listDeletedTemplates, restoreTemplate, removeTemplateNow, duplicateTemplate, AiTemplateError, writeExample, suggestFillIns, detectSensitive, rewriteKnowledge, listAiUsage
 } from '@crm/core';
 import { auditActor, requireRole, requireScope } from '../auth.js';
 import { requireUuidParam } from '../params.js';
@@ -170,11 +170,10 @@ export function aiRouter(
   });
 
   /**
-   * Puts a request in the AI queue: `command` (an instruction, admins and message-sending API keys) or `draft` (campaign
-   * wording, anyone signed in). It runs when its turn comes, one at a time per org, and answers at once with its id.
+   * Puts a request in the AI queue: `command` (an instruction, admins and message-sending API keys). It runs when its turn comes, one at a time per org, and answers at once with its id.
    */
   router.post('/jobs', requireScope('messages:send'), async (req: Request, res: Response) => {
-    const parsed = z.object({ kind: z.enum(['command', 'draft']), input: z.string().trim().min(3).max(2000) }).safeParse(req.body);
+    const parsed = z.object({ kind: z.enum(['command']), input: z.string().trim().min(3).max(2000) }).safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Say what you want (3 to 2000 characters).'));
       return;
@@ -212,28 +211,27 @@ export function aiRouter(
     res.status(409).json(problem(req, 409, 'NOT_QUEUED', 'It has already started or finished, so it cannot be cancelled.'));
   });
 
-  /** Writes campaign wording from a short goal, for the campaign form. Creates and sends nothing. */
-  router.post('/draft-campaign-text', requireScope('messages:send'), async (req: Request, res: Response) => {
-    const parsed = z.object({ goal: z.string().trim().min(3).max(1000) }).safeParse(req.body);
-    if (!parsed.success) {
-      res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Describe what the message should do (3 to 1000 characters).'));
-      return;
-    }
-    const orgId = req.crm!.orgId;
-    try {
-      res.json({ data: { body: await draftCampaignText({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.goal) } });
-    } catch (error) {
-      if (error instanceof AiCommandError) {
-        res.status(error.code === 'ai_off' ? 409 : 502).json(problem(req, error.code === 'ai_off' ? 409 : 502, error.code === 'ai_off' ? 'AI_OFF' : 'AI_UNAVAILABLE', error.message));
-        return;
-      }
-      throw error;
-    }
-  });
-
   // ---- AI settings: which provider, key and model the install uses (D-9) ---------------------------------------------------
   // Admin session only (an API key can never change it). The key is never returned; the settings are written to the env file that the API and
   // the gateway re-read, so a change applies from the next model call with no restart.
+
+  /**
+   * The model, its key and its address are one setting for the whole install (an env file both processes read), not one per organisation.
+   * So only the admin of the organisation the install was set up for, the oldest one, may change, test or switch it off, and only that
+   * admin is shown the end of the key; any other organisation's admin could otherwise change or switch off the assistant for everyone, or
+   * point the saved key at a host they chose (R-036). The assistant itself still answers for every organisation.
+   */
+  const isInstallOwner = async (orgId: string): Promise<boolean> => {
+    const first = (await db.execute(sql`SELECT id FROM org ORDER BY created_at ASC, id ASC LIMIT 1`)) as unknown as Array<{ id: string }>;
+    return first[0]?.id === orgId;
+  };
+  const requireInstallOwner = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (req.crm!.kind === 'session' && !(await isInstallOwner(req.crm!.orgId))) {
+      res.status(403).json(problem(req, 403, 'FORBIDDEN', 'The AI model is set once for the whole install, by the admin of the organisation it was set up for.'));
+      return;
+    }
+    next();
+  };
 
   const llmCalls = new Map<string, number[]>();
   /** At most ten model-settings calls (listing, testing, saving) per organisation per minute; testing costs a little money. */
@@ -279,9 +277,9 @@ export function aiRouter(
   }
 
   /** The providers the page offers and what is in use now. Anyone signed in may see it; only an admin sees the last four characters of the key. */
-  router.get('/llm', requireScope('conversations:read'), (req: Request, res: Response) => {
+  router.get('/llm', requireScope('conversations:read'), async (req: Request, res: Response) => {
     const status = llmSettings.live.status();
-    const isAdmin = req.crm!.kind !== 'session' || req.crm!.role === 'admin';
+    const isAdmin = (req.crm!.kind !== 'session' || req.crm!.role === 'admin') && (req.crm!.kind !== 'session' || await isInstallOwner(req.crm!.orgId));
     res.json({
       data: {
         ...status, keyLast4: isAdmin ? status.keyLast4 : null, baseUrl: isAdmin ? status.baseUrl : null,
@@ -292,7 +290,7 @@ export function aiRouter(
   });
 
   /** The models this provider and key offer, for the picker. A blank key reuses the saved one for the same provider. */
-  router.post('/llm/models', requireRole('admin'), async (req: Request, res: Response) => {
+  router.post('/llm/models', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     const parsed = llmInput.safeParse(req.body);
     if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider and enter the key.')); return; }
     if (!underLlmLimit(req.crm!.orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
@@ -308,7 +306,7 @@ export function aiRouter(
   });
 
   /** Tests a model with two tiny real calls. Saves nothing. */
-  router.post('/llm/test', requireRole('admin'), async (req: Request, res: Response) => {
+  router.post('/llm/test', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     const parsed = llmInput.safeParse(req.body);
     if (!parsed.success || parsed.data.model === undefined || parsed.data.model === '') { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider, enter the key and pick a model.')); return; }
     if (!underLlmLimit(req.crm!.orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
@@ -321,7 +319,7 @@ export function aiRouter(
    * Makes this the model the install uses from now on: tests it first (unless `anyway` is sent after a failed test the admin chose to ignore),
    * then writes the `LLM_*` lines to the env file. Audited without the key.
    */
-  router.put('/llm', requireRole('admin'), async (req: Request, res: Response) => {
+  router.put('/llm', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     const parsed = llmInput.extend({ anyway: z.boolean().optional() }).safeParse(req.body);
     if (!parsed.success || parsed.data.model === undefined || parsed.data.model === '') { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Choose a provider, enter the key and pick a model.')); return; }
     const orgId = req.crm!.orgId;
@@ -347,7 +345,7 @@ export function aiRouter(
   });
 
   /** Turns the model off: the assistant keeps its settings but cannot answer until a model is set again. The key is removed from the file. */
-  router.delete('/llm', requireRole('admin'), async (req: Request, res: Response) => {
+  router.delete('/llm', requireRole('admin'), requireInstallOwner, async (req: Request, res: Response) => {
     await writeLlmEnv(llmSettings.envFile, { LLM_DRIVER: 'none', LLM_MODEL: undefined, LLM_API_KEY: undefined, LLM_BASE_URL: undefined });
     await auditLlmChange(db, req.crm!.orgId, auditActor(req), { provider: 'none', model: null, baseUrlHost: null, keyReplaced: false, tested: false });
     res.status(204).end();
@@ -357,7 +355,7 @@ export function aiRouter(
 
   /** At most this many generations per organisation per minute, so one org cannot run up the bill or the provider's rate limit. */
   const generations = new Map<string, number[]>();
-  const GENERATIONS_PER_MINUTE = 5;
+  const GENERATIONS_PER_MINUTE = 12;
   const underRateLimit = (orgId: string): boolean => {
     const now = Date.now();
     const recent = (generations.get(orgId) ?? []).filter((t) => now - t < 60_000);
@@ -369,8 +367,8 @@ export function aiRouter(
 
   /** Turns a template error into a response. */
   const templateProblem = (req: Request, res: Response, error: AiTemplateError): void => {
-    const status = { too_long: 422, invalid: 422, ai_off: 409, not_found: 404, no_model: 502 }[error.code];
-    const code = { too_long: 'TOO_LONG', invalid: 'VALIDATION_FAILED', ai_off: 'AI_OFF', not_found: 'NOT_FOUND', no_model: 'AI_UNAVAILABLE' }[error.code];
+    const status = { too_long: 422, invalid: 422, ai_off: 409, not_found: 404, no_model: 502, in_use: 409 }[error.code];
+    const code = { too_long: 'TOO_LONG', invalid: 'VALIDATION_FAILED', ai_off: 'AI_OFF', not_found: 'NOT_FOUND', no_model: 'AI_UNAVAILABLE', in_use: 'IN_USE' }[error.code];
     res.status(status).json(problem(req, status, code, error.message));
   };
 
@@ -387,11 +385,84 @@ export function aiRouter(
       return;
     }
     try {
-      res.json({ data: await generateTemplate({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.description, parsed.data.answers ?? []) });
+      res.json({ data: await generateTemplate({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.description, parsed.data.answers ?? [], req.crm!.userId) });
     } catch (error) {
       if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
       throw error;
     }
+  });
+
+  /**
+   * Writes one example conversation from the template as the editor holds it (saved or not) and one person of the list. One AI call,
+   * nothing sent, nothing stored but the credit it used. Admin, and limited to a few a minute like writing a template.
+   */
+  router.post('/templates/example', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({
+      templateId: z.string().uuid().optional(), personId: z.string().uuid(), knowledge: z.string().max(30000),
+      sensitive: z.array(z.object({ detail: z.string().max(300), mode: z.enum(['show', 'general']) })).max(30).default([]),
+      fallbackUserId: z.string().uuid().nullable().default(null), fallbackPhone: z.string().max(30).default(''),
+      visibleColumns: z.array(z.string().max(100)).max(40).default([])
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the template and a person.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    const { personId, ...draft } = parsed.data;
+    try {
+      res.json({ data: await writeExample({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, draft, personId, req.crm!.userId) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** Suggests which columns of a file would help the AI, from the column names only. Never a person's data. */
+  router.post('/templates/suggest-fillins', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({ knowledge: z.string().max(30000), columns: z.array(z.string().max(120)).max(400) }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the text and the column names.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    try {
+      res.json({ data: await suggestFillIns({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, { ...parsed.data, userId: req.crm!.userId }) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** Lists the details in the text that could be sensitive (names, money, dates, numbers). The owner decides each one. */
+  router.post('/templates/detect-sensitive', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({ knowledge: z.string().max(30000) }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the text.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    try {
+      res.json({ data: await detectSensitive({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, parsed.data.knowledge, req.crm!.userId) });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** Rewrites the text of what the AI knows to match the owner's sensitive choices. Nothing is saved. */
+  router.post('/templates/rewrite', requireRole('admin'), async (req: Request, res: Response) => {
+    const parsed = z.object({
+      knowledge: z.string().max(30000), sensitive: z.array(z.object({ detail: z.string().max(300), mode: z.enum(['show', 'general']) })).max(60).default([])
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', 'Send the text and the choices.')); return; }
+    const orgId = req.crm!.orgId;
+    if (!underRateLimit(orgId)) { res.status(429).json(problem(req, 429, 'RATE_LIMITED', 'That is a lot of requests. Wait a minute and try again.')); return; }
+    try {
+      res.json({ data: { knowledge: await rewriteKnowledge({ db: tenantDatabase(db, orgId, tenantRole), llm: getLlm() }, orgId, { ...parsed.data, userId: req.crm!.userId }) } });
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  /** The credit log: what the AI did, with which model and when. Admin only. */
+  router.get('/usage', requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    res.json({ data: await listAiUsage(tenantDatabase(db, orgId, tenantRole), orgId, 100) });
   });
 
   /** The fixed always-on rules, so the page can show exactly what is added in front of every set of instructions. */
@@ -404,6 +475,11 @@ export function aiRouter(
     res.json({ data: await listTemplates(tenantDatabase(db, orgId, tenantRole), orgId) });
   });
 
+  router.get('/templates/deleted', requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    res.json({ data: await listDeletedTemplates(tenantDatabase(db, orgId, tenantRole), orgId) });
+  });
+
   router.get('/templates/:id', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
     const found = await getTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id));
@@ -414,7 +490,12 @@ export function aiRouter(
   router.post('/templates', requireRole('admin'), async (req: Request, res: Response) => {
     const parsed = z.object({
       id: z.string().uuid().optional(), name: z.string().max(200), description: z.string().max(20000),
-      instructions: z.string().max(60000), audience: z.string().max(1000).default(''), firstMessage: z.string().max(4000).default('')
+      instructions: z.string().max(60000).default(''), audience: z.string().max(1000).default(''), firstMessage: z.string().max(4000).default(''),
+      knowledge: z.string().max(30000).optional(),
+      questions: z.array(z.object({ question: z.string().max(300), answer: z.string().max(2000).default(''), skipped: z.boolean().default(false) })).max(20).optional(),
+      sensitive: z.array(z.object({ detail: z.string().max(300), mode: z.enum(['show', 'general']) })).max(30).optional(),
+      fallbackUserId: z.string().uuid().nullable().optional(), fallbackPhone: z.string().max(30).optional(),
+      visibleColumns: z.array(z.string().max(100)).max(40).optional(), audienceTargets: z.unknown().optional()
     }).safeParse(req.body);
     if (!parsed.success) {
       res.status(422).json(problem(req, 422, 'VALIDATION_FAILED', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')));
@@ -444,8 +525,34 @@ export function aiRouter(
 
   router.delete('/templates/:id', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
     const orgId = req.crm!.orgId;
-    const gone = await deleteTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
-    if (!gone) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+    try {
+      const gone = await deleteTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+      if (!gone) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+      res.status(204).end();
+    } catch (error) {
+      if (error instanceof AiTemplateError) { templateProblem(req, res, error); return; }
+      throw error;
+    }
+  });
+
+  router.post('/templates/:id/duplicate', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const copy = await duplicateTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+    if (copy === null) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'No such template.')); return; }
+    res.status(201).json({ data: copy });
+  });
+
+  router.post('/templates/:id/restore', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const back = await restoreTemplate(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+    if (back === null) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'That template is not in Deleted.')); return; }
+    res.json({ data: back });
+  });
+
+  router.delete('/templates/:id/permanent', requireUuidParam('id'), requireRole('admin'), async (req: Request, res: Response) => {
+    const orgId = req.crm!.orgId;
+    const gone = await removeTemplateNow(tenantDatabase(db, orgId, tenantRole), orgId, String(req.params.id), auditActor(req));
+    if (!gone) { res.status(404).json(problem(req, 404, 'NOT_FOUND', 'That template is not in Deleted.')); return; }
     res.status(204).end();
   });
 

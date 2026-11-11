@@ -213,8 +213,10 @@ Configurable per data class: raw inbound events 30 d, audit log 1 y, media 1 y, 
 indefinite by default. A nightly hard-delete job enforces it and writes a summary audit row.
 
 ### Logs
-PII redacted by **field allowlist** — an allowlist, not a denylist, so a new field is redacted
-by default rather than leaked by default.
+Redacted by a list of field paths (`packages/shared/src/logger.ts`): `req.headers.authorization`, `req.headers.cookie`,
+`*.password`, `*.token` and the like. It is a denylist: a field not on it is logged. Response headers are not on it, so the
+`Set-Cookie` of a sign-in (the raw session cookie) and the `x-csrf-token` request header reach the API log (SEC-1 in
+[`49`](49-bug-list.md)).
 
 ## Application security
 
@@ -244,6 +246,8 @@ by default rather than leaked by default.
 Lockfile committed · `npm audit` and Renovate/Dependabot · CycloneDX SBOM per release ·
 base images pinned by digest · non-root container user · read-only root filesystem · dropped
 capabilities · Trivy image scan in CI.
+
+**Known advisories (2026-11-11, `npm audit --omit=dev`).** drizzle-orm: SQL injection through improperly escaped identifiers, fixed by moving to 0.45.4 (done, #59); the code builds no identifier from user input in any case (the one `sql.raw` is the database role from configuration). zod 3: memory exhaustion when validating oversized constrained collections; the fix is zod 4, a breaking change across every schema, so it is accepted for now on this reach: a request body is capped at 1 MB (`express.json` limit) and every array in a schema has a `.max`, so the size the advisory needs cannot arrive; imports are read by a separate capped child process, not by zod. Revisit when zod 4 is adopted. exceljs (via uuid, moderate): only reads files an admin uploads, in the capped import child.
 
 ## Compliance — the operator's responsibility, not the product's
 

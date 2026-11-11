@@ -11,6 +11,7 @@ export type LinkErrorCode =
   | 'connection_closed'   // the connection dropped before a QR arrived
   | 'rate_limited'        // WhatsApp is throttling link attempts for this number or network
   | 'needs_phone'         // pairing-code mode without a phone number
+  | 'number_already_linked' // the phone that was scanned is already linked as another number of this organisation
   | 'gateway_error'       // something inside our own gateway
   | 'unknown';
 
@@ -50,6 +51,11 @@ const COPY: Record<LinkErrorCode, Omit<LinkErrorInfo, 'code' | 'statusCode' | 'a
     title: 'A phone number is needed',
     summary: 'Pairing-code mode needs the number being linked.',
     hint: 'Enter the number in full international form, for example +919876543210, or use the QR code instead.'
+  },
+  number_already_linked: {
+    title: 'That phone is already linked here',
+    summary: 'The phone that was scanned is already linked as another number of this organisation, so this one was unlinked again. Two numbers on one phone would send every message from the same account.',
+    hint: 'To add a second number, scan the QR code with a different phone. To move this phone to this entry, unlink the other entry first.'
   },
   gateway_error: {
     title: 'The gateway hit an internal error',

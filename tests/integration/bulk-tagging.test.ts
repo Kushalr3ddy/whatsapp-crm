@@ -1,4 +1,7 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// An import upload starts a reader process (R-016) that takes 2 to 3 s to start on a busy machine: the 5 s default timed out under a full run (2026-11-11).
+vi.setConfig({ testTimeout: 30_000 });
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import request from 'supertest';

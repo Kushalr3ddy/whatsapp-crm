@@ -4,11 +4,11 @@ import { setTenant, type Database, type Transaction } from '@crm/db';
 import { tenantDatabase } from './tenant.js';
 import type { ChannelProvider, NormalisedConnectionEvent, NormalisedNoticeEvent, NormalisedRetryEvent, NormalisedStatusEvent, Recipient } from '@crm/channels';
 import {
-  classifyLinkFailure, encodeLinkError,
+  classifyLinkFailure, encodeLinkError, linkErrorFor,
   dispatchCampaign, reconcileCampaign, writeOpenings, makeAntiBanPolicy,
   applyWhatsAppNotice, type AntiBanPolicy, recordHealthEvent, reencryptBatch,
   applyDeliveryStatus, markMessageFailedByProviderId, markDecryptBurst, liftRetryOnReceipt, conversationOfSent, snapshotDue, saveSnapshot,
-  registerRetryRequest, checkUnreached, reviewManyUndelivered, contactWroteAgain, handleInboundSafety,
+  registerRetryRequest, checkUnreached, markUnconfirmedSends, reviewManyUndelivered, contactWroteAgain, handleInboundSafety,
   type ProbeFn, type InboundSafetyResult
 } from '@crm/core';
 import { runLane, markInboundRead, type LaneResult } from './lane.js';
@@ -486,6 +486,10 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
     LIMIT 50`);
   for (const r of readRows as unknown as Array<{ id: string }>) await handleReadRequest(ctx, r.id);
 
+  // Sends a process lost track of (it died, or the database went, after WhatsApp took them): reported, never sent twice.
+  const unconfirmed = await markUnconfirmedSends(ctx.db, clockOf(ctx));
+  if (unconfirmed > 0) ctx.logger.error({ unconfirmed }, 'messages handed to WhatsApp were never confirmed: marked send_unconfirmed, not sent again');
+
   // One lane per number that has something queued. Each lane runs on its own, so a number waiting out a gap never holds up another.
   const laneRows = await ctx.db.execute(sql`
     SELECT DISTINCT v.sender_identity_id AS id
@@ -508,7 +512,49 @@ export async function sweepPendingWork(ctx: WorkContext): Promise<{ links: numbe
   // once this sweep's sends have gone.
   await dispatchCampaigns(ctx);
 
+  try {
+    await retryDownNumbers(ctx);
+  } catch (error) {
+    ctx.logger.error({ err: error instanceof Error ? error.message : String(error) }, 'could not retry numbers that are down');
+  }
+
   return { links: links.length, sends };
+}
+
+/** How long a linked number may stay down before the gateway tries it again itself, and how often it tries after that. */
+const DOWN_RETRY_MS = 10 * 60_000;
+/** When the gateway last tried each number, so a sweep every few seconds tries a down number at most once per `DOWN_RETRY_MS`. */
+const downRetriedAt = new Map<string, number>();
+
+/**
+ * A safety net under the adapter's own reconnects (R-026): a linked number that has been down for 10 minutes, and that nothing else is
+ * bringing back, is tried once, then again every 10 minutes. Never a number that was logged out, refused (403) or opened somewhere
+ * else (440): retrying those cannot help and looks like abuse. Before this only a gateway restart brought such a number back.
+ */
+export async function retryDownNumbers(ctx: WorkContext): Promise<number> {
+  const perOrg = await inEachOrg(ctx, async (c) => (await c.db.execute(sql`
+    SELECT si.id, si.phone_e164 AS phone
+    FROM channel_session cs JOIN sender_identity si ON si.id = cs.sender_identity_id
+    WHERE si.status = 'active' AND cs.connection_state = 'closed'
+      AND coalesce(cs.disconnect_reason, '') NOT IN ('logged_out', 'forbidden', 'connection_replaced')
+      AND cs.link_requested_at IS NULL AND cs.unlink_requested_at IS NULL
+      AND cs.updated_at < now() - make_interval(secs => ${DOWN_RETRY_MS / 1000})`)) as unknown as Array<{ id: string; phone: string | null }>);
+  let tried = 0;
+  const now = Date.now();
+  for (const s of perOrg.flat()) {
+    if (now - (downRetriedAt.get(s.id) ?? 0) < DOWN_RETRY_MS) continue;
+    const health = await ctx.provider.health(s.id);
+    if (health.state === 'open' || health.state === 'connecting') continue;
+    downRetriedAt.set(s.id, now);
+    tried += 1;
+    ctx.logger.info({ senderId: s.id }, 'number down for 10 minutes; trying it again');
+    try {
+      await ctx.provider.connect({ id: s.id, phoneE164: s.phone ?? '' });
+    } catch (error) {
+      ctx.logger.warn({ senderId: s.id, err: error instanceof Error ? error.message : String(error) }, 'could not bring the number back');
+    }
+  }
+  return tried;
 }
 
 /**
@@ -666,6 +712,27 @@ async function applyConnectionEventInOrg(
     await suspectBan(ctx, event.senderId, 'forbidden', event.at, { code: 403, reason: event.reason });
   }
 
+  if (event.state === 'open' && event.phoneE164 !== undefined && event.phoneE164 !== null) {
+    // The phone that opened is already linked here as another number of this organisation (X-006): the same WhatsApp account twice.
+    // Every send from the second entry would leave from the first one's number and replies would all land on the first, so the
+    // second is unlinked again and says why. It is never promoted to active.
+    const twin = (await ctx.db.execute(sql`
+      SELECT 1 FROM sender_identity si JOIN sender_identity o
+        ON o.org_id = si.org_id AND o.provider = si.provider AND o.id <> si.id
+      WHERE si.id = ${event.senderId} AND o.phone_e164 = ${event.phoneE164} AND o.status = 'active' LIMIT 1`
+    ) as unknown as unknown[]).length > 0;
+    if (twin) {
+      try { await ctx.provider.logout(event.senderId); } catch { /* already gone from WhatsApp's side */ }
+      await ctx.db.execute(sql`
+        UPDATE channel_session SET connection_state = 'closed', disconnect_reason = 'duplicate_number', linked_since = NULL,
+            link_error = ${encodeLinkError(linkErrorFor('number_already_linked'))}, updated_at = now()
+        WHERE sender_identity_id = ${event.senderId}`);
+      await ctx.db.execute(sql`UPDATE sender_identity SET status = 'linking', updated_at = now() WHERE id = ${event.senderId}`);
+      ctx.logger.warn({ senderId: event.senderId }, 'the phone that was scanned is already linked as another number here; unlinked again');
+      return;
+    }
+  }
+
   if (event.state === 'open') {
     // The first open after a link starts the clock for the "new number, go gentle" hint (F6 AC-2.5, AC-7.6).
     await ctx.db.execute(sql`
@@ -679,17 +746,19 @@ async function applyConnectionEventInOrg(
       SET status = 'active', updated_at = now()
       WHERE id = ${event.senderId} AND status = 'linking'`);
 
-    // Record the number this connection belongs to, so a linked number is not left reading "no number
-    // yet". Only fills a blank (a number someone typed in stays as typed), and only when no other number
-    // of this org already has that phone, which the unique index would otherwise reject.
+    // Record the number this connection belongs to, so a linked number is not left reading "no number yet". WhatsApp is the authority on
+    // which phone answered, so it also replaces a number that is recorded but different: a slot linked again with another phone must not keep
+    // the old phone's number (#114: the page showed the wrong number, a send to the old phone's number was refused as "your own number", and
+    // the duplicate check above compared against the old number). Not when another number of this org already has that phone, which the
+    // unique index would reject.
     if (event.phoneE164 !== undefined && event.phoneE164 !== null) {
       await ctx.db.execute(sql`
         UPDATE sender_identity si
         SET phone_e164 = ${event.phoneE164}, updated_at = now()
-        WHERE si.id = ${event.senderId} AND si.phone_e164 IS NULL
+        WHERE si.id = ${event.senderId} AND si.phone_e164 IS DISTINCT FROM ${event.phoneE164}
           AND NOT EXISTS (
             SELECT 1 FROM sender_identity o
-            WHERE o.org_id = si.org_id AND o.provider = si.provider AND o.phone_e164 = ${event.phoneE164})`);
+            WHERE o.org_id = si.org_id AND o.provider = si.provider AND o.id <> si.id AND o.phone_e164 = ${event.phoneE164})`);
     }
   }
 

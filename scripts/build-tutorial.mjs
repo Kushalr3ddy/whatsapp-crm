@@ -122,111 +122,90 @@ inbox under <b>Previously linked numbers</b>.</p>
 `);
 
 chapter('Importing contacts', `
-<p>The import wizard takes a CSV or Excel (.xlsx) sheet and turns it into contacts. It works in three steps: <b>Upload</b>,
-<b>Match columns</b>, <b>Review &amp; import</b>.</p>
-<h3>Step 1 · Upload</h3>
-${fig('07-import-upload', 'Step 1: drop a file or click to choose one.')}
-<p>Drop your file on the box, or click it to choose one. It uploads straight away; there is no Upload button.</p>
+<p>Import turns a CSV or Excel (.xlsx) sheet into contacts. It is one screen: you drop the file, the CRM <b>checks it and shows what will happen</b>, and only then do you press <b>Import</b>. <b>Nothing is saved until you do.</b></p>
+<h3>Drop the file</h3>
+<p>Drop your file on the box, or click it to choose one. It is checked straight away; there is no Upload button. While it works the screen shows the real stages (sending and reading the sheet, finding the name and number, checking each person against your contacts) and a running clock. Big sheets take a while; you can keep the tab open and nothing is lost.</p>
 <ul>
-<li>Your sheet needs a <b>header row</b> on top and at least one person underneath.</li>
-<li>The <b>same file cannot be imported twice</b>. If you upload identical bytes again you are told so, and an <b>Upload anyway</b> button
-lets you start a fresh import (people already in the CRM are matched by phone or email and updated, not duplicated).</li>
+<li>The sheet needs a <b>header row</b> on top and at least one person underneath.</li>
+<li>Numbers with no country code are read for the <b>Country</b> you choose (every country is listed, India first).</li>
+<li>Uploading the exact same file again says <b>You uploaded this exact file before</b>. Choose <b>Import it again</b> (people already in Contacts are matched by number and updated, not duplicated) or <b>Choose another file</b>.</li>
 </ul>
-<h3>Step 2 · Match columns</h3>
-<p>Columns you do not map are <b>not thrown away</b>: by default every column of the sheet is stored on the person (up to 200 columns), and <b>Choose columns</b> lets you keep only some.</p>
-${fig('08-import-match', 'Step 2: tell the CRM what each column is.')}
-${markers([
-  [1, '<b>Which columns hold phone numbers?</b> Tick every column that has a number. If a person has more than one, they are tried in the order shown. Use <b>Another column holds numbers…</b> to add more. Numbers with no country code are read as Indian numbers.'],
-  [2, '<b>Name and email.</b> Pick the column for the name (or join a first-name and a last-name column) and, optionally, the email.'],
-  [3, '<b>Select the columns to be stored.</b> Tick the extra columns you want kept on each person (up to 40). Unticked columns are not stored. Columns that look personal (date of birth, salary, Aadhaar, PAN, address, gender and so on) are marked <i>personal</i> and are <b>never stored</b> while "Never store columns marked personal" stays ticked.'],
-  [4, '<b>Preview</b>: a dry run. Nothing is written.'],
-  [5, '<b>Import</b>: does it for real.'],
-  [6, '<b>Start over</b>: clears everything back to the file box.']
-])}
-<p>The phone column is the only required one: someone you cannot reach by number is not a contact. The CRM also guesses the phone column from the
-values, so it is usually already ticked.</p>
-<p>The <b>Tag everyone in this file</b> box is filled with the file’s name. Keep it (every imported person gets that tag, which makes them
-easy to find later) or clear it to skip tagging.</p>
-<h3>Step 3 · Preview, then import</h3>
-${fig('09-import-preview', 'Preview: counts of what would happen, with nothing saved yet.')}
+<h3>What the check shows</h3>
+<ul>
+<li><b>Name and mobile number.</b> The CRM finds these columns itself and shows real numbers from your file as examples. If two columns look like numbers it asks <b>Which one should we message?</b> (pick one, then press <b>Use these</b>). You can use one name column, or <b>First name + last name, joined</b>. A column cannot be both the name and a number. If nobody in the file has a mobile number it can use, it says so and nothing can be imported.</li>
+<li><b>Other columns</b> are optional and come in as they are. The screen shows them as a count with a few column names.</li>
+<li><b>Details some people are missing</b>, with how many people lack each.</li>
+<li><b>A few people from your file</b>: three people picked at random, with everything the file says about them, so you can see it was read the right way.</li>
+<li><b>People in your sheet</b>: the sheet as a small read-only table (25 people a page, every column, with the sheet’s own row numbers). The details people lack are filter chips at the top; tick several and choose <b>Lack any of these</b> or <b>Lack all of these</b>, or use <b>Search every column</b>. One <b>Download</b> gives everyone the table shows (not only the page), as your sheet’s own columns, so you can fill the gaps and import again. You cannot edit people here.</li>
+</ul>
+<h3>The tag</h3>
+<p>Every person in the file gets a tag, and the tag is <b>required</b>: it is shown at the top and next to the Import button, and Import stays blocked until it has a name. It starts as the file’s name. The tag is how you find these people later and how you pick them for a campaign.</p>
+<h3>Rules the import follows</h3>
+<ul>
+<li>A person already in Contacts is matched by number and updated, never duplicated. If a value in the sheet differs from the one saved, <b>the newer file wins</b>. A blank cell or <i>NA</i> never erases anything.</li>
+<li>A row with no name is saved with no name (campaigns then say “Hi there”). Names are never changed.</li>
+<li>The same number twice in one file counts as one new person and one already there.</li>
+<li>A bad email does not fail a row with a good number. A row with an email but no number is still imported.</li>
+</ul>
+<h3>Importing</h3>
 ${steps([
-  'Press <b>Preview</b>. You see: "N read · N contacts would be created · N updated · N errors".',
-  'If a row has a bad number you get a <b>Rows to fix</b> box. Those rows are left out of the import. Press <b>Download these rows (CSV)</b>, fix them in your sheet and upload again.',
-  'Press <b>Import</b>. You see "✓ Imported".',
-  'Choose what next: <b>View the N imported contacts</b> or <b>Message these people</b> (starts a campaign for exactly this import).'
+  'Check the file, the tag and the country.',
+  'Press <b>Import</b>. The screen lists what it does, in order. Large sheets take a few minutes; it says so and keeps working.',
+  'The Done screen shows <b>Added to your contacts</b>, <b>Already in your contacts</b> and <b>Skipped</b> (the skipped rows can be downloaded), with <b>View them in Contacts</b>, <b>Start a campaign</b> (or <b>Link a number first</b> if no WhatsApp number is linked) and <b>Import another file</b>.'
 ])}
-${tip('Pressing <b>Import</b> before <b>Preview</b> shows a red note under the buttons asking you to preview first. If you leave the page halfway and come back, the wizard remembers where you were; once an import has finished, coming back starts fresh.')}
+${tip('Your place is kept if you reload the page, and leaving halfway asks first.')}
 `);
 
 chapter('Contacts: your contact book', `
-${fig('06-contacts', 'The Contacts page.')}
-${markers([
-  [1, '<b>Search</b> by name, phone or email, then press <b>Search</b>.'],
-  [2, '<b>Tag:</b> chips. Click one to show only people with that tag (the small number is how many).'],
-  [3, '<b>Tag many at once</b>.'],
-  [4, '<b>Campaign from checked contacts</b>.'],
-  [5, '<b>Import contacts</b>.']
-])}
-<p>The list shows the first 50 matches. Use search, tags and the <b>Dates and order</b> section to narrow it
-(by when people were added or last imported, and newest, oldest or A–Z).</p>
+<p>Contacts is one table of everyone, with the places they came from down the left side.</p>
+<h3>Finding people</h3>
+<ul>
+<li><b>Down the left:</b> <b>Imported files</b>, <b>Your tags</b> and <b>Saved lists</b>. Click one to show only those people (on a phone these are behind one <b>Source</b> button). Each file’s own tag is listed first among a person’s tags.</li>
+<li><b>The table</b> shows Name, Phone, Email, Tags, Last campaign, Imported and Last active (<i>Never replied</i> when they never wrote), with the total and page numbers.</li>
+<li><b>Search</b> looks in name, phone and email only.</li>
+<li><b>Filters</b> are grouped: <b>How they responded</b>, <b>What you have sent</b>, <b>Can you reach them</b> and rules on the columns of your files. A live count shows how many people match, the filters appear as chips you can remove, and <b>Clear all filters</b> starts again.</li>
+<li><b>Columns</b> chooses which of your file’s columns to show in the table. Every column is kept, and all of them are hidden at first.</li>
+<li><b>Save as a list</b> keeps the current filters as a <b>Saved list</b>. A saved list can be picked as the audience of a campaign.</li>
+</ul>
 <h3>Opening a person</h3>
-<p>Click a row to open it. You can see when they were added and last imported, add or remove tags (<b>+ tag…</b> then <b>Add</b>),
-edit custom fields (<b>Save fields</b>) and mark the person <b>Do not contact</b> (<b>Allow contact</b> reverses it).</p>
-${care('<b>Do not contact</b> means: never message this person. Replies and campaigns skip them. Use it for anyone who asks to stop. Only an admin can knowingly override it for one message or one campaign, with a written reason that is saved.')}
+<p>Click a row to open the person at the side. You see their details, every column kept from your file, the campaigns that messaged them and <b>Open chat</b>. It stays open if the list reloads underneath.</p>
+${care('<b>Do not contact</b> means: never message this person. Replies and campaigns skip them, and they show as <i>Do not contact</i> in the table. Use it for anyone who asks to stop. Only an admin can knowingly override it for one message or one campaign, with a written reason that is saved. The switch to turn it on or off is on the classic Contacts page, <code>/contacts/classic</code> (not linked from the menu).')}
 <h3>Tags</h3>
-<p>A tag is a label such as "pune" or "interview-stage". Add one person at a time by opening their row, add many people at once with
-<b>Tag many at once</b> (choose <b>Add tag</b> or <b>Remove tag</b>, pick the tag and who it applies to, press <b>Preview</b>, then <b>Confirm</b>),
-or create a new tag in <b>New tag</b>. Tags are how you pick campaign audiences, so tag people as you go.</p>
+<p>A tag is a label such as “pune” or “interview-stage”. Every import gives its people the tag you chose for that file. To tag many people at once, tick them (or choose all the people the filters match), choose <b>Add tag</b>, then find a tag or type a new name. The change can be undone straight afterwards. A tag you no longer need can be deleted with <b>Delete tag</b>.</p>
 <h3>Custom fields</h3>
-<p><b>Custom fields</b> are extra columns of your own (text, number, date or a pick-list), for example "City". ${admin} Admins add and remove them.
-Anything you add can be used in a campaign as <code>{{city}}</code>.</p>
-<h3>Making a campaign from people you ticked</h3>
-<p>Tick people in the list, open <b>Campaign from checked contacts</b>, type a name and message, choose the number and press
-<b>Create draft from checked</b>. People marked do-not-contact cannot be ticked.</p>
+<p>Extra columns of your own (text, number, date or a pick-list), for example “City”, are defined on the classic Contacts page, <code>/contacts/classic</code>. ${admin} Anything you add can be used in a campaign as <code>{{city}}</code>.</p>
+<h3>Messaging people from here</h3>
+<p>Start a campaign and choose files and tags, or <b>Pick people in Contacts</b> (see <b>Campaigns</b>).</p>
 <h3>Exporting ${admin}</h3>
-<p>Admins see <b>Export CSV</b> and <b>Export vCard</b>. Every export is recorded.</p>
+<p>Admins see <b>Export</b>, which downloads the people in the current view as a CSV. Every export is recorded.</p>
 `);
 
 chapter('Inbox: answering customers', `
-${fig('03-inbox', 'The inbox list.')}
-${markers([
-  [1, 'Assignee filter: <b>Mine</b> (chats assigned to you or where you were added), <b>Unassigned</b>, <b>All</b>.'],
-  [2, 'Status filter: <b>Open</b> (the default), <b>Closed</b>, <b>Any</b>.'],
-  [3, 'A conversation. Click it to open.']
-])}
-<p>Each row shows the person, the last activity time, an unread count, how many messages, which of your numbers it is on, who owns it
-(or <i>Unassigned</i>), a <b>closed</b> badge, and a red <b>⚠</b> if a message in it is waiting to be sent. The list refreshes itself every few seconds.</p>
-<h3>Handing one chat to the AI</h3>
-<p>In the chat header, <b>Hand to AI</b> gives this one conversation to the AI assistant (it needs to be switched on); <b>Take back from AI</b> returns it to you. The AI stops at once when you take it back. This is the same as choosing the AI assistant as the assignee.</p>
+<h3>The list</h3>
+<ul>
+<li><b>Search</b> looks in the person’s name, number and the last message, and shows the matching words highlighted.</li>
+<li><b>Five quick views</b>, each with a count: <b>All</b>, <b>Needs you</b> (an open chat where the customer spoke last and a person is meant to answer, or where the AI is stuck), <b>Unread</b>, <b>AI answering</b> and <b>You answering</b>.</li>
+<li><b>Filters</b> (one button): campaign, imported file, owner and status. What you pick appears as chips you can remove.</li>
+</ul>
+<h3>Inside a chat</h3>
+<p>The header shows only the person’s name and <b>AI is answering</b> or <b>You’re answering</b>. Dividers in the timeline show where a campaign messaged them, and internal notes sit in the timeline too. <b>Details</b> opens a panel at the side, closed until you ask for it: who has the chat (the AI assistant, a person or nobody), <b>Resolve</b> and <b>Reopen</b> (with Undo), the number and whether it is linked, the campaigns that messaged this person, and <b>Open in Contacts</b>. Admins add and remove the other people on a chat there.</p>
+<h3>Taking over from the AI</h3>
+<p>While the AI owns a chat, the reply box is blurred with a <b>Take over</b> button in the middle. Pressing it stops the AI at once (it checks who owns the chat before it writes and again before it sends). The chat header then offers <b>Hand back</b>, which gives the chat to the AI assistant again (it needs to be switched on). If the AI skips a chat, a card says so with <b>Reply myself</b> and <b>Let the AI try again</b>.</p>
 <h3>When a customer’s phone says “Waiting for this message”</h3>
-<p>Under a message you sent you may see <b>delivered, but the other phone could not read it yet</b>. That means WhatsApp delivered it but their phone could not unlock it, so it shows “Waiting for this message” for them until it works. It usually fixes itself in a moment. If the composer says <b>the encryption session of this number looks broken</b>, unlink the number on <b>Linked numbers</b> and link it again. Messages you type on your own phone or on WhatsApp Web only reach the inbox once that is fixed.</p>
-<h3>Inside a conversation</h3>
-${fig('04-thread', 'An open conversation.')}
-${markers([
-  [1, '<b>Assignee</b>: who owns this chat. Choose a person (or the AI assistant) to hand it over.'],
-  [2, '<b>Resolve</b>: closes the chat (it leaves the Open list). It becomes <b>Reopen</b> on a closed chat.'],
-  [3, '<b>Add person…</b> ' + admin + ': add an extra person who may reply and sees the chat under "Mine".'],
-  [4, '<b>Reply</b>: the message goes to the customer.'],
-  [5, '<b>Note</b>: an internal note only your team sees.']
-])}
-<p>The right-hand panel shows the contact, who it is assigned to, its status and the number of messages, with <b>Open in Contacts</b>.</p>
+<p>Under a message you sent you may see <b>delivered, but the other phone could not read it yet</b>. That means WhatsApp delivered it but their phone could not unlock it, so it shows “Waiting for this message” for them until it works. It usually fixes itself in a moment. If the box says <b>the encryption session of this number looks broken</b>, unlink the number on <b>Linked numbers</b> and link it again. Messages you type on your own phone or on WhatsApp Web only reach the inbox once that is fixed.</p>
 <h3>Replying</h3>
 ${steps([
-  'Type in the box and press <b>Send</b> (or press Enter; Shift+Enter makes a new line).',
-  'The 📎 button attaches a file (image, video, audio, PDF or Office document). It sends as soon as you choose it, and anything typed becomes its caption.',
-  'If your organisation has <b>saved replies</b>, a <b>Saved reply…</b> dropdown inserts one; <code>{{name}}</code> becomes the person’s name.',
+  'Choose <b>Reply</b> (sent to the customer) or <b>Note</b> (an internal note only your team sees; press <b>Add note</b>). Notes appear in the chat marked “internal, not sent”.',
+  'Type your message. The toolbar has bold, italic, strike-through and monospace, <b>Fill-in</b> to insert something from the person (name, first name, phone, email or a column kept from their file), and <b>Saved replies</b>. A <b>Preview</b> line shows the message as WhatsApp will show it. You can paste up to five pictures.',
+  'Press <b>Send</b>. If the preview shows a fill-in that is blank or unknown, Send waits until you fix it.',
   'Watch the little status under each message: sent, delivered, read or failed.'
 ])}
-<h3>Internal notes</h3>
-${fig('05-note', 'Writing an internal note. Nothing here is sent to the customer.')}
-<p>Press <b>Note</b>, type, and press <b>Add note</b>. Notes appear in the thread, centred and marked "internal, not sent". Use them to
-hand a chat over ("asked about night shifts, call back after 4pm").</p>
-<h3>Chat ownership: assigning, resolving, adding people</h3>
+<p>This is the same message box as <b>New campaign</b>, so the formatting and fill-ins work the same way in both.</p>
+<h3>Who can reply</h3>
 <ul>
-<li><b>Assign</b> a chat to yourself to take it, or to a colleague to hand it on. If you assign it to the <b>AI assistant</b>, the assistant answers (see the AI chapter).</li>
-<li>A chat owned by another agent is <b>locked</b> to you: you can read it and add notes, but Reply is disabled until it is reassigned to you.
-Admins and people added to the chat are never locked.</li>
-<li><b>Resolve</b> when the conversation is finished; <b>Reopen</b> if it picks up again.</li>
+<li>Only a chat’s owner or an admin can send in it. Other people on the chat can read it and add notes, but cannot reply.</li>
+<li>The first person to send in a chat nobody owns becomes its owner. An admin replying to someone else’s chat does not take it.</li>
+<li>To hand a chat to a colleague, change who has it in <b>Details</b>.</li>
 </ul>
 <h3>Warnings you may meet in a chat</h3>
 ${table(['You see', 'What it means and what to do'], [
@@ -246,17 +225,16 @@ ${fig('11-campaigns', 'The Campaigns list: Sending now, Drafts and Finished.')}
 <h3>Creating a campaign</h3>
 ${fig('12-campaign-new', 'The new campaign form.')}
 ${markers([
-  [1, '<b>Write with AI</b> (appears when the AI assistant is on): describe the goal and the text lands in the message box for you to edit.'],
-  [2, '<b>Name</b>: for you, not sent to anyone.'],
-  [3, '<b>Message</b>: what each person receives.'],
-  [4, 'Audience: <b>A tag</b>, <b>An import</b>, <b>A saved audience</b>…'],
-  [5, '…or <b>Build a filter</b> on the spot.']
+  [1, '<b>Name</b>: for you, not sent to anyone.'],
+  [2, '<b>Message</b>: what each person receives. The preview on the right shows it as WhatsApp will, for a real person.'],
+  [3, 'Who gets it: <b>A file</b> or <b>A tag</b>, as many as you like. A person in more than one is counted once.'],
+  [4, '<b>Review</b>: who it reaches, who is skipped and why, how long it takes, then <b>Create draft</b>. A draft has an <b>Edit</b> button, on its page and on its row in the list.']
 ])}
 ${steps([
-  '<b>Start from a saved template (optional).</b> The box <b>Start from a saved template</b> lists the templates saved on the AI page. Picking one fills the message box; you can still change the text. A template that carries instructions for the AI also makes this an <b>AI campaign</b> (see below).',
+  '<b>Start from a saved template (optional).</b> Under <b>Message</b>, choose <b>Use a template</b> to list the templates saved on the AI page. Picking one fills the message box; you can still change the text. A template that carries instructions for the AI also makes this an <b>AI campaign</b> (see below).',
   '<b>Write the message.</b> Use <code>{{name}}</code> for the person’s name and <code>{Hi|Hey|Hello}</code> to vary wording: each person gets a slightly different message, which is safer than hundreds of identical ones. Custom fields work too, as <code>{{city}}</code>.',
   '<b>Add a picture or GIF (optional).</b> One JPG, PNG, WebP or GIF per campaign, up to 5 MB. It goes to everyone with your message as the caption, at the same safe pace. A GIF plays as a short looping video. <b>Use one I uploaded before</b> reuses an earlier picture.',
-  '<b>Choose who gets it.</b> Pick exactly one: a tag, an import, a saved audience, or a filter you build (has tag, reply status, "messaged in the last N days"; a live count shows "N people match right now"). The audience freezes the moment you start, so later changes never alter a running campaign. People marked do-not-contact are always left out.',
+  '<b>Choose who gets it.</b> Pick one or more files or tags (or send to everyone, or pick people in Contacts): the review panel shows how many people it reaches, how many are left out and why, and offers a list to download for anyone missing a fill-in. The audience freezes the moment you start, so later changes never alter a running campaign. People marked do-not-contact are always left out.',
   '<b>Send from.</b> Choose the number.',
   'Press <b>Create draft</b>. Nothing is sent yet.'
 ])}
@@ -362,7 +340,6 @@ ${table(['You see', 'It means'], [
   ['<b>— cancelled</b>', 'Cancelled before it started.']
 ])}
 <p><b>Cancel</b> appears on every waiting request. One that has started cannot be stopped, but it can be undone from the campaign or chat. Requests stay listed for 24 hours. Up to 20 can wait at once. Admins see everyone’s; others see only their own.</p>
-<p><b>Write with AI</b> on the new-campaign form uses the same queue: it shows "Waiting in the AI queue, 2 ahead of you" (with Cancel), then a spinner, then the text appears in the message box. Read and edit it; nothing is sent until you create and start the campaign.</p>
 <h3>Warnings above the message box</h3>
 ${table(['The banner says', 'What it means and what to do'], [
   ['<b>…it’s night where the contact is</b>', 'It waits for their morning.'],

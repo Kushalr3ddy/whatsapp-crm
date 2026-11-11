@@ -20,6 +20,8 @@ const changeSettings = z.object({
   defaultPurpose: optionalText(300).optional(),
   stopWords: words.optional(),
   restartWords: words.optional(),
+  /** What "messaged recently" means on a new campaign, in days. */
+  recentDays: z.number().int().min(1).max(60).optional(),
   quietHours: z.object({
     enabled: z.boolean().optional(), start: hhmm.optional(), end: hhmm.optional(), timeZone: zone.optional()
   }).optional()

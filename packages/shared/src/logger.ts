@@ -9,22 +9,27 @@ import type { Config } from './config.js';
  * and relabelling the `Z` suffix, which silently breaks every log tool that parses them
  * (docs/00-prior-art.md, M25). Localise in the UI, never in the log.
  */
-export function createLogger(config: Pick<Config, 'LOG_LEVEL' | 'NODE_ENV'>) {
-  return pino({
+export function createLogger(config: Pick<Config, 'LOG_LEVEL' | 'NODE_ENV'>, destination?: { write(line: string): void }) {
+  const options = {
     level: config.LOG_LEVEL,
     timestamp: () => `,"time":"${new Date().toISOString()}"`,
     base: { service: 'whatsapp-crm' },
-    // Field ALLOWLIST, not a denylist — a newly added field is redacted by default
-    // rather than leaked by default (docs/09-security.md).
+    // A DENYLIST: a header or field is written unless it is named here, so every header that carries a credential must be named, on the
+    // request and on the response. The response is the one that was missed: the request logger writes `res.headers`, and the sign-in
+    // answer's `set-cookie` holds the raw session token and the CSRF token (R-033).
     redact: {
-      paths: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token',
-              '*.phone', '*.phone_e164', '*.body_enc', '*.value_enc', '*.apiKey'],
+      paths: [
+        'req.headers.authorization', 'req.headers.cookie', 'req.headers["x-csrf-token"]', 'req.headers["x-api-key"]', 'req.headers["proxy-authorization"]',
+        'res.headers["set-cookie"]', 'res.headers["x-csrf-token"]', 'res.headers.authorization',
+        '*.password', '*.token', '*.phone', '*.phone_e164', '*.body_enc', '*.value_enc', '*.apiKey'
+      ],
       censor: '[redacted]'
     },
-    ...(config.NODE_ENV === 'development'
+    ...(config.NODE_ENV === 'development' && destination === undefined
       ? { transport: { target: 'pino-pretty', options: { colorize: true, translateTime: false } } }
       : {})
-  });
+  };
+  return destination === undefined ? pino(options) : pino(options, destination);
 }
 
 /** The logger type, so modules can accept one without importing pino directly. */

@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation';
-import { getLlmSettings, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
-import type { LlmSettings } from '@/lib/crm';
+import { getAiSettings, getAiAlwaysOnRules, getAiUsage, getLlmSettings, getMe, CrmApiError, NotAuthenticatedError } from '@/lib/crm';
+import type { AiSettings, AiUsageLog, LlmSettings } from '@/lib/crm';
 import { PageHeader } from '../../ui';
 import { AiTabs } from '../ai-tabs';
+import { AiPanel } from '../ai-panel';
+import { UsageLog } from './usage-log';
 import { LlmForm } from './llm-form';
 
 /** Rendered per request: what is in use comes from the settings file the API reads. */
@@ -16,10 +18,14 @@ export const dynamic = 'force-dynamic';
 export default async function AiSettingsPage() {
   let settings: LlmSettings | null = null;
   let isAdmin = false;
+  let ai: AiSettings | null = null;
+  let usage: AiUsageLog | null = null;
+  let rules: string[] = [];
   let failure: string | null = null;
   let expired = false;
   try {
     [isAdmin, settings] = await Promise.all([getMe().then((m) => m.role === 'admin'), getLlmSettings()]);
+    if (isAdmin) [ai, rules, usage] = await Promise.all([getAiSettings(), getAiAlwaysOnRules().catch((): string[] => []), getAiUsage().catch((): AiUsageLog | null => null)]);
   } catch (error) {
     if (error instanceof NotAuthenticatedError) expired = true;
     failure = error instanceof CrmApiError ? error.message : 'Could not reach the API.';
@@ -27,7 +33,7 @@ export default async function AiSettingsPage() {
   if (expired) redirect('/login?next=/ai/settings');
 
   return (
-    <main className="page page-wide">
+    <main className="page page-full">
       <PageHeader title="AI assistant" description="Choose which AI the assistant, the templates and the campaign wording use." />
       <AiTabs />
       {failure !== null && <p className="notice notice-danger mt-4">{failure}</p>}
@@ -42,6 +48,13 @@ export default async function AiSettingsPage() {
         </section>
       )}
       {failure === null && settings !== null && isAdmin && <LlmForm settings={settings} />}
+      {failure === null && ai !== null && isAdmin && (
+        <>
+          <h2 className="mt-10 text-lg font-semibold">Switch the AI on</h2>
+          <AiPanel settings={ai} rules={rules} />
+        </>
+      )}
+      {failure === null && usage !== null && isAdmin && <UsageLog usage={usage} />}
     </main>
   );
 }

@@ -74,6 +74,7 @@ mockups/
 *.env.bak-*
 dedup-report-*.csv
 regression-report.md
+live-suite-report.md
 
 # Tester feedback batches: screenshots and notes show real names and phone numbers, and this repository is public.
 dev-feedback-*/

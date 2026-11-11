@@ -19,8 +19,15 @@ export async function GET(req: Request): Promise<Response> {
   const session = jar.get('crm_session')?.value ?? '';
   if (session === '') return new Response('Not authenticated.', { status: 401 });
 
-  const format = new URL(req.url).searchParams.get('format') === 'vcf' ? 'vcf' : 'csv';
-  const upstream = await fetch(`${baseUrl()}/api/v1/contacts/export?format=${format}`, {
+  const incoming = new URL(req.url).searchParams;
+  const format = incoming.get('format') === 'vcf' ? 'vcf' : 'csv';
+  // The Contacts screen's search, source and filters travel with it, so the file holds the people on screen.
+  const query = new URLSearchParams({ format });
+  for (const k of ['q', 'tag', 'file', 'filter']) {
+    const v = incoming.get(k);
+    if (v !== null && v !== '') query.set(k, v);
+  }
+  const upstream = await fetch(`${baseUrl()}/api/v1/contacts/export?${query.toString()}`, {
     headers: { Cookie: `crm_session=${session}`, ...(await clientIpHeaders()) }, cache: 'no-store'
   });
   if (!upstream.ok) {

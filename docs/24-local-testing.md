@@ -223,6 +223,12 @@ assigned to someone else; the composer disables Reply and offers a note instead.
 
 ---
 
+## The Inbox screen (2026-11)
+
+Run a production build of the web app, the API and a gateway with `GATEWAY_CHANNEL=fake`, then `npm run local:seed` for three chats. Check at 1280 px and 375 px: search (`/` jumps to it), the chips, Filters, opening a chat, Details, Take over and Hand back to AI, a reply with a fill-in (the Preview line shows the person's values), a note, a pasted picture (up to five), Resolve and Undo.
+
+Give every process its own `STORAGE_PATH` (an absolute path) when several stacks share one machine: a gateway that reads another checkout's `./storage` fails a picture send with `no object at key`. A gateway left running from an earlier checkout will also pick up your database's messages, so check `pg_stat_activity` for `listen "gateway"` connections.
+
 ## Creating a contact
 
 The single-person route the host app uses (`contacts:write`). At least one of `phone` / `email`;
@@ -373,10 +379,25 @@ nothing leaves the machine; it refuses a database that is not on this host. The 
 
 ### What the app looks like now
 
-Sign in lands on **Overview**. The sidebar is Overview · Inbox · Contacts · Numbers · Import ·
-Broadcast. **Saved audiences** (what Segments became) is reached from Broadcast; a campaign's audience
-can also be built inline with a live count. **Numbers** shows a banner and a health timeline when a
-number looks restricted, and a red count on the sidebar item.
+Sign in lands on **Overview**. The sidebar is Overview · Inbox · Contacts · Linked numbers · Import ·
+Campaigns · Team · AI assistant · Security · Billing (a placeholder), dark in both themes; on a phone one
+menu button opens the same list. The look is "Pulse" (redesign step 0): one violet accent, Geist and Geist
+Mono at a 16px root, Lucide icons, and four motion speeds (100, 150, 200 and 300 ms) that move only
+transform and opacity. The tokens and shared classes are in `apps/web/app/globals.css`. **Saved audiences**
+(what Segments became) is reached from Campaigns; a campaign's audience can also be built inline with a live
+count.
+
+The **Campaigns list** (`/broadcast`) groups campaigns as Sending now, Drafts and Finished. Each row shows the
+name, a date such as "1 Nov 2026, 9:38 pm" (in `SEND_TIMEZONE`, no seconds), how many people, the sending
+number and the start of the message, with each {{fill-in}} drawn as a chip. A campaign that is sending also
+shows when it finishes ("Finishes about 2:52 pm · 38 min left"), read from `GET /campaigns/:id/eta`; if that
+cannot be read the row shows no finish time. The date and estimate wording is in `apps/web/lib/campaign-time.ts`.
+
+A **campaign page** (`/broadcast/[id]`) shows a progress card (people reached out of the total, with a
+two-colour bar), one row of status chips that filter the list (Everyone, Sent, Queued, Pending, Skipped,
+Failed), and the recipients. Clicking a recipient opens that person's chat in a side panel beside the list
+(slides in over 200 ms, Esc closes it at once) with the reply box. A recipient with no conversation yet is
+a plain row. The panel reads the same data as the inbox thread, and opening it marks the chat as read.
 
 ### Sample data
 
@@ -388,7 +409,24 @@ use it as the fixture the browser tests upload.
 
 `npm run test:e2e` signs in with `TEST_EMAIL` / `TEST_PASSWORD` from `.env` (the existing local
 admin). Specs scope sidebar links with the `nav(page)` helper and open collapsed panels with
-`openDetails`. It starts the stack itself if it is not already up.
+`openDetails`. It starts the stack itself if it is not already up. `tests/e2e/campaign-page.spec.ts`
+covers the campaign page: the progress card, the status chips, and a recipient row opening and closing the
+chat panel. `tests/e2e/campaigns-list.spec.ts` covers the list: a draft in its group, the date, people count and
+sender on its row, and the row opening the campaign. `tests/e2e/new-campaign.spec.ts` covers the New campaign screen: the
+review panel following the picks, the fill-in table, a key that is not a column stopping the draft, the draft being created, and
+a draft being edited (Edit opens it with its values, Save changes changes the same draft), and
+"Draft with AI" being gone. The other campaign specs make their drafts through `fillNewCampaign` and `createDraft` in
+`tests/e2e/helpers.ts` (the screen has no form fields named `name`, `body` or `fromTagId` any more). A draft is not made for nobody,
+so a spec needs a person in its tag first. The date and estimate wording has unit tests in `apps/web/lib/campaign-time.test.ts`, and the
+New campaign wording, fill-in checks, months and finish estimate in `apps/web/lib/new-campaign.test.ts` (`npm test`).
+
+`tests/e2e/contacts-screen.spec.ts` covers the Contacts screen (each run imports its own file, so it can count exactly): a file as a source, search, Filters with a live count and a chip, Select all and Add tag with Create tag and Undo, deleting a tag of your own (the file's own tag has no delete), Save as a list and opening it, Columns, and the person panel. The controls the design has no place for (do-not-contact switch, defining saved columns) are exercised at `/contacts/classic`. On a busy machine these specs need longer waits than the default 10 s (the import step alone can take longer): run them with a config that sets `expect.timeout` to 45 s. The screen's rules (what a filter control means, chips, the address, dates) have unit tests in `apps/web/lib/contacts-screen.test.ts`; the API and the SQL rules in `tests/integration/contacts-screen.test.ts` (the filters, paging and total, "Select all N" tagging exactly the filtered set, bound parameters, the file's tag refusing delete, export with the same filter).
+
+**Trying the New campaign screen on its own database.** The shared dev database may be behind this branch's migrations, and the
+API of another checkout does not have the new routes. For a look without touching them: create a database next to the dev one
+(`docker exec <db container> createdb -U dev whatsapp_crm_nc`), run `packages/db/src/migrate.ts` with `DATABASE_URL` pointing at it,
+create an org with `scripts/admin.ts org`, load a CSV through `POST /imports` and `/imports/:id/run` (map the columns you want as
+fill-ins under `fields`), start the API with `PORT=3104` and that `DATABASE_URL`, and the web app with `CRM_API_URL=http://localhost:3104`.
 
 ---
 
@@ -417,15 +455,23 @@ clean day. CI does all of this in the `e2e` job.
 Sign in at `localhost:3001/login` as the test admin, with the seed in place.
 
 - **Overview** — counts match the seed; no console errors.
-- **Inbox** — Open shows Asha Rao and Bilal Khan, Closed shows Chitra Nair; *Mine* shows only Bilal; opening
-  Asha clears her unread badge; add a note (it appears, nothing is "sent"); Resolve then Reopen.
+- **Inbox** — the five views (All, Needs you, Unread, AI answering, You answering) each show a count; *Filters* → status
+  *Closed* shows Chitra Nair and *Open* shows Asha Rao and Bilal Khan; search a word from a message and the row shows it
+  highlighted; opening Asha clears her unread badge; choose *Note*, add a note (it appears in the chat, nothing is "sent"); in
+  *Details*, Resolve then Reopen (each has Undo). *Needs you* is an open chat where the customer spoke last and a person is meant
+  to answer, or where the AI is stuck.
 - **Composer** — with the fake gateway up, reply to a thread and watch it go queued → sent; with it down the
   composer locks to notes and says why.
-- **Contacts** — search "Farhan" narrows the list; tag chip filters; the do-not-contact toggle blocks a reply;
-  *Tag many at once* previews a count before it applies; export (admin) downloads CSV and vCard.
-- **Import** — upload `tests/fixtures/import-contacts.csv` (add a unique row, same bytes are refused), columns
-  map themselves, *Preview* writes nothing, *Import* creates people and tags them.
-- **Broadcast** — new campaign from a tag, from an import, from *Build a filter* (live count), preview, start,
+- **Contacts** — a file or tag on the left narrows the table and shows the total; search "Farhan" narrows it further
+  (name, phone and email only); *Filters* shows a live count and a removable chip, and *Save as a list* keeps it; ticking
+  people (or "Select all N") and *Add tag* tags them, with Undo; a row opens the person at the side; export (admin) downloads
+  a CSV. The do-not-contact switch lives on `/contacts/classic`; it blocks a reply.
+- **Import** — drop `tests/fixtures/import-contacts.csv`: the screen shows its stages, then the check (real numbers as examples,
+  the name and number columns found, three random people, the *People in your sheet* table). Nothing is saved at this point.
+  The tag starts as the file's name and **Import stays blocked until it has a name**. Dropping the same bytes again says "You
+  uploaded this exact file before" (*Import it again* or *Choose another file*). *Import* creates people and tags them; the Done
+  screen shows Added, Already in your contacts and Skipped, with links to Contacts and a new campaign.
+- **Broadcast** — new campaign from one or several files or tags, or everyone (the review counts each person once), preview, start,
   pause, resume, cancel; per-recipient results filter by status.
 - **Numbers** — the seeded card shows its name, number and whether it is linked.
 - **Saved audiences** — "Seed — replied" is listed; preview count works and a segment can be saved.

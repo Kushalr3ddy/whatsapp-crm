@@ -14,48 +14,81 @@ const login = z.object({
   password: z.string().min(1).max(512)
 });
 
-/** After this many consecutive failures for one email, refuse for a while. */
+/** After this many consecutive failures for one email from one address, refuse for a while. */
 const LOCKOUT_AFTER = 5;
 
 /** How long the lockout lasts, growing with each further failure. */
 const LOCKOUT_BASE_MS = 30_000;
+const LOCKOUT_MAX_MS = 15 * 60_000;
 
-/** Tracked per email: how many failures in a row, and when attempts may resume. */
-interface Attempts { failures: number; blockedUntil: number }
+/** One address may fail this many sign-ins, whatever emails it tries, in one window, before it is refused for the rest of the window. */
+const IP_FAILURES_PER_WINDOW = 30;
+const IP_WINDOW_MS = 15 * 60_000;
+
+/** Tracked per (address, email): how many failures in a row, and when attempts may resume. */
+interface Attempts { failures: number; blockedUntil: number; lastAt: number }
+/** Tracked per address: failures in the current window, across every email. */
+interface IpWindow { startedAt: number; failures: number }
 
 /**
  * Login throttling.
  *
- * In-process on purpose for now: the lean preset runs one API process, and a shared store
- * would mean Redis. That is a real limitation rather than a hidden one — with several
- * replicas each would count separately, so this moves into the rate-limit layer with the rest
- * of it (P9). It is still far better than nothing, which is what was here before.
+ * The lock is per (address, email), not per email: a limit on the email alone let anyone, from anywhere, lock the real owner out for up
+ * to 15 minutes by guessing wrong passwords for it (R-035). Now the guesser is slowed down and the owner, from another address, is not.
+ * A second limit per address stops one machine from trying many emails. Both are in-process on purpose for now: the lean preset runs one
+ * API process, and a shared store would mean Redis. With several replicas each would count separately (P9). The address is `req.ip`,
+ * which follows `X-Forwarded-For` because the API sits behind a proxy: a caller that reaches the API directly can pick its own, so these
+ * limits belong at the proxy as well (docs/13-deployment.md).
  */
 const attempts = new Map<string, Attempts>();
+const ipWindows = new Map<string, IpWindow>();
+
+/** Drops entries that have gone quiet, so a long-running process does not keep one per address and email ever seen. */
+function evict(now: number): void {
+  if (attempts.size > 5000) for (const [k, a] of attempts) if (now - a.lastAt > LOCKOUT_MAX_MS * 2) attempts.delete(k);
+  if (ipWindows.size > 5000) for (const [k, w] of ipWindows) if (now - w.startedAt > IP_WINDOW_MS) ipWindows.delete(k);
+}
+
+const keyOf = (ip: string, email: string): string => `${ip}|${email}`;
 
 /** Milliseconds a caller must wait, or 0 when they may try now. */
-function blockedFor(email: string): number {
-  const a = attempts.get(email);
-  if (a === undefined) return 0;
-  return Math.max(0, a.blockedUntil - Date.now());
+function blockedFor(ip: string, email: string): number {
+  const now = Date.now();
+  const a = attempts.get(keyOf(ip, email));
+  const byEmail = a === undefined ? 0 : Math.max(0, a.blockedUntil - now);
+  const w = ipWindows.get(ip);
+  const byIp = w !== undefined && now - w.startedAt < IP_WINDOW_MS && w.failures >= IP_FAILURES_PER_WINDOW ? w.startedAt + IP_WINDOW_MS - now : 0;
+  return Math.max(byEmail, byIp);
 }
 
 /** Records a failure and extends the lockout, doubling each time past the threshold. */
-function recordFailure(email: string): void {
-  const a = attempts.get(email) ?? { failures: 0, blockedUntil: 0 };
+function recordFailure(ip: string, email: string): void {
+  const now = Date.now();
+  evict(now);
+  const k = keyOf(ip, email);
+  const a = attempts.get(k) ?? { failures: 0, blockedUntil: 0, lastAt: now };
   a.failures += 1;
+  a.lastAt = now;
   if (a.failures >= LOCKOUT_AFTER) {
     const over = a.failures - LOCKOUT_AFTER;
-    a.blockedUntil = Date.now() + Math.min(LOCKOUT_BASE_MS * 2 ** over, 15 * 60_000);
+    a.blockedUntil = now + Math.min(LOCKOUT_BASE_MS * 2 ** over, LOCKOUT_MAX_MS);
   }
-  attempts.set(email, a);
+  attempts.set(k, a);
+  const w = ipWindows.get(ip);
+  if (w === undefined || now - w.startedAt >= IP_WINDOW_MS) ipWindows.set(ip, { startedAt: now, failures: 1 });
+  else w.failures += 1;
 }
 
-/** Clears the record. Called on success, so a correct login un-penalises an honest typo. */
-function recordSuccess(email: string): void {
-  attempts.delete(email);
+/** Clears the record for this address and email. Called on success, so a correct login un-penalises an honest typo. */
+function recordSuccess(ip: string, email: string): void {
+  attempts.delete(keyOf(ip, email));
 }
 
+/** Forgets every failure. For tests, so one test's attempts cannot lock out the next. */
+export function resetLoginThrottle(): void {
+  attempts.clear();
+  ipWindows.clear();
+}
 
 /**
  * Sign in, sign out, and "who am I".
@@ -78,7 +111,8 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
     // For whoever reads the server log: a masked email (first letter and domain), never the whole address.
     const masked = `${email.slice(0, 1)}***@${email.split('@')[1] ?? '?'}`;
 
-    const wait = blockedFor(email);
+    const ip = req.ip ?? 'unknown';
+    const wait = blockedFor(ip, email);
     if (wait > 0) {
       req.log.warn({ email: masked, reason: 'locked_out' }, 'sign-in refused');
       res.status(429).json(problem(req, 429, 'TOO_MANY_ATTEMPTS',
@@ -105,7 +139,7 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
     const ok = await hasher.verify(storedHash, parsed.data.password);
 
     if (!ok || user === undefined || user.status !== 'active') {
-      recordFailure(email);
+      recordFailure(ip, email);
       // The screen says the same thing for every cause (so it cannot be used to find valid emails); the log does not.
       req.log.warn({
         email: masked,
@@ -126,7 +160,7 @@ export function authRouter(db: Database, hasher: PasswordHasher, isProduction: b
       return;
     }
 
-    recordSuccess(email);
+    recordSuccess(ip, email);
     const issued = await createSession(db, {
       userId: user.id, orgId: user.orgId,
       ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null

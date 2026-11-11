@@ -7,6 +7,13 @@ whole stack assuming no prior knowledge. (`CONTEXT.md` was deleted 2026-10-06; `
 
 ---
 
+## ▶ Fork, 2026-11-09: read this first
+
+This snapshot below is upstream's (2026-10-23). For the fork (`Mikhil31/whatsapp-crm-anti-ban`), start with
+[`docs/50-knowledge-base.md`](docs/50-knowledge-base.md): the owner's rules, this machine's checkouts, databases, ports and test
+numbers, the design decisions per screen, the anti-ban research, and where things stand. Open bugs:
+[`docs/49-bug-list.md`](docs/49-bug-list.md); evidence: [`docs/47-live-test-log.md`](docs/47-live-test-log.md).
+
 ## ▶ If you are a new session, do this first
 
 **Be the same collaborator as the last session** (the rules are in *Standing rules* just below and in the memory index you
@@ -224,19 +231,19 @@ The `e2e-test` org (`e2e@test.local`, password in `.env` as `TEST_PASSWORD`) exi
 himself (not our concern); the container image `whatsapp-crm:alpha-p1` built cleanly, and a rebuild with ffmpeg was in progress.
 
 ### What was built (all PRs titled `ai-speedrun:`)
-- **AI templates, part 1 (D-85, PR #99):** `/ai` page 1 = describe in plain words (8,000 characters), the model writes bullet instructions **without summarising**,
-  review (instructions locked until "Edit by hand", AI warning, regenerate-over-edits confirmation, Save off while the description changed), save as a template
-  (`ai_template`, migration 0034), saved list (Open, Next steps, Use for all chats, Delete), limits and the one-off orders box at the bottom. **Page 2 `/ai/t/<id>`**:
-  What next? with **Let it answer all chats** and **Message a group with this** (audience = an existing tag, or a search whose people get a new **editable** tag named
-  `<template>-N (date, time)`, counted first; the draft campaign keeps `ai_template_id`, migration 0035). **Always-on rules** (`AI_ALWAYS_ON_RULES`) are added to every reply
-  in `systemText`, shown locked on the page, and cannot be edited. Admin-only API `/ai/templates*`, `/ai/always-on-rules`; 5 generations per org per minute.
+- **AI templates (D-85, redesigned 2026-11-09, migrations 0045 to 0048):** `/ai` is the Templates home (cards, status line, first-run checklist, Deleted for 30 days) and the AI provider tab
+  (`/ai/settings`, with the credit log). `/ai/new` and `/ai/t/<id>` are the editor: the AI writes a playbook from a sentence, the owner answers its questions, picks the file or tag, the AI suggests
+  which columns it may see (column names only), sensitive details are marked Show or Keep general, "Rewrite with my choices", an example conversation, and a required hand-over person and number.
+  The AI runs a chat to its end (recap confirmed, a clear no, or a request for a person), answers as JSON (`reply`, `status`, `summary`, `handover`), writes as the organisation and never as "an assistant", and its status and
+  note per person show on the campaign page ("What people said"). One credit is one call to the model, recorded per campaign, template and person (`ai_run`). **Always-on rules** (`AI_ALWAYS_ON_RULES`) are added to every reply
+  in `systemText` and cannot be edited. Admin-only API `/ai/templates*`, `/ai/usage`, `/ai/always-on-rules`; 12 template writes per org per minute. The Tasks and Other chats tabs are parked (D-118).
 - **Campaign pictures and GIFs (D-59 first slice, #100/#101, migration 0036):** one picture or GIF per campaign, 5 MB, JPG/PNG/WebP/GIF, **MP4 refused for now**; upload and
   "use one I uploaded before" on the new-campaign form; the campaign page shows it; the dispatcher sends it with the message as caption; a **GIF is converted at upload with ffmpeg**
   to a looping clip and sent as a video with GIF playback; the AI's `create_campaign` takes `pictureName`. ffmpeg is in the Dockerfile.
 - **Contacts (D-70 part 1, #84):** Refresh, rows as columns that open, date added/imported range and order (server side). Admin-chosen columns pinned as **D-79**.
 - **Docs:** new [`35-database-and-queries.md`](docs/35-database-and-queries.md) (the 32 tables by group, how tenancy works, the optimisations that exist, the main queries, the known gaps),
   [`36-workflows.md`](docs/36-workflows.md) (seven diagrams), and `docs/generated/database-reference.md` (generated from the live database by `npm run db:docs`, which also writes `schema.html`).
-  Pins this session: D-80 (contact page, unknown senders), D-85 (templates, per chat and per campaign, gallery, "Draft with AI"), D-86 (orders box), D-87 (**every mass message goes to a tag**, rule),
+  Pins this session: D-80 (contact page, unknown senders), D-85 (templates, per chat and per campaign, gallery; "Draft with AI" was removed on 2026-11-02), D-86 (orders box), D-87 (**every mass message goes to a tag**, rule),
   notes on D-57, D-20, D-63 (SMB), D-67 (back to pinned).
 
 ### Decisions he made (do not re-ask)
@@ -291,7 +298,7 @@ and the assistant's instructions are a recruiter script (confirm interest in a d
 
 ### What was built (all PRs titled `ai-speedrun:`; search git history for it)
 `@crm/llm` (any OpenAI-format endpoint plus Anthropic); AI settings and consent; a bot user; auto-reply on chats assigned to it; anti-ban warnings; campaign
-tools; `send_message` (takes a **name, never an id**: Groq's small model once passed the number's id); Write with AI; the request queue (`ai_job`); `llm:check`; the **lead-the-conversation** prompt; a
+tools; `send_message` (takes a **name, never an id**: Groq's small model once passed the number's id); the request queue (`ai_job`); `llm:check`; the **lead-the-conversation** prompt; a
 resend hook so a recipient's "Waiting for this message" clears (#96); one "please type that" reply to photos and voice notes (#96). Migrations **0031, 0032, 0033** (run `npm run db:migrate`; the dev script does it
 on start). Design and status: `docs/06-features/F12-ai-agent.md`. Users: `docs/CRM-user-tutorial.pdf`. Pins: D-4 (built), D-42 (partly), **D-81 to D-84**.
 
@@ -395,19 +402,8 @@ re-create the logging (it logged message kinds, `senderPn`/`participantPn`/`push
 | #81 | **Newsletters, any `@broadcast` list and groups are ignored on the way in** (`isNotAPerson` in `packages/channels/baileys/src/index.ts`) |
 | #82 | Docs: **"Status at a glance" table** at the top of `docs/21-deferred.md`; D-63 pinned; the CI note in `CONTRIBUTING.md` |
 
-### Open: PR #83 (`feat/import-wizard-more`): D-21, built as Kushal previewed and approved
-The Match columns step is divided into sections (file / phone columns / name and email / columns to store / preview / tag and import):
-- **Several phone columns**: tick every column with numbers; numbered and tried in order; a person with two numbers keeps both
-  (`mapping.identities` already allowed several phone rules). Component `PhoneColumns` in `apps/web/app/import/import-panel.tsx`.
-- **Joined names** (`mapping.nameParts`, `joinName` exported from `packages/core/src/ingestion.ts`, mirrored for the preview in
-  `apps/web/lib/join-name.ts`): never shortened; `Anita` + `Sharma` is `Anita Sharma`; only a first name that is already one
-  letter is joined with a dot and no space (`a` + `sharma` is `a.sharma`); a blank part leaves the other as the name; the sheet's case is kept.
-- **Personal columns** (`apps/web/lib/personal-columns.ts`: date of birth, pay/CTC, address, government ids, marital status, gender...)
-  are marked "personal" and cannot be ticked while "Never store columns marked personal" is on.
-- **Layout:** fixed-height scrolling columns box with "N of M ticked", bigger text, preview shows chosen columns and "showing N of M rows".
-- **Verified locally:** typecheck (server and web), lint, `ingestion.test.ts`, `import-columns.test.ts`, `imports.test.ts` (32 tests incl. a new
-  two-phone plus joined-name test). **NOT run:** the browser suite and a look at **phone width** (he asked that the layout not break the
-  mobile layout later, D-72). Both need his go-ahead and the stack; the e2e specs `import-problems` and `import-flow` were rewritten and have not run.
+### Import
+The Import screen is one screen with a check before anything is saved, a required tag and the rules for importing a file again: see `docs/07-ingestion.md` ("The Import screen").
 
 ### Decisions he made (so you do not re-ask)
 - **Invite-only beta first; teammates are created by an admin** (who can reset a password and revoke access, **never delete** an account). Billing:

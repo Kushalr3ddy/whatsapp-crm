@@ -478,6 +478,17 @@ export const message = pgTable('message', {
   /** What the sweep decided: `likely_blocked`, `likely_offline`, or `decrypt_retry` when S5 owns it (F6 AC-4.1 to 4.4). Nothing is ever resent. */
   tickVerdict: text('tick_verdict'),
   /**
+   * When the gateway handed this message to WhatsApp, written just before the send. A queued message that has it is in flight: no lane
+   * sends it again. If the process dies before the send is recorded, it stays set, and the sweep marks the message `send_unconfirmed`
+   * instead of sending it a second time, because WhatsApp may already have it.
+   */
+  sendStartedAt: timestamp('send_started_at', { withTimezone: true }),
+  /**
+   * The caller's `Idempotency-Key` for this send, so the same send repeated (a retry after a dropped connection, a second tab) is one
+   * message, not two (R-043). Unique per org; null for a message sent without one.
+   */
+  idempotencyKey: text('idempotency_key'),
+  /**
    * An admin knowingly sent this to someone flagged do-not-contact (the override is a per-message,
    * audited decision with a reason). The gateway's last-line check refuses to send to a
    * do-not-contact contact unless this is set, so a flag raised after queueing still stops a message.
@@ -505,7 +516,10 @@ export const message = pgTable('message', {
   readAt: timestamp('read_at', { withTimezone: true })
 }, (t) => [
   uniqueIndex('message_provider_id_uidx').on(t.orgId, t.providerMessageId),
-  index('message_conversation_idx').on(t.conversationId, t.createdAt)
+  uniqueIndex('message_idempotency_uidx').on(t.orgId, t.idempotencyKey).where(sql`idempotency_key IS NOT NULL`),
+  index('message_conversation_idx').on(t.conversationId, t.createdAt),
+  // Sends in flight, for the sweep that reports the ones never confirmed. Tiny: only a message being handed to WhatsApp is in it.
+  index('message_in_flight_idx').on(t.sendStartedAt).where(sql`status = 'queued' AND send_started_at IS NOT NULL`)
 ]);
 
 /**
@@ -800,6 +814,8 @@ export const campaign = pgTable('campaign', {
 
   /** The AI template replies to this campaign follow (D-85), or none. Set when the campaign is made from a template. */
   aiTemplateId: uuid('ai_template_id').references((): AnyPgColumn => aiTemplate.id, { onDelete: 'set null' }),
+  /** The owner stopped the AI on this campaign: it writes no more openings and answers no replies; chats go to the template's person. */
+  aiStopped: boolean('ai_stopped').notNull().default(false),
 
   /** One picture or GIF sent with every message of this campaign, the message text being its caption; or none (text only). */
   mediaAssetId: uuid('media_asset_id').references((): AnyPgColumn => mediaAsset.id, { onDelete: 'set null' }),
@@ -842,6 +858,19 @@ export const campaign = pgTable('campaign', {
   mediaAfterReply: boolean('media_after_reply').notNull().default(true),
   /** Why these people are being messaged, in a sentence. Said in the closing message if one of them opts out (F6 AC-6.2). Null = the org's default. */
   purpose: text('purpose'),
+  /**
+   * What to do for a person who has no value for a `{{fill-in}}` the message uses (CW-7.7): `skip` them (reason `missing_field`),
+   * or use `fill_in_fallback` in the gap. Null = send anyway, the gap stays blank.
+   */
+  blankFillInChoice: text('blank_fill_in_choice'),
+  /** The text that fills a blank fill-in when `blank_fill_in_choice` is `fallback`, e.g. "soon". */
+  fillInFallback: text('fill_in_fallback'),
+  /** How many days back "messaged recently" looks for this campaign. Null = the org's default (`antiban_setting.recent_days`). */
+  recentDays: integer('recent_days'),
+  /** People messaged from this number within `recent_days` are left out (skipped as `cooldown`) when true; they are sent when false. */
+  leaveOutRecent: boolean('leave_out_recent').notNull().default(false),
+  /** The picks the audience was chosen with on New campaign (files, tags, everyone, people), so a draft can be edited with them back. Null for older campaigns. */
+  audienceTargets: jsonb('audience_targets'),
   /** Why a campaign was paused by the system rather than a person (e.g. `ban_suspected`, `unlinked`). */
   pauseReason: text('pause_reason'),
 
@@ -887,7 +916,12 @@ export const campaignRecipient = pgTable('campaign_recipient', {
   /** The gap this recipient's message waits after the previous send, in ms. Drawn once at launch (F6 AC-3.1). */
   plannedGapMs: integer('planned_gap_ms'),
   /** The first message went as text alone to a new chat; the picture or link is still to be sent when they reply (F6 AC-7.3). */
-  followupPending: boolean('followup_pending').notNull().default(false)
+  followupPending: boolean('followup_pending').notNull().default(false),
+  /** Where the AI's conversation with this person stands: `talking`, `interested`, `not_interested` or `needs_person`. Null until they have answered. */
+  aiStatus: text('ai_status'),
+  /** One to three lines for the colleague: what the person told the AI and what it could not answer. Facts, never a grade. */
+  aiSummary: text('ai_summary'),
+  aiStatusAt: timestamp('ai_status_at', { withTimezone: true })
 }, (t) => [
   // One row per person per campaign. Also what makes a re-run idempotent.
   uniqueIndex('campaign_recipient_uidx').on(t.campaignId, t.contactId),
@@ -936,7 +970,23 @@ export const aiTemplate = pgTable('ai_template', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
-  useCount: integer('use_count').notNull().default(0)
+  useCount: integer('use_count').notNull().default(0),
+  /** The one text of what the AI knows. `instructions` is rebuilt from it on every save. Empty on older templates. */
+  knowledge: text('knowledge').notNull().default(''),
+  /** The AI's questions and the owner's answers: [{ question, answer, skipped }]. */
+  questions: jsonb('questions').notNull().default([]),
+  /** Details the AI must not state exactly: [{ detail, mode: 'show' | 'general' }]. */
+  sensitive: jsonb('sensitive').notNull().default([]),
+  /** The team member a chat goes to when the AI is not sure; the AI never guesses. Cleared if that person is removed. */
+  fallbackUserId: uuid('fallback_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+  /** The number the AI tells customers that person will call from. */
+  fallbackPhone: text('fallback_phone').notNull().default(''),
+  /** Which columns of a person's row the AI may see in a reply. */
+  visibleColumns: jsonb('visible_columns').notNull().default([]),
+  /** Who the template is for: the files or tags chosen (same shape as `campaign.audience_targets`). */
+  audienceTargets: jsonb('audience_targets'),
+  /** Set when the template is moved to Deleted; the row is removed for good after the grace period. */
+  deletedAt: timestamp('deleted_at', { withTimezone: true })
 }, (t) => [
   index('ai_template_org_used_idx').on(t.orgId, t.lastUsedAt)
 ]);
@@ -950,6 +1000,10 @@ export const aiRun = pgTable('ai_run', {
   orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'cascade' }),
   conversationId: uuid('conversation_id').references(() => conversation.id, { onDelete: 'set null' }),
   campaignId: uuid('campaign_id').references(() => campaign.id, { onDelete: 'set null' }),
+  /** The AI template this call worked from, when there was one (kept when the template is later removed: set null). */
+  templateId: uuid('template_id').references((): AnyPgColumn => aiTemplate.id, { onDelete: 'set null' }),
+  /** The person who asked for it (writing a template, an example, a rewrite); null when the assistant acted by itself (openings, replies). */
+  userId: uuid('user_id').references(() => appUser.id, { onDelete: 'set null' }),
   /** `reply`, `campaign_action`, ... */
   kind: text('kind').notNull(),
   /** `sent`, `blocked`, `failed`, `skipped`. */
@@ -1034,5 +1088,7 @@ export const antibanSetting = pgTable('antiban_setting', {
   stopWords: text('stop_words').array().notNull().default(sql`'{}'::text[]`),
   /** The org's own words that lift do-not-contact, besides `start` (F6 AC-6.6). */
   restartWords: text('restart_words').array().notNull().default(sql`'{}'::text[]`),
+  /** The default number of days "messaged recently" means on a new campaign. */
+  recentDays: integer('recent_days').notNull().default(14),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });
