@@ -46,13 +46,19 @@ test.describe('seeded pages', () => {
     await expect(page.getByText(note)).toBeVisible();
 
     // Resolve from Details, then put it back.
-    await page.getByRole('button', { name: 'Details', exact: true }).click();
+    // The Details panel is a toggle, and whether it is still open when the chat's new state arrives depends on timing: clicking Details blindly
+    // closed it on a slow machine and the button looked missing (CI, 2026-11-11). Ask for the button, and open the panel only if it is not there.
+    const details = page.getByRole('button', { name: 'Details', exact: true });
+    const showing = async (name: string): Promise<void> => {
+      const button = page.getByRole('button', { name });
+      if (!(await button.isVisible())) await details.click();
+      await expect(button).toBeVisible();
+    };
+    await details.click();
     await page.getByRole('button', { name: 'Resolve this chat' }).click();
-    await page.getByRole('button', { name: 'Details', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Reopen this chat' })).toBeVisible();
+    await showing('Reopen this chat');
     await page.getByRole('button', { name: 'Reopen this chat' }).click();
-    await page.getByRole('button', { name: 'Details', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Resolve this chat' })).toBeVisible();
+    await showing('Resolve this chat');
   });
 
   test('[R-009] contacts: search narrows the list', async ({ page }) => {

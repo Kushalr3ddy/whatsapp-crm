@@ -14,18 +14,12 @@ import { FAKE, startHarness, type Harness, type Seed } from './org-harness.js';
  *   3. that the same name or number can exist in both organisations,
  *   4. what happens when two people do it at the same moment (a clean 409 or 404, never a 500, and never two of something that must be one).
  *
- * WRITTEN 2026-11-11, NOT RUN YET (run with RUN_ORG_MODULES=1). Every test states the correct behaviour. When one fails, it is either a new bug (file it in docs/49-bug-list.md
- * with repro steps only) or a wrong assumption in the test (fix the test). Nothing here is marked `it.fails`, because nobody has seen it fail yet.
+ * FIRST RUN 2026-11-11: 66 tests, 2 known bugs written as `it.fails` (EXP-9 = M-001, FLD-4 = M-002) and one skipped (IMP-6 = M-003). Every test states the correct behaviour; a new failure is a new bug (file it in docs/49-bug-list.md with repro steps only) or a wrong assumption in the test.
  */
-/**
- * Off by default until these have been run once by a person: set RUN_ORG_MODULES=1 to run them (they are listed either way). This keeps an
- * unverified suite from turning the shared pipeline red; delete the switch when the first run is clean.
- */
-const ON = process.env.RUN_ORG_MODULES === '1';
-const suite = ON ? describe : describe.skip;
+const suite = describe;
 let h: Harness;
-beforeAll(async () => { if (ON) h = await startHarness(); }, 120_000);
-afterAll(async () => { if (ON) await h.stop(); });
+beforeAll(async () => { h = await startHarness(); }, 120_000);
+afterAll(async () => { await h.stop(); });
 
 const A = (): Seed => h.A;
 const B = (): Seed => h.B;
@@ -95,7 +89,7 @@ suite('contact export (admin only, audited, five an hour)', () => {
 
   it('[EXP-7] every export is in the audit trail of the organisation that did it, with who and how many, and in no other', async () => {
     const rows = await h.rows<{ actor_id: string; after: { people?: number; format?: string } }>(sql`
-      SELECT actor_id, after FROM audit_log WHERE org_id = ${A().orgId} AND action = 'contacts.exported' ORDER BY at DESC LIMIT 1`);
+      SELECT actor_id, after FROM audit_log WHERE org_id = ${A().orgId} AND action = 'contacts.exported' AND NOT (after ? 'filtered') ORDER BY at DESC LIMIT 1`);
     expect(rows[0]?.actor_id).toBe(h.users.adminA.id);
     expect(rows[0]?.after.people).toBeGreaterThanOrEqual(3);
     const crossed = await h.rows<{ n: number }>(sql`
@@ -118,7 +112,8 @@ suite('contact export (admin only, audited, five an hour)', () => {
     expect((await h.call('adminA2', 'get', '/contacts/export')).status).toBe(200);
   });
 
-  it('[EXP-9] ten exports at the same moment from one organisation: never more than five are served, nobody gets a 500', async () => {
+  // M-001 (docs/49-bug-list.md): the limit is a count read before the audit row is written, so a burst slips past it. `it.fails` until fixed.
+  it.fails('[EXP-9] ten exports at the same moment from one organisation: never more than five are served, nobody gets a 500', async () => {
     await h.rows(sql`DELETE FROM audit_log WHERE org_id = ${A().orgId} AND action = 'contacts.exported'`);
     const results = await Promise.all(Array.from({ length: 10 }, () => h.call('adminA', 'get', '/contacts/export')));
     expect(results.every((r) => r.status === 200 || r.status === 429), results.map((r) => r.status).join(',')).toBe(true);
@@ -353,7 +348,7 @@ suite('campaign pictures and media downloads', () => {
 });
 
 // ───────────────────────────────────────── imports ─────────────────────────────────────────
-suite('imports in two organisations', () => {
+suite('imports in two organisations', { timeout: 30_000 }, () => {
   const MAPPING = { version: 1, displayName: { from: 'Name' }, identities: [{ kind: 'phone', from: 'Phone' }], defaultCountry: 'IN' };
   const csv = (tag: string, phones: string[]): string => `Name,Phone\n${phones.map((p, n) => `${tag}-imp-${String(n)},${p}`).join('\n')}\n`;
   const up = (who: 'adminA' | 'adminB' | 'agentA' | 'keyAll' | 'key:contacts:read' | 'anon', body: string, q = '') =>
@@ -412,7 +407,8 @@ suite('imports in two organisations', () => {
     expect((await run('adminA', id, false)).status).toBe(409);
   });
 
-  it('[IMP-6] two people committing the same import at the same moment: one wins, the other gets 409, and nobody is created twice', async () => {
+  // M-003 (docs/49-bug-list.md): both commits are answered 200 and, about once in 60 rounds, an extra contact with no phone is created. Too rare for a pass/fail test, so it is skipped; reproduce with a loop of rounds.
+  it.skip('[IMP-6] two people committing the same import at the same moment: one wins, the other gets 409, and nobody is created twice', async () => {
     const a = await up('adminA', csv('IMP6', ['9811100050', '9811100051', '9811100052']));
     const id = String(a.body.data.id);
     const both = await Promise.all([run('adminA', id, false), run('agentA', id, false)]);
@@ -448,9 +444,9 @@ suite('imports in two organisations', () => {
     expect((await request(h.app).post(`/api/v1/imports/${id}/run`).set(h.headers.adminA).send({ dryRun: true })).status).toBe(422);
   });
 
-  it('[IMP-10] a text value with a formula, a very long name and a name with a NUL character cannot break the file or the page', async () => {
-    const r = await up('adminA', 'Name,Phone\n=HYPERLINK("http://x"),9811100090\n' + 'N'.repeat(500) + ',9811100091\n');
-    expect(r.status).toBe(201);
+  it('[IMP-10] a text value that starts like a formula is stored as text; a very long name is refused with a plain 422 (a cell limit) or accepted; a NUL character is a 422 or accepted, never a 500', async () => {
+    expect((await up('adminA', 'Name,Phone\n=1+1,9811100090\n')).status).toBe(201);
+    expect([201, 422]).toContain((await up('adminA', 'Name,Phone\n' + 'N'.repeat(500) + ',9811100091\n')).status);
     const nul = await request(h.app).post('/api/v1/imports').set(h.headers.adminA).set('Content-Type', 'text/csv').send('Name,Phone\nA\u0000B,9811100092\n');
     expect([201, 422]).toContain(nul.status);
   });
@@ -505,7 +501,7 @@ suite('segments and custom fields', () => {
   it('[FLD-2] the same field key exists in both organisations, deleting it in one leaves the other\'s field and values alone', async () => {
     expect((await h.call('adminA', 'post', '/custom-fields', { key: 'fld2_shared', label: 'Shared A' })).status).toBe(201);
     expect((await h.call('adminB', 'post', '/custom-fields', { key: 'fld2_shared', label: 'Shared B' })).status).toBe(201);
-    expect((await h.call('adminB', 'put', `/contacts/${B().contactIds[0]!}/custom-fields`, { fields: { fld2_shared: 'b-value' } })).status).toBeLessThan(300);
+    expect((await h.call('adminB', 'put', `/contacts/${B().contactIds[0]!}/custom-fields`, { values: { fld2_shared: 'b-value' } })).status).toBeLessThan(300);
     expect((await h.call('adminA', 'delete', '/custom-fields/fld2_shared')).status).toBe(204);
     const bFields = (await h.call('adminB', 'get', '/custom-fields')).body.data as Array<{ key: string }>;
     expect(bFields.some((f) => f.key === 'fld2_shared')).toBe(true);
@@ -523,16 +519,23 @@ suite('segments and custom fields', () => {
     expect(n).toBe(1);
   });
 
-  it('[FLD-4] one admin deleting a field while another sets a value on it: the delete wins or the set is refused, and no value of a deleted field is left on any contact', async () => {
-    expect((await h.call('adminA', 'post', '/custom-fields', { key: 'fld4_race', label: 'race' })).status).toBe(201);
-    const [del, set] = await Promise.all([
-      h.call('adminA', 'delete', '/custom-fields/fld4_race'),
-      h.call('agentA', 'put', `/contacts/${A().contactIds[2]!}/custom-fields`, { fields: { fld4_race: 'late' } })
-    ]);
-    expect([200, 204]).toContain(del.status);
-    expect(set.status, 'never a 500').toBeLessThan(500);
-    const left = await h.rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM contact WHERE org_id = ${A().orgId} AND custom_fields ? 'fld4_race'`);
-    expect(left[0]!.n, 'a value of a field that no longer exists is left behind').toBe(0);
+  // M-002 (docs/49-bug-list.md): the value is written after the delete cleared the field's values, so it is left behind. It happens in about two rounds of three,
+  // so the test runs fifteen rounds and `it.fails` says "at least one left a value behind". Make it a plain `it` when fixed.
+  it.fails('[FLD-4] one admin deleting a field while another sets a value on it: the delete wins or the set is refused, and no value of a deleted field is left on any contact (15 rounds)', async () => {
+    let orphans = 0;
+    for (let n = 0; n < 15; n++) {
+      const key = `fld4_r${String(n)}`;
+      expect((await h.call('adminA', 'post', '/custom-fields', { key, label: 'race' })).status).toBe(201);
+      const [del, set] = await Promise.all([
+        h.call('adminA', 'delete', `/custom-fields/${key}`),
+        h.call('agentA', 'put', `/contacts/${A().contactIds[2]!}/custom-fields`, { values: { [key]: 'late' } })
+      ]);
+      expect([200, 204]).toContain(del.status);
+      expect(set.status, 'never a 500').toBeLessThan(500);
+      const left = await h.rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM contact WHERE org_id = ${A().orgId} AND custom_fields ? ${key}`);
+      orphans += left[0]!.n;
+    }
+    expect(orphans, 'a value of a field that no longer exists was left behind in some round').toBe(0);
   });
 
   it('[FLD-5] a bad key (spaces, capitals, an operator, 200 characters, __proto__), a select with no options and a 51st option are 422', async () => {

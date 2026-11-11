@@ -1,6 +1,6 @@
 # 49 · Bug list to decide on (2026-11-09)
 
-One list of everything found by the automated failure suites (R-numbers), the live run on real numbers (LF-), the screen check (SC-) and the owner's requirements (U-). Evidence for each is in `tests/regression/REGISTRY.md` (R-) and `docs/47-live-test-log.md` (the rest). Only the bugs under "Fixed" are fixed; everything under "Open" is not. Severity: S1 a person is wrongly messaged, not messaged, or data is lost; S2 a feature misleads or breaks; S3 confusing; S4 polish. "Decision" means the code does what it was built to do and the question is whether that is right.
+The history of what was found and fixed. **Open bugs are GitHub issues** (https://github.com/Mikhil31/whatsapp-crm-anti-ban/issues, labels `bug` and `sev1` to `sev4`); this file no longer lists them. Evidence for each is in `tests/regression/REGISTRY.md` (R-) and `docs/47-live-test-log.md` (the rest). Severity: S1 a person is wrongly messaged, not messaged, or data is lost; S2 a feature misleads or breaks; S3 confusing; S4 polish. "Decision" means the code does what it was built to do and the question is whether that is right.
 
 ## Fixed
 
@@ -26,28 +26,38 @@ One list of everything found by the automated failure suites (R-numbers), the li
 
 ## Open
 
-### Two people at once (all fixed: see "Fixed on 2026-11-10")
+Tracked as GitHub issues since 2026-11-11. The old ids still appear in the docs and the tests, so this is the map from id to issue number. Filter with `is:open label:bug`, and by `sev2`, `sev3`, `sev4`.
 
-Checked and fine (guarded by the same file): two requests to start one campaign (FM-5), two STOPs (AC-6.3), one number never sends two messages at once (AC-1.1), thirty replies at once by the owner (all kept), a second agent in an owned chat (409), a chat or person of another organisation (404), wrong types, unknown field names, `__proto__` and `constructor` field names, oversized text, no sign-in, a read-only key and a cookie without the CSRF token.
+| Old id | Issue | Old id | Issue | Old id | Issue |
+|---|---|---|---|---|---|
+| LV-3 | #47 | LV-4 | #48 | LV-5 | #49 |
+| LV-6 | #50 | LV-7 | #51 | LV-8 | #52 |
+| LV-9 | #53 | LV-10 | #54 | LV-11 | #55 |
+| LV-12 | #56 | LV-13 | #57 | held-picture wording | #58 |
+| DEP-1 | #59 | login limit at the proxy (SEC-2) | #60 | SEC-4 | #61 |
+| SEC-7 | #62 | SEC-9 | #63 | SEC-5 | #64 |
+| SEC-6 | #65 | SEC-8 | #66 | ISO-1 | #67 |
+| agent re-flag overwrites reason | #68 | PERF-1 | #69 | UI-1 | #70 |
+| UI-2 | #71 | UI-5 | #72 | UI-7 | #73 |
+| UI-3 | #74 | UI-4, UI-6 | #75 | LF-1 | #76 |
+| SC-1 | #77 | SC-2 | #78 | SC-4 | #79 |
+| SC-11 (and X-005) | #80 | SC-3 | #81 | LF-10 | #82 |
+| U-1 | #83 | LF-18 | #84 | SC-6 | #85 |
+| SC-5 | #86 | SC-7 | #87 | SC-8 | #88 |
+| LF-13 | #89 | SC-10 | #90 | AI-INT-1 | #91 |
+| LF-14 | #92 | LF-16 | #93 | LF-15 | #94 |
+| LF-3 | #95 | LF-6 | #96 | LF-5 | #97 |
+| LF-7 | #98 | R-025 | #103 | R-031 | #104 |
+| X-002 | #107 | X-003 | #108 | X-004 | #109 |
+| M-001 | #110 | M-002 | #111 | M-003 | #112 |
 
-**Written but not run (2026-11-11):** `tests/integration/orgs-modules.test.ts` and browser scenarios SCR-1 to SCR-9 cover the modules not reached before (export, API keys, key rotation, pictures, imports, segments, custom fields, audit trail, presence). Nothing from them is a bug yet; the first run decides.
+Fixed but their issues are still open on GitHub (to be closed): R-030 #99, R-027 #100, R-028 #101, R-029 #102.
 
-### Several organisations and roles (2026-11-10; found by `tests/integration/orgs-*.test.ts` and `shared-template-campaign.test.ts`; repro steps only, not analysed yet)
+**Decisions for the owner** (current behaviour pinned by tests, not bugs): any agent can edit, start, pause or cancel any campaign of the organisation; two admins saving the same template at once is last write wins with no warning; `api_key` has no row-level policy (every route filters it by organisation); a campaign created with only another organisation's contact ids is accepted but empty and starts as `running` with nobody in it; a confused "who is this" or a rude message is read as an opt-out only if a STOP word is used (LF-12, LF-17, changed by R-046); the rotation brake is one for the whole install (SEC-8, ENC-7 pins it).
 
-Each has a test written as `it.fails` that goes green-for-the-right-reason when fixed: change it to `it`.
+**Not app bugs (environment):** two `llm/settings` tests fail on Windows only (file modes); `antiban-v2-lane` AC-1.1 timed out once.
 
-| Id | Sev | Repro steps |
-|---|---|---|
-| X-002 | S3 | 1. As an admin, save an AI template. 2. Create a campaign using it (`aiTemplateId`). 3. Delete the template (it moves to Deleted). 4. `POST /campaigns` again with the same `aiTemplateId`: answers 201 (expected 404). Also `GET /ai/templates/<id>` of a deleted template answers 200. Test: `shared-template-campaign.test.ts` "X-002" |
-| X-003 | S3 | 1. Two people, one tag. 2. At the same moment: one `DELETE /tags/<id>`, the other `POST /contacts/<contact>/tags` `{ "tagId": "<id>" }`. 3. About one run in several: the second answers 500 (log: `contact_tag_tag_id_tag_id_fk` foreign key violation) instead of 404. Test: "X-003" |
-| X-004 | S3 | 1. Two people, same moment, `POST /contacts` with the same new phone (`{ "displayName": "x", "phone": "+9199xxxxxxxx" }`). 2. One answers 201; the other answers 500 (log: `contact_identity_lookup_uidx` unique violation) instead of 409 or the existing contact. One contact is created, never two. Test: "X-004" |
-| X-005 | S3 | **Same family as SC-11 (row 8b), still open**: SC-11 saw it while paused (it fixed itself on Resume); L12 saw it again in both organisations at once and here it did NOT fix itself: pause, Resume, then cancel left the rows `queued` for good. Found 2026-11-10 by the live run L12. 1. Campaign of 3 people (explicit contact ids, engagement gate lifted), started. 2. The three messages are sent and delivered on the phones (first at about 3 s, the others 40 to 50 s later). 3. Pause the campaign, resume it, cancel it (a minute or two after the start). 4. `GET /campaigns/<id>/recipients`: all three recipients still say `queued`, with no skip reason. The messages themselves (`GET /conversations/<id>/messages`) say `delivered` and the phones have them. The campaign says `cancelled`. Expected: `sent`. The earlier L8 run (pause after the first send showed as `sent`) ended `sent,sent,skipped`. Exact timing of the pause against the sends was not recorded: reproduce by pausing/cancelling after all three have arrived. Script: wa-testers
-un\l12.mjs (L8.5) To check for X-005 (not run yet, no fix): (a) a paused campaign whose rows are stuck `queued`: does a new campaign for the same person on the same number get skipped `in_other_campaign` although the message already went out; (b) does Resume on such a campaign send the message a second time; (c) pin the exact time of the pause against the sends. |
-un\l9.mjs |
-
-Decisions for the owner (current behaviour pinned by tests, not bugs yet): any agent can edit, start, pause or cancel any campaign of the organisation; two admins saving the same template at once is last write wins with no warning; `api_key` has no row-level policy (every route filters it by organisation); a campaign created with only another organisation's contact ids is accepted but empty and starts as `running` with nobody in it.
-
-### Fixed on 2026-11-10 (go-live fixes; each has a regression test named by its R-number, see tests/regression/REGISTRY.md)
+## Fixed on 2026-11-10 and 2026-11-11 (go-live fixes; each has a regression test named by its R-number, see tests/regression/REGISTRY.md)
 
 | Fixed | R | Issue | What changed |
 |---|---|---|---|
@@ -67,115 +77,6 @@ Decisions for the owner (current behaviour pinned by tests, not bugs yet): any a
 | Repeated 515 restarts reconnected at once without limit | R-028 | this PR | Three in a row are the handshake; after that they back off and spend the retry budget |
 | After 403 (ban) or 440 (taken over) the adapter dialled again by itself | R-029, R-030 | this PR | Neither reconnects by itself; a person relinks or resumes from the Numbers page |
 
-Still open from the live run (Sev 2 and below, not fixed yet): the AI invented a time, mishandled a callback and agreed to reschedule on its own; a landline is accepted on import; the campaign page counts a STOP as "Talking"; the left-over security items; the polish list in docs/51.
-
-### Live run on four phones (2026-11-10; the website driven by Playwright, the API by script; evidence in docs/47)
-
-Nothing here is fixed. Found by importing an Excel on the website and through the API, running AI campaigns to four real phones, and having the phones answer.
-
-| # | Id | Sev | What |
-|---|---|---|---|
-| v3 | LV-3 | S2 | After a person's "yes" in Hindi the AI asked them to confirm "tomorrow 11 am". Their interview is 15 Nov at 4:00 PM and the chat holds only their own messages: a made-up time |
-| v4 | LV-4 | S3 | Import accepts a landline (`080 2345 6789`) as a phone and tags it with everyone, but sending to it is refused (NOT_REACHABLE). "Message them now" on the import result includes it. The sender checks WhatsApp registration, but a landline can be on WhatsApp |
-| v5 | LV-5 | S3 | Campaign page "What people said": a person who sent STOP is counted under "Talking" |
-| v6 | LV-6 | S3 | "maybe later, please call me next week" was filed as not interested. The chat was handed to a person (correct) but the reply to the customer did not mention a callback |
-| v7 | LV-7 | S3 | Import: a later duplicate row's shorter name replaces the fuller one (Anita Rao became Anita R; the screen warns). The button says "Import 13 people" for 10 created (it counts rows). The dry run reports 0 warnings and the real run warns 3 |
-| v8 | LV-8 | S4 | Import messages: a picture gives only "The request could not be completed."; an empty CSV says "Choose a file first."; a semicolon-separated CSV is read as one column |
-| v9 | LV-9 | S4 | Reading a chat through the API (`GET /conversations/:id/messages`) clears its unread count, so an integration can silently clear the flag for the team |
-| v10 | LV-10 | S4 | A flood of 20 messages sent 250 ms apart is shown in arrival order (1, 4, 3, 2, 6, 5…), not sent order |
-| v11 | LV-11 | S4 | Closing message: it reads badly when the organisation's purpose is not a clause ("because your interview with us"), and it quotes the opening cut mid-word ("on 12 N…") |
-| v12 | LV-12 | S4 | AI: a thumbs-up alone was answered by asking the question again; a PDF with only a file name was answered "Thanks for your response"; a request to move to 4 pm was agreed without a person |
-| v13 | LV-13 | S4 | Messages to one phone stay at one tick ("sent") while the phone received them: that phone's receipts do not come back (the phone, not the CRM) |
-
-Related, already open as R-043: two clicks on Send in the same instant (0 ms) send two messages from the Inbox. With 30, 80 or 150 ms between them the screen sends one.
-
-### Security (review of 2026-11-09; evidence in docs/47)
-
-| # | Id | Sev | What |
-|---|---|---|---|
-| s4 | SEC-4 | S3 | The AI model is still one per install (now only the oldest org's admin may change it); redirects from the model address are followed |
-| s5 | DEP-1 | S2 | drizzle-orm 0.36.4 and zod 3.25.76 have high advisories; reach not checked; fixes are major upgrades |
-| s6 | SEC-7 | S3 | The web app sends no security headers and no CSP (the API now does) |
-| s7 | SEC-9 | S3 | No rate limit on AI answer-now / commands / jobs |
-| s8 | SEC-5 | S4 | Audit IP can be set by the caller |
-| s9 | SEC-6 | S4 | A database error may log query parameters (not reproduced) |
-| s10 | SEC-8 | S4 | Any org's admin can pause install-wide key rotation |
-| s12 | ISO-1 | S4 | Another org's conversation messages answer 200 with an empty list instead of 404 (no data shown) |
-
-### Screens at phone and desktop width (2026-11-09; evidence in docs/47)
-
-| # | Id | Sev | What |
-|---|---|---|---|
-| p1 | PERF-1 | S2 | Importing 2 to 12 people took more than 10 s ("Importing 2 people… 0:10") once the scratch org had about 2 100 contacts, on a loaded machine; earlier, with about 100 contacts, the check step was slow under load only. Not measured on a quiet machine; cause not looked at |
-| u1 | UI-1 | S3 | React #418 (server and browser text differ) on /team and /ai/settings |
-| u2 | UI-2 | S3 | /signup throws "An unexpected response was received from the server" on load |
-| u3 | UI-5 | S3 | Contacts table runs off the right edge at 375 |
-| u4 | UI-7 | S3 | Numbers page badge and logged-out notice run off the right edge at 375 |
-| u5 | UI-3 | S3 | Home "Manage" link cut at 375 |
-| u6 | UI-4, UI-6 | S4 | Inbox search placeholder and classic contacts tag row cut at 375 |
-
-### Campaigns
-
-| # | Id | Sev | What | Where |
-|---|---|---|---|---|
-| 3 | LF-1 | S2 | Review says "Nobody is left out", then Start skips the person as `engaged` (an agent owns the chat) and the campaign reads completed | New campaign review vs `policy-gates.ts` |
-| 4 | SC-1 | S2 | After an opt-out the campaign still shows the person as "Needs a person" with an old note; the opt-out appears nowhere on the page | Campaign page, What people said |
-| 5 | SC-2 | S3 | "AI is answering replies" while a person owns the chat and the contact opted out | Campaign page banner |
-| 6 | SC-4 | S3 | The Message box shows the typed body with `{{…}}`, not what the AI actually sent | Campaign page |
-| 7 | SC-3 | unconfirmed | No "Stop the AI" on a completed AI campaign (not checked on a running one) | Campaign page |
-| 8b | SC-11 | S3 | A paused campaign keeps showing a message as "queued, 0 sent" after it was sent and delivered, until Resume | Campaign page; `dispatchCampaigns` reconciles running campaigns only (likely) |
-| 8 | LF-10 | unconfirmed | Picking a tag in "Who gets it" did not select (maybe the browser automation) | New campaign |
-
-### Opt-out and do-not-contact
-
-| # | Id | Sev | What | Where |
-|---|---|---|---|---|
-| 10 | U-1 | requirement | On STOP the chat should end with the hand-over person's name and number and two lines on the campaign's goal | `buildClosingMessage`, `opt-out.ts` |
-| 12 | LF-12 | decision | A confused "who is this" is read as an opt-out and the person is told "We will not message you again" | AI classifier, test AC-6.1 |
-| 13 | LF-17 | decision | A rude message is read as an opt-out | same |
-| 14 | LF-18 | S2 | "I want to talk to a real human", right after an opt-out, gets silence and no hand-over | opt-out + AI gate |
-| 15 | SC-6 | S2 | Neither the thread nor the Details panel shows that the person opted out or restarted | Inbox |
-| 16 | SC-5 | S3 | Closing messages are labelled "Campaign" in the thread | Inbox |
-
-### Inbox
-
-| # | Id | Sev | What | Where |
-|---|---|---|---|---|
-| 18 | SC-7 | S3 | Details lists every campaign as "Replied", including one cancelled before it was sent | Inbox Details |
-| 19 | SC-8 | S3 | The AI's status and summary for the person are not shown in the inbox | Inbox Details |
-| 20 | LF-13 | S3 | When a person owns the chat, replies to an AI campaign are not answered by the AI and nothing says so | AI claim rule |
-| 21 | SC-10 | unconfirmed | One AI reply stayed "Sent, no delivery for 32 min" while the messages around it were delivered | Thread 17:26 |
-
-### AI replies (live, Gemini flash-lite)
-
-AI-INT-1 (S2): a clear "yes I will be there" was filed as "talking", not "interested", although the AI's own note says "confirmed his attendance". A polite no was filed correctly as not interested, and not as an opt-out. One sample; cause likely the model, not the code (docs/47).
-
-| # | Id | Sev | What |
-|---|---|---|---|
-| 22 | LF-14 | S2 | Made up "bring a copy of your resume and a valid ID" (not in its knowledge; it is told never to guess) |
-| 23 | LF-4 | S3 | Gives customers the staff **login email** and the sending number as the person who will confirm |
-| 24 | LF-16 | S3 | Called itself "an automated helper" (the rule is to speak as the team, never as an assistant or bot), and answered in Hindi to an English question |
-| 25 | LF-15 | S3 | "kal" (tomorrow) for a 14 Nov interview: did not point out the date differs |
-
-### AI template editor
-
-| # | Id | Sev | What |
-|---|---|---|---|
-| 26 | LF-3 | S2 | The owner's "never share the salary / internal notes" rules and the answer to the AI's own question were dropped by the rewrite |
-| 27 | LF-6 | S3 | "Rewrite with my choices" silently removes a section the owner typed |
-| 28 | LF-5 | S3 | "Who it is for" said "Nothing found. Import a file first" though a tag existed (made after the page opened) |
-| 29 | LF-7 | S4 | Typing into the name box adds to the AI's suggested name |
-
-### Linking and connection (real adapter, from the replay suite)
-
-| # | Id | Sev | What |
-|---|---|---|---|
-| 35 | R-025 | S3 | A 440 leaves no health event; the Numbers page only says "not connected" |
-| 36 | R-031 | S3 | The adapter reports a logged-out number as "closed" |
-
-### Not app bugs (environment, noted)
-
-The worktree's `node_modules` pointed at a deleted worktree; the main checkout runs an old commit (`4fda7ef`); CodeGraph answered from another checkout; two `llm/settings` tests fail on Windows only; `antiban-v2-lane` AC-1.1 timed out once. See `docs/47-live-test-log.md`.
 
 ## AI template changes to consider (the owner's call; nothing changed)
 

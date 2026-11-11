@@ -449,8 +449,8 @@ test.describe('more screens, by role and by address', () => {
     await page.getByLabel('Your name').fill('Nobody');
     await page.getByLabel('Organisation').fill(`Never created ${STAMP}`);
     await page.getByLabel('Work email').fill(`never-${STAMP}@orgs.test`);
-    await page.getByLabel('Password', { exact: true }).fill('correct-horse-1234');
-    await page.getByLabel('Confirm password').fill('correct-horse-1234');
+    await page.locator('input[name="password"]').fill('correct-horse-1234');
+    await page.locator('input[name="confirm"]').fill('correct-horse-1234');
     await page.getByRole('button', { name: 'Create account' }).click();
     await expect(page.getByRole('status')).toContainText('not connected');
     const sql = postgres(DB_URL, { max: 1 });
