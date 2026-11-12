@@ -9,3 +9,11 @@
   --sl-color-accent: #22c55e;
   --sl-color-accent-high: #bbf7d0;
 }
+
+/* Home page: make a whole card clickable. The link text is the card's description;
+   its ::after stretches over the card, which is the positioned box. */
+.sl-markdown-content .card { position: relative; transition: border-color 0.15s; }
+.sl-markdown-content .card:hover { border-color: var(--sl-color-accent); }
+.card-link { color: inherit; text-decoration: none; }
+.card-link::after { content: ''; position: absolute; inset: 0; }
+.card-link:focus-visible::after { outline: 2px solid var(--sl-color-accent); }
